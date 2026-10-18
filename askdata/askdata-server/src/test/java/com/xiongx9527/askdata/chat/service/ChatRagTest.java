@@ -74,8 +74,11 @@ class ChatRagTest {
 
     @Test
     void trainingTableMissingIsDetectedAndDegrades() {
+        // 集成 value-add-modules 后 schema.sql 已含 data_training；本用例验证「缺表」分支，
+        // 故先移除该表（本用例使用独立内存库，不影响其他用例），再断言降级行为。
+        appJdbc.execute("DROP TABLE IF EXISTS data_training");
         assertFalse(schemaContextBuilder.trainingTableAvailable(),
-                "chat-core 基线不含 data_training（归属 value-add-modules）");
+                "data_training 不存在时 trainingTableAvailable 应为 false");
         // 缺表时召回不报错，返回空列表
         assertTrue(schemaContextBuilder.trainingSamples(1L, "每个状态的订单数").isEmpty());
         // SQL 提示词仍可构建（仅 schema 驱动）

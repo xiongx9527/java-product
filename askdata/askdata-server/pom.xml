@@ -98,8 +98,10 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- Excel 上传/解析/建表/导出（对齐 SQLBot apps/datasource/utils/excel.py；
-             Apache POI 版本不受 Spring Boot BOM 管理，显式声明；5.2.x 为 Java 8 兼容末线） -->
+        <!-- Excel 上传/解析/建表/导出（对齐 SQLBot apps/datasource/utils/excel.py）
+             + 训练/术语/提示词/审计的导入导出；
+             Apache POI 版本不受 Spring Boot BOM 管理（BOM 的 poi 4.1.2 与 poi-ooxml 5.2.3 不兼容），
+             此处显式锁定 Java 8 兼容的 5.2.3 -->
         <dependency>
             <groupId>org.apache.poi</groupId>
             <artifactId>poi</artifactId>
@@ -143,6 +145,12 @@
             </resource>
         </resources>
         <plugins>
+            <!-- 显式声明 surefire 版本：BOM import 不传递插件管理，默认 2.12.4 不支持 JUnit 5 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>2.22.2</version>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
