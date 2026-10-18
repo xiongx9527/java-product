@@ -22,6 +22,7 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
@@ -144,19 +145,20 @@ class ExcelServiceTest {
         List<Map<String, Object>> created = (List<Map<String, Object>>) result.get("sheets");
         assertEquals(1, created.size());
         String tableName = Rows.str(created.get(0), "tableName");
-        assertTrue(tableName.startsWith("excel_订单_"), tableName);
+        assertTrue(tableName.startsWith(engine.appIdentifier("excel_订单_")), tableName);
         assertEquals(2, created.get(0).get("rows"));
 
         assertTrue(engine.appTableExists(tableName));
         assertEquals(2L, appJdbc.queryForObject("SELECT COUNT(*) FROM \"" + tableName + "\"", Long.class));
-        // 列类型映射（int→BIGINT、string→CLOB、float→DOUBLE、datetime→TIMESTAMP）
+        // 列类型映射（int→BIGINT、string→VARCHAR、float→DOUBLE、datetime→TIMESTAMP）
         List<com.xiongx9527.askdata.datasource.engine.ColumnSchema> columns =
                 engine.fields(DatasourceType.EXCEL, new DatasourceConf(), tableName);
         assertEquals(4, columns.size());
         assertTrue(columns.get(0).getFieldType().toUpperCase().contains("BIGINT"));
         assertTrue(columns.get(3).getFieldType().toUpperCase().contains("TIMESTAMP"));
         // 时间列可读回
-        Object stored = appJdbc.queryForObject("SELECT MAX(时间) FROM \"" + tableName + "\"", Object.class);
+        Object stored = appJdbc.queryForObject("SELECT MAX(" + engine.appIdentifier("时间") + ") FROM \""
+                + tableName + "\"", Object.class);
         assertNotNull(stored);
 
         Files.delete(tempDir.resolve(filePath));
@@ -173,8 +175,62 @@ class ExcelServiceTest {
         List<Map<String, Object>> sheets = (List<Map<String, Object>>) result.get("sheets");
         assertEquals(1, sheets.size());
         String tableName = Rows.str(sheets.get(0), "tableName");
-        assertTrue(tableName.startsWith("用户_"), tableName);
+        assertTrue(tableName.startsWith(engine.appIdentifier("用户_")), tableName);
         assertEquals(2L, appJdbc.queryForObject("SELECT COUNT(*) FROM \"" + tableName + "\"", Long.class));
+    }
+
+    /**
+     * 回归：Excel 导入建表后必须能被真实查询命中（A5 excel 链路核心）。
+     *
+     * <p>修复前建表用带引号的小写名，而 getTables 返回的名字经 execSql 走未加引号标识符时被 H2
+     * 折叠为大写，报 {@code Table "EXCEL_XXX" not found}；此处用未加引号的 SQL（LLM 生成形态）
+     * 覆盖 getTables → getFields → previewData → execSql 全链路。</p>
+     */
+    @Test
+    void importedTableIsQueryableAndPreviewableWithoutQuoting() throws Exception {
+        MockMultipartFile file = xlsx("query.xlsx",
+                new String[]{"sales", "id,name,amount,note",
+                        "1,alice,9.5,first",
+                        "2,bob,8,second"});
+        Map<String, Object> parsed = excelService.parseExcel(file);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> fields = (List<Map<String, Object>>)
+                ((List<Map<String, Object>>) parsed.get("data")).get(0).get("fields");
+        Map<String, Object> imported = excelService.importToDb(Rows.str(parsed, "filePath"),
+                Collections.singletonList(Rows.of("sheetName", "sales", "fields", fields)));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> created = (List<Map<String, Object>>) imported.get("sheets");
+        String tableName = Rows.str(created.get(0), "tableName");
+        DatasourceConf conf = new DatasourceConf();
+
+        // getTables / getFields（元数据面）
+        assertTrue(engine.tables(DatasourceType.EXCEL, conf).stream()
+                .anyMatch(item -> tableName.equals(item.getTableName())), tableName);
+        List<com.xiongx9527.askdata.datasource.engine.ColumnSchema> columns =
+                engine.fields(DatasourceType.EXCEL, conf, tableName);
+        assertEquals(4, columns.size());
+
+        // execSql：未加引号标识符（与 LLM 生成的 SQL 形态一致）
+        Map<String, Object> executed = engine.execSql(DatasourceType.EXCEL, conf,
+                "SELECT id, name, amount, note FROM " + tableName + " ORDER BY id");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) executed.get("data");
+        assertEquals(2, rows.size());
+        assertEquals("alice", rows.get(0).get("NAME"));
+
+        // previewData：按 getFields 返回的字段名拼预览 SQL
+        List<String> fieldNames = new ArrayList<>();
+        for (com.xiongx9527.askdata.datasource.engine.ColumnSchema column : columns) {
+            fieldNames.add(column.getFieldName());
+        }
+        Map<String, Object> preview = engine.execSql(DatasourceType.EXCEL, conf,
+                DatasourceType.EXCEL.previewSql(fieldNames, tableName, conf, null));
+        assertEquals(2, ((List<?>) preview.get("data")).size());
+
+        // 结果必须可 JSON 序列化（CLOB 列曾导致 No serializer found for BufferedReader）
+        String json = objectMapper.writeValueAsString(preview);
+        assertTrue(json.contains("alice"), json);
+        assertTrue(json.contains("first"), json);
     }
 
     @Test
@@ -197,7 +253,7 @@ class ExcelServiceTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> created = (List<Map<String, Object>>) result.get("sheets");
         String tableName = Rows.str(created.get(0), "tableName");
-        assertTrue(tableName.startsWith("excel_Sheet1_"), tableName);
+        assertTrue(tableName.startsWith(engine.appIdentifier("excel_Sheet1_")), tableName);
         assertEquals(2L, appJdbc.queryForObject("SELECT COUNT(*) FROM \"" + tableName + "\"", Long.class));
     }
 
@@ -281,7 +337,8 @@ class ExcelServiceTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> created = (List<Map<String, Object>>) result.get("sheets");
         String tableName = Rows.str(created.get(0), "tableName");
-        Object ts = appJdbc.queryForObject("SELECT \"ts\" FROM \"" + tableName + "\"", Object.class);
+        Object ts = appJdbc.queryForObject("SELECT \"" + engine.appIdentifier("ts") + "\" FROM \""
+                + tableName + "\"", Object.class);
         assertNotNull(ts);
         assertTrue(ts instanceof java.sql.Timestamp || ts instanceof Date, ts.getClass().getName());
     }

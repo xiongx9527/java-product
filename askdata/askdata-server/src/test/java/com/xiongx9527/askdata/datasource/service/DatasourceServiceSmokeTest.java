@@ -294,7 +294,8 @@ class DatasourceServiceSmokeTest {
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> createdSheets = (List<Map<String, Object>>) imported.get("sheets");
             String tableName = String.valueOf(createdSheets.get(0).get("tableName"));
-            assertTrue(tableName.startsWith("excel_订单_"));
+            // 表名取应用库标识符规范化形态（H2 未加引号标识符折叠为大写）
+            assertTrue(tableName.startsWith(engine.appIdentifier("excel_订单_")), tableName);
 
             String configuration = CryptoUtil.encryptSqlbot("{\"host\":\"\",\"port\":0,\"username\":\"\","
                     + "\"password\":\"\",\"database\":\"\",\"extraJdbc\":\"\",\"dbSchema\":\"\",\"filename\":\"\","
