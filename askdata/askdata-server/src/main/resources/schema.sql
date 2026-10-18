@@ -4,6 +4,9 @@
 --   skeleton-auth：001/010/020/021/035/049（登录闭环）
 --   system-foundation：019/040/067（ai_model、ai_model_workspace_mapping）、
 --     056（sys_apikey）、062/063/064（system_variable、sys_user.system_variables）
+--   value-add-modules：042/050/051（data_training）、039/041/045/069（terminology）、
+--     046/069（custom_prompt）、009_1/011（core_dashboard）、055/057/068（sys_logs）、
+--     026/027/030/071（ds_permission、ds_rules）、022/032/036/061/066（sys_assistant）
 -- 可重复执行：CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS + MERGE 种子。
 -- =====================================================================
 
@@ -93,6 +96,165 @@ CREATE TABLE IF NOT EXISTS system_variable (
     `value`     VARCHAR(10000),
     create_time TIMESTAMP,
     create_by   BIGINT
+);
+
+-- ---------------------------------------------------------------------
+-- SQL 示例训练（alembic 042/050/051；question 向量化 embedding 按 D5 以 JSON 文本存储）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS data_training (
+    id                   BIGINT PRIMARY KEY,
+    oid                  BIGINT,
+    datasource           BIGINT,
+    create_time          BIGINT,
+    question             VARCHAR(255),
+    description          VARCHAR(10000),
+    embedding            VARCHAR(10000),
+    enabled              BOOLEAN      NOT NULL DEFAULT TRUE,
+    advanced_application BIGINT
+);
+
+-- ---------------------------------------------------------------------
+-- 术语库（alembic 039/041/045/050/069；pid 非空为同义词子记录；
+-- datasource_ids 原为 JSONB，此处以 JSON 数组文本存储）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS terminology (
+    id                   BIGINT PRIMARY KEY,
+    oid                  BIGINT,
+    pid                  BIGINT,
+    create_time          BIGINT,
+    word                 VARCHAR(255),
+    description          VARCHAR(10000),
+    embedding            VARCHAR(10000),
+    specific_ds          BOOLEAN      NOT NULL DEFAULT FALSE,
+    datasource_ids       VARCHAR(10000),
+    enabled              BOOLEAN      NOT NULL DEFAULT TRUE,
+    advanced_application BIGINT
+);
+
+-- ---------------------------------------------------------------------
+-- 自定义提示词（alembic 046/069；type ∈ GENERATE_SQL/ANALYSIS/PREDICT_DATA；
+-- datasource_ids 原为 JSONB，此处以 JSON 数组文本存储）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS custom_prompt (
+    id                   BIGINT PRIMARY KEY,
+    oid                  BIGINT,
+    type                 VARCHAR(20),
+    create_time          BIGINT,
+    name                 VARCHAR(255),
+    prompt               VARCHAR(10000),
+    specific_ds          BOOLEAN      NOT NULL DEFAULT FALSE,
+    datasource_ids       VARCHAR(10000),
+    advanced_application BIGINT
+);
+
+-- ---------------------------------------------------------------------
+-- 仪表盘（alembic 009_1/011；folder/leaf 两级资源树 + 画布数据；
+-- create_time/update_time 为秒级时间戳，与 SQLBot 前端展示约定一致）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS core_dashboard (
+    id                   VARCHAR(50) PRIMARY KEY,
+    name                 VARCHAR(255),
+    pid                  VARCHAR(50),
+    workspace_id         VARCHAR(50),
+    org_id               VARCHAR(50),
+    level                INT,
+    node_type            VARCHAR(255),
+    type                 VARCHAR(50),
+    canvas_style_data    VARCHAR(10000),
+    component_data       VARCHAR(10000),
+    canvas_view_info     VARCHAR(10000),
+    mobile_layout        SMALLINT,
+    status               INT,
+    self_watermark_status INT,
+    sort                 INT,
+    create_time          BIGINT,
+    create_by            VARCHAR(255),
+    update_time          BIGINT,
+    update_by            VARCHAR(255),
+    remark               VARCHAR(255),
+    source               VARCHAR(255),
+    delete_flag          SMALLINT,
+    delete_time          BIGINT,
+    delete_by            VARCHAR(255),
+    version              INT,
+    content_id           VARCHAR(50),
+    check_version        VARCHAR(50)
+);
+
+-- ---------------------------------------------------------------------
+-- 审计日志（alembic 055/057/068；移植 SQLBot common/audit LogConfig 写入约定；
+-- create_time 为毫秒时间戳）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sys_logs (
+    id               BIGINT PRIMARY KEY,
+    operation_type   VARCHAR(255),
+    operation_detail VARCHAR(10000),
+    user_id          BIGINT,
+    user_name        VARCHAR(255),
+    operation_status VARCHAR(255),
+    oid              BIGINT,
+    ip_address       VARCHAR(255),
+    user_agent       VARCHAR(500),
+    execution_time   BIGINT,
+    error_message    VARCHAR(10000),
+    create_time      BIGINT,
+    module           VARCHAR(255),
+    remark           VARCHAR(255),
+    resource_id      VARCHAR(10000),
+    resource_name    VARCHAR(10000),
+    request_method   VARCHAR(255),
+    request_path     VARCHAR(255)
+);
+
+-- ---------------------------------------------------------------------
+-- 数据权限（alembic 026/027/030/071；ds_rules 为规则组，
+-- permission_list/user_list 原为 JSONB，此处以 JSON 文本存储；
+-- 行/列权限在问数执行时的过滤由 datasource-engine/chat-core 消费本表配置）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ds_permission (
+    id               BIGINT PRIMARY KEY,
+    enable           BOOLEAN,
+    auth_target_type VARCHAR(128),
+    auth_target_id   BIGINT,
+    type             VARCHAR(64),
+    ds_id            BIGINT,
+    table_id         BIGINT,
+    expression_tree  VARCHAR(10000),
+    permissions      VARCHAR(10000),
+    white_list_user  VARCHAR(10000),
+    create_time      BIGINT,
+    name             VARCHAR(128)
+);
+
+CREATE TABLE IF NOT EXISTS ds_rules (
+    id              BIGINT PRIMARY KEY,
+    enable          BOOLEAN,
+    name            VARCHAR(128) NOT NULL,
+    description     VARCHAR(512),
+    permission_list VARCHAR(10000),
+    user_list       VARCHAR(10000),
+    white_list_user VARCHAR(10000),
+    create_time     BIGINT,
+    oid             BIGINT
+);
+
+-- ---------------------------------------------------------------------
+-- 小助手/嵌入应用（alembic 022/032/036/061/066；type 0=普通小助手、
+-- 1=高级应用、4=页面嵌入；app_id/app_secret 为嵌入密钥）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sys_assistant (
+    id                  BIGINT PRIMARY KEY,
+    name                VARCHAR(255)  NOT NULL,
+    domain              VARCHAR(255)  NOT NULL,
+    type                INT           NOT NULL DEFAULT 0,
+    configuration       VARCHAR(10000),
+    create_time         BIGINT        NOT NULL DEFAULT 0,
+    description         VARCHAR(10000),
+    app_id              VARCHAR(255),
+    app_secret          VARCHAR(255),
+    oid                 BIGINT,
+    enable_custom_model BOOLEAN,
+    custom_model        VARCHAR(255)
 );
 
 -- ---------------------------------------------------------------------
