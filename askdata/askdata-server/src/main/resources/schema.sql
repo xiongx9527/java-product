@@ -322,3 +322,87 @@ VALUES (18, 1, 3, TRUE, 'stock', 'int', '库存数量', '库存数量', 4);
 MERGE INTO core_field (id, ds_id, table_id, checked, field_name, field_type, field_comment, custom_comment, field_index)
 KEY (id)
 VALUES (19, 1, 3, TRUE, 'created_at', 'datetime', '上架时间', '上架时间', 5);
+
+-- ---------------------------------------------------------------------
+-- 对话域（chat-core 子任务；字段名对齐 SQLBot apps/chat/models/chat_model.py
+-- 的 Chat / ChatRecord / ChatLog 与前端 ChatInfo / ChatRecord 契约）。
+-- 不在此处创建 value-add-modules 拥有的表（data_training / terminology /
+-- custom_prompt 等由后续 change 集成），避免 Integration 冲突。
+-- ---------------------------------------------------------------------
+
+-- 会话（SQLBot Chat；前端以 brief 作为会话标题/摘要）
+CREATE TABLE IF NOT EXISTS chat (
+    id                 BIGINT PRIMARY KEY,
+    create_by          BIGINT,
+    oid                BIGINT,
+    create_time        TIMESTAMP,
+    update_time        TIMESTAMP,
+    deleted            INT          NOT NULL DEFAULT 0,
+    brief              VARCHAR(2000),
+    datasource         BIGINT,
+    engine_type        VARCHAR(64),
+    ds_type            VARCHAR(64),
+    origin             INT          NOT NULL DEFAULT 1,
+    chat_type          VARCHAR(64),
+    question           VARCHAR(2000),
+    latest_record_time TIMESTAMP
+);
+
+-- 对话记录（SQLBot ChatRecord；sql_answer/chart_answer 为生成阶段的思考流，
+-- data/chart/predict_data 为 JSON 文本，供 /record/{rid}/data|predict_data 读取）
+CREATE TABLE IF NOT EXISTS chat_record (
+    id                    BIGINT PRIMARY KEY,
+    chat_id               BIGINT,
+    question              CLOB,
+    create_by             BIGINT,
+    oid                   BIGINT,
+    create_time           TIMESTAMP,
+    update_time           TIMESTAMP,
+    finish_time           TIMESTAMP,
+    sql_answer            CLOB,
+    sql                   CLOB,
+    datasource            BIGINT,
+    data                  CLOB,
+    chart_answer          CLOB,
+    chart                 CLOB,
+    analysis              CLOB,
+    analysis_thinking     CLOB,
+    predict               CLOB,
+    predict_content       CLOB,
+    predict_data          CLOB,
+    finish                BOOLEAN      NOT NULL DEFAULT FALSE,
+    error                 CLOB,
+    run_time              BIGINT,
+    first_chat            BOOLEAN      NOT NULL DEFAULT FALSE,
+    recommended_question  CLOB,
+    analysis_record_id    BIGINT,
+    predict_record_id     BIGINT,
+    regenerate_record_id  BIGINT,
+    duration              BIGINT,
+    total_tokens          BIGINT
+);
+
+-- 对话日志（SQLBot ChatLog：操作级 token/耗时/错误；message 为 JSON 文本）
+CREATE TABLE IF NOT EXISTS chat_log (
+    id            BIGINT PRIMARY KEY,
+    chat_record_id BIGINT,
+    oid           BIGINT,
+    create_by     BIGINT,
+    start_time    TIMESTAMP,
+    finish_time   TIMESTAMP,
+    duration      BIGINT,
+    total_tokens  BIGINT,
+    operate       VARCHAR(255),
+    local_operation BOOLEAN NOT NULL DEFAULT FALSE,
+    error         BOOLEAN NOT NULL DEFAULT FALSE,
+    message       CLOB
+);
+
+-- 推荐问题（SQLBot RecommendedQuestion；与前端 recommended_question 流式帧对应）
+CREATE TABLE IF NOT EXISTS recommended_questions (
+    id          BIGINT PRIMARY KEY,
+    chat_id     BIGINT,
+    question    CLOB,
+    sort        BIGINT,
+    create_time TIMESTAMP
+);
