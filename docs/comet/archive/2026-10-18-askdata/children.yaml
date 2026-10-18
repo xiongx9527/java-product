@@ -55,3 +55,6 @@ children:
   - name: value-add-modules
     depends_on: [system-foundation]
     covers: [A9, A10, A13]
+  - name: repair-a5-excel
+    depends_on: [chat-core, value-add-modules]
+    covers: [A5]
