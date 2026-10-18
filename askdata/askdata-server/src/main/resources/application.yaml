@@ -12,6 +12,16 @@ spring:
   sql:
     init:
       mode: always
+  servlet:
+    multipart:
+      # 数据源 Excel 上传上限（对齐前端 50MB 校验）
+      max-file-size: 50MB
+      max-request-size: 60MB
+
+# 数据源 Excel 上传文件目录（对齐 SQLBot settings.EXCEL_PATH）
+askdata:
+  excel:
+    path: ./data/excel
 
 # 鉴权（D10）：Sa-Token。token 从请求头 X-SQLBOT-TOKEN: Bearer <token> 读取，
 # 与 SQLBot 前端 request.ts 的请求拦截器逐字兼容。
