@@ -1,0 +1,57 @@
+schema: comet.native.children.v2
+acceptance_index:
+  A1:
+    source: brief.md
+    text: "A1 Maven 构建：`mvn -Pskip-test package`（或等价命令）在根目录对 `askdata/askdata-server` 构建成功，产出可独立运行的 jar；根/产品/模块三级 POM 与 BOM 引入路径正确。`Acceptance: A1`（spec §1 场景 1）"
+  A2:
+    source: brief.md
+    text: "A2 前端构建与补丁：`askdata/askdata-server/web`（SQLBot 前端拷贝）完整可 `npm install && npm run build` 产出 dist；xpack 补丁点集中标注；托管进 askdata-server 后以 `./api/v1` baseURL 正常访问。`Acceptance: A2`（spec §1 场景 2）"
+  A3:
+    source: brief.md
+    text: "A3 登录闭环：启动后访问 http://localhost:8000 出现登录页，`admin/SQLBot@123456` 登录进入工作台；/login/access-token、/user/info、鉴权过滤、登出生效；MD5 口令与 xpack→AES 混淆互通。`Acceptance: A3`（spec §2.1 场景）"
+  A4:
+    source: brief.md
+    text: "A4 AI 模型配置：系统-AI 模型页可新增 Ollama 与 OpenAI 兼容模型、设默认、连通检查（/system/aimodel 全端点）；重启后配置不丢；api_key 前端 AES→Java 落库加密。`Acceptance: A4`（spec §2.2 场景）"
+  A5:
+    source: brief.md
+    text: "A5 数据源管理：在数据源页面添加 MySQL/H2/PostgreSQL 数据源、浏览/勾选表与字段、执行 SQL、预览数据、编辑表/字段注释、Excel 上传建表（/datasource 基础面 + excel 类型）。`Acceptance: A5`（spec §2.2 场景）"
+  A6:
+    source: brief.md
+    text: "A6 对话 SQL+表格：预置演示数据源+模型后，新会话提问，流式返回 id/question/info/brief/sql/sql-data/finish 帧并渲染表格；token 用量/记录日志/recent_questions/recommend_questions/会话分页可用。`Acceptance: A6`（spec §2.3 场景）"
+  A7:
+    source: brief.md
+    text: "A7 图表：提问返回 chart/chart-result 帧，前端渲染柱/饼图等（G2 图表配置由模型产出）。`Acceptance: A7`（spec §2.3 场景）"
+  A8:
+    source: brief.md
+    text: "A8 分析与预测：记录级 analysis/predict 调用可用并按相应帧返回渲染。`Acceptance: A8`（spec §2.3 场景）"
+  A9:
+    source: brief.md
+    text: "A9 训练+术语+提示词：数据训练、术语库、自定义提示词三组管理页 CRUD/启停/导入导出让用户可用。`Acceptance: A9`（spec §2.4 场景）"
+  A10:
+    source: brief.md
+    text: "A10 仪表盘：仪表盘资源/画布 CRUD+加载可用，可在前端创建并打开仪表盘。`Acceptance: A10`（spec §2.4 场景）"
+  A11:
+    source: brief.md
+    text: "A11 系统/工作空间/参数/变量/API Key：用户分页+CRUD+重置密码、工作空间与成员、参数页、系统变量、API Key 各页面对后端调用全部正常。`Acceptance: A11`（spec §2.1/2.4 场景）"
+  A12:
+    source: brief.md
+    text: "A12 数据源类型完备性：新增数据源类型下拉含 13 类（excel+12 库），必测类型（MySQL/H2/Postgresql 等）真实连通；各类型至少具备连接测试与方言元数据策略。`Acceptance: A12`（spec §2.2 场景）"
+  A13:
+    source: brief.md
+    text: "A13 审计/数据权限/嵌入：审计日志页分页+导出；数据权限配置可用；嵌入应用(assistant/embedded)列表及密钥生成可用。`Acceptance: A13`（spec §2.4 场景）"
+children:
+  - name: skeleton-auth
+    depends_on: []
+    covers: [A1, A2, A3]
+  - name: system-foundation
+    depends_on: [skeleton-auth]
+    covers: [A4, A11]
+  - name: datasource-engine
+    depends_on: [system-foundation]
+    covers: [A5, A12]
+  - name: chat-core
+    depends_on: [datasource-engine]
+    covers: [A6, A7, A8]
+  - name: value-add-modules
+    depends_on: [system-foundation]
+    covers: [A9, A10, A13]
