@@ -15,10 +15,12 @@ import java.sql.DriverManager;
 import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Statement;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -192,6 +194,35 @@ class JdbcEngineSmokeTest {
 
         engine.executeAppDdl("DROP TABLE \"excel_orders_abc123\"");
         assertFalse(engine.appTableExists("excel_orders_abc123"));
+    }
+
+    /**
+     * 回归：CLOB 列必须转成字符串，否则 execSql/previewData 序列化时抛
+     * {@code No serializer found for class java.io.BufferedReader}（HTTP 500）。
+     */
+    @Test
+    void clobValueConvertedToString() throws Exception {
+        JdbcTemplate appJdbc = new JdbcTemplate(new DriverManagerDataSource(
+                "jdbc:h2:mem:engine_clob;MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
+        JdbcEngine engine = engine(appJdbc);
+        engine.executeAppDdl("CREATE TABLE \"excel_clob_abc123\" (\"id\" BIGINT, \"note\" CLOB)");
+        engine.executeAppDdl("INSERT INTO \"excel_clob_abc123\" VALUES (1, 'hello clob')");
+        Map<String, Object> result = engine.execSql(DatasourceType.EXCEL, new DatasourceConf(),
+                "SELECT \"id\", \"note\" FROM \"excel_clob_abc123\"");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> row = (Map<String, Object>) ((List<?>) result.get("data")).get(0);
+        assertEquals("hello clob", row.get("note"));
+        assertTrue(new ObjectMapper().writeValueAsString(result).contains("hello clob"));
+        engine.executeAppDdl("DROP TABLE \"excel_clob_abc123\"");
+    }
+
+    @Test
+    void convertValueReadsClobAndReader() throws Exception {
+        assertEquals("hello", JdbcEngine.convertValue(
+                new javax.sql.rowset.serial.SerialClob("hello".toCharArray())));
+        assertEquals("world", JdbcEngine.convertValue(
+                new java.io.BufferedReader(new java.io.StringReader("world"))));
+        assertNull(JdbcEngine.convertValue(null));
     }
 
     @Test

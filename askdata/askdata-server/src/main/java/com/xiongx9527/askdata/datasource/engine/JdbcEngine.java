@@ -12,11 +12,13 @@ import javax.sql.DataSource;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.Reader;
 import java.math.BigDecimal;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.sql.Blob;
+import java.sql.Clob;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -29,6 +31,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -465,6 +468,28 @@ public class JdbcEngine {
         return DatasourceType.quote(appDbType(), identifier);
     }
 
+    /**
+     * 应用元数据库标识符的规范化形态（excel 建表/查询共用的表名与列名）。
+     *
+     * <p>H2/MySQL 等库对未加引号标识符做大小写折叠（H2 折叠为大写、PostgreSQL 折叠为小写），
+     * 若建表用带引号的小写名而后续查询（LLM 生成的 SQL）用未加引号标识符，两边形态不一致会报
+     * {@code Table "XXX" not found}。此处按方言折叠为与未加引号写法等价的形态，保证
+     * 建表 → getTables/getFields → previewData → execSql 全程一致。</p>
+     */
+    public String appIdentifier(String identifier) {
+        if (identifier == null) {
+            return "";
+        }
+        DatasourceType type = appDbType();
+        if (type == DatasourceType.H2) {
+            return identifier.toUpperCase(Locale.ROOT);
+        }
+        if (type == DatasourceType.PG) {
+            return identifier.toLowerCase(Locale.ROOT);
+        }
+        return identifier;
+    }
+
     /** 应用元数据库中的表是否存在（excel syncFields 存在性校验；DatabaseMetaData 跨库通用）。 */
     public boolean appTableExists(String tableName) {
         try (Connection connection = appJdbc.getDataSource().getConnection();
@@ -733,6 +758,14 @@ public class JdbcEngine {
         if (value instanceof BigDecimal) {
             return ((BigDecimal) value).doubleValue();
         }
+        // 字符大对象：H2 的 CLOB 列经 getObject 可能返回 Clob 或 Reader，直接序列化会抛
+        // No serializer found for class java.io.BufferedReader（对齐 SQLBot convert_value 的文本语义）
+        if (value instanceof Clob) {
+            return readClob((Clob) value);
+        }
+        if (value instanceof Reader) {
+            return readReader((Reader) value);
+        }
         if (value instanceof Timestamp) {
             return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format((Timestamp) value);
         }
@@ -743,6 +776,39 @@ public class JdbcEngine {
             return value.toString();
         }
         return value;
+    }
+
+    /** Clob → 字符串（读取失败返回 null，对齐 Blob 分支的尽力语义）。 */
+    private static String readClob(Clob clob) {
+        try {
+            return readReader(clob.getCharacterStream());
+        } catch (Exception e) {
+            return null;
+        } finally {
+            try {
+                clob.free();
+            } catch (Exception ignored) {
+                // ignore
+            }
+        }
+    }
+
+    private static String readReader(Reader reader) {
+        if (reader == null) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder();
+        try (BufferedReader buffered = reader instanceof BufferedReader
+                ? (BufferedReader) reader : new BufferedReader(reader)) {
+            char[] buffer = new char[2048];
+            int length;
+            while ((length = buffered.read(buffer)) != -1) {
+                sb.append(buffer, 0, length);
+            }
+        } catch (Exception e) {
+            return null;
+        }
+        return sb.toString();
     }
 
     private static Object convertBytes(byte[] bytes) {

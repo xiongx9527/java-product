@@ -43,7 +43,9 @@ import java.util.UUID;
  *
  * <p>导入目标为应用元数据库（对齐 SQLBot 的 get_engine_conn：excel 类型数据表存放在应用库），
  * 建表/删表经 {@link JdbcEngine#executeAppDdl} 执行；类型映射对齐 SQLBot create_table：
- * object→text、int→bigint、float→numeric、datetime→timestamp（H2 下为 CLOB/BIGINT/DOUBLE/TIMESTAMP）。</p>
+ * object→text、int→bigint、float→numeric、datetime→timestamp（H2 下为 VARCHAR(1024)/BIGINT/
+ * DOUBLE/TIMESTAMP）。表名与列名经 {@link JdbcEngine#appIdentifier} 规范化，与应用库未加引号
+ * 标识符的折叠规则一致，避免建表后查询报 {@code Table "XXX" not found}。</p>
  */
 @Service
 public class ExcelService {
@@ -56,6 +58,9 @@ public class ExcelService {
     private static final int TYPE_SAMPLE_ROWS = 100;
 
     private static final int MAX_IDENTIFIER_BYTES = 63;
+
+    /** 文本列的 VARCHAR 长度（string 类型的导入列上限）。 */
+    private static final int STRING_COLUMN_LENGTH = 1024;
 
     private static final String TABLE_SHEET_NAME = "数据表列表";
 
@@ -126,7 +131,7 @@ public class ExcelService {
                     fieldTypes.put(fieldName, fieldType);
                 }
             }
-            String tableName = "excel_" + filterString(sheetName) + "_" + randomSuffix();
+            String tableName = engine.appIdentifier("excel_" + filterString(sheetName) + "_" + randomSuffix());
             for (String column : table.headers) {
                 byte[] bytes = column.getBytes(StandardCharsets.UTF_8);
                 if (bytes.length > MAX_IDENTIFIER_BYTES) {
@@ -151,7 +156,7 @@ public class ExcelService {
         String extension = extensionOf(filename);
         List<Map<String, Object>> sheets = new ArrayList<>();
         for (SheetTable table : readAll(filename, extension)) {
-            String tableName = table.sheetName + "_" + randomSuffix();
+            String tableName = engine.appIdentifier(table.sheetName + "_" + randomSuffix());
             Map<String, String> fieldTypes = new LinkedHashMap<>();
             for (Map<String, Object> field : table.fields()) {
                 fieldTypes.put(Rows.str(field, "fieldName"), Rows.str(field, "fieldType"));
@@ -582,25 +587,27 @@ public class ExcelService {
             }
             coerced.add(values);
         }
-        StringBuilder ddl = new StringBuilder("CREATE TABLE ").append(engine.appQuote(tableName)).append(" (");
+        // 表名/列名取应用库标识符的规范化形态，保证后续未加引号的查询（LLM 生成 SQL）能命中
+        String storedTable = engine.appIdentifier(tableName);
+        StringBuilder ddl = new StringBuilder("CREATE TABLE ").append(engine.appQuote(storedTable)).append(" (");
         for (int c = 0; c < table.headers.size(); c++) {
             if (c > 0) {
                 ddl.append(", ");
             }
-            ddl.append(engine.appQuote(table.headers.get(c))).append(" ")
+            ddl.append(engine.appQuote(engine.appIdentifier(table.headers.get(c)))).append(" ")
                     .append(columnType(fieldTypes.getOrDefault(table.headers.get(c), "string")));
         }
         ddl.append(")");
-        StringBuilder sql = new StringBuilder("INSERT INTO ").append(engine.appQuote(tableName)).append(" (");
+        StringBuilder sql = new StringBuilder("INSERT INTO ").append(engine.appQuote(storedTable)).append(" (");
         for (int c = 0; c < table.headers.size(); c++) {
             if (c > 0) {
                 sql.append(", ");
             }
-            sql.append(engine.appQuote(table.headers.get(c)));
+            sql.append(engine.appQuote(engine.appIdentifier(table.headers.get(c))));
         }
         sql.append(") VALUES (").append(repeat("?", table.headers.size())).append(")");
         try {
-            engine.executeAppDdl("DROP TABLE IF EXISTS " + engine.appQuote(tableName));
+            engine.executeAppDdl("DROP TABLE IF EXISTS " + engine.appQuote(storedTable));
             engine.executeAppDdl(ddl.toString());
             if (!coerced.isEmpty()) {
                 List<Object[]> batchArgs = new ArrayList<>();
@@ -623,7 +630,9 @@ public class ExcelService {
             case "datetime":
                 return "TIMESTAMP";
             default:
-                return "CLOB";
+                // 文本列用 VARCHAR：CLOB 在 H2 下 getObject 返回 Clob/Reader，序列化会出现
+                // No serializer found for class java.io.BufferedReader
+                return "VARCHAR(" + STRING_COLUMN_LENGTH + ")";
         }
     }
 
