@@ -25,18 +25,46 @@ public final class CryptoUtil {
     /** AES key：与前端 CryptoJS 惯例一致（16 字节）。 */
     public static final String SQLBOT_AES_KEY = "SQLBot1234567890";
 
+    /**
+     * 应用 SECRET_KEY（AES-128，16 字节）：服务端敏感字段的落库加密密钥。
+     *
+     * <p>数据源 configuration（spec §3）：前端 CryptoJS AES-ECB（key {@link #SQLBOT_AES_KEY}）传输，
+     * 服务端解密后以本密钥 AES 再次加密落库，DB 中不出现传输层可解的明文。
+     * 固定常量保证 schema.sql 种子（演示数据源）可静态生成；后续可外置为配置项。</p>
+     */
+    public static final String ASK_DATA_SECRET_KEY = "AskDataSecret001";
+
     private CryptoUtil() {
     }
 
     /** 解密前端 AES-ECB/PKCS7 + Base64 密文；非法输入返回 null。 */
     public static String decryptSqlbot(String cipherTextBase64) {
+        return decrypt(SQLBOT_AES_KEY, cipherTextBase64);
+    }
+
+    /** 与前端 {@code sqlbotEncrypt} 同构：AES-ECB/PKCS7 + Base64。 */
+    public static String encryptSqlbot(String plainText) {
+        return encrypt(SQLBOT_AES_KEY, plainText);
+    }
+
+    /** 应用 SECRET_KEY 解密（数据源 configuration 落库形态）；非法输入返回 null。 */
+    public static String decryptWithAppSecret(String cipherTextBase64) {
+        return decrypt(ASK_DATA_SECRET_KEY, cipherTextBase64);
+    }
+
+    /** 应用 SECRET_KEY 加密（数据源 configuration 落库形态）。 */
+    public static String encryptWithAppSecret(String plainText) {
+        return encrypt(ASK_DATA_SECRET_KEY, plainText);
+    }
+
+    private static String decrypt(String key, String cipherTextBase64) {
         if (cipherTextBase64 == null || cipherTextBase64.isEmpty()) {
             return null;
         }
         try {
-            SecretKeySpec key = new SecretKeySpec(SQLBOT_AES_KEY.getBytes(StandardCharsets.UTF_8), "AES");
+            SecretKeySpec keySpec = new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "AES");
             Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
-            cipher.init(Cipher.DECRYPT_MODE, key);
+            cipher.init(Cipher.DECRYPT_MODE, keySpec);
             byte[] plain = cipher.doFinal(Base64.getDecoder().decode(cipherTextBase64));
             return new String(plain, StandardCharsets.UTF_8);
         } catch (Exception e) {
@@ -44,15 +72,14 @@ public final class CryptoUtil {
         }
     }
 
-    /** 与前端 {@code sqlbotEncrypt} 同构：AES-ECB/PKCS7 + Base64。 */
-    public static String encryptSqlbot(String plainText) {
+    private static String encrypt(String key, String plainText) {
         if (plainText == null) {
             return null;
         }
         try {
-            SecretKeySpec key = new SecretKeySpec(SQLBOT_AES_KEY.getBytes(StandardCharsets.UTF_8), "AES");
+            SecretKeySpec keySpec = new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "AES");
             Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
-            cipher.init(Cipher.ENCRYPT_MODE, key);
+            cipher.init(Cipher.ENCRYPT_MODE, keySpec);
             byte[] encrypted = cipher.doFinal(plainText.getBytes(StandardCharsets.UTF_8));
             return Base64.getEncoder().encodeToString(encrypted);
         } catch (Exception e) {
