@@ -1,0 +1,35 @@
+server:
+  port: 8000
+
+spring:
+  application:
+    name: askdata-server
+  datasource:
+    url: jdbc:h2:file:./data/askdata;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  sql:
+    init:
+      mode: always
+
+# 鉴权（D10）：Sa-Token。token 从请求头 X-SQLBOT-TOKEN: Bearer <token> 读取，
+# 与 SQLBot 前端 request.ts 的请求拦截器逐字兼容。
+sa-token:
+  token-name: X-SQLBOT-TOKEN
+  token-prefix: Bearer
+  # 仅走 Header 携带 token（与前端一致，不使用 Cookie）
+  is-read-header: true
+  is-read-cookie: false
+  # 30 天有效，允许同账号多端登录
+  timeout: 2592000
+  is-concurrent: true
+  is-share: false
+  token-style: uuid
+  is-print: false
+  is-log: false
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: INFO

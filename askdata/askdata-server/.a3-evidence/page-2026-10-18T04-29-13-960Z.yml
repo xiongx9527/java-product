@@ -1,0 +1,10 @@
+- generic [ref=f3e8]:
+  - generic [ref=f3e9]: SQLBot
+  - generic [ref=f3e23]:
+    - heading "账号登录" [level=2] [ref=f3e24]
+    - generic [ref=f3e25]:
+      - textbox "请输入账号" [ref=f3e30]
+      - generic [ref=f3e34]:
+        - textbox "请输入密码" [ref=f3e35]
+        - generic [ref=f3e37] [cursor=pointer]
+      - button "登录" [ref=f3e42] [cursor=pointer]

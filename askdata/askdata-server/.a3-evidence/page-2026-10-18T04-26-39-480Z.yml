@@ -1,0 +1,29 @@
+- generic [ref=e47]:
+  - generic [ref=e48]:
+    - generic "SQLBot" [ref=e59] [cursor=pointer]
+    - button [ref=e60] [cursor=pointer]
+    - menubar [ref=e68]:
+      - menuitem "智能问数" [ref=e69] [cursor=pointer]
+      - menuitem "仪表板" [ref=e74] [cursor=pointer]
+      - menuitem "数据源" [ref=e79] [cursor=pointer]
+      - menuitem "小助手应用" [ref=e84] [cursor=pointer]
+      - menuitem "设置" [ref=e91]
+    - generic [ref=e101]:
+      - button "Administrator" [ref=e102] [cursor=pointer]
+      - generic [ref=e109] [cursor=pointer]
+  - generic [ref=e115]:
+    - complementary [ref=e116]:
+      - generic [ref=e117]:
+        - generic [ref=e118]:
+          - generic [ref=e119]:
+            - generic [ref=e120]: 智能问数
+            - button [ref=e121] [cursor=pointer]
+          - button "新建对话" [ref=e129] [cursor=pointer]
+          - textbox "搜索" [ref=e142]
+        - main [ref=e143]:
+          - generic [ref=e144]: 暂无对话
+    - main [ref=e146]:
+      - generic [ref=e148]:
+        - generic [ref=e149]: 你好，我是 SQLBot
+        - generic [ref=e162]: 我可以查询数据、生成图表、检测数据异常、预测数据等赶快开启智能问数吧～
+        - button "开启问数" [ref=e163] [cursor=pointer]
