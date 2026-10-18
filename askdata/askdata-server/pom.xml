@@ -56,6 +56,13 @@
             <version>1.46.0</version>
         </dependency>
 
+        <!-- 模型接入（brief 引擎约束：由 fw-plus-ai 承担；chat-core 实现其 AiChatModel 契约） -->
+        <dependency>
+            <groupId>com.xiongx9527.fw.plus</groupId>
+            <artifactId>fw-plus-ai-model</artifactId>
+            <version>0.1.1-SNAPSHOT</version>
+        </dependency>
+
         <!-- Web 层与 JDBC（元数据库 H2；skeleton 期以 JdbcTemplate 访问登录必需表） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
