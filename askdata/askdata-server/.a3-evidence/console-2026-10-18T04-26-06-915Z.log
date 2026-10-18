@@ -1,0 +1,61 @@
+[   24707ms] [LOG] 738 @ http://localhost:8000/assets/index-BhNtGwK5.js:112
+[   24722ms] [LOG] 738 @ http://localhost:8000/assets/index-BhNtGwK5.js:112
+[   24728ms] [LOG] 738 @ http://localhost:8000/assets/index-BhNtGwK5.js:112
+[   24803ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ http://localhost:8000/api/v1/system/license/version:0
+[   24805ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ http://localhost:8000/api/v1/user/ws:0
+[   24806ms] [ERROR] TypeError: e.response.data.toString is not a function
+    at g4t.handleError (http://localhost:8000/assets/index-BhNtGwK5.js:35:110040)
+    at http://localhost:8000/assets/index-BhNtGwK5.js:35:109221
+    at async ZO.request (http://localhost:8000/assets/index-BhNtGwK5.js:35:66069)
+    at async g (http://localhost:8000/assets/index-BhNtGwK5.js:35:152160)
+    at async http://localhost:8000/assets/index-BhNtGwK5.js:35:152284 @ http://localhost:8000/assets/element-plus-secondary-CCBd_2kf.js:12
+[   24809ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ http://localhost:8000/api/v1/system/parameter/chat:0
+[   24810ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ http://localhost:8000/api/v1/system/license:0
+[   24843ms] TypeError: e.response.data.toString is not a function
+    at g4t.handleError (http://localhost:8000/assets/index-BhNtGwK5.js:35:110040)
+    at http://localhost:8000/assets/index-BhNtGwK5.js:35:109221
+    at async ZO.request (http://localhost:8000/assets/index-BhNtGwK5.js:35:66069)
+[   24812ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ http://localhost:8000/api/v1/chat/list:0
+[   24844ms] TypeError: e.response.data.toString is not a function
+    at g4t.handleError (http://localhost:8000/assets/index-BhNtGwK5.js:35:110040)
+    at http://localhost:8000/assets/index-BhNtGwK5.js:35:109221
+    at async ZO.request (http://localhost:8000/assets/index-BhNtGwK5.js:35:66069)
+[   24844ms] TypeError: e.response.data.toString is not a function
+    at g4t.handleError (http://localhost:8000/assets/index-BhNtGwK5.js:35:110040)
+    at http://localhost:8000/assets/index-BhNtGwK5.js:35:109221
+    at async ZO.request (http://localhost:8000/assets/index-BhNtGwK5.js:35:66069)
+[   24844ms] TypeError: e.response.data.toString is not a function
+    at g4t.handleError (http://localhost:8000/assets/index-BhNtGwK5.js:35:110040)
+    at http://localhost:8000/assets/index-BhNtGwK5.js:35:109221
+    at async ZO.request (http://localhost:8000/assets/index-BhNtGwK5.js:35:66069)
+[   59348ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ http://localhost:8000/api/v1/dashboard/list_resource:0
+[   59351ms] TypeError: e.response.data.toString is not a function
+    at g4t.handleError (http://localhost:8000/assets/index-BhNtGwK5.js:35:110040)
+    at http://localhost:8000/assets/index-BhNtGwK5.js:35:109221
+    at async ZO.request (http://localhost:8000/assets/index-BhNtGwK5.js:35:66069)
+[   61160ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ http://localhost:8000/api/v1/datasource/list:0
+[   61163ms] TypeError: e.response.data.toString is not a function
+    at g4t.handleError (http://localhost:8000/assets/index-BhNtGwK5.js:35:110040)
+    at http://localhost:8000/assets/index-BhNtGwK5.js:35:109221
+    at async ZO.request (http://localhost:8000/assets/index-BhNtGwK5.js:35:66069)
+[   62404ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ http://localhost:8000/api/v1/system/assistant:0
+[   62415ms] TypeError: e.response.data.toString is not a function
+    at g4t.handleError (http://localhost:8000/assets/index-BhNtGwK5.js:35:110040)
+    at http://localhost:8000/assets/index-BhNtGwK5.js:35:109221
+    at async ZO.request (http://localhost:8000/assets/index-BhNtGwK5.js:35:66069)
+[   65375ms] [LOG] Proxy(Array) @ http://localhost:8000/assets/index-BhNtGwK5.js:112
+[   65414ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ http://localhost:8000/api/v1/system/assistant/advanced_application:0
+[   65420ms] TypeError: e.response.data.toString is not a function
+    at g4t.handleError (http://localhost:8000/assets/index-BhNtGwK5.js:35:110040)
+    at http://localhost:8000/assets/index-BhNtGwK5.js:35:109221
+    at async ZO.request (http://localhost:8000/assets/index-BhNtGwK5.js:35:66069)
+[   65418ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ http://localhost:8000/api/v1/datasource/list:0
+[   65424ms] TypeError: e.response.data.toString is not a function
+    at g4t.handleError (http://localhost:8000/assets/index-BhNtGwK5.js:35:110040)
+    at http://localhost:8000/assets/index-BhNtGwK5.js:35:109221
+    at async ZO.request (http://localhost:8000/assets/index-BhNtGwK5.js:35:66069)
+[   65420ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ http://localhost:8000/api/v1/system/custom_prompt/GENERATE_SQL/page/1/10:0
+[   65447ms] TypeError: e.response.data.toString is not a function
+    at g4t.handleError (http://localhost:8000/assets/index-BhNtGwK5.js:35:110040)
+    at http://localhost:8000/assets/index-BhNtGwK5.js:35:109221
+    at async ZO.request (http://localhost:8000/assets/index-BhNtGwK5.js:35:66069)

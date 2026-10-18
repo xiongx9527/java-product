@@ -1,0 +1,23 @@
+===== [1] GET / (登录页 HTML) =====
+http=200 content-type=text/html
+===== [2] POST /api/v1/login/access-token (admin/SQLBot@123456, 前端同款 AES-ECB 混淆) =====
+{"code":0,"data":{"access_token":"4d97d96c-7429-4553-a483-0d7839321c53","token_type":"bearer","need_change_pwd":false},"msg":null}
+http=200
+== [3] 登录失败(错误密码) → 400 文本 ==
+Account or password error http=400
+===== [4] GET /api/v1/user/info 无 token → 401 =====
+authenticate invalid: 未能读取到有效 token http=401
+===== [5] GET /api/v1/user/info 带 X-SQLBOT-TOKEN: Bearer → 200 =====
+{"code":0,"data":{"id":1,"account":"admin","name":"Administrator","email":"fit2cloud.com","oid":1,"language":"zh-CN","status":1,"origin":0,"weight":100,"exp":1794889539,"time":1792297540,"isAdmin":true},"msg":null} http=200
+===== [6] POST /api/v1/login/change-pwd (AES 混淆) → 校验+改密 =====
+-- change-pwd 新密码试一次：将 admin 密码改为 adminPWDChange@1 再改回，验证闭环
+{"code":0,"data":null,"msg":null} http=200
+== 验证新口令可登录 ==
+{"code":0,"data":{"access_token":"99911294-1ca7-46ee-88af-b9f457df7f9a","token_type":"bearer","need_change_pwd":false},"msg":null}
+== 改回原密码 ==
+{"code":0,"data":null,"msg":null} http=200
+== 原口令可登录 ==
+{"code":0,"data":{"access_token":"ebeaa5f6-484f-4d99-a97d-d6689fae8a8a","token_type":"bearer","need_change_pwd":false},"msg":null}
+===== [7] POST /api/v1/login/logout → 注销；再用同一 token → 401 =====
+{"code":0,"data":null,"msg":null} http=200
+authenticate invalid: token 无效：ebeaa5f6-484f-4d99-a97d-d6689fae8a8a http=401
