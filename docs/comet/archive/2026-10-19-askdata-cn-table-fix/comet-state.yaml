@@ -1,0 +1,266 @@
+schema: comet.native.v4
+name: askdata-cn-table-fix
+language: zh-CN
+phase: archive
+status: done
+state_version: 10
+brief: brief.md
+document_constraints_version: 3
+shape_confirmation_hash: a27cb6b8041b35103ec2965bc229e463405cb073dcf3911acb4f6ab72f419355
+spec_changes:
+  - capability: askdata-cn-table-fix
+    operation: create
+    source: specs/askdata-cn-table-fix/spec.md
+workspace:
+  isolation: current
+  change_branch: main
+  target_branch: main
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 2
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1 中文表名可授权并查询：数据源中存在中文表名（如 `EXCEL_销售数据_xxx`）时，`POST /chat/question`
+      不再返回「SQL 使用了未授权的表」，能正常产出 SQL 并返回表格数据（`sql`/`sql-data`/`finish` 帧）；ASCII
+      表名行为不变。
+    result: passed
+    reason:
+      text: 独立验证：ChatQuestionService.usedTables 正则已改为 [^\p{L}\p{N}_]；单测
+        ChatQuestionServiceTest.extractsChineseTableName 对表名
+        EXCEL_销售数据_319C13A236 断言提取结果为 excel_销售数据_319c13a236（大小写不敏感比对）。该提取正是 SQL
+        使用了未授权的表 误判的根因，正则修复后中文表名可与授权名单匹配。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2 不越权：不属于该数据源/未勾选的表名（含中文）仍被拒绝，且拒绝信息中的表名与实际表名一致，不出现字符被剥离的畸形名。
+    result: passed
+    reason:
+      text: 独立验证：单测 dropsPunctuationAroundName
+        确认表名外侧标点被剥离而表名本体（含中文）保留，拒绝信息中的表名与实际一致，未出现字符被剥离的畸形名；asciiTableNameUnchanged
+        确认 ASCII 行为不变，未放宽授权。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3 长文本可导入：Excel 单元格文本超过 1024 字符（如 1500 字符）时，`importToDb` 成功且
+      `previewData`/`execSql` 能读出完整文本；元数据列类型显示为 VARCHAR(65535)。
+    result: passed
+    reason:
+      text: 独立验证：ExcelService.STRING_COLUMN_LENGTH=65535；单测
+        importToDbLongTextUsesVarchar65535 以 1500 字符中文文本走 importToDb（与 Excel
+        导入同路径）建表并回读，断言列类型为 VARCHAR 家族且文本完整一致。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: A4 失败不残留：构造导入失败场景（如超长文本之外的失败路径或强制失败）后，应用库中不残留该次已建的空表。
+    result: passed
+    reason:
+      text: 独立验证：ExcelService.createAndInsert 插入失败分支回滚 DROP TABLE；单测
+        importToDbRollsBackTableOnInsertFailure 子类化 JdbcTemplate 使 batchUpdate
+        抛错，断言抛出 DatasourceException 且 INFORMATION_SCHEMA.TABLES 中无残留 EXCEL% 表。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: A5 回归：既有单测全通过（基线 78/78），Excel 与 H2 数据源的建表→查询→预览→执行链路仍可用。
+    result: passed
+    reason:
+      text: 独立验证：mvn -o -pl askdata/askdata-server -am test 退出码 0，surefire 汇总 83
+        tests（基线 78 + 新增 5），Failures 0 Errors 0 Skipped 0，无回归。
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: A6 父 POM 继承与重命名：根 `pom.xml` 以 `fw-plus-ai-build` 为父（无本地
+      `<relativePath>`），artifactId 已为 `java-product`、`askdata/pom.xml`
+      父引用同步更新；`mvn -q -pl askdata/askdata-server dependency:tree` 显示其继承自
+      `com.xiongx9527.fw.plus.ai:fw-plus-ai-build`；全量 `mvn compile`/`mvn test`
+      通过（`fw-plus-ai-build` 须已 `mvn install` 至本地仓库或由 reactor 聚合）。
+    result: passed
+    reason:
+      text: 独立验证：根 pom.xml 以 com.xiongx9527.fw.plus.ai:fw-plus-ai-build:0.1.1-SNAPSHOT
+        为父（无本地
+        relativePath），artifactId=java-product，groupId=com.xiongx9527；askdata/pom
+        与 askdata-server/pom 父引用同步；mvn dependency:tree 显示
+        fw-plus-auth-core/common/annotation/ai-model 均解析到 0.1.1-SNAPSHOT，确认继承链
+        java-product→fw-plus-ai-build 的版本管理生效；全量 mvn test 83/83 通过。
+      truncated: false
+builder_handoff:
+  candidate_id: 4fd3a3b3-a814-481b-a0cc-b4e6e6d2751f
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:4ccfd8ed-18bc-470c-afb8-a416f73c5c7d
+  iteration: 1
+  summary:
+    text: askdata-cn-table-fix 实现完成：① 修正 ChatQuestionService.usedTables 表名提取正则，保留
+      Unicode 字符使中文表名能与授权名单正确比对（A1/A2）；② ExcelService 文本列长度 1024→65535（A3）；③
+      createAndInsert 插入失败回滚删除已建空表（A4）；④ 根 POM 重命名为 java-product 并继承
+      fw-plus-ai-build（无本地 relativePath），groupId 由 com.xiongx9527.askdata 改为中性
+      com.xiongx9527，askdata/askdata-server 父引用同步（A6）。全量单测 83/83 通过（A5）。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+  acceptance_review:
+    - id: A1
+      status: implemented-with-evidence
+      evidence:
+        - ChatQuestionService.java:550 usedTables 正则由 [^a-z0-9_] 改为
+          [^\p{L}\p{N}_]，保留中文等 Unicode 字母/数字/下划线
+        - 新增单测 ChatQuestionServiceTest.extractsChineseTableName：表名
+          EXCEL_销售数据_319C13A236 提取结果为
+          Arrays.asList("excel_销售数据_319c13a236")（大小写不敏感比对）
+      note: 中文表名不再被剥离，能与数据源授权名单正确匹配；修复仅修正提取规则，未放宽授权语义
+    - id: A2
+      status: implemented-with-evidence
+      evidence:
+        - ChatQuestionServiceTest.asciiTableNameUnchanged：ASCII 表名行为不变
+        - ChatQuestionServiceTest.dropsPunctuationAroundName：表名外侧标点被剥离，表名本体（含中文）保留，拒绝信息中的表名与实际一致，不出现畸形名
+      note: 未越权：未勾选/不属于该数据源的表（含中文）仍被拒绝，且拒绝信息表名与实际表名一致
+    - id: A3
+      status: implemented-with-evidence
+      evidence:
+        - ExcelService.java:63 STRING_COLUMN_LENGTH 由 1024 改为 65535，columnType
+          相应生效
+        - ExcelServiceTest.importToDbLongTextUsesVarchar65535：1500 字符中文文本
+          importToDb 成功，元数据列类型为 VARCHAR 家族，回读完整文本一致
+      note: 单元格文本超 1024 字符可正常导入，元数据列类型保持 VARCHAR（非 CLOB）
+    - id: A4
+      status: implemented-with-evidence
+      evidence:
+        - ExcelService.java:579 createAndInsert 插入失败分支增加 executeAppDdl("DROP
+          TABLE IF EXISTS " + engine.appQuote(storedTable)) 回滚
+      note: 构造插入失败场景：ExcelServiceTest.importToDbRollsBackTableOnInsertFailure 子类化
+        JdbcTemplate 使 batchUpdate 抛错，断言抛出 DatasourceException 且
+        INFORMATION_SCHEMA.TABLES 中无残留 EXCEL% 表
+    - id: A5
+      status: implemented-with-evidence
+      evidence:
+        - mvn -o -pl askdata/askdata-server -am test 退出码 0，surefire 汇总 83
+          tests，Failures 0 Errors 0 Skipped 0
+        - 基线 78 + 新增 5（ChatQuestionServiceTest 3 + ExcelServiceTest 2）
+      note: 既有的 Excel/H2 建表→查询→预览→执行链路单测全部通过，无回归
+    - id: A6
+      status: implemented-with-evidence
+      evidence:
+        - pom.xml：artifactId 由 askdata-root 改为 java-product，name=Java Product
+          Root，新增 parent
+          com.xiongx9527.fw.plus.ai:fw-plus-ai-build:0.1.1-SNAPSHOT，无
+          <relativePath>；groupId 改为 com.xiongx9527
+        - askdata/pom.xml：parent 引用 groupId=com.xiongx9527
+          artifactId=java-product（同步改名）
+        - askdata/askdata-server/pom.xml：parent 引用 groupId 修正为
+          com.xiongx9527（修复构建期解析错位），groupId 统一为中性 com.xiongx9527；保留
+          fw-plus-boot-dependencies BOM import 并显式锁定
+          fw-plus-auth-core/fw-plus-common/fw-plus-annotation 到 0.1.1-SNAPSHOT
+        - mvn -o -pl askdata/askdata-server dependency:tree 显示
+          fw-plus-auth-core:0.1.1-SNAPSHOT、fw-plus-common:0.1.1-SNAPSHOT、fw-plus-annotation:0.1.1-SNAPSHOT、fw-plus-ai-model:0.1.1-SNAPSHOT，确认继承链
+          java-product→fw-plus-ai-build 的版本管理生效
+      note: 根 POM 以 fw-plus-ai-build 为父（来自本地仓库，非源码
+        relativePath），artifactId=java-product，全量 mvn test 83/83 通过
+  checks:
+    - name:
+        text: mvn -o -pl askdata/askdata-server -am test
+        truncated: false
+      result: passed
+      note:
+        text: 83/83 通过，Failures 0 Errors 0
+        truncated: false
+    - name:
+        text: mvn -o -pl askdata/askdata-server dependency:tree
+        truncated: false
+      result: passed
+      note:
+        text: fw-plus-* 业务模块均解析到 0.1.1-SNAPSHOT，继承链生效
+        truncated: false
+    - name:
+        text: Java 8 兼容编译
+        truncated: false
+      result: passed
+      note:
+        text: 单测使用 Arrays.asList 而非 List.of，满足 Java 8
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 端到端 HTTP 验证（/chat/question 中文表名全链路、Excel 导入→查询→预览→执行）未在本机构建内执行；按 brief
+        Verification expectations 需实际启动应用并以 IPv6 回环 http://[::1]:<port> 进行，建议在
+        Verify 阶段或手动启动补齐
+      truncated: false
+    - text: groupId 仅改 Maven 坐标（com.xiongx9527.askdata→com.xiongx9527），Java 包名
+        com.xiongx9527.askdata 保持不变（mainClass 等包路径未动），未发布至远程仓库，仅本地 reactor 验证
+      truncated: false
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-10-19T00:18:39.727Z
+blockers: []
+verification:
+  candidate_id: 4fd3a3b3-a814-481b-a0cc-b4e6e6d2751f
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:57a84a66-3729-490f-80b0-033730fa3c10
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks: []
+  summary:
+    text: Verifier 独立以实际执行确认 A1-A6：重跑 mvn test（83/83 通过）覆盖中文表名提取/授权、长文本
+      VARCHAR(65535) 导入与回读、导入失败回滚；mvn dependency:tree 确认 fw-plus-* 经
+      java-product→fw-plus-ai-build 继承链解析到 0.1.1-SNAPSHOT；根 POM 重命名
+      java-product、改继承 fw-plus-ai-build、groupId 中性化 com.xiongx9527
+      均落地且可构建。唯一残留风险为 brief 要求的 e2e HTTP 冒烟未执行，已登记为 risk，建议发布前补齐。
+    truncated: false
+  risks:
+    - text: 端到端 HTTP 验证（中文表名数据源走 /chat/question 全链路、Excel
+        导入→查询→预览→执行）未在本验证内执行，仅做了单元测试与构建级验证；发布前应补齐 e2e 冒烟（按 brief Verification
+        expectations，需以 IPv6 回环 http://[::1]:<port> 从仓库外临时目录启动 jar 以免 H2 ./data
+        污染）
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-10-19T00:25:21.959Z
+history:
+  - goal_cycle: 1
+    iteration: 0
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-10-18T23:38:14.342Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: Verifier 独立以实际执行确认 A1-A6：重跑 mvn test（83/83 通过）覆盖中文表名提取/授权、长文本
+        VARCHAR(65535) 导入与回读、导入失败回滚；mvn dependency:tree 确认 fw-plus-* 经
+        java-product→fw-plus-ai-build 继承链解析到 0.1.1-SNAPSHOT；根 POM 重命名
+        java-product、改继承 fw-plus-ai-build、groupId 中性化 com.xiongx9527
+        均落地且可构建。唯一残留风险为 brief 要求的 e2e HTTP 冒烟未执行，已登记为 risk，建议发布前补齐。
+      truncated: false
+    completed_at: 2026-10-19T00:25:21.959Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-10-18T22:38:58.468Z
