@@ -4,13 +4,19 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.xiongx9527.askdata</groupId>
-    <artifactId>askdata-root</artifactId>
+    <parent>
+        <groupId>com.xiongx9527.fw.plus.ai</groupId>
+        <artifactId>fw-plus-ai-build</artifactId>
+        <version>0.1.1-SNAPSHOT</version>
+    </parent>
+
+    <groupId>com.xiongx9527</groupId>
+    <artifactId>java-product</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
-    <name>askdata root</name>
-    <description>问数（askdata，ChatBI/NL2SQL）根聚合 POM：权重最高层，只做模块聚合，无 parent。</description>
+    <name>Java Product Root</name>
+    <description>Java 产品根聚合 POM：通用聚合根，容纳 askdata 及后续项目；继承 fw-plus-ai-build 以统一接管 fw-plus-ai 依赖与版本管理（无本地源码 relativePath，父 POM 来自本地仓库）。</description>
 
     <modules>
         <module>askdata</module>
@@ -20,5 +26,6 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>8</maven.compiler.source>
         <maven.compiler.target>8</maven.compiler.target>
+        <revision>0.1.1-SNAPSHOT</revision>
     </properties>
 </project>

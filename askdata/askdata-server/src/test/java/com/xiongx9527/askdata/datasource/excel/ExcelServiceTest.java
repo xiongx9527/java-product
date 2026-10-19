@@ -349,4 +349,66 @@ class ExcelServiceTest {
         field.put("fieldComment", comment);
         return field;
     }
+
+    @Test
+    void importToDbLongTextUsesVarchar65535() throws Exception {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 1500; i++) {
+            sb.append('\u4e2d');
+        }
+        String longText = sb.toString();
+        MockMultipartFile file = xlsx("long.xlsx",
+                new String[]{"\u6570\u636e", "\u5907\u6ce8", longText});
+        Map<String, Object> parsed = excelService.parseExcel(file);
+        String filePath = Rows.str(parsed, "filePath");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> fields = (List<Map<String, Object>>)
+                ((List<Map<String, Object>>) parsed.get("data")).get(0).get("fields");
+        Map<String, Object> result = excelService.importToDb(filePath,
+                Collections.singletonList(Rows.of("sheetName", "\u6570\u636e", "fields", fields)));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> created = (List<Map<String, Object>>) result.get("sheets");
+        String tableName = Rows.str(created.get(0), "tableName");
+        assertTrue(tableName.startsWith(engine.appIdentifier("excel_\u6570\u636e_")), tableName);
+        List<com.xiongx9527.askdata.datasource.engine.ColumnSchema> columns =
+                engine.fields(DatasourceType.EXCEL, new DatasourceConf(), tableName);
+        assertEquals(1, columns.size());
+        // 列类型为 VARCHAR 系（H2 下为 CHARACTER VARYING，非 CLOB）
+        String fieldType = columns.get(0).getFieldType().toUpperCase();
+        assertTrue(fieldType.contains("VARCHAR") || fieldType.contains("VARYING"),
+                columns.get(0).getFieldType());
+        String stored = appJdbc.queryForObject(
+                "SELECT \"" + engine.appIdentifier("\u5907\u6ce8") + "\" FROM \"" + tableName + "\"", String.class);
+        assertEquals(longText, stored);
+    }
+
+    @Test
+    void importToDbRollsBackTableOnInsertFailure() throws Exception {
+        JdbcTemplate failingJdbc = new JdbcTemplate(new DriverManagerDataSource(
+                "jdbc:h2:mem:excel_rollback;MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", "")) {
+            @Override
+            public int[] batchUpdate(String sql, List<Object[]> batchArgs) {
+                throw new RuntimeException("forced insert failure");
+            }
+        };
+        JdbcEngine failingEngine = new JdbcEngine(failingJdbc, objectMapper);
+        ExcelService failingService = new ExcelService(failingJdbc, failingEngine, tempDir.toString());
+
+        MockMultipartFile file = xlsx("demo.xlsx",
+                new String[]{"\u8ba2\u5355", "id,\u540d\u79f0",
+                        "1,\u952e\u76d8",
+                        "2,\u9f20\u6807"});
+        Map<String, Object> parsed = failingService.parseExcel(file);
+        String filePath = Rows.str(parsed, "filePath");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> fields = (List<Map<String, Object>>)
+                ((List<Map<String, Object>>) parsed.get("data")).get(0).get("fields");
+
+        assertThrows(DatasourceException.class, () -> failingService.importToDb(filePath,
+                Collections.singletonList(Rows.of("sheetName", "\u8ba2\u5355", "fields", fields))));
+
+        Integer count = failingJdbc.queryForObject(
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME LIKE 'EXCEL%'", Integer.class);
+        assertEquals(0, count == null ? 0 : count);
+    }
 }

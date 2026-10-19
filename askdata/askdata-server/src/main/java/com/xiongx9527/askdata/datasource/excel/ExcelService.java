@@ -60,7 +60,7 @@ public class ExcelService {
     private static final int MAX_IDENTIFIER_BYTES = 63;
 
     /** 文本列的 VARCHAR 长度（string 类型的导入列上限）。 */
-    private static final int STRING_COLUMN_LENGTH = 1024;
+    private static final int STRING_COLUMN_LENGTH = 65535;
 
     private static final String TABLE_SHEET_NAME = "数据表列表";
 
@@ -617,6 +617,12 @@ public class ExcelService {
                 appJdbc.batchUpdate(sql.toString(), batchArgs);
             }
         } catch (Exception e) {
+            // 插入失败：回滚删除本次已建表，避免残留空表（D4 / A4）
+            try {
+                engine.executeAppDdl("DROP TABLE IF EXISTS " + engine.appQuote(storedTable));
+            } catch (Exception ignored) {
+                // 清理失败不掩盖原始错误
+            }
             throw new DatasourceException("Insert data failed for " + tableName + ": " + e.getMessage(), e);
         }
     }

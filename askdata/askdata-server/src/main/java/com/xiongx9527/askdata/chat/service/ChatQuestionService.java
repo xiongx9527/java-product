@@ -547,7 +547,7 @@ public class ChatQuestionService {
         String[] tokens = text.split(" ");
         for (int i = 0; i < tokens.length - 1; i++) {
             if ("from".equals(tokens[i]) || "join".equals(tokens[i])) {
-                String name = tokens[i + 1].replaceAll("[^a-z0-9_]", "");
+                String name = tokens[i + 1].replaceAll("[^\\p{L}\\p{N}_]", "");
                 if (!name.isEmpty()) {
                     tables.add(name);
                 }

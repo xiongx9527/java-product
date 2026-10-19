@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.xiongx9527.askdata</groupId>
+        <groupId>com.xiongx9527</groupId>
         <artifactId>askdata</artifactId>
         <version>0.1.0-SNAPSHOT</version>
     </parent>
@@ -24,7 +24,8 @@
 
     <dependencyManagement>
         <dependencies>
-            <!-- fw-plus Boot 依赖库（内含 spring-boot 2.7.18 / sa-token / h2 / mybatis-plus 等版本管理链） -->
+            <!-- fw-plus Boot 依赖库（内含 spring-boot 2.7.18 / sa-token / h2 / mybatis-plus 等版本管理链）；
+                 根 POM 现已继承 fw-plus-ai-build（→ fw-plus-boot-parent → 本 BOM），此处保留显式 import 以稳定 boot starter 版本。 -->
             <dependency>
                 <groupId>com.xiongx9527.fw.plus.boot</groupId>
                 <artifactId>fw-plus-boot-dependencies</artifactId>
@@ -32,13 +33,23 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-            <!-- fw-plus AI 依赖库（chat/模型接入相关，本期 skeleton 预留） -->
+            <!-- 显式锁定 askdata 依赖的普通 fw-plus 业务模块版本（0.1.1-SNAPSHOT 线，与 auth-satoken/ai-model 一致）。
+                 继承链中的 fw-plus-dependencies BOM 会把这些模块解析到本地仓库缺失的 0.1.0-SNAPSHOT，
+                 此处用最近的 dependencyManagement 覆盖回 0.1.1-SNAPSHOT。 -->
             <dependency>
-                <groupId>com.xiongx9527.fw.plus.ai</groupId>
-                <artifactId>fw-plus-ai-boot-dependencies</artifactId>
+                <groupId>com.xiongx9527.fw.plus</groupId>
+                <artifactId>fw-plus-auth-core</artifactId>
                 <version>0.1.1-SNAPSHOT</version>
-                <type>pom</type>
-                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.xiongx9527.fw.plus</groupId>
+                <artifactId>fw-plus-common</artifactId>
+                <version>0.1.1-SNAPSHOT</version>
+            </dependency>
+            <dependency>
+                <groupId>com.xiongx9527.fw.plus</groupId>
+                <artifactId>fw-plus-annotation</artifactId>
+                <version>0.1.1-SNAPSHOT</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
