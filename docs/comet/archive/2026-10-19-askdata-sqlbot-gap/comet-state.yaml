@@ -1,0 +1,334 @@
+schema: comet.native.v4
+name: askdata-sqlbot-gap
+language: zh-CN
+phase: archive
+status: done
+state_version: 20
+brief: brief.md
+document_constraints_version: 3
+shape_confirmation_hash: fcece13302b1cf8cd2c52887ac86c561a691411c043198501666015e16c3fbd3
+spec_changes:
+  - capability: askdata-sqlbot-gap
+    operation: create
+    source: specs/askdata-sqlbot-gap/spec.md
+workspace:
+  isolation: current
+  change_branch: main
+  target_branch: main
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 4
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: "**A1 能力对照文档**：逐维度（问数、术语库、数据训练、仪表盘、用户/权限、提示词、数据权限、AI
+      模型、推荐问题、预测、embedding/RAG、MCP、ES、i18n）给出 askdata 是否具备 + 证据（包/文件/类名），并列出
+      G1–G4 缺口判定与优先级路线图。"
+    result: passed
+    reason:
+      text: 能力对照文档 capability-gap.md 已逐项比对 SQLBot 与 askdata 源码（包/文件/类名），形成能力对照表与缺口判定
+        G1-G4，迭代4补充四项增强说明。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: "**A2 ES 数据源可用化**：新增/启用 `EsEngine`，ES 数据源可完成连通检查、元数据（表/字段）、预览、执行
+      SQL；提供单测（ES 不可在单测内启时，以集成测试 + 文档说明兜底）。"
+    result: passed
+    reason:
+      text: JdbcEngine ES HTTP 路径已核实（ping/_cat/indices/_mapping/_sql，Basic 鉴权）。离线
+        EsEngineTest 8/8 通过；真实集群联调 EsEngineIntegrationTest 经 SSH 隧道
+        localhost:9200 用专用账号 es_test_rw 实测：82 业务索引、19 字段、execSql 返回
+        fields/data/fields_info/sql 全过。专用账号已登记 Excel 服务清单行56。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: "**A3 MCP 集成**：askdata 提供 MCP server，暴露问数（question_answer）、助手、数据源列表等工具，可被
+      MCP client 调用；有启动/连通验证。"
+    result: passed
+    reason:
+      text: McpServer/McpStdioLauncher/McpConfig/McpController
+        已核实；默认开启（matchIfMissing=true，默认传输 http）。McpServerTest 10/10
+        通过；ChatContextLoadTest 2/2 确认 MCP 上下文默认加载。HTTP/SSE 复用既有会话鉴权。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: "**A4 i18n**：核心用户/接口文案接入 Spring `MessageSource` + 至少中文/英文消息包，支持按请求
+      `locale` 切换。"
+    result: passed
+    reason:
+      text: MessageResolver 已注入 DatasourceService 与 ExcelService，新增 ds.*/sql.*/chat.*
+        消息包；I18nTest 4/4、MessageResolverTest 5/5 通过。Spring MessageSource +
+        AcceptHeaderLocaleResolver + ?lang= 中英切换验证。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: "**A5 向量/RAG 核实**：核实 embedding/RAG 检索链路；若明显弱于 SQLBot 则补强（向量库/检索），否则记录结论。"
+    result: passed
+    reason:
+      text: SchemaContextBuilder 向量召回（embedding+cosine）+ 词法降级已核实，ChatRagTest 6/6
+        覆盖离线证据；判定与 SQLBot 持平。新增 MySQL askdata
+        专用库/账号（Askdata@123456，caching_sha2_password）已建并验证连接，替代 root 部署，登记 Excel
+        服务清单行57。
+      truncated: false
+builder_handoff:
+  candidate_id: a19a76b3-7477-4224-931e-33562c571a11
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:0b0197b6-a07c-4c6c-a5c4-1af304c23d03
+  iteration: 4
+  summary:
+    text: （修订版·迭代4）一次性补齐 askdata 相较 SQLBot 的四项缺口，并在回 Build 后完成四项增强：(a) 真实 ES7
+      集群新建专用只读测试账号 es_test_rw/EsTestRw@2026（自定义角色 es_test_rw_role）并写入资产 Excel
+      服务清单（行56）；(b) 扩大 i18n 覆盖——MessageResolver 注入 DatasourceService 与
+      ExcelService，新增 ds.*/sql.*/chat.* 消息包，新增 MessageResolverTest（5/5）；(c) MCP
+      默认安全开启（askdata.mcp.enabled matchIfMissing=true，默认传输 http，可设 false
+      关闭），ChatContextLoadTest 确认默认加载；(d) 真实 Docker MySQL 新建 askdata 库与专用账号
+      askdata@%（caching_sha2_password，Askdata@123456）替代 root，并写入资产 Excel
+      服务清单（行57）。模块全量测试 111/111 通过（含真实集群 ES 联调、i18n、MCP、各 smoke），BUILD SUCCESS。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+  acceptance_review:
+    - id: A1
+      status: implemented-with-evidence
+      evidence:
+        - docs/comet/changes/askdata-sqlbot-gap/capability-gap.md（能力对照表 + 缺口判定
+          G1-G4 + 迭代4修订说明）
+      note: 逐模块比对 SQLBot backend/apps 与 askdata 源码，形成能力对照表与缺口判定，结论：MCP 缺失、ES
+        引擎已内置待补测、i18n 偏弱、RAG 已持平；迭代4补充四项增强说明。
+    - id: A2
+      status: implemented-with-evidence
+      evidence:
+        - askdata-server/src/test/java/com/xiongx9527/askdata/datasource/engine/EsEngineTest.java（离线
+          8/8）
+        - askdata-server/src/main/java/com/xiongx9527/askdata/datasource/engine/JdbcEngine.java（ES
+          HTTP 路径 checkEs/esIndices/esFields/esExec，Basic 鉴权）
+        - askdata-server/src/test/java/com/xiongx9527/askdata/datasource/engine/EsEngineIntegrationTest.java（真实集群联调，默认跳过，设
+          ASKDATA_ES_HOST/USER/PASS 执行，含 es_test_rw 文档；已加固选取首个非 . 业务索引）
+        - 真实集群联调实测通过：192.168.1.100:9200（elasticsearch-full 7.17.4），专用只读账号
+          es_test_rw，82 个业务索引 / _mapping / _sql execSql 返回
+          fields/data/fields_info/sql（沙箱经 SSH 隧道 localhost:9200 访问）
+        - 专用账号 es_test_rw 与角色 es_test_rw_role 已建并登记到资产 Excel 服务清单（行56）
+      note: 核实 JdbcEngine 已完整实现 ES HTTP 引擎（ping、_cat/indices、_mapping、_sql，Basic
+        鉴权）。离线 8 项单测全过；可配置真实集群联调测试已用专用账号 es_test_rw 在 192.168.1.100:9200 实测通过。
+    - id: A3
+      status: implemented-with-evidence
+      evidence:
+        - askdata-server/src/main/java/com/xiongx9527/askdata/mcp/McpServer.java
+        - askdata-server/src/main/java/com/xiongx9527/askdata/mcp/McpStdioLauncher.java
+        - askdata-server/src/main/java/com/xiongx9527/askdata/mcp/config/McpConfig.java（@ConditionalOnProperty
+          matchIfMissing=true；mcpStdioRunner 默认传输 http）
+        - askdata-server/src/main/java/com/xiongx9527/askdata/mcp/config/McpController.java（@ConditionalOnProperty
+          matchIfMissing=true，HTTP/SSE /api/v1/mcp/rpc 与 /api/v1/mcp/stream）
+        - askdata-server/src/test/java/com/xiongx9527/askdata/mcp/McpServerTest.java（10/10）
+        - askdata-server/src/test/java/com/xiongx9527/askdata/common/i18n/ChatContextLoadTest.java（2/2，确认
+          MCP 上下文默认加载）
+      note: 零新增依赖手写 JSON-RPC 2.0 server，stdio 与 HTTP/SSE 传输，复用
+        ChatQuestionService/DatasourceService，暴露
+        question_answer/datasource_list/assistant；10 项单测全过。迭代4改为默认开启（缺省即开，默认传输
+        http，可设 false 关闭），ChatContextLoadTest 确认默认加载。
+    - id: A4
+      status: implemented-with-evidence
+      evidence:
+        - askdata-server/src/main/java/com/xiongx9527/askdata/common/i18n/MessageResolver.java
+        - askdata-server/src/main/java/com/xiongx9527/askdata/common/i18n/LocaleConfig.java
+        - askdata-server/src/main/java/com/xiongx9527/askdata/system/controller/LoginController.java（迁移）
+        - askdata-server/src/main/java/com/xiongx9527/askdata/datasource/service/DatasourceService.java（注入
+          MessageResolver：ds.name.exists/ds.not.found/ds.table.not.exists）
+        - askdata-server/src/main/java/com/xiongx9527/askdata/datasource/excel/ExcelService.java（ds.parse.excel.failed）
+        - askdata-server/src/main/resources/messages.properties|messages_zh_CN.properties|messages_en.properties（新增
+          ds.*/sql.*/chat.*）
+        - askdata-server/src/test/java/com/xiongx9527/askdata/common/i18n/I18nTest.java（4/4）
+        - askdata-server/src/test/java/com/xiongx9527/askdata/common/i18n/MessageResolverTest.java（新增
+          5/5）
+      note: 引入 Spring MessageSource + AcceptHeaderLocaleResolver +
+        LocaleChangeInterceptor(?lang=)，默认中文，中英切换；迭代4扩大覆盖到数据源与 Excel 服务层，新增
+        ds.*/sql.*/chat.* 消息包与 MessageResolverTest（5/5），I18nTest（4/4）全过。
+    - id: A5
+      status: implemented-with-evidence
+      evidence:
+        - askdata-server/src/main/java/com/xiongx9527/askdata/chat/service/SchemaContextBuilder.java（embedAll/selectByVector
+          + 词法降级）
+        - askdata-server/src/test/java/com/xiongx9527/askdata/chat/service/ChatRagTest.java
+        - docs/comet/changes/askdata-sqlbot-gap/capability-gap.md 第2/3/4节
+      note: 核实向量召回（embedding + cosine）已具备，无向量时词法降级召回，ChatRagTest 已覆盖离线证据；判定与 SQLBot
+        持平，无额外代码。本次新增的 MySQL askdata 专用库/账号可用于持久化向量表，替代 root 部署。
+  checks:
+    - name:
+        text: module-build
+        truncated: false
+      result: passed
+      note:
+        text: askdata-server 编译通过，BUILD SUCCESS
+        truncated: false
+    - name:
+        text: new-unit-tests
+        truncated: false
+      result: passed
+      note:
+        text: EsEngineTest 8/8、McpServerTest 10/10、I18nTest 4/4、MessageResolverTest 5/5
+        truncated: false
+    - name:
+        text: full-suite
+        truncated: false
+      result: passed
+      note:
+        text: 模块全量 111/111 通过（含真实集群 ES 联调、i18n、MCP、各 smoke），BUILD SUCCESS
+        truncated: false
+    - name:
+        text: spring-context-load
+        truncated: false
+      result: passed
+      note:
+        text: ChatContextLoadTest 2/2 + ValueAddModulesSmokeTest 上下文加载通过，MCP 默认开启
+        truncated: false
+    - name:
+        text: real-cluster-integration
+        truncated: false
+      result: passed
+      note:
+        text: ES es_test_rw 账号联调 82 业务索引/_mapping/_sql 全过；MySQL askdata 账号本地连接验证通过
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: MCP server 默认开启（askdata.mcp.enabled 缺省即开，默认传输 http）；设 false 可关闭。HTTP/SSE
+        复用既有会话鉴权，未新增独立鉴权。
+      truncated: false
+    - text: ES 联调测试 EsEngineIntegrationTest 默认跳过，需设 ASKDATA_ES_HOST/USER/PASS 后运行；已在
+        192.168.1.100:9200 用专用只读账号 es_test_rw 实测通过。该账号与 MySQL askdata 账号已登记到资产
+        Excel 服务清单（行56、57）。
+      truncated: false
+    - text: i18n 已覆盖登录错误、数据源与 Excel 服务层文案（ds.*/sql.*/chat.*），其余业务文案未全量迁入消息包，后续可逐步扩展。
+      truncated: false
+    - text: MySQL askdata 专用账号为应用部署账号（caching_sha2_password），仅授予 askdata.*，替代
+        root；root 仍仅限容器 localhost。
+      truncated: false
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-10-19T10:42:02.955Z
+blockers: []
+verification:
+  candidate_id: a19a76b3-7477-4224-931e-33562c571a11
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:c79c0b11-1334-40cf-bbdf-863dc2f6ae1e
+  iteration: 4
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks: []
+  summary:
+    text: 迭代4独立验证：askdata-server 模块全量 111/111 测试通过（BUILD SUCCESS），含 EsEngineTest
+      8/8、McpServerTest 10/10、I18nTest 4/4、MessageResolverTest
+      5/5、ChatContextLoadTest 2/2（MCP 默认开启）、ChatRagTest
+      6/6、EsEngineIntegrationTest 1/1（真实集群 es_test_rw 实测 82 索引/19
+      字段/execSql）。MySQL askdata@% 连接验证通过。A1-A5 全部 passed，无风险项。四项增强（ES 专用账号、i18n
+      扩大、MCP 默认开启、MySQL 专用账号）均落地并登记资产 Excel。
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-10-19T10:45:27.549Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 独立验证通过：askdata 相较 SQLBot 的四项缺口已补齐或核实（MCP 集成 A3、ES 单测核实 A2、i18n A4、向量/RAG
+        核实持平 A5），A1 为对照分析文档。模块全量测试 105/105 通过，BUILD SUCCESS，Spring
+        上下文完整加载（ChatContextLoadTest / ValueAddModulesSmokeTest 绿）。三项新增验收测试
+        EsEngineTest 8/8、McpServerTest 10/10、I18nTest 4/4
+        全部独立复跑通过。剩余为文档化已知限制，不影响验收判定。
+      truncated: false
+    completed_at: 2026-10-19T05:06:33.493Z
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: revise implementation per user feedback
+      truncated: false
+    completed_at: 2026-10-19T08:07:06.937Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 修订后独立验证通过：A2 新增可配置真实集群联调测试（默认跳过），其余缺口保持。模块全量测试 106 项（含 1 默认跳过）、0 失败，BUILD
+        SUCCESS；三项新增离线验收 EsEngineTest 8/8、McpServerTest 10/10、I18nTest 4/4
+        复跑通过。剩余为文档化已知限制，不影响验收判定。
+      truncated: false
+    completed_at: 2026-10-19T08:23:35.093Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: revise implementation round 2 per user feedback
+      truncated: false
+    completed_at: 2026-10-19T08:25:28.362Z
+  - goal_cycle: 1
+    iteration: 3
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 修订后独立验证通过：A2 新增可配置真实集群联调测试（默认跳过），其余缺口保持。模块全量测试 106 项（含 1 默认跳过）、0 失败，BUILD
+        SUCCESS；三项新增离线验收 EsEngineTest 8/8、McpServerTest 10/10、I18nTest 4/4
+        复跑通过。剩余为文档化已知限制，不影响验收判定。
+      truncated: false
+    completed_at: 2026-10-19T08:58:48.096Z
+  - goal_cycle: 1
+    iteration: 3
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 回退到 Build：执行四项增强 (a) 真实ES7集群创建专用测试账号 es_test_rw 并写入Excel资产清单 (b)
+        扩大i18n覆盖并加测试 (c) 默认安全开启MCP(transport=http) (d)
+        真实MySQL创建askdata库/账号并写入Excel；完成后重新handoff与验证
+      truncated: false
+    completed_at: 2026-10-19T09:50:59.267Z
+  - goal_cycle: 1
+    iteration: 4
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 迭代4独立验证：askdata-server 模块全量 111/111 测试通过（BUILD SUCCESS），含 EsEngineTest
+        8/8、McpServerTest 10/10、I18nTest 4/4、MessageResolverTest
+        5/5、ChatContextLoadTest 2/2（MCP 默认开启）、ChatRagTest
+        6/6、EsEngineIntegrationTest 1/1（真实集群 es_test_rw 实测 82 索引/19
+        字段/execSql）。MySQL askdata@% 连接验证通过。A1-A5 全部 passed，无风险项。四项增强（ES
+        专用账号、i18n 扩大、MCP 默认开启、MySQL 专用账号）均落地并登记资产 Excel。
+      truncated: false
+    completed_at: 2026-10-19T10:45:27.549Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-10-19T03:10:55.387Z
