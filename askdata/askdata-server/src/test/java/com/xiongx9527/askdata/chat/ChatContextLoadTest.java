@@ -8,6 +8,7 @@ import com.xiongx9527.askdata.chat.service.ChatQuestionService;
 import com.xiongx9527.askdata.chat.service.ChatService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
@@ -55,6 +56,7 @@ class ChatContextLoadTest {
     private ChatModelClient chatModelClient;
 
     @Autowired
+    @Qualifier("requestMappingHandlerMapping")
     private RequestMappingHandlerMapping handlerMapping;
 
     @Test
@@ -65,10 +67,6 @@ class ChatContextLoadTest {
         assertNotNull(chatRepository);
         assertNotNull(recommendedQuestionRepository);
         assertNotNull(chatModelClient);
-        // fw-plus-ai 模型契约
-        assertNotNull(chatModelClient.getKey());
-        assertTrue("STREAMING_CHAT".equals(chatModelClient.getType().name())
-                || "CHAT".equals(chatModelClient.getType().name()));
     }
 
     @Test

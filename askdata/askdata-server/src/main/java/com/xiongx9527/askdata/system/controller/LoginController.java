@@ -1,6 +1,7 @@
 package com.xiongx9527.askdata.system.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.common.web.Result;
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
@@ -22,19 +23,19 @@ import java.util.Optional;
  *   解密后 MD5 匹配 sys_user.password，经 Sa-Token（StpUtil.login）签发 token。
  * - POST /login/change-pwd：account/pwd/new_pwd 同样 AES 混淆。
  * - POST /login/logout：Sa-Token 注销当前 token。
- * 错误结构与 SQLBot 一致：HTTP 400 + 文本 detail。
+ * 错误结构与 SQLBot 一致：HTTP 400 + 文本 detail；文案迁到消息包（i18n，A4）。
  */
 @RestController
 @RequestMapping({"api/v1"})
 public class LoginController {
 
-    /** SQLBot 登录失败文案（i18n_login.account_pwd_error，缺省英文）。 */
-    private static final String ACCOUNT_PWD_ERROR = "Account or password error";
-
     private final UserRepository userRepository;
 
-    public LoginController(UserRepository userRepository) {
+    private final MessageResolver messages;
+
+    public LoginController(UserRepository userRepository, MessageResolver messages) {
         this.userRepository = userRepository;
+        this.messages = messages;
     }
 
     @PostMapping({"/login/access-token"})
@@ -47,7 +48,7 @@ public class LoginController {
                 : userRepository.findByAccount(account);
         if (!userRow.isPresent()
                 || !CryptoUtil.md5Hex(plainPwd == null ? "" : plainPwd).equals(String.valueOf(userRow.get().get("password")))) {
-            throw new BadRequestException(ACCOUNT_PWD_ERROR);
+            throw new BadRequestException(messages.get("login.account.pwd.error"));
         }
 
         Map<String, Object> user = userRow.get();
@@ -55,16 +56,15 @@ public class LoginController {
         long status = toLong(user.get("status"));
         long origin = toLong(user.get("origin"));
         if (oid == 0) {
-            throw new BadRequestException("Login role does not have a workspace, please contact the administrator");
+            throw new BadRequestException(messages.get("login.no.workspace"));
         }
         if (status != 1) {
-            throw new BadRequestException("User has been disabled, please contact the administrator");
+            throw new BadRequestException(messages.get("login.user.disabled"));
         }
         if (origin != 0) {
-            throw new BadRequestException("Local account is not allowed to log in from a third-party platform, please contact the administrator");
+            throw new BadRequestException(messages.get("login.third.party"));
         }
 
-        // D10：Sa-Token 签发登录态（loginId = 用户 id），token 由前端以 X-SQLBOT-TOKEN: Bearer 回传
         StpUtil.login(toLong(user.get("id")));
         return Result.ok(new TokenVO(StpUtil.getTokenValue()));
     }
@@ -79,14 +79,14 @@ public class LoginController {
                 : userRepository.findByAccount(account);
         if (!userRow.isPresent()
                 || !CryptoUtil.md5Hex(pwd == null ? "" : pwd).equals(String.valueOf(userRow.get().get("password")))) {
-            throw new BadRequestException(ACCOUNT_PWD_ERROR);
+            throw new BadRequestException(messages.get("login.account.pwd.error"));
         }
         long origin = toLong(userRow.get().get("origin"));
         if (origin != 0) {
-            throw new BadRequestException("Local account is not allowed to log in from a third-party platform, please contact the administrator");
+            throw new BadRequestException(messages.get("login.third.party"));
         }
         if (newPwd == null || !isValidPwdFormat(newPwd)) {
-            throw new BadRequestException("The password format is incorrect");
+            throw new BadRequestException(messages.get("login.pwd.format"));
         }
         userRepository.updatePassword(toLong(userRow.get().get("id")), CryptoUtil.md5Hex(newPwd));
         return Result.ok(null);
@@ -94,7 +94,6 @@ public class LoginController {
 
     @PostMapping({"/login/logout"})
     public Result<Void> logout() {
-        // Sa-Token 注销当前请求携带的登录态
         StpUtil.logout();
         return Result.ok();
     }
@@ -114,7 +113,6 @@ public class LoginController {
     }
 
     private static boolean isValidPwdFormat(String pwd) {
-        // 与 SQLBot check_pwd_format 的最低要求一致：至少 8 位
         return pwd != null && pwd.length() >= 8;
     }
 }

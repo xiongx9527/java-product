@@ -2,6 +2,7 @@ package com.xiongx9527.askdata.datasource.excel;
 
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.datasource.DatasourceException;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.datasource.engine.JdbcEngine;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
@@ -70,13 +71,16 @@ public class ExcelService {
 
     private final Path excelDir;
 
+    private final MessageResolver messageResolver;
+
     public ExcelService(JdbcTemplate appJdbc, JdbcEngine engine,
                         @org.springframework.beans.factory.annotation.Value("${askdata.excel.path:./data/excel}")
-                                String excelPath) {
+                                String excelPath, MessageResolver messageResolver) {
         this.appJdbc = appJdbc;
         this.engine = engine;
         this.excelDir = Paths.get(excelPath == null || excelPath.isEmpty() ? "./data/excel" : excelPath)
                 .toAbsolutePath().normalize();
+        this.messageResolver = messageResolver;
     }
 
     // ------------------------------------------------------------------
@@ -412,7 +416,7 @@ public class ExcelService {
         } catch (DatasourceException e) {
             throw e;
         } catch (Exception e) {
-            throw new DatasourceException("上传文件解析失败: " + e.getMessage(), e);
+            throw new DatasourceException(messageResolver.get("ds.parse.excel.failed") + ": " + e.getMessage(), e);
         }
     }
 

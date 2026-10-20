@@ -30,7 +30,7 @@ public class DsPermissionRepository {
     private final com.xiongx9527.askdata.common.util.IdGenerator idGenerator;
 
     public DsPermissionRepository(JdbcTemplate jdbc, ObjectMapper objectMapper,
-                                  com.xiongx9527.askdata.common.util.IdGenerator idGenerator) {
+                                 com.xiongx9527.askdata.common.util.IdGenerator idGenerator) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.idGenerator = idGenerator;
@@ -84,6 +84,13 @@ public class DsPermissionRepository {
 
     public void deletePermissionsByRule(long ruleId) {
         jdbc.update("DELETE FROM ds_permission WHERE auth_target_id = ?", ruleId);
+    }
+
+    /** 按表 + 类型（row/column）列出启用中的权限条目（行/列权限查询用）。 */
+    public List<Map<String, Object>> listPermissionsByTableAndType(long tableId, String type) {
+        return jdbc.queryForList("SELECT id, name, type, ds_id, table_id, expression_tree, permissions, "
+                + "enable, create_time, auth_target_id FROM ds_permission WHERE table_id = ? AND type = ? "
+                + "AND enable = TRUE", tableId, type);
     }
 
     public void insertPermission(long ruleId, String name, String type, Long dsId, Long tableId,

@@ -18,7 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -502,7 +502,7 @@ public class ChatQuestionService {
      *
      * @return 错误信息；通过时返回 null
      */
-    String validateSql(String sql, String dsType, Long dsId) {
+    public String validateSql(String sql, String dsType, Long dsId) {
         String safety = validateSqlSafety(sql, dsType);
         if (safety != null) {
             return safety;
@@ -557,7 +557,7 @@ public class ChatQuestionService {
     }
 
     /** 从模型输出中抽取 ```sql 代码块内的 SQL；无代码块时取首个 SELECT 起的内容。 */
-    static String extractSql(String text) {
+    public static String extractSql(String text) {
         if (text == null || text.trim().isEmpty()) {
             return null;
         }
