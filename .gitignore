@@ -35,3 +35,4 @@ replay_pid*
 /.comet/*
 !/.comet/config.yaml
 # <<< Comet managed project state <<<
+.flattened-pom.xml
