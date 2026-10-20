@@ -14,6 +14,7 @@ import com.xiongx9527.askdata.chat.service.ChatService;
 import com.xiongx9527.askdata.chat.service.SchemaContextBuilder;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.util.Rows;
+import com.xiongx9527.askdata.datasource.embedding.TableEmbeddingService;
 import com.xiongx9527.askdata.datasource.engine.DatasourceType;
 import com.xiongx9527.askdata.datasource.engine.JdbcEngine;
 import com.xiongx9527.askdata.datasource.excel.ExcelService;
@@ -135,8 +136,13 @@ class ChatPipelineTest {
         Mockito.when(currentUserService.oidOf(Mockito.any())).thenReturn(1L);
         Mockito.when(currentUserService.uid()).thenReturn(1L);
 
+        ChatModelClient modelClient = new ChatModelClient(objectMapper);
+        ChatModelRouter modelRouter = new ChatModelRouter(new AiModelRepository(appJdbc, idGenerator), objectMapper);
         datasourceService = new DatasourceService(datasourceRepository, tableRepository, fieldRepository,
-                new ExcelService(appJdbc, engine, excelDir.toString(), messageResolver), engine, currentUserService, objectMapper, messageResolver);
+                new ExcelService(appJdbc, engine, excelDir.toString(), messageResolver), engine, currentUserService,
+                objectMapper, messageResolver,
+                new TableEmbeddingService(tableRepository, fieldRepository, modelRouter, modelClient, appJdbc,
+                        objectMapper));
         dsId = Rows.lng(datasourceService.add(Rows.of(
                 "name", "chat 目标库", "description", "", "type", DatasourceType.H2.getType(),
                 "configuration", h2Configuration(),
@@ -153,10 +159,10 @@ class ChatPipelineTest {
         ChatRepository chatRepository = new ChatRepository(appJdbc, idGenerator, objectMapper);
         RecommendedQuestionRepository recommendedQuestionRepository =
                 new RecommendedQuestionRepository(appJdbc, idGenerator);
-        ChatModelClient modelClient = new ChatModelClient(objectMapper);
-        ChatModelRouter modelRouter = new ChatModelRouter(new AiModelRepository(appJdbc, idGenerator), objectMapper);
         SchemaContextBuilder schemaContextBuilder = new SchemaContextBuilder(datasourceRepository, tableRepository,
-                fieldRepository, datasourceService, modelClient, modelRouter, appJdbc, objectMapper);
+                fieldRepository, datasourceService, modelClient, modelRouter, appJdbc, objectMapper,
+                new TableEmbeddingService(tableRepository, fieldRepository, modelRouter, modelClient, appJdbc,
+                        objectMapper));
         chatService = new ChatService(chatRepository, recommendedQuestionRepository, datasourceRepository,
                 datasourceService, currentUserService, objectMapper);
         chatQuestionService = new ChatQuestionService(chatRepository, recommendedQuestionRepository,

@@ -128,8 +128,13 @@ CREATE TABLE IF NOT EXISTS core_table (
     table_name     CLOB,
     table_comment  CLOB,
     custom_comment CLOB,
-    embedding      CLOB
+    embedding      CLOB,
+    -- 表级 RAG 向量（table-rag-embedding）：与 SQLBot 遗留 embedding 列分开存放
+    table_embedding TEXT NULL
 );
+
+-- 表级 RAG 向量（幂等）：老库升级时补列，不影响 SQLBot 遗留 embedding 列
+ALTER TABLE core_table ADD COLUMN IF NOT EXISTS table_embedding TEXT NULL;
 
 CREATE TABLE IF NOT EXISTS core_field (
     id             BIGINT PRIMARY KEY,

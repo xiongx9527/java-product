@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.chat.service.ChatModelClient.ModelMessage;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter.ModelRef;
 import com.xiongx9527.askdata.common.util.Rows;
+import com.xiongx9527.askdata.datasource.embedding.TableEmbeddingService;
 import com.xiongx9527.askdata.datasource.repository.DatasourceRepository;
 import com.xiongx9527.askdata.datasource.repository.FieldRepository;
 import com.xiongx9527.askdata.datasource.repository.TableRepository;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -62,10 +64,12 @@ public class SchemaContextBuilder {
 
     private final ObjectMapper objectMapper;
 
+    private final TableEmbeddingService tableEmbeddingService;
+
     public SchemaContextBuilder(DatasourceRepository datasourceRepository, TableRepository tableRepository,
                                 FieldRepository fieldRepository, DatasourceService datasourceService,
                                 ChatModelClient modelClient, ChatModelRouter modelRouter, JdbcTemplate jdbc,
-                                ObjectMapper objectMapper) {
+                                ObjectMapper objectMapper, TableEmbeddingService tableEmbeddingService) {
         this.datasourceRepository = datasourceRepository;
         this.tableRepository = tableRepository;
         this.fieldRepository = fieldRepository;
@@ -74,6 +78,7 @@ public class SchemaContextBuilder {
         this.modelRouter = modelRouter;
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
+        this.tableEmbeddingService = tableEmbeddingService;
     }
 
     // ------------------------------------------------------------------
@@ -180,7 +185,7 @@ public class SchemaContextBuilder {
         List<String> samples = dsId == null ? Collections.<String>emptyList() : trainingSamples(dsId, question);
         messages.add(new ModelMessage("system", sqlSystemPrompt(!samples.isEmpty())));
         StringBuilder user = new StringBuilder();
-        user.append("【数据库表结构】\n").append(dsId == null ? "（未选择数据源）" : buildSchemaText(dsId));
+        user.append("【数据库表结构】\n").append(dsId == null ? "（未选择数据源）" : buildSchemaText(dsId, question));
         if (!samples.isEmpty()) {
             user.append("\n\n【可参考的 SQL 样例】\n");
             for (String sample : samples) {
@@ -198,7 +203,7 @@ public class SchemaContextBuilder {
         List<ModelMessage> messages = new ArrayList<>();
         messages.add(new ModelMessage("system", sqlSystemPrompt(false)));
         messages.add(new ModelMessage("user",
-                "【数据库表结构】\n" + (dsId == null ? "（未选择数据源）" : buildSchemaText(dsId))
+                "【数据库表结构】\n" + (dsId == null ? "（未选择数据源）" : buildSchemaText(dsId, question))
                         + "\n\n【用户问题】\n" + question
                         + "\n\n【上次生成的 SQL】\n" + brokenSql
                         + "\n\n【错误】\n" + error
@@ -252,42 +257,82 @@ public class SchemaContextBuilder {
     // 表结构
     // ------------------------------------------------------------------
 
-    /** 表结构文本（表注释 + 勾选字段 + 样例行），供 schema 提示词使用。 */
+    /** 表结构文本（表注释 + 勾选字段 + 样例行），供 schema 提示词使用；不按问题排序。 */
     public String buildSchemaText(long dsId) {
-        StringBuilder sb = new StringBuilder();
+        return buildSchemaText(dsId, null);
+    }
+
+    /**
+     * 表结构文本（按问题召回排序取 TOP-N）：问题点名或语义相关的表排在前面，
+     * 使进入提示词的 {@value #MAX_TABLES} 张表是最相关的表（验收 A1）。
+     *
+     * <p>question 为空、召回不可用或失败时退化为既有表次序，不抛错。</p>
+     */
+    public String buildSchemaText(long dsId, String question) {
         List<Map<String, Object>> tables = tableRepository.listByDsIdChecked(dsId);
         if (tables.isEmpty()) {
             return "（该数据源未勾选任何表）";
         }
-        int count = 0;
+        Map<Long, Map<String, Object>> byId = new LinkedHashMap<>();
         for (Map<String, Object> table : tables) {
+            byId.put(Rows.lng(table, "id", 0L), table);
+        }
+        StringBuilder sb = new StringBuilder();
+        int count = 0;
+        for (Long tableId : topTableIds(dsId, question, new ArrayList<>(byId.keySet()))) {
             if (count >= MAX_TABLES) {
                 break;
             }
-            String tableName = Rows.str(table, "table_name");
-            String tableComment = firstNonEmpty(Rows.str(table, "custom_comment"), Rows.str(table, "table_comment"));
-            sb.append("Table ").append(tableName);
-            if (tableComment != null) {
-                sb.append(" (").append(tableComment).append(")");
+            Map<String, Object> table = byId.get(tableId);
+            if (table == null) {
+                continue;
             }
-            sb.append(":\n");
-            for (Map<String, Object> field : fieldRepository.listByTableId(Rows.lng(table, "id", 0L))) {
-                if (!Rows.bool(field, "checked", true)) {
-                    continue;
-                }
-                String fieldName = Rows.str(field, "field_name");
-                String fieldType = Rows.str(field, "field_type");
-                String fieldComment = firstNonEmpty(Rows.str(field, "custom_comment"),
-                        Rows.str(field, "field_comment"));
-                sb.append("  - ").append(fieldName).append(" ").append(fieldType);
-                if (fieldComment != null) {
-                    sb.append("  ").append(fieldComment);
-                }
-                sb.append("\n");
-            }
-            sb.append(sampleRowsText(dsId, Rows.lng(table, "id", 0L)));
+            sb.append(tableBlock(dsId, table));
             count++;
         }
+        return sb.toString();
+    }
+
+    /** TOP-N 表 id：有问题时走表级向量召回排序（已按 MAX_TABLES 截断），否则保持既有次序。 */
+    private List<Long> topTableIds(long dsId, String question, List<Long> orderedIds) {
+        if (question == null || question.trim().isEmpty()) {
+            return orderedIds;
+        }
+        try {
+            List<Long> ranked = tableEmbeddingService.rankTables(dsId, question, MAX_TABLES);
+            return ranked.isEmpty() ? orderedIds : ranked;
+        } catch (Exception e) {
+            // 召回异常（含向量读取失败）不影响 schema 提示词主链路，退化为既有次序
+            log.info("表级召回失败（退化为既有表次序）: {}", e.getMessage());
+            return orderedIds;
+        }
+    }
+
+    /** 单表提示词块（表注释 + 勾选字段 + 样例行）。 */
+    private String tableBlock(long dsId, Map<String, Object> table) {
+        StringBuilder sb = new StringBuilder();
+        String tableName = Rows.str(table, "table_name");
+        String tableComment = firstNonEmpty(Rows.str(table, "custom_comment"), Rows.str(table, "table_comment"));
+        sb.append("Table ").append(tableName);
+        if (tableComment != null) {
+            sb.append(" (").append(tableComment).append(")");
+        }
+        sb.append(":\n");
+        for (Map<String, Object> field : fieldRepository.listByTableId(Rows.lng(table, "id", 0L))) {
+            if (!Rows.bool(field, "checked", true)) {
+                continue;
+            }
+            String fieldName = Rows.str(field, "field_name");
+            String fieldType = Rows.str(field, "field_type");
+            String fieldComment = firstNonEmpty(Rows.str(field, "custom_comment"),
+                    Rows.str(field, "field_comment"));
+            sb.append("  - ").append(fieldName).append(" ").append(fieldType);
+            if (fieldComment != null) {
+                sb.append("  ").append(fieldComment);
+            }
+            sb.append("\n");
+        }
+        sb.append(sampleRowsText(dsId, Rows.lng(table, "id", 0L)));
         return sb.toString();
     }
 

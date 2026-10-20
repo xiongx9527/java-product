@@ -8,12 +8,14 @@ import com.xiongx9527.askdata.chat.support.ChatExcel;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.BadRequestException;
+import com.xiongx9527.askdata.datasource.embedding.TableEmbeddingService;
 import com.xiongx9527.askdata.datasource.engine.JdbcEngine;
 import com.xiongx9527.askdata.datasource.excel.ExcelService;
 import com.xiongx9527.askdata.datasource.repository.DatasourceRepository;
 import com.xiongx9527.askdata.datasource.repository.FieldRepository;
 import com.xiongx9527.askdata.datasource.repository.TableRepository;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
+import com.xiongx9527.askdata.system.repository.AiModelRepository;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -86,7 +88,10 @@ class ChatServiceSmokeTest {
         Mockito.when(currentUserService.uid()).thenReturn(1L);
         DatasourceService datasourceService = new DatasourceService(datasourceRepository, tableRepository,
                 fieldRepository, new ExcelService(appJdbc, engine, excelDir.toString(), messageResolver), engine,
-                currentUserService, objectMapper, messageResolver);
+                currentUserService, objectMapper, messageResolver,
+                new TableEmbeddingService(tableRepository, fieldRepository,
+                        new ChatModelRouter(new AiModelRepository(appJdbc, idGenerator), objectMapper),
+                        new ChatModelClient(objectMapper), appJdbc, objectMapper));
         dsId = 1L;
         chatRepository = new ChatRepository(appJdbc, idGenerator, objectMapper);
         recommendedQuestionRepository = new RecommendedQuestionRepository(appJdbc, idGenerator);

@@ -6,6 +6,7 @@ import com.xiongx9527.askdata.chat.service.ChatModelRouter;
 import com.xiongx9527.askdata.chat.service.SchemaContextBuilder;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.util.Rows;
+import com.xiongx9527.askdata.datasource.embedding.TableEmbeddingService;
 import com.xiongx9527.askdata.datasource.repository.DatasourceRepository;
 import com.xiongx9527.askdata.datasource.repository.FieldRepository;
 import com.xiongx9527.askdata.datasource.repository.TableRepository;
@@ -65,7 +66,8 @@ class ChatRagTest {
                 new com.xiongx9527.askdata.system.repository.AiModelRepository(appJdbc, idGenerator), objectMapper);
         schemaContextBuilder = new SchemaContextBuilder(datasourceRepository, tableRepository, fieldRepository,
                 Mockito.mock(DatasourceService.class), new ChatModelClient(objectMapper), modelRouter, appJdbc,
-                objectMapper);
+                objectMapper, new TableEmbeddingService(tableRepository, fieldRepository, modelRouter,
+                        new ChatModelClient(objectMapper), appJdbc, objectMapper));
     }
 
     // ------------------------------------------------------------------
