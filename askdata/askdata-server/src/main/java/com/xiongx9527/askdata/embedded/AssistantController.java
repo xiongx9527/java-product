@@ -48,6 +48,12 @@ public class AssistantController {
         return Result.ok(assistantService.advancedApplications());
     }
 
+    /** Current assistant available datasources (aligns SQLBot GET /system/assistant/ds). */
+    @GetMapping({"/system/assistant/ds"})
+    public Result<List<Map<String, Object>>> datasources(@RequestParam(value = "id", required = false) Long id) {
+        return Result.ok(assistantService.datasources(id));
+    }
+
     @PostMapping({"/system/assistant"})
     public Result<Map<String, Object>> create(@RequestBody Map<String, Object> creator) {
         return Result.ok(assistantService.create(creator));
