@@ -1,4 +1,6 @@
 package com.xiongx9527.askdata.system.controller;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.xiongx9527.askdata.common.util.Rows;
@@ -31,6 +33,8 @@ import java.util.Optional;
 @RestController
 @RequestMapping({"api/v1"})
 public class UserController {
+    @Autowired
+    private MessageResolver messageResolver;
 
     private final UserRepository userRepository;
 
@@ -140,24 +144,24 @@ public class UserController {
     // Excel 批量导入为用户模块的增量能力，本期未实现（前端按钮触发时返回明确文案）
     @GetMapping({"/user/template"})
     public Result<Void> template() {
-        throw new BadRequestException("User import template is not supported in this build");
+        throw new BadRequestException(messageResolver.get("user.import.template.unsupported"));
     }
 
     @PostMapping({"/user/batchImport"})
     public Result<Void> batchImport() {
-        throw new BadRequestException("User batch import is not supported in this build");
+        throw new BadRequestException(messageResolver.get("user.batch.import.unsupported"));
     }
 
     @GetMapping({"/user/errorRecord/{fileId}"})
     public Result<Void> errorRecord(@PathVariable String fileId) {
-        throw new BadRequestException("User batch import is not supported in this build");
+        throw new BadRequestException(messageResolver.get("user.batch.import.unsupported"));
     }
 
     // ------------------------------------------------------------------
 
     private UserInfoVO toUserInfo(Optional<Map<String, Object>> row, long exp, long now) {
         if (!row.isPresent()) {
-            throw new BadRequestException("Login user does not exist");
+            throw new BadRequestException(messageResolver.get("user.login.not.exists"));
         }
         Map<String, Object> user = row.get();
         long id = toLong(user.get("id"));

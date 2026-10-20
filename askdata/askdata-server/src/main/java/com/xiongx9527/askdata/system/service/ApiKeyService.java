@@ -1,4 +1,6 @@
 package com.xiongx9527.askdata.system.service;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.util.Rows;
@@ -19,6 +21,8 @@ import java.util.Map;
  */
 @Service
 public class ApiKeyService {
+    @Autowired
+    private MessageResolver messageResolver;
 
     private static final int MAX_KEYS_PER_USER = 5;
 
@@ -55,7 +59,7 @@ public class ApiKeyService {
     public long create() {
         long uid = currentUserService.uid();
         if (apiKeyRepository.countByUid(uid) >= MAX_KEYS_PER_USER) {
-            throw new BadRequestException("Maximum of 5 API keys allowed");
+            throw new BadRequestException(messageResolver.get("apikey.max.limit"));
         }
         long id = idGenerator.nextId();
         apiKeyRepository.insert(id, tokenUrlSafe(16), tokenUrlSafe(32), System.currentTimeMillis(), uid);
@@ -65,7 +69,7 @@ public class ApiKeyService {
     public void changeStatus(long id, boolean status) {
         long uid = currentUserService.uid();
         Map<String, Object> key = apiKeyRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("API Key not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("apikey.not.found")));
         requireOwner(key, uid);
         if (Rows.bool(key, "status", true) == status) {
             return;
@@ -76,14 +80,14 @@ public class ApiKeyService {
     public void delete(long id) {
         long uid = currentUserService.uid();
         Map<String, Object> key = apiKeyRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("API Key not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("apikey.not.found")));
         requireOwner(key, uid);
         apiKeyRepository.delete(id);
     }
 
     private void requireOwner(Map<String, Object> key, long uid) {
         if (Rows.lng(key, "uid", 0L) != uid) {
-            throw new BadRequestException("No permission to operate this API Key");
+            throw new BadRequestException(messageResolver.get("apikey.no.permission"));
         }
     }
 

@@ -1,4 +1,6 @@
 package com.xiongx9527.askdata.embedded;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,6 +29,8 @@ import java.util.UUID;
  */
 @Service
 public class AssistantService {
+    @Autowired
+    private MessageResolver messageResolver;
 
     private final AssistantRepository assistantRepository;
 
@@ -92,7 +96,7 @@ public class AssistantService {
                 System.currentTimeMillis() / 1000);
         auditRecorder.success(AuditOperationType.CREATE, AuditModule.APPLICATION, String.valueOf(id), name);
         return view(assistantRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Assistant not found")));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("assistant.not.found.simple"))));
     }
 
     /** PUT /system/assistant（更新；非 admin 不允许跨工作空间移动）。 */
@@ -103,9 +107,9 @@ public class AssistantService {
         boolean admin = currentUserService.isAdmin(user);
         long id = Rows.lng(body, "id", 0L);
         Map<String, Object> existing = assistantRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Assistant with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("assistant.not.found", id)));
         if (!admin && Rows.lng(existing, "oid", 0L) != currentUserService.oidOf(user)) {
-            throw new BadRequestException("Assistant with id " + id + " not found");
+            throw new BadRequestException(messageResolver.get("assistant.not.found", id));
         }
         Long oid = admin ? Rows.lngOrNull(body, "oid") : Rows.lngOrNull(existing, "oid");
         assistantRepository.update(id, requiredText(body, "name"), intOf(body.get("type"), 0),
@@ -120,10 +124,10 @@ public class AssistantService {
         currentUserService.requireWsAdmin();
         Map<String, Object> user = currentUserService.currentUser();
         Map<String, Object> existing = assistantRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Assistant with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("assistant.not.found", id)));
         if (!currentUserService.isAdmin(user)
                 && Rows.lng(existing, "oid", 0L) != currentUserService.oidOf(user)) {
-            throw new BadRequestException("Assistant with id " + id + " not found");
+            throw new BadRequestException(messageResolver.get("assistant.not.found", id));
         }
         assistantRepository.delete(id);
         auditRecorder.success(AuditOperationType.DELETE, AuditModule.APPLICATION, String.valueOf(id));
@@ -141,7 +145,7 @@ public class AssistantService {
                 });
         long id = Rows.lng(uiSchema, "id", 0L);
         Map<String, Object> existing = assistantRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Assistant with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("assistant.not.found", id)));
         Map<String, Object> config = parseConfig(Rows.str(existing, "configuration"));
         if (files != null) {
             for (MultipartFile file : files) {
@@ -149,7 +153,7 @@ public class AssistantService {
                 int comma = filename.lastIndexOf(',');
                 String flag = comma > 0 ? filename.substring(comma + 1).trim() : "";
                 if (!"logo".equals(flag) && !"float_icon".equals(flag)) {
-                    throw new BadRequestException("Unsupported file flag: " + flag);
+                    throw new BadRequestException(messageResolver.get("assistant.file.flag.unsupported", flag));
                 }
                 config.put(flag, fileStorage.save(file, filename));
             }
@@ -187,7 +191,7 @@ public class AssistantService {
     public Map<String, Object> editor(long id) {
         currentUserService.requireWsAdmin();
         return view(assistantRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Embedded with id " + id + " not found")));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("assistant.embedded.not.found", id))));
     }
 
     /** POST /system/embedded（创建页面嵌入应用）。 */
@@ -203,7 +207,7 @@ public class AssistantService {
                 Rows.str(body, "custom_model"), System.currentTimeMillis() / 1000);
         auditRecorder.success(AuditOperationType.CREATE, AuditModule.APPLICATION, String.valueOf(id), name);
         return view(assistantRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Embedded not found")));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("assistant.embedded.not.found.simple"))));
     }
 
     /** PUT /system/embedded（更新页面嵌入应用）。 */
@@ -214,9 +218,9 @@ public class AssistantService {
         boolean admin = currentUserService.isAdmin(user);
         long id = Rows.lng(body, "id", 0L);
         Map<String, Object> existing = assistantRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Embedded with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("assistant.embedded.not.found", id)));
         if (!admin && Rows.lng(existing, "oid", 0L) != currentUserService.oidOf(user)) {
-            throw new BadRequestException("Embedded with id " + id + " not found");
+            throw new BadRequestException(messageResolver.get("assistant.embedded.not.found", id));
         }
         Long oid = admin ? Rows.lngOrNull(body, "oid") : Rows.lngOrNull(existing, "oid");
         assistantRepository.update(id, requiredText(body, "name"), intOf(body.get("type"), 4),
@@ -244,7 +248,7 @@ public class AssistantService {
     public String resetSecret(long id) {
         currentUserService.requireWsAdmin();
         assistantRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Embedded with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("assistant.embedded.not.found", id)));
         String secret = newAppSecret();
         assistantRepository.updateAppSecret(id, secret);
         auditRecorder.success(AuditOperationType.UPDATE, AuditModule.APPLICATION, String.valueOf(id));
@@ -298,10 +302,10 @@ public class AssistantService {
         return sb.toString();
     }
 
-    private static String requiredText(Map<String, Object> body, String key) {
+    private String requiredText(Map<String, Object> body, String key) {
         String value = Rows.str(body, key);
         if (value == null || value.trim().isEmpty()) {
-            throw new BadRequestException("Missing required argument: [" + key + "]");
+            throw new BadRequestException(messageResolver.get("assistant.param.required", key));
         }
         return value.trim();
     }
