@@ -7,6 +7,7 @@ import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.datasource.DatasourceException;
+import com.xiongx9527.askdata.datasource.embedding.TableEmbeddingService;
 import com.xiongx9527.askdata.datasource.engine.ColumnSchema;
 import com.xiongx9527.askdata.datasource.engine.DatasourceConf;
 import com.xiongx9527.askdata.datasource.engine.DatasourceType;
@@ -17,6 +18,8 @@ import com.xiongx9527.askdata.datasource.repository.FieldRepository;
 import com.xiongx9527.askdata.datasource.repository.TableRepository;
 import com.xiongx9527.askdata.datasource.support.DatasourceCrypto;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,6 +42,8 @@ import java.util.Optional;
 @Service
 public class DatasourceService {
 
+    private static final Logger log = LoggerFactory.getLogger(DatasourceService.class);
+
     private static final String ISO_TIME = "yyyy-MM-dd'T'HH:mm:ss";
 
     private final DatasourceRepository datasourceRepository;
@@ -57,10 +62,12 @@ public class DatasourceService {
 
     private final MessageResolver messageResolver;
 
+    private final TableEmbeddingService tableEmbeddingService;
+
     public DatasourceService(DatasourceRepository datasourceRepository, TableRepository tableRepository,
                              FieldRepository fieldRepository, ExcelService excelService, JdbcEngine engine,
                              CurrentUserService currentUserService, ObjectMapper objectMapper,
-                             MessageResolver messageResolver) {
+                             MessageResolver messageResolver, TableEmbeddingService tableEmbeddingService) {
         this.datasourceRepository = datasourceRepository;
         this.tableRepository = tableRepository;
         this.fieldRepository = fieldRepository;
@@ -69,6 +76,19 @@ public class DatasourceService {
         this.currentUserService = currentUserService;
         this.objectMapper = objectMapper;
         this.messageResolver = messageResolver;
+        this.tableEmbeddingService = tableEmbeddingService;
+    }
+
+    /**
+     * 表级向量回填（table-rag-embedding）：勾选/同步后异步重算表向量，失败只日志不抛错。
+     * 回填是尽力而为的后台动作，不影响勾选与同步主链路（召回侧可降级为词法相似度）。
+     */
+    private void backfillTableEmbeddings(long dsId) {
+        try {
+            tableEmbeddingService.backfill(dsId);
+        } catch (Exception e) {
+            log.warn("表级向量回填触发失败 ds={}（不影响主链路）: {}", dsId, e.getMessage());
+        }
     }
 
     // ------------------------------------------------------------------
@@ -207,6 +227,7 @@ public class DatasourceService {
         engine.checkConnection(type, conf, true);
         syncTables(row, type, conf, tables);
         updateNum(row, type, conf);
+        backfillTableEmbeddings(id);
     }
 
     /** POST /datasource/editTable：更新表勾选/自定义注释（对齐 SQLBot updateTable）。 */
@@ -256,6 +277,7 @@ public class DatasourceService {
         }
         List<ColumnSchema> fields = engine.fields(type, conf, tableName);
         syncFieldRows(dsId, tableId, fields);
+        backfillTableEmbeddings(dsId);
     }
 
     // ------------------------------------------------------------------

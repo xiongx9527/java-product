@@ -4,6 +4,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import com.xiongx9527.askdata.common.util.IdGenerator;
+import com.xiongx9527.askdata.common.util.Rows;
 
 import java.util.Collections;
 import java.util.List;
@@ -17,7 +18,8 @@ import java.util.Optional;
 @Repository
 public class TableRepository {
 
-    private static final String COLUMNS = "id, ds_id, checked, table_name, table_comment, custom_comment, embedding";
+    private static final String COLUMNS =
+            "id, ds_id, checked, table_name, table_comment, custom_comment, embedding, table_embedding";
 
     private final JdbcTemplate jdbc;
 
@@ -58,6 +60,23 @@ public class TableRepository {
     /** 对齐 SQLBot update_table：仅更新 checked 与 custom_comment。 */
     public void updateCheckedAndComment(long id, boolean checked, String customComment) {
         jdbc.update("UPDATE core_table SET checked = ?, custom_comment = ? WHERE id = ?", checked, customComment, id);
+    }
+
+    /**
+     * 表级向量回写（table-rag-embedding）：JSON 数组文本，如 {@code [0.1,0.2]}。
+     * 回填失败由调用方吞掉，不影响勾选/同步主链路。
+     */
+    public void updateEmbedding(long id, String tableEmbeddingJson) {
+        jdbc.update("UPDATE core_table SET table_embedding = ? WHERE id = ?", tableEmbeddingJson, id);
+    }
+
+    /**
+     * 读取表级向量（{@code table_embedding} JSON 数组文本）；未配置/未回填返回 {@code null}。
+     */
+    public String findEmbedding(long id) {
+        List<Map<String, Object>> rows =
+                jdbc.queryForList("SELECT table_embedding FROM core_table WHERE id = ?", id);
+        return rows.isEmpty() ? null : Rows.str(rows.get(0), "table_embedding");
     }
 
     /** uploadDsSchema：按 (ds_id, table_name) 更新自定义表备注。 */

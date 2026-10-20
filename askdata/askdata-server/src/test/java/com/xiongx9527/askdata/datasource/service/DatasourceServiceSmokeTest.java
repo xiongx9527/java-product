@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.datasource.DatasourceException;
+import com.xiongx9527.askdata.chat.service.ChatModelClient;
+import com.xiongx9527.askdata.chat.service.ChatModelRouter;
+import com.xiongx9527.askdata.datasource.embedding.TableEmbeddingService;
 import com.xiongx9527.askdata.datasource.engine.DatasourceType;
 import com.xiongx9527.askdata.datasource.engine.JdbcEngine;
 import com.xiongx9527.askdata.datasource.excel.ExcelService;
@@ -13,6 +16,7 @@ import com.xiongx9527.askdata.datasource.repository.RecommendedProblemRepository
 import com.xiongx9527.askdata.datasource.repository.TableRepository;
 import com.xiongx9527.askdata.datasource.support.DatasourceCrypto;
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
+import com.xiongx9527.askdata.system.repository.AiModelRepository;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -110,7 +114,11 @@ class DatasourceServiceSmokeTest {
         Mockito.doNothing().when(currentUserService).requireWsAdmin();
 
         datasourceService = new DatasourceService(datasourceRepository, tableRepository, fieldRepository,
-                excelService, engine, currentUserService, objectMapper, messageResolver);
+                excelService, engine, currentUserService, objectMapper, messageResolver,
+                new TableEmbeddingService(tableRepository, fieldRepository,
+                        new ChatModelRouter(new AiModelRepository(appJdbc, new com.xiongx9527.askdata.common.util.IdGenerator()),
+                                objectMapper),
+                        new ChatModelClient(objectMapper), appJdbc, objectMapper));
         tableRelationService = new TableRelationService(datasourceRepository, objectMapper);
         recommendedProblemService = new RecommendedProblemService(problemRepository, datasourceRepository,
                 currentUserService, objectMapper);
@@ -412,7 +420,15 @@ class DatasourceServiceSmokeTest {
                 new DatasourceRepository(appJdbc, new com.xiongx9527.askdata.common.util.IdGenerator()),
                 new TableRepository(appJdbc, new com.xiongx9527.askdata.common.util.IdGenerator()),
                 new FieldRepository(appJdbc, new com.xiongx9527.askdata.common.util.IdGenerator()),
-                new ExcelService(appJdbc, engine, excelDir.toString(), messageResolver), engine, normal, objectMapper, messageResolver);
+                new ExcelService(appJdbc, engine, excelDir.toString(), messageResolver), engine, normal, objectMapper,
+                messageResolver,
+                new TableEmbeddingService(
+                        new TableRepository(appJdbc, new com.xiongx9527.askdata.common.util.IdGenerator()),
+                        new FieldRepository(appJdbc, new com.xiongx9527.askdata.common.util.IdGenerator()),
+                        new ChatModelRouter(
+                                new AiModelRepository(appJdbc, new com.xiongx9527.askdata.common.util.IdGenerator()),
+                                objectMapper),
+                        new ChatModelClient(objectMapper), appJdbc, objectMapper));
         assertThrows(BadRequestException.class, () -> normalService.get(1));
     }
 }
