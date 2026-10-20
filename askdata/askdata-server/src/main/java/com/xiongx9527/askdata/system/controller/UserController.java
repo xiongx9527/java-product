@@ -6,8 +6,13 @@ import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.common.web.PageResult;
 import com.xiongx9527.askdata.common.web.Result;
 import com.xiongx9527.askdata.system.repository.UserRepository;
+import com.xiongx9527.askdata.system.service.UserImportService;
 import com.xiongx9527.askdata.system.service.UserService;
 import com.xiongx9527.askdata.system.web.UserInfoVO;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -18,7 +23,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -26,19 +34,26 @@ import java.util.Optional;
 /**
  * 用户模块（对齐 SQLBot apps/system/api/user.py）：
  * info/ws/language/pwd(own) 登录即可；pager/CRUD/pwd 重置/status/defaultPwd 仅管理员。
- * /user/template、/user/batchImport 的 Excel 导入能力不在本期范围（明确返回错误文案）。
+ * /user/template、/user/batchImport、/user/errorRecord/{fileId} 为 Excel 批量导入能力，仅管理员。
  */
 @RestController
 @RequestMapping({"api/v1"})
 public class UserController {
 
+    private static final String XLSX_MEDIA_TYPE =
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
     private final UserRepository userRepository;
 
     private final UserService userService;
 
-    public UserController(UserRepository userRepository, UserService userService) {
+    private final UserImportService userImportService;
+
+    public UserController(UserRepository userRepository, UserService userService,
+                          UserImportService userImportService) {
         this.userRepository = userRepository;
         this.userService = userService;
+        this.userImportService = userImportService;
     }
 
     // ------------------------------------------------------------------
@@ -137,20 +152,34 @@ public class UserController {
         return Result.ok();
     }
 
-    // Excel 批量导入为用户模块的增量能力，本期未实现（前端按钮触发时返回明确文案）
+    /** GET /user/template：下载用户导入模板 xlsx（对齐 SQLBot user_template）。 */
     @GetMapping({"/user/template"})
-    public Result<Void> template() {
-        throw new BadRequestException("User import template is not supported in this build");
+    public ResponseEntity<ByteArrayResource> template() throws UnsupportedEncodingException {
+        return xlsxResponse(userImportService.importTemplate(), "user_import_template.xlsx");
     }
 
+    /** POST /user/batchImport：上传用户 Excel 批量建号，返回 {fileId,total,success,failed}。 */
     @PostMapping({"/user/batchImport"})
-    public Result<Void> batchImport() {
-        throw new BadRequestException("User batch import is not supported in this build");
+    public Result<Map<String, Object>> batchImport(@RequestParam("file") MultipartFile file) {
+        return Result.ok(userImportService.batchImport(file));
     }
 
+    /** GET /user/errorRecord/{fileId}：下载失败记录 xlsx；fileId 不存在返回 400 明确错误。 */
     @GetMapping({"/user/errorRecord/{fileId}"})
-    public Result<Void> errorRecord(@PathVariable String fileId) {
-        throw new BadRequestException("User batch import is not supported in this build");
+    public ResponseEntity<ByteArrayResource> errorRecord(@PathVariable String fileId)
+            throws UnsupportedEncodingException {
+        return xlsxResponse(userImportService.errorRecord(fileId), "user_import_errors_" + fileId + ".xlsx");
+    }
+
+    /** xlsx 字节流下载响应（与 DatasourceController.exportDsSchema 写法一致）。 */
+    private static ResponseEntity<ByteArrayResource> xlsxResponse(byte[] content, String filename)
+            throws UnsupportedEncodingException {
+        String encoded = URLEncoder.encode(filename, "UTF-8").replace("+", "%20");
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(XLSX_MEDIA_TYPE))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encoded)
+                .contentLength(content.length)
+                .body(new ByteArrayResource(content));
     }
 
     // ------------------------------------------------------------------
