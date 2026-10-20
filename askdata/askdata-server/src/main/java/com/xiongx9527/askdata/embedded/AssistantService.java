@@ -7,6 +7,7 @@ import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.common.web.PageResult;
+import com.xiongx9527.askdata.datasource.repository.DatasourceRepository;
 import com.xiongx9527.askdata.system.audit.AuditRecorder;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import org.springframework.stereotype.Service;
@@ -15,9 +16,11 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -30,6 +33,8 @@ public class AssistantService {
 
     private final AssistantRepository assistantRepository;
 
+    private final DatasourceRepository datasourceRepository;
+
     private final CurrentUserService currentUserService;
 
     private final AssistantFileStorage fileStorage;
@@ -40,10 +45,11 @@ public class AssistantService {
 
     private final SecureRandom random = new SecureRandom();
 
-    public AssistantService(AssistantRepository assistantRepository, CurrentUserService currentUserService,
-                            AssistantFileStorage fileStorage, AuditRecorder auditRecorder,
-                            ObjectMapper objectMapper) {
+    public AssistantService(AssistantRepository assistantRepository, DatasourceRepository datasourceRepository,
+                            CurrentUserService currentUserService, AssistantFileStorage fileStorage,
+                            AuditRecorder auditRecorder, ObjectMapper objectMapper) {
         this.assistantRepository = assistantRepository;
+        this.datasourceRepository = datasourceRepository;
         this.currentUserService = currentUserService;
         this.fileStorage = fileStorage;
         this.auditRecorder = auditRecorder;
@@ -72,6 +78,73 @@ public class AssistantService {
         List<Map<String, Object>> result = new ArrayList<>();
         for (Map<String, Object> row : assistantRepository.listAdvancedApplications(oid)) {
             result.add(view(row));
+        }
+        return result;
+    }
+
+    /**
+     * GET /system/assistant/ds（对齐 SQLBot assistant.py {@code /ds}）：
+     * 返回当前助手上下文可用的数据源列表（字段与 SQLBot 一致：id/name/description/type/type_name/num）。
+     *
+     * <p>assistantId 指定目标助手；为空时取当前用户的第一个普通助手（type=0，参考 {@link #list()}）。
+     * 数据源归属由助手 configuration(JSON) 中的 {@code oid} 决定：
+     * <ul>
+     *   <li>type=0（普通小助手）：{@code online} 为 true（默认）时返回该 oid 下全部数据源；
+     *       未上线({@code online=false})且 public_list 非空时仅返回 public_list 内的数据源；
+     *       未上线且 public_list 为空时返回空数组。</li>
+     *   <li>type=1（高级应用）：返回该 oid 下全部数据源（best-effort，对齐 SQLBot 调宿主 API）。</li>
+     * </ul>
+     *
+     * <p>注意：sys_assistant 表中没有 {@code online} 列，SQLBot 的 online 是模型字段；
+     * 此处从 configuration(JSON) 读取 {@code online}，缺失时默认 true（返回该 oid 全部数据源）。
+     */
+    public List<Map<String, Object>> datasources(Long assistantId) {
+        currentUserService.requireWsAdmin();
+        Map<String, Object> assistant;
+        if (assistantId != null) {
+            assistant = assistantRepository.findById(assistantId)
+                    .orElseThrow(() -> new BadRequestException("Assistant with id " + assistantId + " not found"));
+        } else {
+            // 默认：当前用户的第一个普通助手（type=0）
+            long oid = currentUserService.oidOf(currentUserService.currentUser());
+            assistant = assistantRepository.list(oid).stream()
+                    .filter(row -> Rows.intg(row, "type", 0) == 0)
+                    .findFirst().orElse(null);
+            if (assistant == null) {
+                return new ArrayList<>();
+            }
+        }
+        int type = Rows.intg(assistant, "type", 0);
+        Map<String, Object> config = parseConfig(Rows.str(assistant, "configuration"));
+        long oid = Rows.lng(config, "oid", 0L);
+        // sys_assistant 无 online 列；从 configuration 读取，默认 true
+        boolean online = Rows.bool(config, "online", true);
+        List<Long> publicList = Rows.longList(config.get("public_list"));
+
+        List<Map<String, Object>> all = datasourceRepository.listByOid(oid);
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (type == 0) {
+            if (!online) {
+                if (publicList.isEmpty()) {
+                    return result;
+                }
+                Set<Long> allowed = new HashSet<>(publicList);
+                for (Map<String, Object> ds : all) {
+                    if (allowed.contains(Rows.lng(ds, "id", 0L))) {
+                        result.add(datasourceView(ds));
+                    }
+                }
+                return result;
+            }
+            for (Map<String, Object> ds : all) {
+                result.add(datasourceView(ds));
+            }
+            return result;
+        } else if (type == 1) {
+            for (Map<String, Object> ds : all) {
+                result.add(datasourceView(ds));
+            }
+            return result;
         }
         return result;
     }
@@ -269,6 +342,18 @@ public class AssistantService {
         view.put("oid", Rows.lng(row, "oid", 0L));
         view.put("enable_custom_model", Rows.bool(row, "enable_custom_model", false));
         view.put("custom_model", Rows.str(row, "custom_model"));
+        return view;
+    }
+
+    /** 数据源行 → 对外视图（对齐 SQLBot /ds 返回字段：id/name/description/type/type_name/num）。 */
+    private Map<String, Object> datasourceView(Map<String, Object> row) {
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("id", Rows.lng(row, "id", 0L));
+        view.put("name", Rows.str(row, "name"));
+        view.put("description", Rows.str(row, "description"));
+        view.put("type", Rows.str(row, "type"));
+        view.put("type_name", Rows.str(row, "type_name"));
+        view.put("num", Rows.str(row, "num"));
         return view;
     }
 
