@@ -1,0 +1,33 @@
+schema: comet.native.children.v2
+acceptance_index:
+  A1:
+    source: brief.md
+    text: "A1 表级向量召回（核心）：给定数据源下多张已勾选表，提问中显式提到某表名（含中文表名、加引号标识符）时，召回结果中该表排第一；仅提及表注释时也能命中；未配置 embedding 模型（或向量缺失）时自动降级为词法相似度且不报错；`SchemaContextBuilder` 生成的 schema 上下文按 rank 取 TOP-N 张表。"
+  A2:
+    source: brief.md
+    text: "A2 用户批量导入：`GET /user/template` 返回可下载的导入模板；`POST /user/batchImport` 导入合法 Excel 后用户可登录；导入含错误行的文件时错误行可经 `GET /user/errorRecord/{fileId}` 下载；三端点均不再返回“not supported”。"
+  A3:
+    source: brief.md
+    text: "A3 助手数据源：`GET /system/assistant/ds` 对 type=0 助手按 `public_list` 过滤、对高级应用按 oid 返回数据源列表，字段与 SQLBot 一致（id/name/description/type/type_name/num）。"
+  A4:
+    source: brief.md
+    text: "A4 i18n 补全：用户/权限/仪表盘/助手/审计模块的用户可见文案取自消息包，`?lang=en` 切换后返回英文文案；新增消息键有单测覆盖。"
+  A5:
+    source: brief.md
+    text: "A5 不回退：全模块既有测试（含 MCP E2E、问数主链路、RAG、datasource 引擎）保持通过。"
+children:
+  - name: table-rag-embedding
+    depends_on: []
+    covers: [A1]
+  - name: user-batch-import
+    depends_on: []
+    covers: [A2]
+  - name: assistant-ds-endpoint
+    depends_on: []
+    covers: [A3]
+  - name: i18n-completion
+    depends_on: []
+    covers: [A4]
+  - name: integration-regression
+    depends_on: [table-rag-embedding, user-batch-import, assistant-ds-endpoint, i18n-completion]
+    covers: [A5]
