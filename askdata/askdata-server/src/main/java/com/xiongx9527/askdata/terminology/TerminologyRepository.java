@@ -149,6 +149,31 @@ public class TerminologyRepository {
      * 重复校验（对齐 SQLBot create_terminology 的作用域冲突规则）：
      * 同 oid 下，words 中任一词与既有记录（父或子）相同且作用域冲突即重复。
      */
+    /**
+     * 问数上下文用：返回当前组织下、生效且作用域命中的全部术语（父 + 子）行。
+     * 作用域对齐 SQLBot select_terminology_by_word：advancedApp 非空 -> 仅该高级应用；
+     * 否则 dsId 非空 -> 全部数据源或含该数据源；否则 -> 仅全部数据源（specific_ds=false）。
+     */
+    public List<Map<String, Object>> findEnabledTerms(long oid, Long dsId, Long advancedApp) {
+        StringBuilder sql = new StringBuilder(
+                "SELECT id, pid, word, description FROM terminology WHERE oid = ? AND enabled = TRUE");
+        List<Object> args = new ArrayList<>();
+        args.add(oid);
+        if (advancedApp != null) {
+            sql.append(" AND advanced_application = ?");
+            args.add(advancedApp);
+        } else if (dsId != null) {
+            sql.append(" AND (specific_ds = FALSE OR specific_ds IS NULL");
+            sql.append(" OR INSTR(',' || COALESCE(REPLACE(REPLACE(datasource_ids, '[', ''), ']', ''), '') "
+                    + "|| ',', ',' || ? || ',') > 0)");
+            args.add(String.valueOf(dsId));
+            sql.append(")");
+        } else {
+            sql.append(" AND (specific_ds = FALSE OR specific_ds IS NULL)");
+        }
+        return jdbc.queryForList(sql.toString(), args.toArray());
+    }
+
     public boolean duplicateExists(long oid, List<String> words, boolean specificDs, List<Long> datasourceIds,
                                    Long advancedApplication, Long excludeId) {
         if (words.isEmpty()) {

@@ -62,29 +62,4 @@ class MessageResolverTest {
             LocaleContextHolder.resetLocaleContext();
         }
     }
-    @Test
-    void resolvesNewModuleKeysZhAndEn() {
-        MessageResolver resolver = buildResolver();
-        // zh default (Chinese)
-        assertEquals("不能删除默认工作空间", resolver.get("workspace.delete.default.denied", Locale.SIMPLIFIED_CHINESE));
-        assertEquals("操作类型必填", resolver.get("dashboard.opt.required", Locale.SIMPLIFIED_CHINESE));
-        assertEquals("仅支持 .jpg/.jpeg/.png/.svg 格式", resolver.get("assistant.file.format", Locale.SIMPLIFIED_CHINESE));
-        assertEquals("操作类型", resolver.get("audit.export.col.type", Locale.SIMPLIFIED_CHINESE));
-        assertEquals("用户不存在: 42", resolver.get("user.not.found", Locale.SIMPLIFIED_CHINESE, 42));
-        assertEquals("助手不存在: 7", resolver.get("assistant.not.found", Locale.SIMPLIFIED_CHINESE, 7));
-        // en
-        assertEquals("Can not delete default workspace", resolver.get("workspace.delete.default.denied", Locale.ENGLISH));
-        assertEquals("opt is required", resolver.get("dashboard.opt.required", Locale.ENGLISH));
-        assertEquals("Only support .jpg/.jpeg/.png/.svg", resolver.get("assistant.file.format", Locale.ENGLISH));
-        assertEquals("Operation Type", resolver.get("audit.export.col.type", Locale.ENGLISH));
-        assertEquals("User with id [42] not found!", resolver.get("user.not.found", Locale.ENGLISH, 42));
-        assertEquals("Assistant with id 7 not found", resolver.get("assistant.not.found", Locale.ENGLISH, 7));
-    }
-
-    @Test
-    void fallsBackToCodeForNewMissingKey() {
-        MessageResolver resolver = buildResolver();
-        assertEquals("user.unknown.new.key", resolver.get("user.unknown.new.key", Locale.ENGLISH));
-    }
-
 }

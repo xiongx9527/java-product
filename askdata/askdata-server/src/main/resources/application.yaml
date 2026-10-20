@@ -23,6 +23,18 @@ askdata:
   excel:
     path: ./data/excel
 
+# MCP server：复用 fw-plus 封装（fw-plus-ai-mcp-server-spring-boot-starter），取代手写 JSON-RPC。
+# 前缀固定为 fw-plus.ai.mcp.*；缺省即开；传输 http-sse（GET /mcp/sse 建流 + POST /mcp/messages/{uuid}）。
+# 鉴权 sa-token-login：复用现有 Sa-Token 登录会话（token 头 X-SQLBOT-TOKEN，见上方 sa-token 配置）。
+fw-plus:
+  ai:
+    mcp:
+      enabled: true
+      transport: http-sse
+      endpoint: /mcp
+      auth:
+        provider: sa-token-login
+
 # 鉴权（D10）：Sa-Token。token 从请求头 X-SQLBOT-TOKEN: Bearer <token> 读取，
 # 与 SQLBot 前端 request.ts 的请求拦截器逐字兼容。
 sa-token:

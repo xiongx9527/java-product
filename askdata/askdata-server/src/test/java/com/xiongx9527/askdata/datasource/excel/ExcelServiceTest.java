@@ -35,11 +35,18 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
+import org.springframework.context.support.StaticMessageSource;
 
 /**
  * Excel 上传/解析/导入建表/备注导入导出单测（A5 excel 类型的离线证据）。
  */
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
+import org.springframework.context.support.StaticMessageSource;
+
 class ExcelServiceTest {
+
+    private static final MessageResolver messageResolver = new MessageResolver(new StaticMessageSource());
 
     @TempDir
     Path tempDir;
@@ -57,7 +64,7 @@ class ExcelServiceTest {
         appJdbc = new JdbcTemplate(new DriverManagerDataSource(
                 "jdbc:h2:mem:excel_test;MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
         engine = new JdbcEngine(appJdbc, objectMapper);
-        excelService = new ExcelService(appJdbc, engine, tempDir.toString());
+        excelService = new ExcelService(appJdbc, engine, tempDir.toString(), messageResolver);
     }
 
     /**
@@ -392,7 +399,7 @@ class ExcelServiceTest {
             }
         };
         JdbcEngine failingEngine = new JdbcEngine(failingJdbc, objectMapper);
-        ExcelService failingService = new ExcelService(failingJdbc, failingEngine, tempDir.toString());
+        ExcelService failingService = new ExcelService(failingJdbc, failingEngine, tempDir.toString(), messageResolver);
 
         MockMultipartFile file = xlsx("demo.xlsx",
                 new String[]{"\u8ba2\u5355", "id,\u540d\u79f0",

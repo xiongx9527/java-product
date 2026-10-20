@@ -42,13 +42,20 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
+import org.springframework.context.support.StaticMessageSource;
 
 /**
  * 数据源服务全周期 smoke（A5/A12 离线证据，H2 引擎）：
  * schema.sql 种子 → 演示数据源可读 → H2 数据源 add/get/list/check/表字段/勾选/预览/执行/注释/同步/
  * 更新/删除 → excel 上传建表全周期 → 表关系 → 推荐问题 → schema 备注导入导出。
  */
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
+import org.springframework.context.support.StaticMessageSource;
+
 class DatasourceServiceSmokeTest {
+
+    private static final MessageResolver messageResolver = new MessageResolver(new StaticMessageSource());
 
     private static final String TARGET_URL = "jdbc:h2:mem:svc_target;MODE=MySQL;DB_CLOSE_DELAY=-1";
 
@@ -87,7 +94,7 @@ class DatasourceServiceSmokeTest {
         }
 
         engine = new JdbcEngine(appJdbc, objectMapper);
-        ExcelService excelService = new ExcelService(appJdbc, engine, excelDir.toString());
+        ExcelService excelService = new ExcelService(appJdbc, engine, excelDir.toString(), messageResolver);
         DatasourceRepository datasourceRepository = new DatasourceRepository(appJdbc, new com.xiongx9527.askdata.common.util.IdGenerator());
         TableRepository tableRepository = new TableRepository(appJdbc, new com.xiongx9527.askdata.common.util.IdGenerator());
         FieldRepository fieldRepository = new FieldRepository(appJdbc, new com.xiongx9527.askdata.common.util.IdGenerator());
@@ -103,7 +110,7 @@ class DatasourceServiceSmokeTest {
         Mockito.doNothing().when(currentUserService).requireWsAdmin();
 
         datasourceService = new DatasourceService(datasourceRepository, tableRepository, fieldRepository,
-                excelService, engine, currentUserService, objectMapper);
+                excelService, engine, currentUserService, objectMapper, messageResolver);
         tableRelationService = new TableRelationService(datasourceRepository, objectMapper);
         recommendedProblemService = new RecommendedProblemService(problemRepository, datasourceRepository,
                 currentUserService, objectMapper);
@@ -405,7 +412,7 @@ class DatasourceServiceSmokeTest {
                 new DatasourceRepository(appJdbc, new com.xiongx9527.askdata.common.util.IdGenerator()),
                 new TableRepository(appJdbc, new com.xiongx9527.askdata.common.util.IdGenerator()),
                 new FieldRepository(appJdbc, new com.xiongx9527.askdata.common.util.IdGenerator()),
-                new ExcelService(appJdbc, engine, excelDir.toString()), engine, normal, objectMapper);
+                new ExcelService(appJdbc, engine, excelDir.toString(), messageResolver), engine, normal, objectMapper, messageResolver);
         assertThrows(BadRequestException.class, () -> normalService.get(1));
     }
 }

@@ -37,12 +37,19 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
+import org.springframework.context.support.StaticMessageSource;
 
 /**
  * 会话与记录 CRUD smoke（A6 离线证据，H2）：start/list/get/with_data/rename/delete、
  * 记录 data/predict_data/log/usage、最近问题、Excel 导出、归属校验。
  */
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
+import org.springframework.context.support.StaticMessageSource;
+
 class ChatServiceSmokeTest {
+
+    private static final MessageResolver messageResolver = new MessageResolver(new StaticMessageSource());
 
     @TempDir
     Path excelDir;
@@ -78,8 +85,8 @@ class ChatServiceSmokeTest {
         Mockito.when(currentUserService.oidOf(Mockito.any())).thenReturn(1L);
         Mockito.when(currentUserService.uid()).thenReturn(1L);
         DatasourceService datasourceService = new DatasourceService(datasourceRepository, tableRepository,
-                fieldRepository, new ExcelService(appJdbc, engine, excelDir.toString()), engine,
-                currentUserService, objectMapper);
+                fieldRepository, new ExcelService(appJdbc, engine, excelDir.toString(), messageResolver), engine,
+                currentUserService, objectMapper, messageResolver);
         dsId = 1L;
         chatRepository = new ChatRepository(appJdbc, idGenerator, objectMapper);
         recommendedQuestionRepository = new RecommendedQuestionRepository(appJdbc, idGenerator);

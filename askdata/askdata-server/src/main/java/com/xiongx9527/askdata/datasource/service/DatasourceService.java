@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.util.Rows;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.datasource.DatasourceException;
 import com.xiongx9527.askdata.datasource.engine.ColumnSchema;
@@ -54,9 +55,12 @@ public class DatasourceService {
 
     private final ObjectMapper objectMapper;
 
+    private final MessageResolver messageResolver;
+
     public DatasourceService(DatasourceRepository datasourceRepository, TableRepository tableRepository,
                              FieldRepository fieldRepository, ExcelService excelService, JdbcEngine engine,
-                             CurrentUserService currentUserService, ObjectMapper objectMapper) {
+                             CurrentUserService currentUserService, ObjectMapper objectMapper,
+                             MessageResolver messageResolver) {
         this.datasourceRepository = datasourceRepository;
         this.tableRepository = tableRepository;
         this.fieldRepository = fieldRepository;
@@ -64,6 +68,7 @@ public class DatasourceService {
         this.engine = engine;
         this.currentUserService = currentUserService;
         this.objectMapper = objectMapper;
+        this.messageResolver = messageResolver;
     }
 
     // ------------------------------------------------------------------
@@ -135,13 +140,13 @@ public class DatasourceService {
         String plainConf = DatasourceCrypto.decodeConfiguration(Rows.str(body, "configuration"));
         parseConf(plainConf);
         if (datasourceRepository.existsName(oid, name, null)) {
-            throw new DatasourceException("数据源名称已存在");
+            throw new DatasourceException(messageResolver.get("ds.name.exists"));
         }
         long id = datasourceRepository.nextId();
         datasourceRepository.insert(id, name, Rows.str(body, "description"), type.getType(), type.getDbName(),
                 DatasourceCrypto.encodeForStore(plainConf), currentUserService.uid(), oid);
         Map<String, Object> row = datasourceRepository.findById(id)
-                .orElseThrow(() -> new DatasourceException("Datasource with id " + id + " not found"));
+                .orElseThrow(() -> new DatasourceException(messageResolver.get("ds.not.found", id)));
         syncTables(row, type, parseConf(plainConf), Rows.mapList(Rows.get(body, "tables")));
         updateNum(row, type, parseConf(plainConf));
         return toVo(datasourceRepository.findById(id).orElse(row));
@@ -153,7 +158,7 @@ public class DatasourceService {
         currentUserService.requireWsAdmin();
         long id = Rows.lng(body, "id", 0L);
         Map<String, Object> existing = datasourceRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Datasource with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("ds.not.found", id)));
         Map<String, Object> user = currentUserService.currentUser();
         long oid = currentUserService.oidOf(user);
         String name = Rows.str(body, "name");
@@ -161,7 +166,7 @@ public class DatasourceService {
         String plainConf = DatasourceCrypto.decodeConfiguration(Rows.str(body, "configuration"));
         parseConf(plainConf);
         if (datasourceRepository.existsName(oid, name == null ? Rows.str(existing, "name") : name, id)) {
-            throw new DatasourceException("数据源名称已存在");
+            throw new DatasourceException(messageResolver.get("ds.name.exists"));
         }
         datasourceRepository.update(id,
                 name == null ? Rows.str(existing, "name") : name,
@@ -175,7 +180,7 @@ public class DatasourceService {
     public void delete(long id, String name) {
         currentUserService.requireWsAdmin();
         Map<String, Object> row = datasourceRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Datasource with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("ds.not.found", id)));
         DatasourceType type = typeOf(Rows.str(row, "type"));
         if (type.usesAppDatabase()) {
             DatasourceConf conf = confOf(Rows.str(row, "configuration"));
@@ -196,7 +201,7 @@ public class DatasourceService {
     public void chooseTables(long id, List<Map<String, Object>> tables) {
         currentUserService.requireWsAdmin();
         Map<String, Object> row = datasourceRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Datasource with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("ds.not.found", id)));
         DatasourceType type = typeOf(Rows.str(row, "type"));
         DatasourceConf conf = confOf(Rows.str(row, "configuration"));
         engine.checkConnection(type, conf, true);
@@ -247,7 +252,7 @@ public class DatasourceService {
         boolean exists = type.usesAppDatabase() ? engine.appTableExists(tableName)
                 : engine.tables(type, conf).stream().anyMatch(item -> tableName.equals(item.getTableName()));
         if (!exists) {
-            throw new DatasourceException("表不存在");
+            throw new DatasourceException(messageResolver.get("ds.table.not.exists"));
         }
         List<ColumnSchema> fields = engine.fields(type, conf, tableName);
         syncFieldRows(dsId, tableId, fields);
@@ -447,7 +452,7 @@ public class DatasourceService {
     public boolean uploadDsSchema(long id, org.springframework.web.multipart.MultipartFile file) {
         currentUserService.requireWsAdmin();
         datasourceRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Datasource with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("ds.not.found", id)));
         ExcelService.SchemaUpload upload = excelService.readSchemaWorkbook(file);
         Map<String, String> sheetTableMap = new LinkedHashMap<>();
         for (Map<String, String> table : upload.tableRows) {
@@ -569,13 +574,13 @@ public class DatasourceService {
 
     private Map<String, Object> requireAccessible(long id) {
         Map<String, Object> row = datasourceRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Datasource with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("ds.not.found", id)));
         Map<String, Object> user = currentUserService.currentUser();
         if (currentUserService.isAdmin(user)) {
             return row;
         }
         if (Rows.lng(row, "oid", 0L) != currentUserService.oidOf(user)) {
-            throw new BadRequestException("Datasource with id " + id + " not found");
+            throw new BadRequestException(messageResolver.get("ds.not.found", id));
         }
         return row;
     }

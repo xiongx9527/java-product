@@ -13,7 +13,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -433,6 +433,63 @@ public class TerminologyService {
     // ------------------------------------------------------------------
     // 内部工具
     // ------------------------------------------------------------------
+
+    /**
+     * 问数前术语上下文（对齐 SQLBot get_terminology_template + to_xml_string）：
+     * 把问题中出现的术语（标准词 + 同义词集合）及其含义注入 prompt，辅助 LLM 消歧。
+     * 术语表无 embedding 列，采用子串匹配（等价于 SQLBot 非向量召回路径）。
+     *
+     * @return 术语上下文文本；无匹配时返回空串
+     */
+    public String buildTerminologyContext(String question, long oid, long dsId, Long advancedApp) {
+        if (question == null || question.isEmpty()) {
+            return "";
+        }
+        List<Map<String, Object>> rows = terminologyRepository.findEnabledTerms(oid, dsId, advancedApp);
+        if (rows.isEmpty()) {
+            return "";
+        }
+        Map<Long, TermGroup> groups = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            Long pid = Rows.lngOrNull(row, "pid");
+            Long parentId = pid == null ? Rows.lng(row, "id", 0L) : pid;
+            TermGroup g = groups.computeIfAbsent(parentId, k -> new TermGroup());
+            g.words.add(Rows.str(row, "word"));
+            if (pid == null) {
+                g.description = Rows.str(row, "description");
+            }
+        }
+        String lower = question.toLowerCase();
+        StringBuilder sb = new StringBuilder();
+        int matched = 0;
+        for (TermGroup g : groups.values()) {
+            boolean hit = false;
+            for (String w : g.words) {
+                if (w != null && !w.isEmpty() && lower.contains(w.toLowerCase())) {
+                    hit = true;
+                    break;
+                }
+            }
+            if (!hit) {
+                continue;
+            }
+            matched++;
+            sb.append("- 术语「").append(String.join(",", g.words)).append("」");
+            if (g.description != null && !g.description.isEmpty()) {
+                sb.append("：").append(g.description);
+            }
+            sb.append("\n");
+        }
+        if (matched == 0) {
+            return "";
+        }
+        return "【术语库参考】\n" + sb;
+    }
+
+    private static final class TermGroup {
+        final List<String> words = new ArrayList<>();
+        String description;
+    }
 
     private static List<String> allWords(String word, List<String> otherWords) {
         List<String> words = new ArrayList<>();
