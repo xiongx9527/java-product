@@ -1,12 +1,12 @@
 ---
-generated_from_state_version: 3
+generated_from_state_version: 4
 ---
 
 # 验证
 
 ## 当前结果
 
-- 结果: **验收通过，可归档**
+- 结果: **已归档**
 - 验证情况: **已完成检查，验证结果已确认**
 - 目标周期: 1
 - 迭代: 1
@@ -45,6 +45,14 @@ _未报告风险。_
 
 _没有之前的迭代。_
 
+
+## Supervisor 分层证据
+
+- Child 验证: complete
+- 父级集成: complete
+- 父级检查: Full module regression (mvn test): 120 tests, 0 failures
+- 未重跑: —
+- 未完成: —
 
 
 ## 结论

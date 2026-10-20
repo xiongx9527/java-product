@@ -2,8 +2,8 @@ schema: comet.native.v4
 name: askdata-sqlbot-parity
 language: zh-CN
 phase: archive
-status: active
-state_version: 3
+status: done
+state_version: 4
 brief: brief.md
 document_constraints_version: 3
 shape_confirmation_hash: b5348d426ac5c4005deeadaafa064aae8aa14c8b8e7e254082c865ede598673e
@@ -19,7 +19,7 @@ workspace:
   target_branch: main
   finish: null
 loop:
-  stage: archive-ready
+  stage: done
   goal_cycle: 1
   iteration: 1
   attempt: 1
@@ -28,7 +28,7 @@ loop:
   no_progress_count: 0
   execution_failure_count: 0
   previous_unresolved_ids: []
-  next_action: archive
+  next_action: null
 acceptance:
   - id: A1
     source: brief.md
@@ -37,36 +37,50 @@ acceptance:
       embedding 模型（或向量缺失）时自动降级为词法相似度且不报错；`SchemaContextBuilder` 生成的 schema 上下文按
       rank 取 TOP-N 张表。
     result: passed
-    reason: {text: "Verified by targeted tests and full regression (fb6b510, 120/120).", truncated: false}
+    reason:
+      text: Verified by targeted tests and full regression (fb6b510, 120/120).
+      truncated: false
   - id: A2
     source: brief.md
     text: A2 用户批量导入：`GET /user/template` 返回可下载的导入模板；`POST /user/batchImport` 导入合法
       Excel 后用户可登录；导入含错误行的文件时错误行可经 `GET /user/errorRecord/{fileId}`
       下载；三端点均不再返回“not supported”。
     result: passed
-    reason: {text: "Verified by targeted tests and full regression (fb6b510, 120/120).", truncated: false}
+    reason:
+      text: Verified by targeted tests and full regression (fb6b510, 120/120).
+      truncated: false
   - id: A3
     source: brief.md
     text: A3 助手数据源：`GET /system/assistant/ds` 对 type=0 助手按 `public_list` 过滤、对高级应用按
       oid 返回数据源列表，字段与 SQLBot 一致（id/name/description/type/type_name/num）。
     result: passed
-    reason: {text: "Verified by targeted tests and full regression (fb6b510, 120/120).", truncated: false}
+    reason:
+      text: Verified by targeted tests and full regression (fb6b510, 120/120).
+      truncated: false
   - id: A4
     source: brief.md
     text: A4 i18n 补全：用户/权限/仪表盘/助手/审计模块的用户可见文案取自消息包，`?lang=en` 切换后返回英文文案；新增消息键有单测覆盖。
     result: passed
-    reason: {text: "Verified by targeted tests and full regression (fb6b510, 120/120).", truncated: false}
+    reason:
+      text: Verified by targeted tests and full regression (fb6b510, 120/120).
+      truncated: false
   - id: A5
     source: brief.md
     text: A5 不回退：全模块既有测试（含 MCP E2E、问数主链路、RAG、datasource 引擎）保持通过。
     result: passed
-    reason: {text: "Verified by targeted tests and full regression (fb6b510, 120/120).", truncated: false}
+    reason:
+      text: Verified by targeted tests and full regression (fb6b510, 120/120).
+      truncated: false
 builder_handoff:
   candidate_id: askdata-sqlbot-parity-fb6b510
   identity_provider: skill-coordinated
   builder_execution_ref: builder-askdata-sqlbot-parity-0001
   iteration: 1
-  summary: {text: "Builder candidate for askdata SQLBot parity: all five acceptance criteria implemented and verified by targeted tests; full-module regression 120/120 passed.", truncated: false}
+  summary:
+    text: "Builder candidate for askdata SQLBot parity: all five acceptance criteria
+      implemented and verified by targeted tests; full-module regression 120/120
+      passed."
+    truncated: false
   addressed_acceptance_ids:
     - A1
     - A2
@@ -79,9 +93,12 @@ builder_handoff:
   known_limits_truncated: false
   review:
     status: passed
-    summary: {text: "Reviewed: implementation complete and verified; no scope gaps vs SQLBot community edition.", truncated: false}
+    summary:
+      text: "Reviewed: implementation complete and verified; no scope gaps vs SQLBot
+        community edition."
+      truncated: false
     reviewer_execution_ref: reviewer-askdata-sqlbot-parity-0001
-  submitted_at: "2026-10-20T21:00:00.000Z"
+  submitted_at: 2026-10-20T21:00:00.000Z
 blockers: []
 verification:
   candidate_id: askdata-sqlbot-parity-fb6b510
@@ -92,10 +109,17 @@ verification:
   assurance: skill-coordinated
   verdict: pass
   checks: []
-  summary: {text: "All five acceptance criteria implemented and verified: A1 table-level vector recall (TableEmbeddingServiceTest 8/8), A2 user batch import (UserBatchImportTest 5/5), A3 assistant /ds endpoint (AssistantDsEndpointTest 4/4), A4 i18n completion (MessageResolverTest 7/7); A5 full-module regression 120/120 passed with 0 failures (BUILD SUCCESS on fb6b510). No regression vs baseline.", truncated: false}
+  summary:
+    text: "All five acceptance criteria implemented and verified: A1 table-level
+      vector recall (TableEmbeddingServiceTest 8/8), A2 user batch import
+      (UserBatchImportTest 5/5), A3 assistant /ds endpoint
+      (AssistantDsEndpointTest 4/4), A4 i18n completion (MessageResolverTest
+      7/7); A5 full-module regression 120/120 passed with 0 failures (BUILD
+      SUCCESS on fb6b510). No regression vs baseline."
+    truncated: false
   risks: []
   risks_truncated: false
-  completed_at: "2026-10-20T21:00:00.000Z"
+  completed_at: 2026-10-20T21:00:00.000Z
 history: []
 history_overflow:
   dropped_entries: 0
@@ -109,5 +133,5 @@ history_overflow:
     recovery: 0
 verification_result: pass
 verification_report: verification.md
-archived: false
+archived: true
 created_at: 2026-10-20T10:16:31.470Z
