@@ -1,4 +1,6 @@
 package com.xiongx9527.askdata.system.service;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.xiongx9527.askdata.common.util.Rows;
@@ -17,6 +19,8 @@ import java.util.Map;
  */
 @Service
 public class CurrentUserService {
+    @Autowired
+    private MessageResolver messageResolver;
 
     private final UserRepository userRepository;
 
@@ -34,7 +38,7 @@ public class CurrentUserService {
 
     public Map<String, Object> currentUser() {
         return userRepository.findById(uid())
-                .orElseThrow(() -> new BadRequestException("Login user does not exist"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("user.login.not.exists")));
     }
 
     public boolean isAdmin(Map<String, Object> user) {
@@ -51,7 +55,7 @@ public class CurrentUserService {
 
     public void requireAdmin() {
         if (!isAdmin(currentUser())) {
-            throw new BadRequestException("This operation is only allowed for administrators");
+            throw new BadRequestException(messageResolver.get("perm.admin.only"));
         }
     }
 
@@ -62,7 +66,7 @@ public class CurrentUserService {
             return;
         }
         if (weightInCurrentWorkspace(user) == 0) {
-            throw new BadRequestException("This operation is only allowed for workspace administrators");
+            throw new BadRequestException(messageResolver.get("perm.ws.admin.only"));
         }
     }
 }

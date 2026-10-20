@@ -1,4 +1,6 @@
 package com.xiongx9527.askdata.system.service;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -33,6 +35,8 @@ import java.util.Map;
  */
 @Service
 public class AiModelService {
+    @Autowired
+    private MessageResolver messageResolver;
 
     private final AiModelRepository aiModelRepository;
 
@@ -74,7 +78,7 @@ public class AiModelService {
     public Map<String, Object> editor(long id) {
         currentUserService.requireAdmin();
         Map<String, Object> row = aiModelRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("AiModelDetail with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("aimodel.not.found", id)));
         return toEditor(row);
     }
 
@@ -106,7 +110,7 @@ public class AiModelService {
         currentUserService.requireAdmin();
         long id = Rows.lng(body, "id", 0L);
         Map<String, Object> existing = aiModelRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("AiModelDetail with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("aimodel.not.found", id)));
         String apiKey = body.containsKey("api_key")
                 ? CryptoUtil.normalizeForStore(Rows.str(body, "api_key"))
                 : Rows.str(existing, "api_key");
@@ -136,7 +140,7 @@ public class AiModelService {
     public void delete(long id) {
         currentUserService.requireAdmin();
         Map<String, Object> model = aiModelRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("AiModelDetail with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("aimodel.not.found", id)));
         if (Rows.bool(model, "default_model", false)) {
             throw new BadRequestException(
                     "Cannot delete the default model [" + Rows.str(model, "name") + "]!");
@@ -148,7 +152,7 @@ public class AiModelService {
     public void setDefault(long id) {
         currentUserService.requireAdmin();
         Map<String, Object> model = aiModelRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("AiModelDetail with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("aimodel.not.found", id)));
         if (Rows.bool(model, "default_model", false)) {
             return;
         }
@@ -159,7 +163,7 @@ public class AiModelService {
     /** GET /system/aimodel/default：无默认模型时抛错（对齐 SQLBot check_default）。 */
     public void requireDefaultModel() {
         if (!aiModelRepository.findDefault().isPresent()) {
-            throw new BadRequestException("Default large language model has not been configured");
+            throw new BadRequestException(messageResolver.get("aimodel.default.not.configured"));
         }
     }
 
@@ -413,7 +417,7 @@ public class AiModelService {
 
     private void requireModel(long id) {
         if (!aiModelRepository.findById(id).isPresent()) {
-            throw new BadRequestException("AiModelDetail with id " + id + " not found");
+            throw new BadRequestException(messageResolver.get("aimodel.not.found", id));
         }
     }
 

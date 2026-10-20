@@ -1,4 +1,6 @@
 package com.xiongx9527.askdata.system.service;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -30,6 +32,8 @@ import java.util.regex.Pattern;
  */
 @Service
 public class UserService {
+    @Autowired
+    private MessageResolver messageResolver;
 
     /** SQLBot settings.DEFAULT_PWD。 */
     public static final String DEFAULT_PWD = "SQLBot@123456";
@@ -103,7 +107,7 @@ public class UserService {
     public Map<String, Object> get(long id) {
         currentUserService.requireAdmin();
         Map<String, Object> row = userRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("User with id [" + id + "] not found!"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("user.not.found", id)));
         return toItem(row, userRepository.oidListOf(id));
     }
 
@@ -130,10 +134,10 @@ public class UserService {
         int status = Rows.intg(body, "status", 1);
         int origin = Rows.intg(body, "origin", 0);
         if (userRepository.existsAccount(account, null)) {
-            throw new BadRequestException("Account [" + account + "] already exists");
+            throw new BadRequestException(messageResolver.get("user.account.exists", account));
         }
         if (!EMAIL_REGEX.matcher(email).matches()) {
-            throw new BadRequestException("Email format is invalid! [" + email + "]");
+            throw new BadRequestException(messageResolver.get("user.email.invalid", email));
         }
         List<Long> oidList = Rows.longList(Rows.get(body, "oid_list"));
         long id = idGenerator.nextId();
@@ -157,10 +161,10 @@ public class UserService {
         currentUserService.requireAdmin();
         long id = Rows.lng(body, "id", 0L);
         Map<String, Object> existing = userRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("User with id [" + id + "] not found!"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("user.not.found", id)));
         String account = Rows.str(body, "account");
         if (account != null && !account.equals(Rows.str(existing, "account"))) {
-            throw new BadRequestException("account cannot be changed!");
+            throw new BadRequestException(messageResolver.get("user.account.unchanged"));
         }
         String name = valueOrExisting(body, existing, "name");
         String email = valueOrExisting(body, existing, "email");
@@ -169,7 +173,7 @@ public class UserService {
         int origin = Rows.get(body, "origin") == null ? Rows.intg(existing, "origin", 0)
                 : Rows.intg(body, "origin", 0);
         if (email == null || !EMAIL_REGEX.matcher(email).matches()) {
-            throw new BadRequestException("Email format is invalid! [" + email + "]");
+            throw new BadRequestException(messageResolver.get("user.email.invalid", email));
         }
         long originOid = Rows.lng(existing, "oid", 0L);
         String systemVariables = body.containsKey("system_variables")
@@ -202,9 +206,9 @@ public class UserService {
     public void delete(long id) {
         currentUserService.requireAdmin();
         Map<String, Object> user = userRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("User with id [" + id + "] not found!"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("user.not.found", id)));
         if (currentUserService.isAdmin(user)) {
-            throw new BadRequestException("Cannot delete the administrator account");
+            throw new BadRequestException(messageResolver.get("user.delete.admin.denied"));
         }
         userWsRepository.deleteAllForUser(id);
         userRepository.deleteById(id);
@@ -231,12 +235,12 @@ public class UserService {
     public void changeOwnPassword(String pwd, String newPwd) {
         long uid = currentUserService.uid();
         Map<String, Object> user = userRepository.findById(uid)
-                .orElseThrow(() -> new BadRequestException("Login user does not exist"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("user.login.not.exists")));
         if (!CryptoUtil.md5Hex(pwd == null ? "" : pwd).equals(Rows.str(user, "password"))) {
-            throw new BadRequestException("Original password is incorrect");
+            throw new BadRequestException(messageResolver.get("user.pwd.original.incorrect"));
         }
         if (newPwd == null || !PWD_REGEX.matcher(newPwd).matches()) {
-            throw new BadRequestException("The password format is invalid");
+            throw new BadRequestException(messageResolver.get("user.pwd.format.invalid"));
         }
         userRepository.updatePassword(uid, CryptoUtil.md5Hex(newPwd));
     }
@@ -244,14 +248,14 @@ public class UserService {
     public void changeStatus(long id, int status) {
         currentUserService.requireAdmin();
         if (status != 0 && status != 1) {
-            throw new BadRequestException("status not supported");
+            throw new BadRequestException(messageResolver.get("user.status.unsupported"));
         }
         userRepository.updateStatus(id, status);
     }
 
     public void changeLanguage(String language) {
         if (language == null || !SUPPORTED_LANGUAGES.contains(language)) {
-            throw new BadRequestException("Language not supported: " + language);
+            throw new BadRequestException(messageResolver.get("user.language.unsupported", language));
         }
         userRepository.updateLanguage(currentUserService.uid(), language);
     }

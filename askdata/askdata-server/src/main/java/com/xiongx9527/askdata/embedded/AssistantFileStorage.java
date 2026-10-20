@@ -1,4 +1,6 @@
 package com.xiongx9527.askdata.embedded;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
@@ -21,6 +23,8 @@ import java.util.UUID;
  */
 @Component
 public class AssistantFileStorage {
+    @Autowired
+    private MessageResolver messageResolver;
 
     private static final String[] ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "svg"};
 
@@ -41,10 +45,10 @@ public class AssistantFileStorage {
     public String save(MultipartFile file, String originalName) throws IOException {
         String ext = extensionOf(originalName);
         if (ext.isEmpty()) {
-            throw new IllegalArgumentException("Only support .jpg/.jpeg/.png/.svg");
+            throw new IllegalArgumentException(messageResolver.get("assistant.file.format"));
         }
         if (file.getSize() > MAX_SIZE) {
-            throw new IllegalArgumentException("File size exceeds limit (10M)");
+            throw new IllegalArgumentException(messageResolver.get("assistant.file.size"));
         }
         String fileId = UUID.randomUUID().toString().replace("-", "") + "." + ext;
         File target = new File(dir, fileId);

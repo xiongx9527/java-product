@@ -1,4 +1,6 @@
 package com.xiongx9527.askdata.dashboard;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,6 +27,8 @@ import java.util.UUID;
  */
 @Service
 public class DashboardService {
+    @Autowired
+    private MessageResolver messageResolver;
 
     private static final String ROOT_PID = "root";
 
@@ -102,9 +106,9 @@ public class DashboardService {
         String uid = String.valueOf(Rows.lng(user, "id", 0L));
         String id = Rows.str(body, "id");
         Map<String, Object> row = dashboardRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Resource with id " + id + " does not exist"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("dashboard.resource.not.exist", id)));
         if (!uid.equals(Rows.str(row, "create_by"))) {
-            throw new BadRequestException("Resource with id " + id + " not owned by the current user");
+            throw new BadRequestException(messageResolver.get("dashboard.resource.not.owned", id));
         }
         Map<String, Object> result = new LinkedHashMap<>();
         // 逐字段输出小写键名（H2 可能返回大写列名；前端按 SQLBot 字段名消费）
@@ -248,7 +252,7 @@ public class DashboardService {
         Map<String, Object> user = currentUserService.currentUser();
         String opt = Rows.str(body, "opt");
         if (opt == null || opt.isEmpty()) {
-            throw new BadRequestException("opt is required");
+            throw new BadRequestException(messageResolver.get("dashboard.opt.required"));
         }
         String workspaceId = String.valueOf(currentUserService.oidOf(user));
         String uid = String.valueOf(Rows.lng(user, "id", 0L));
@@ -259,11 +263,11 @@ public class DashboardService {
         }
         if ("updateLeaf".equals(opt) || "updateFolder".equals(opt) || "rename".equals(opt) || "move".equals(opt)) {
             if (id == null || id.isEmpty()) {
-                throw new BadRequestException("id is required for update operation");
+                throw new BadRequestException(messageResolver.get("dashboard.id.required.update"));
             }
             return dashboardRepository.countByName(workspaceId, uid, name, id) == 0;
         }
-        throw new BadRequestException("Invalid opt value: " + opt);
+        throw new BadRequestException(messageResolver.get("dashboard.opt.invalid", opt));
     }
 
     /** DELETE /dashboard/delete_resource/{resource_id}/{name}。 */
@@ -271,9 +275,9 @@ public class DashboardService {
     public boolean deleteResource(String resourceId) {
         Map<String, Object> user = currentUserService.currentUser();
         Map<String, Object> row = dashboardRepository.findById(resourceId)
-                .orElseThrow(() -> new BadRequestException("Resource with id " + resourceId + " does not exist"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("dashboard.resource.not.exist", resourceId)));
         if (!String.valueOf(Rows.lng(user, "id", 0L)).equals(Rows.str(row, "create_by"))) {
-            throw new BadRequestException("Resource with id " + resourceId + " not owned by the current user");
+            throw new BadRequestException(messageResolver.get("dashboard.resource.not.owned", resourceId));
         }
         dashboardRepository.deleteById(resourceId);
         auditRecorder.success(AuditOperationType.DELETE, AuditModule.DASHBOARD, resourceId,
@@ -288,7 +292,7 @@ public class DashboardService {
         requireOwned(id, user);
         String pid = Rows.str(body, "pid");
         if (pid == null || pid.isEmpty()) {
-            throw new BadRequestException("pid is required");
+            throw new BadRequestException(messageResolver.get("dashboard.pid.required"));
         }
         dashboardRepository.updatePid(id, pid, String.valueOf(Rows.lng(user, "id", 0L)),
                 System.currentTimeMillis() / 1000);
@@ -301,9 +305,9 @@ public class DashboardService {
 
     private void requireOwned(String id, Map<String, Object> user) {
         Map<String, Object> row = dashboardRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Resource with id " + id + " does not exist"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("dashboard.resource.not.exist", id)));
         if (!String.valueOf(Rows.lng(user, "id", 0L)).equals(Rows.str(row, "create_by"))) {
-            throw new BadRequestException("Resource with id " + id + " not owned by the current user");
+            throw new BadRequestException(messageResolver.get("dashboard.resource.not.owned", id));
         }
     }
 
@@ -349,10 +353,10 @@ public class DashboardService {
         return parsed == null ? fallback : parsed.intValue();
     }
 
-    private static String requiredText(Map<String, Object> body, String key) {
+    private String requiredText(Map<String, Object> body, String key) {
         String value = Rows.str(body, key);
         if (value == null || value.trim().isEmpty()) {
-            throw new BadRequestException("Missing required argument: [" + key + "]");
+            throw new BadRequestException(messageResolver.get("dashboard.param.required", key));
         }
         return value.trim();
     }

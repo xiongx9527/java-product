@@ -1,4 +1,6 @@
 package com.xiongx9527.askdata.system.service;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.util.Rows;
@@ -21,6 +23,8 @@ import java.util.Map;
  */
 @Service
 public class WorkspaceService {
+    @Autowired
+    private MessageResolver messageResolver;
 
     private final WorkspaceRepository workspaceRepository;
 
@@ -62,14 +66,14 @@ public class WorkspaceService {
     public Map<String, Object> get(long id) {
         currentUserService.requireAdmin();
         return toWorkspace(workspaceRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("WorkspaceModel with id " + id + " not found")), userLanguage());
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("workspace.not.found", id))), userLanguage());
     }
 
     public Map<String, Object> create(Map<String, Object> body) {
         currentUserService.requireAdmin();
         String name = Rows.str(body, "name");
         if (name == null || name.isEmpty()) {
-            throw new BadRequestException("Missing required argument: [name]");
+            throw new BadRequestException(messageResolver.get("workspace.name.required"));
         }
         long id = idGenerator.nextId();
         long createTime = System.currentTimeMillis();
@@ -81,10 +85,10 @@ public class WorkspaceService {
         currentUserService.requireAdmin();
         long id = Rows.lng(body, "id", 0L);
         workspaceRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("WorkspaceModel with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("workspace.not.found", id)));
         String name = Rows.str(body, "name");
         if (name == null || name.isEmpty()) {
-            throw new BadRequestException("Missing required argument: [name]");
+            throw new BadRequestException(messageResolver.get("workspace.name.required"));
         }
         workspaceRepository.update(id, name);
     }
@@ -93,10 +97,10 @@ public class WorkspaceService {
     public void delete(long id) {
         currentUserService.requireAdmin();
         if (id == 1L) {
-            throw new BadRequestException("Can not delete default workspace");
+            throw new BadRequestException(messageResolver.get("workspace.delete.default.denied"));
         }
         workspaceRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("WorkspaceModel with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("workspace.not.found", id)));
 
         Map<String, Object> current = currentUserService.currentUser();
         if (Rows.lng(current, "oid", 0L) == id) {
@@ -186,7 +190,7 @@ public class WorkspaceService {
             throw new BadRequestException("Missing required argument: [uid_list]");
         }
         if (!workspaceRepository.findById(oid).isPresent()) {
-            throw new BadRequestException("WorkspaceModel with id " + oid + " not found");
+            throw new BadRequestException(messageResolver.get("workspace.not.found", oid));
         }
         for (Long uid : new java.util.LinkedHashSet<>(uidList)) {
             if (userRepository.findById(uid).isPresent()) {

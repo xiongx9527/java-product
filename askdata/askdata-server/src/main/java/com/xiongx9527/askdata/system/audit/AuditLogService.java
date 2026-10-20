@@ -1,4 +1,6 @@
 package com.xiongx9527.askdata.system.audit;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.common.util.ExcelUtils;
@@ -24,6 +26,8 @@ import java.util.Map;
  */
 @Service
 public class AuditLogService {
+    @Autowired
+    private MessageResolver messageResolver;
 
     private final AuditLogRepository auditLogRepository;
 
@@ -79,7 +83,7 @@ public class AuditLogService {
                     "user_name", Rows.str(row, "user_name"),
                     "oid_name", Rows.str(row, "oid"),
                     "operation_status", status,
-                    "operation_status_name", "success".equals(status) ? "成功" : "失败",
+                    "operation_status_name", "success".equals(status) ? messageResolver.get("audit.status.success") : messageResolver.get("audit.status.fail"),
                     "ip_address", Rows.str(row, "ip_address"),
                     "create_time", Rows.lng(row, "create_time", 0L),
                     "module", Rows.str(row, "module"),
@@ -97,13 +101,13 @@ public class AuditLogService {
         List<Map<String, Object>> results = toResults(auditLogRepository.all(name, optTypeList, uidList, oidList,
                 logStatus, timeFrom, timeTo));
         List<ExcelUtils.Column> columns = new ArrayList<>();
-        columns.add(new ExcelUtils.Column("操作类型", "operation_type_name"));
-        columns.add(new ExcelUtils.Column("操作详情", "operation_detail_info"));
-        columns.add(new ExcelUtils.Column("操作用户", "user_name"));
-        columns.add(new ExcelUtils.Column("所属工作空间", "oid_name"));
-        columns.add(new ExcelUtils.Column("操作状态", "operation_status_name"));
-        columns.add(new ExcelUtils.Column("IP 地址", "ip_address"));
-        columns.add(new ExcelUtils.Column("操作时间", "create_time"));
+        columns.add(new ExcelUtils.Column(messageResolver.get("audit.export.col.type"), "operation_type_name"));
+        columns.add(new ExcelUtils.Column(messageResolver.get("audit.export.col.detail"), "operation_detail_info"));
+        columns.add(new ExcelUtils.Column(messageResolver.get("audit.export.col.user"), "user_name"));
+        columns.add(new ExcelUtils.Column(messageResolver.get("audit.export.col.workspace"), "oid_name"));
+        columns.add(new ExcelUtils.Column(messageResolver.get("audit.export.col.status"), "operation_status_name"));
+        columns.add(new ExcelUtils.Column(messageResolver.get("audit.export.col.ip"), "ip_address"));
+        columns.add(new ExcelUtils.Column(messageResolver.get("audit.export.col.time"), "create_time"));
         byte[] bytes = excelBytes(columns, results);
         response.setStatus(HttpServletResponse.SC_OK);
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");

@@ -1,4 +1,6 @@
 package com.xiongx9527.askdata.permission;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import com.xiongx9527.askdata.common.audit.AuditModule;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
@@ -25,6 +27,8 @@ import java.util.Map;
  */
 @Service
 public class DsPermissionService {
+    @Autowired
+    private MessageResolver messageResolver;
 
     private final DsPermissionRepository dsPermissionRepository;
 
@@ -110,7 +114,7 @@ public class DsPermissionService {
         long oid = currentUserService.oidOf(currentUserService.currentUser());
         String name = Rows.str(body, "name");
         if (name == null || name.trim().isEmpty()) {
-            throw new BadRequestException("Missing required argument: [name]");
+            throw new BadRequestException(messageResolver.get("perm.ds.name.required"));
         }
         List<Map<String, Object>> entries = Rows.mapList(Rows.get(body, "permissions"));
         List<Long> users = Rows.longList(Rows.get(body, "users"));
@@ -121,7 +125,7 @@ public class DsPermissionService {
         long ruleId;
         if (id != null) {
             if (!dsPermissionRepository.findRule(id).isPresent()) {
-                throw new BadRequestException("Permission rule does not exist");
+                throw new BadRequestException(messageResolver.get("perm.ds.rule.not.exist"));
             }
             dsPermissionRepository.updateRule(id, name, null, permissionListJson, userListJson);
             ruleId = id;
@@ -132,7 +136,7 @@ public class DsPermissionService {
         for (Map<String, Object> entry : entries) {
             String type = Rows.str(entry, "type");
             if (!"row".equals(type) && !"column".equals(type)) {
-                throw new BadRequestException("Invalid permission type: [" + type + "]");
+                throw new BadRequestException(messageResolver.get("perm.ds.type.invalid", type));
             }
             String permissions = Rows.str(entry, "permissions");
             String expressionTree = Rows.str(entry, "expression_tree");
@@ -156,7 +160,7 @@ public class DsPermissionService {
     public void delete(long id) {
         currentUserService.requireWsAdmin();
         if (!dsPermissionRepository.findRule(id).isPresent()) {
-            throw new BadRequestException("Permission rule does not exist");
+            throw new BadRequestException(messageResolver.get("perm.ds.rule.not.exist"));
         }
         dsPermissionRepository.deletePermissionsByRule(id);
         dsPermissionRepository.deleteRule(id);
