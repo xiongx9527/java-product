@@ -2,16 +2,11 @@ package com.xiongx9527.askdata.chat.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.xiongx9527.fw.plus.ai.model.AiChatModel;
-import com.xiongx9527.fw.plus.ai.model.AiChatRequest;
-import com.xiongx9527.fw.plus.ai.model.AiChatResult;
-import com.xiongx9527.fw.plus.ai.model.AiModelType;
-import com.xiongx9527.fw.plus.ai.model.AiModelUsage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -26,20 +21,21 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 模型接入（brief 引擎约束：由 fw-plus-ai 承担模型接入）。
+ * 模型接入：自包含的 OpenAI 兼容客户端（不再依赖 fw-plus-ai-model 契约）。
  *
- * <p>实现 fw-plus-ai 的 {@link AiChatModel} 契约：{@link AiChatRequest} 进、{@link AiChatResult}
- * 出，并额外提供流式 {@link #streamCompletion}（{@code /v1/chat/completions} SSE）与
- * {@link #embed}（{@code /v1/embeddings}）——fw-plus-ai 0.1.1 的模型契约只有一次性 chat，
- * 而问数主链路要求逐 token 推送（协议见 {@code views/chat/answer/ChartAnswer.vue}），
- * 故在同一次 OpenAI 兼容端点上补齐流式与向量两条通路（D7：Ollama 与 OpenAI 兼容两种都支持）。</p>
+ * <p>提供流式 {@link #streamCompletion}（{@code /v1/chat/completions} SSE，含
+ * {@code reasoning_content} 思考流）、一次性 {@link #generate} 与向量 {@link #embed}
+ * （{@code /v1/embeddings}）三条通路（D7：Ollama 与 OpenAI 兼容两种都支持）。
+ * 保留自研 SSE 客户端而非笼统替换为 langchain4j 模型：问数主链路要求逐 token 推送
+ * 且需透传 {@code reasoning_content}（协议见 {@code views/chat/answer/ChartAnswer.vue}），
+ * 现有实现已验证可用。</p>
  *
  * <p><b>离线降级</b>：模型未配置或端点不可达时，{@link #streamCompletion} 通过
  * {@link TokenHandler#onError} 回调上报，<b>不抛异常</b>；调用方据此发出 {@code error} 帧并
  * 正常结束，应用本身不依赖真实 LLM 启动（与 {@code system/aimodel/status} 的连通检查路径同构）。</p>
  */
 @Service
-public class ChatModelClient implements AiChatModel {
+public class ChatModelClient {
 
     private static final Logger log = LoggerFactory.getLogger(ChatModelClient.class);
 
@@ -51,71 +47,6 @@ public class ChatModelClient implements AiChatModel {
 
     public ChatModelClient(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
-    }
-
-    // ------------------------------------------------------------------
-    // fw-plus-ai AiChatModel 契约
-    // ------------------------------------------------------------------
-
-    @Override
-    public String getKey() {
-        return "askdata-chat";
-    }
-
-    @Override
-    public String getFramework() {
-        return "fw-plus-ai";
-    }
-
-    @Override
-    public String getProvider() {
-        return "openai-compatible";
-    }
-
-    @Override
-    public AiModelType getType() {
-        return AiModelType.STREAMING_CHAT;
-    }
-
-    /**
-     * 一次性补全（对齐 {@link AiChatModel}）。
-     *
-     * <p>{@code parameters} 携带 {@code api_domain/base_model/api_key}，缺失时返回
-     * {@code AiChatResult} 且 text 为 null（不抛异常，交由调用方降级）。</p>
-     */
-    @Override
-    public AiChatResult chat(AiChatRequest request) {
-        Map<String, Object> parameters = request.getParameters() == null
-                ? new LinkedHashMap<String, Object>() : request.getParameters();
-        String apiDomain = str(parameters.get("api_domain"));
-        String apiKey = str(parameters.get("api_key"));
-        String baseModel = str(parameters.get("base_model"));
-        List<ModelMessage> messages = new ArrayList<>();
-        messages.add(new ModelMessage("user", request.getInput()));
-        final StringBuilder text = new StringBuilder();
-        final boolean[] failed = {false};
-        streamCompletion(apiDomain, apiKey, baseModel, messages, new TokenHandler() {
-            @Override
-            public void onToken(String content, String reasoningContent) {
-                if (content != null) {
-                    text.append(content);
-                }
-            }
-
-            @Override
-            public void onComplete() {
-                // no-op
-            }
-
-            @Override
-            public void onError(String message) {
-                failed[0] = true;
-            }
-        });
-        if (failed[0] || text.length() == 0) {
-            return new AiChatResult(null, baseModel, "error", AiModelUsage.unknown());
-        }
-        return new AiChatResult(text.toString(), baseModel, "stop", AiModelUsage.unknown());
     }
 
     // ------------------------------------------------------------------

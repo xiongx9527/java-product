@@ -53,6 +53,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
+import org.springframework.context.support.StaticMessageSource;
 
 /**
  * 问数主链路端到端 smoke（A6/A7/A8 离线证据）：
@@ -62,7 +64,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>链路之外的模型调用不可离线验证，故本测试用桩端点验证<b>协议帧与落库</b>的准确性；
  * 真实 Ollama 调用路径与桩端点同构（D7）。</p>
  */
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
+import org.springframework.context.support.StaticMessageSource;
+
 class ChatPipelineTest {
+
+    private static final MessageResolver messageResolver = new MessageResolver(new StaticMessageSource());
 
     private static final String TARGET_URL = "jdbc:h2:mem:chat_target;MODE=MySQL;DB_CLOSE_DELAY=-1";
 
@@ -129,7 +136,7 @@ class ChatPipelineTest {
         Mockito.when(currentUserService.uid()).thenReturn(1L);
 
         datasourceService = new DatasourceService(datasourceRepository, tableRepository, fieldRepository,
-                new ExcelService(appJdbc, engine, excelDir.toString()), engine, currentUserService, objectMapper);
+                new ExcelService(appJdbc, engine, excelDir.toString(), messageResolver), engine, currentUserService, objectMapper, messageResolver);
         dsId = Rows.lng(datasourceService.add(Rows.of(
                 "name", "chat 目标库", "description", "", "type", DatasourceType.H2.getType(),
                 "configuration", h2Configuration(),
