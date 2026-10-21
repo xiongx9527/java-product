@@ -2,6 +2,7 @@ package com.xiongx9527.askdata.permission;
 
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.datasource.engine.DatasourceType;
+import com.xiongx9527.askdata.datasource.engine.SqlEscape;
 import com.xiongx9527.askdata.datasource.repository.DatasourceRepository;
 import com.xiongx9527.askdata.datasource.repository.FieldRepository;
 import com.xiongx9527.askdata.datasource.repository.TableRepository;
@@ -209,7 +210,7 @@ public class DsPermissionQueryService {
             return null;
         }
         String logic = ((String) logicObj).toUpperCase();
-        if (!"AND".equals(logic) && !"OR".equals(logic)) {
+        if (!SqlEscape.isValidLogicOp(logic)) {
             return null;
         }
         Object itemsObj = node.get("items");
@@ -481,7 +482,7 @@ public class DsPermissionQueryService {
         if (value == null) {
             return "";
         }
-        return value.replace("\\", "\\\\").replace("'", "''");
+        return SqlEscape.escapeValue(value);
     }
 
     private String dsTypeOf(long dsId) {

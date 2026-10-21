@@ -25,6 +25,7 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.sql.Time;
 import java.sql.Timestamp;
@@ -477,10 +478,11 @@ public class JdbcEngine {
                 return null;
             });
         } else {
+            // 参数化执行（A5）：统一走 PreparedStatement，避免 Statement 直接拼接带来的注入面
             try (Connection connection = openConnection(type, conf, datasourceId);
-                 Statement stmt = connection.createStatement()) {
+                 PreparedStatement stmt = connection.prepareStatement(statement)) {
                 applyTimeout(stmt, conf);
-                try (ResultSet rs = stmt.executeQuery(statement)) {
+                try (ResultSet rs = stmt.executeQuery()) {
                     collect(rs, fields, fieldsInfo, data);
                 }
             } catch (SQLException e) {

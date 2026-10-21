@@ -13,6 +13,7 @@ import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.datasource.engine.SqlSafety;
 import com.xiongx9527.askdata.datasource.repository.DatasourceRepository;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
+import com.xiongx9527.askdata.permission.PermissionEnforcer;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -103,12 +104,15 @@ public class ChatQuestionService {
 
     private final ObjectMapper objectMapper;
 
+    private final PermissionEnforcer permissionEnforcer;
+
     public ChatQuestionService(ChatRepository chatRepository,
                                RecommendedQuestionRepository recommendedQuestionRepository,
                                DatasourceRepository datasourceRepository, DatasourceService datasourceService,
                                CurrentUserService currentUserService, SchemaContextBuilder schemaContextBuilder,
                                ChatModelClient modelClient, ChatModelRouter modelRouter,
-                               ChatChartBuilder chartBuilder, ObjectMapper objectMapper) {
+                               ChatChartBuilder chartBuilder, ObjectMapper objectMapper,
+                               PermissionEnforcer permissionEnforcer) {
         this.chatRepository = chatRepository;
         this.recommendedQuestionRepository = recommendedQuestionRepository;
         this.datasourceRepository = datasourceRepository;
@@ -119,6 +123,7 @@ public class ChatQuestionService {
         this.modelRouter = modelRouter;
         this.chartBuilder = chartBuilder;
         this.objectMapper = objectMapper;
+        this.permissionEnforcer = permissionEnforcer;
     }
 
     // ==================================================================
@@ -227,6 +232,12 @@ public class ChatQuestionService {
                     emitError(writer, validation);
                     return;
                 }
+                // -- 行/列权限强制（A3）：普通用户注入行过滤、隐藏无权限列；管理员/白名单跳过
+                PermissionEnforcer.EnforcedQuery enforced = permissionEnforcer == null
+                        ? null : permissionEnforcer.enforce(oid, uid, dsId, sql);
+                if (enforced != null) {
+                    sql = enforced.getSql();
+                }
                 chatRepository.saveSql(recordId, sql, sqlText);
                 emit(writer, Rows.of("type", "sql", "content", formatSql(sql)));
 
@@ -241,6 +252,9 @@ public class ChatQuestionService {
                 emit(writer, Rows.of("type", "info", "msg", "sql executing"));
                 long execStart = System.currentTimeMillis();
                 Map<String, Object> result = datasourceService.execSql(dsId, Rows.of("sql", sql));
+                if (enforced != null) {
+                    result = permissionEnforcer.applyHiddenColumns(result, enforced.getHiddenColumns());
+                }
                 chatRepository.saveSqlData(recordId, chatRepository.writeJson(
                         Rows.of("fields", result.get("fields"), "data", result.get("data"))));
                 logOperation(recordId, oid, uid, OPERATE_EXECUTE_SQL, execStart, 0L, false,

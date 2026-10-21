@@ -281,6 +281,13 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- SQL 解析（A5：SQL 安全升级为 sqlglot 等价的 AST 校验；A3：行权限 WHERE 注入） -->
+        <dependency>
+            <groupId>com.github.jsqlparser</groupId>
+            <artifactId>jsqlparser</artifactId>
+            <version>5.1</version>
+        </dependency>
+
         <!-- 数据源引擎 JDBC 驱动（brief D6：mysql/h2/pg 为首选全集，随包提供；
              其余类型驱动按 README「JDBC 驱动扩展目录」约定外置，不打进 jar） -->
         <dependency>
