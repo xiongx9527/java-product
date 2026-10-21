@@ -1,7 +1,10 @@
 package com.xiongx9527.askdata.ai;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Assumptions;
 
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
 
@@ -35,9 +38,14 @@ class LocalEmbeddingModelTest {
     // ------------------------------------------------------------------
 
     private BertWordPieceTokenizer tokenizer() throws Exception {
-        return BertWordPieceTokenizer.fromVocabFile(
-                java.nio.file.Paths.get(System.getProperty("askdata.embedding.vocab", "/opt/askdata/models/"
-                        + "embedding/shibing624_text2vec-base-chinese/onnx/vocab.txt")), true, true);
+        java.nio.file.Path vocab = java.nio.file.Paths.get(System.getProperty("askdata.embedding.vocab",
+                "/opt/askdata/models/embedding/shibing624_text2vec-base-chinese/onnx/vocab.txt"));
+        // vocab ships with the model weights (not in git). Tokenizer comparison
+        // depends on the real vocab; skip when the model is not deployed
+        // (degrade path is covered by the tests below).
+        Assumptions.assumeTrue(java.nio.file.Files.exists(vocab),
+                "vocab missing (model not deployed), skip tokenizer comparison");
+        return BertWordPieceTokenizer.fromVocabFile(vocab, true, true);
     }
 
     @Test
