@@ -25,6 +25,7 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.sql.Time;
 import java.sql.Timestamp;
@@ -154,9 +155,15 @@ public class JdbcEngine {
      */
     public String buildJdbcUrl(DatasourceType type, DatasourceConf conf) {
         String url;
-        // 非法 JDBC 参数拦截（对齐 SQLBot get_uri_from_config → checkParams）
+        // 非法 JDBC 参数拦截（对齐 SQLBot get_uri_from_config → checkParams）；
+        // MySQL 系额外封禁现代 Connector/J 同义参数 allowLoadLocalInfile（A5：非法 JDBC 连接参数拦截）
+        List<String> blocked = new ArrayList<>(type.illegalParams());
+        if (type == DatasourceType.MYSQL || type == DatasourceType.DORIS
+                || type == DatasourceType.STARROCKS) {
+            blocked.add("allowLoadLocalInfile");
+        }
         try {
-            DatasourceType.checkParams(conf.getExtraJdbc(), type.illegalParams());
+            DatasourceType.checkParams(conf.getExtraJdbc(), blocked);
         } catch (IllegalArgumentException e) {
             throw new DatasourceException(e.getMessage(), e);
         }
@@ -477,10 +484,11 @@ public class JdbcEngine {
                 return null;
             });
         } else {
+            // 参数化执行（A5）：统一走 PreparedStatement，避免 Statement 直接拼接带来的注入面
             try (Connection connection = openConnection(type, conf, datasourceId);
-                 Statement stmt = connection.createStatement()) {
+                 PreparedStatement stmt = connection.prepareStatement(statement)) {
                 applyTimeout(stmt, conf);
-                try (ResultSet rs = stmt.executeQuery(statement)) {
+                try (ResultSet rs = stmt.executeQuery()) {
                     collect(rs, fields, fieldsInfo, data);
                 }
             } catch (SQLException e) {

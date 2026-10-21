@@ -167,7 +167,7 @@ class ChatPipelineTest {
                 datasourceService, currentUserService, objectMapper);
         chatQuestionService = new ChatQuestionService(chatRepository, recommendedQuestionRepository,
                 datasourceRepository, datasourceService, currentUserService, schemaContextBuilder, modelClient,
-                modelRouter, new ChatChartBuilder(objectMapper), objectMapper);
+                modelRouter, new ChatChartBuilder(objectMapper), objectMapper, null);
     }
 
     @AfterEach
