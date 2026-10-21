@@ -6,6 +6,9 @@ import java.util.List;
  * SQLBot 风格分页信封（数据训练/术语/提示词/审计页）：
  * {@code {"current_page": p, "page_size": s, "total_count": n, "total_pages": t, "data": [...]}}，
  * 与 SQLBot 对应路由返回结构逐字一致（前端消费 {@code res.data} 与 {@code res.total_count}）。
+ *
+ * <p><b>排序支持</b>（对齐 SQLBot {@code common/core/pagination.py} 的 Paginator）：
+ * 分页参数支持 {@code order_by} 与 {@code desc}，由 {@link #orderBy} / {@link #desc} 承载。</p>
  */
 public class PagerResult<T> {
 
@@ -19,6 +22,12 @@ public class PagerResult<T> {
 
     private List<T> data;
 
+    /** 排序列（可空）。 */
+    private String order_by;
+
+    /** 是否倒序。 */
+    private boolean desc;
+
     public PagerResult() {
     }
 
@@ -28,6 +37,13 @@ public class PagerResult<T> {
         this.current_page = currentPage;
         this.page_size = pageSize;
         this.total_pages = pageSize <= 0 ? 0 : (totalCount + pageSize - 1) / pageSize;
+    }
+
+    /** 带排序参数的分页信封。 */
+    public PagerResult(List<T> data, long totalCount, int currentPage, int pageSize, String orderBy, boolean desc) {
+        this(data, totalCount, currentPage, pageSize);
+        this.order_by = orderBy;
+        this.desc = desc;
     }
 
     public int getCurrent_page() {
@@ -68,5 +84,21 @@ public class PagerResult<T> {
 
     public void setData(List<T> data) {
         this.data = data;
+    }
+
+    public String getOrder_by() {
+        return order_by;
+    }
+
+    public void setOrder_by(String order_by) {
+        this.order_by = order_by;
+    }
+
+    public boolean isDesc() {
+        return desc;
+    }
+
+    public void setDesc(boolean desc) {
+        this.desc = desc;
     }
 }

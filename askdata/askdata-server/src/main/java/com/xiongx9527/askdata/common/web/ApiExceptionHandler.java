@@ -1,32 +1,83 @@
 package com.xiongx9527.askdata.common.web;
 
 import cn.dev33.satoken.exception.NotLoginException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+
+import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * 异常输出对齐 SQLBot：非 2xx 时返回纯文本 detail（前端 request.ts 直接展示 response 文本）；
  * 401 触发前端清除 token 并回到登录页。
+ *
+ * <p><b>CORS</b>：所有错误响应（400/401/404/500）都带 {@code Access-Control-Allow-Origin}
+ * 头（对齐 SQLBot {@code http_exception_handler}/{@code global_exception_handler} 的
+ * {@code headers={"Access-Control-Allow-Origin": "*"}}）——否则浏览器端拿不到错误正文，
+ * 跨域场景下前端只能看到「CORS 错误」而看不到真实原因。</p>
+ *
+ * <p><b>日志</b>：异常一律落日志（此前无日志，线上排障困难）。</p>
  */
 @RestControllerAdvice(basePackages = "com.xiongx9527.askdata")
 public class ApiExceptionHandler {
 
+    private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
+
     @ExceptionHandler(BadRequestException.class)
     public ResponseEntity<String> badRequest(BadRequestException e) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        log.info("业务拒绝: {}", e.getMessage());
+        return error(HttpStatus.BAD_REQUEST, e.getMessage());
     }
 
     @ExceptionHandler(NotLoginException.class)
     public ResponseEntity<String> notLogin(NotLoginException e) {
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body("authenticate invalid: " + e.getMessage());
+        log.info("未登录访问: {}", e.getMessage());
+        return error(HttpStatus.UNAUTHORIZED, "authenticate invalid: " + e.getMessage());
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<String> serverError(Exception e) {
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(String.valueOf(e.getMessage()));
+        log.error("未处理异常: " + e.getMessage(), e);
+        return error(HttpStatus.INTERNAL_SERVER_ERROR, String.valueOf(e.getMessage()));
+    }
+
+    /**
+     * 构造带 CORS 头的错误响应。
+     *
+     * @param status HTTP 状态码
+     * @param detail 响应正文（纯文本）
+     */
+    private ResponseEntity<String> error(HttpStatus status, String detail) {
+        return ResponseEntity.status(status)
+                .header(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, allowedOrigin())
+                .body(detail);
+    }
+
+    /**
+     * 当前请求的允许来源（回显 Origin；无 Origin 时用 {@code *}）。
+     *
+     * <p>回显 Origin 而非固定 {@code *}：带凭证的请求（{@code allowCredentials=true}）
+     * 不允许使用通配符来源。</p>
+     */
+    private static String allowedOrigin() {
+        HttpServletRequest request = currentRequest();
+        if (request == null) {
+            return "*";
+        }
+        String origin = request.getHeader("Origin");
+        return origin == null || origin.isEmpty() ? "*" : origin;
+    }
+
+    private static HttpServletRequest currentRequest() {
+        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes) {
+            return ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest();
+        }
+        return null;
     }
 }

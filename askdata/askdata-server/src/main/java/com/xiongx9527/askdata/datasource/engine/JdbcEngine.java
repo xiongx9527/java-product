@@ -2,6 +2,7 @@ package com.xiongx9527.askdata.datasource.engine;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xiongx9527.askdata.common.util.DataFormatUtil;
 import com.xiongx9527.askdata.datasource.DatasourceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,6 +34,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * 数据源引擎（移植 SQLBot apps/db/db.py 的 {@code get_engine/check_connection/get_tables/
@@ -40,8 +42,10 @@ import java.util.Map;
  *
  * <p>设计要点：</p>
  * <ul>
- *   <li>连接策略对齐 SQLBot 非池化路径（NullPool）：每次操作新建 {@link DriverManager} 连接，
- *       数据源更新/删除后无残留连接；连接串/方言/元数据 SQL 按 {@link DatasourceType} 策略生成；</li>
+ *   <li>连接策略对齐 SQLBot 的池化路径：按数据源 id 缓存连接池
+ *       （{@link ConnectionPoolManager}，LRU 淘汰上限 500，淘汰即 dispose），
+ *       借出的连接其 {@code close()} 被拦截为「归还连接池」，
+ *       故 try-with-resources 写法与连接复用可并存；</li>
  *   <li>{@code excel} 类型走应用元数据库（主 {@link DataSource}，对齐 SQLBot get_engine_config），
  *       方言按主库实际产品名（H2/MySQL/PostgreSQL）选择，保证生产切换元数据库后仍正确；</li>
  *   <li>{@code es} 类型为 HTTP 协议：连接检查 ping {@code GET /}，元数据走 {@code _cat/indices} /
@@ -59,12 +63,22 @@ public class JdbcEngine {
 
     private final ObjectMapper objectMapper;
 
+    /** 数据源连接池（LRU 淘汰 + 归还语义；上限可配，默认 500）。 */
+    private final ConnectionPoolManager poolManager;
+
     /** 主库方言缓存（excel 类型用）：H2/MySQL/PostgreSQL。 */
     private volatile DatasourceType appDbType;
 
-    public JdbcEngine(JdbcTemplate appJdbc, ObjectMapper objectMapper) {
+    @Autowired
+    public JdbcEngine(JdbcTemplate appJdbc, ObjectMapper objectMapper, ConnectionPoolManager poolManager) {
         this.appJdbc = appJdbc;
         this.objectMapper = objectMapper;
+        this.poolManager = poolManager == null ? new ConnectionPoolManager() : poolManager;
+    }
+
+    /** 构造（不注入连接池时使用默认池管理器；保留旧签名以便既有调用点零改动）。 */
+    public JdbcEngine(JdbcTemplate appJdbc, ObjectMapper objectMapper) {
+        this(appJdbc, objectMapper, new ConnectionPoolManager());
     }
 
     // ------------------------------------------------------------------
@@ -76,13 +90,18 @@ public class JdbcEngine {
      * {@code 数据源连接失败: <原因>}（SQLBot trans('i18n_ds_invalid') + ': ' + e.args）。
      */
     public boolean checkConnection(DatasourceType type, DatasourceConf conf, boolean isRaise) {
+        return checkConnection(type, conf, isRaise, null);
+    }
+
+    /** 连接检查（带数据源 id；命中该数据源的连接池）。 */
+    public boolean checkConnection(DatasourceType type, DatasourceConf conf, boolean isRaise, Long datasourceId) {
         if (type.usesAppDatabase()) {
             return true;
         }
         if (type.isHttpProtocol()) {
             return checkEs(conf, isRaise);
         }
-        try (Connection ignored = openConnection(type, conf)) {
+        try (Connection ignored = openConnection(type, conf, datasourceId)) {
             return true;
         } catch (Exception e) {
             log.info("Datasource connection failed [{}]: {}", type.getType(), e.getMessage());
@@ -94,6 +113,16 @@ public class JdbcEngine {
     }
 
     private Connection openConnection(DatasourceType type, DatasourceConf conf) throws SQLException {
+        return openConnection(type, conf, null);
+    }
+
+    /**
+     * 打开一条（池化的）外部数据源连接。
+     *
+     * @param datasourceId 数据源 id（已入库数据源传 id 以命中其池；未入库的临时配置传 null，
+     *                     退化为按连接配置派生的池键）
+     */
+    private Connection openConnection(DatasourceType type, DatasourceConf conf, Long datasourceId) throws SQLException {
         if (type.usesAppDatabase()) {
             return appJdbc.getDataSource().getConnection();
         }
@@ -111,7 +140,12 @@ public class JdbcEngine {
         }
         int timeout = conf.getTimeout() > 0 ? conf.getTimeout() : 30;
         DriverManager.setLoginTimeout(Math.min(timeout, 30));
-        return DriverManager.getConnection(url, conf.getUsername(), conf.getPassword());
+        String poolKey = datasourceId == null
+                ? ConnectionPoolManager.poolKeyOfConfig(url, conf.getUsername())
+                : ConnectionPoolManager.poolKeyOf(datasourceId);
+        // 借出的连接其 close() 被拦截为「归还连接池」，try-with-resources 语义不变
+        return poolManager.borrow(poolKey, () -> DriverManager.getConnection(url, conf.getUsername(),
+                conf.getPassword()));
     }
 
     /**
@@ -120,6 +154,12 @@ public class JdbcEngine {
      */
     public String buildJdbcUrl(DatasourceType type, DatasourceConf conf) {
         String url;
+        // 非法 JDBC 参数拦截（对齐 SQLBot get_uri_from_config → checkParams）
+        try {
+            DatasourceType.checkParams(conf.getExtraJdbc(), type.illegalParams());
+        } catch (IllegalArgumentException e) {
+            throw new DatasourceException(e.getMessage(), e);
+        }
         switch (type) {
             case MYSQL:
             case DORIS:
@@ -247,6 +287,11 @@ public class JdbcEngine {
     // ------------------------------------------------------------------
 
     public String version(DatasourceType type, DatasourceConf conf) {
+        return version(type, conf, null);
+    }
+
+    /** 版本查询（带数据源 id，命中该数据源的连接池）。 */
+    public String version(DatasourceType type, DatasourceConf conf, Long datasourceId) {
         String sql = type.versionSql();
         if (sql == null || sql.isEmpty()) {
             return "";
@@ -257,7 +302,7 @@ public class JdbcEngine {
         if (type.isHttpProtocol()) {
             return "";
         }
-        try (Connection connection = openConnection(type, conf);
+        try (Connection connection = openConnection(type, conf, datasourceId);
              Statement statement = connection.createStatement();
              ResultSet rs = statement.executeQuery(sql)) {
             if (rs.next()) {
@@ -273,13 +318,18 @@ public class JdbcEngine {
 
     /** 表列表（对齐 SQLBot get_tables → TableSchemaResponse）。 */
     public List<TableSchema> tables(DatasourceType type, DatasourceConf conf) {
+        return tables(type, conf, null);
+    }
+
+    /** 表列表（带数据源 id，命中该数据源的连接池）。 */
+    public List<TableSchema> tables(DatasourceType type, DatasourceConf conf, Long datasourceId) {
         if (type.isHttpProtocol()) {
             return esIndices(conf);
         }
         DatasourceType dialect = dialectOf(type);
-        DatasourceType.SqlText sqlText = dialect.tableSql(conf, version(type, conf));
+        DatasourceType.SqlText sqlText = dialect.tableSql(conf, version(type, conf, datasourceId));
         List<TableSchema> result = new ArrayList<>();
-        for (Map<String, Object> row : query(dialect, type, conf, sqlText)) {
+        for (Map<String, Object> row : query(dialect, type, conf, sqlText, datasourceId)) {
             result.add(new TableSchema(stringOf(row.get("TABLE_NAME")), stringOf(row.get("TABLE_COMMENT"))));
         }
         return result;
@@ -287,13 +337,18 @@ public class JdbcEngine {
 
     /** 字段列表（对齐 SQLBot get_fields → ColumnSchema）。 */
     public List<ColumnSchema> fields(DatasourceType type, DatasourceConf conf, String tableName) {
+        return fields(type, conf, tableName, null);
+    }
+
+    /** 字段列表（带数据源 id，命中该数据源的连接池）。 */
+    public List<ColumnSchema> fields(DatasourceType type, DatasourceConf conf, String tableName, Long datasourceId) {
         if (type.isHttpProtocol()) {
             return esFields(conf, tableName);
         }
         DatasourceType dialect = dialectOf(type);
         DatasourceType.SqlText sqlText = dialect.fieldSql(conf, tableName);
         List<ColumnSchema> result = new ArrayList<>();
-        for (Map<String, Object> row : query(dialect, type, conf, sqlText)) {
+        for (Map<String, Object> row : query(dialect, type, conf, sqlText, datasourceId)) {
             result.add(new ColumnSchema(stringOf(row.get("COLUMN_NAME")), stringOf(row.get("DATA_TYPE")),
                     stringOf(row.get("COLUMN_COMMENT"))));
         }
@@ -302,6 +357,11 @@ public class JdbcEngine {
 
     /** schema 列表（对齐 SQLBot get_schema；不支持的方言返回空列表）。 */
     public List<String> schemas(DatasourceType type, DatasourceConf conf) {
+        return schemas(type, conf, null);
+    }
+
+    /** schema 列表（带数据源 id，命中该数据源的连接池）。 */
+    public List<String> schemas(DatasourceType type, DatasourceConf conf, Long datasourceId) {
         if (type.isHttpProtocol()) {
             return new ArrayList<>();
         }
@@ -311,7 +371,7 @@ public class JdbcEngine {
             return new ArrayList<>();
         }
         List<String> result = new ArrayList<>();
-        for (Map<String, Object> row : query(dialect, type, conf, new DatasourceType.SqlText(sql))) {
+        for (Map<String, Object> row : query(dialect, type, conf, new DatasourceType.SqlText(sql), datasourceId)) {
             Object value = row.values().isEmpty() ? null : row.values().iterator().next();
             if (value != null) {
                 result.add(String.valueOf(value));
@@ -358,13 +418,18 @@ public class JdbcEngine {
 
     private List<Map<String, Object>> query(DatasourceType dialect, DatasourceType type, DatasourceConf conf,
                                             DatasourceType.SqlText sqlText) {
+        return query(dialect, type, conf, sqlText, null);
+    }
+
+    private List<Map<String, Object>> query(DatasourceType dialect, DatasourceType type, DatasourceConf conf,
+                                            DatasourceType.SqlText sqlText, Long datasourceId) {
         if (sqlText.getSql() == null || sqlText.getSql().isEmpty()) {
             return new ArrayList<>();
         }
         if (type.usesAppDatabase()) {
             return appJdbc.queryForList(sqlText.getSql(), sqlText.getArgs());
         }
-        try (Connection connection = openConnection(type, conf);
+        try (Connection connection = openConnection(type, conf, datasourceId);
              java.sql.PreparedStatement statement = connection.prepareStatement(sqlText.getSql())) {
             bind(statement, sqlText.getArgs());
             try (ResultSet rs = statement.executeQuery()) {
@@ -384,6 +449,16 @@ public class JdbcEngine {
      * {@code {"fields": [...], "data": [{col: value}], "fields_info": [{"name","is_numeric"}], "sql": base64}}。
      */
     public Map<String, Object> execSql(DatasourceType type, DatasourceConf conf, String sql) {
+        return execSql(type, conf, sql, null);
+    }
+
+    /**
+     * 执行只读 SQL（带数据源 id，命中该数据源的连接池）。
+     *
+     * <p>返回值经 {@link DataFormatUtil} 处理：大数转十进制字符串（无科学计数法）、
+     * 限定列名 {@code alias.column} 归一补短列名。</p>
+     */
+    public Map<String, Object> execSql(DatasourceType type, DatasourceConf conf, String sql, Long datasourceId) {
         String statement = sql == null ? "" : sql.trim();
         while (statement.endsWith(";")) {
             statement = statement.substring(0, statement.length() - 1).trim();
@@ -402,7 +477,7 @@ public class JdbcEngine {
                 return null;
             });
         } else {
-            try (Connection connection = openConnection(type, conf);
+            try (Connection connection = openConnection(type, conf, datasourceId);
                  Statement stmt = connection.createStatement()) {
                 applyTimeout(stmt, conf);
                 try (ResultSet rs = stmt.executeQuery(statement)) {
@@ -412,7 +487,10 @@ public class JdbcEngine {
                 throw new DatasourceException("Execute SQL failed: " + e.getMessage(), e);
             }
         }
-        return Rows0.of("fields", fields, "data", data, "fields_info", fieldsInfo, "sql", encoded);
+        return Rows0.of("fields", fields,
+                "data", DataFormatUtil.normalizeQualifiedColumnKeysInRows(
+                        DataFormatUtil.convertLargeNumbers(data)),
+                "fields_info", fieldsInfo, "sql", encoded);
     }
 
     private void collect(ResultSet rs, List<Object> fields, List<Map<String, Object>> fieldsInfo,

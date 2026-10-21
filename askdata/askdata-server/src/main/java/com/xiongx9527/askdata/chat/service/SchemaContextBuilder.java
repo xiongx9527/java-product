@@ -4,8 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.chat.service.ChatModelClient.ModelMessage;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter.ModelRef;
 import com.xiongx9527.askdata.common.util.Rows;
+import com.xiongx9527.askdata.datasource.embedding.DatasourceEmbeddingService;
 import com.xiongx9527.askdata.datasource.embedding.TableEmbeddingService;
 import com.xiongx9527.askdata.datasource.repository.DatasourceRepository;
+import com.xiongx9527.askdata.training.TrainingRecallService;
 import com.xiongx9527.askdata.datasource.repository.FieldRepository;
 import com.xiongx9527.askdata.datasource.repository.TableRepository;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
@@ -21,6 +23,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * 对话上下文构建（对齐 SQLBot {@code apps/chat/task/llm.py} 的
@@ -66,10 +69,17 @@ public class SchemaContextBuilder {
 
     private final TableEmbeddingService tableEmbeddingService;
 
+    private final DatasourceEmbeddingService datasourceEmbeddingService;
+
+    private final TrainingRecallService trainingRecallService;
+
+    @Autowired
     public SchemaContextBuilder(DatasourceRepository datasourceRepository, TableRepository tableRepository,
                                 FieldRepository fieldRepository, DatasourceService datasourceService,
                                 ChatModelClient modelClient, ChatModelRouter modelRouter, JdbcTemplate jdbc,
-                                ObjectMapper objectMapper, TableEmbeddingService tableEmbeddingService) {
+                                ObjectMapper objectMapper, TableEmbeddingService tableEmbeddingService,
+                                DatasourceEmbeddingService datasourceEmbeddingService,
+                                TrainingRecallService trainingRecallService) {
         this.datasourceRepository = datasourceRepository;
         this.tableRepository = tableRepository;
         this.fieldRepository = fieldRepository;
@@ -79,6 +89,17 @@ public class SchemaContextBuilder {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.tableEmbeddingService = tableEmbeddingService;
+        this.datasourceEmbeddingService = datasourceEmbeddingService;
+        this.trainingRecallService = trainingRecallService;
+    }
+
+    /** 构造（保留旧签名；未注入向量召回服务时走词法降级路径）。 */
+    public SchemaContextBuilder(DatasourceRepository datasourceRepository, TableRepository tableRepository,
+                                FieldRepository fieldRepository, DatasourceService datasourceService,
+                                ChatModelClient modelClient, ChatModelRouter modelRouter, JdbcTemplate jdbc,
+                                ObjectMapper objectMapper, TableEmbeddingService tableEmbeddingService) {
+        this(datasourceRepository, tableRepository, fieldRepository, datasourceService, modelClient, modelRouter,
+                jdbc, objectMapper, tableEmbeddingService, null, null);
     }
 
     // ------------------------------------------------------------------
@@ -107,26 +128,46 @@ public class SchemaContextBuilder {
             dsIds.add(dsId);
             docs.add(Rows.str(candidate, "name") + " " + tableDoc(dsId));
         }
+        // 优先用<b>已落库的数据源向量</b>（{@code core_datasource.embedding}，
+        // 对齐 SQLBot apps/datasource/embedding/ds_embedding.py）；
+        // 无向量时回落「实时 embedding」，再回落词法（bigram Jaccard）——三者对调用方透明。
+        List<Long> vectorRanked = datasourceEmbeddingService == null
+                ? null : datasourceEmbeddingService.rankByVector(question, dsIds);
+        if (vectorRanked == null) {
+            vectorRanked = java.util.Collections.emptyList();
+        }
+        double[] questionVector = null;
+        if (vectorRanked.size() != dsIds.size() || !new java.util.HashSet<>(vectorRanked).equals(
+                new java.util.HashSet<>(dsIds))) {
+            // 向量未覆盖全部候选 → 仍走实时/词法打分
+            vectorRanked = null;
+        }
         List<Double> scores = new ArrayList<>();
-        List<double[]> vectors = embedAll(question, docs);
-        if (vectors != null && vectors.size() == docs.size() + 1) {
-            double[] questionVector = vectors.get(0);
-            for (int i = 0; i < docs.size(); i++) {
-                scores.add(ChatModelClient.cosine(questionVector, vectors.get(i + 1)));
+        if (vectorRanked == null) {
+            List<double[]> vectors = embedAll(question, docs);
+            if (vectors != null && vectors.size() == docs.size() + 1) {
+                questionVector = vectors.get(0);
+                for (int i = 0; i < docs.size(); i++) {
+                    scores.add(ChatModelClient.cosine(questionVector, vectors.get(i + 1)));
+                }
+            } else {
+                for (String doc : docs) {
+                    scores.add(lexicalScore(question, doc));
+                }
             }
-        } else {
-            for (String doc : docs) {
-                scores.add(lexicalScore(question, doc));
+            int best = 0;
+            for (int i = 1; i < scores.size(); i++) {
+                if (scores.get(i) > scores.get(best)) {
+                    best = i;
+                }
             }
+            log.info("数据源 RAG 选库：候选 {}，命中 ds={}（score={}）", dsIds, dsIds.get(best), scores.get(best));
+            return dsIds.get(best);
         }
-        int best = 0;
-        for (int i = 1; i < scores.size(); i++) {
-            if (scores.get(i) > scores.get(best)) {
-                best = i;
-            }
-        }
-        log.info("数据源 RAG 选库：候选 {}，命中 ds={}（score={}）", dsIds, dsIds.get(best), scores.get(best));
-        return dsIds.get(best);
+        // 已落库向量覆盖全部候选 → 按向量排名取第一个
+        long bestId = vectorRanked.get(0);
+        log.info("数据源 RAG 选库（向量）：候选 {}，命中 ds={}", dsIds, bestId);
+        return bestId;
     }
 
     /**
@@ -150,6 +191,20 @@ public class SchemaContextBuilder {
                 String q = Rows.str(row, "question");
                 String sql = Rows.str(row, "description");
                 texts.add(String.valueOf(q == null ? "" : q) + "\n" + (sql == null ? "" : sql));
+            }
+            // 优先用已落库的样例向量（data_training.embedding）做向量召回；
+            // 无向量时回落「实时 embedding 全部行」，再回落词法（对齐 SQLBot 语义）。
+            List<Map<String, Object>> vectorHits = trainingRecallService == null
+                    ? java.util.Collections.emptyList()
+                    : trainingRecallService.recallByDatasource(question, dsId);
+            if (!vectorHits.isEmpty()) {
+                List<String> hits = new ArrayList<>();
+                for (Map<String, Object> hit : vectorHits) {
+                    String q = Rows.str(hit, "question");
+                    String sql = Rows.str(hit, "description");
+                    hits.add(String.valueOf(q == null ? "" : q) + "\n" + (sql == null ? "" : sql));
+                }
+                return hits;
             }
             return topK(question, rows, texts);
         } catch (Exception e) {

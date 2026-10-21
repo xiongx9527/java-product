@@ -1,6 +1,8 @@
 package com.xiongx9527.askdata.datasource.engine;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -33,6 +35,12 @@ public enum DatasourceType {
         @Override
         public String versionSql() {
             return "SELECT VERSION()";
+        }
+
+        @Override
+        public List<String> illegalParams() {
+            // SQLBot DB.mysql.illegalParams：禁止 local_infile（本地文件读取，防目录穿越）
+            return Collections.unmodifiableList(Arrays.asList("local_infile"));
         }
 
         @Override
@@ -573,6 +581,42 @@ public enum DatasourceType {
     /** es 类型：HTTP 协议，无 JDBC URL。 */
     public boolean isHttpProtocol() {
         return false;
+    }
+
+    /**
+     * 该方言禁止的 extra JDBC 参数（对齐 SQLBot {@code DB.<type>.illegalParams}）。
+     *
+     * <p>SQLBot 仅 MySQL 禁止 {@code local_infile}（本地文件读取，防目录穿越）；
+     * 其余方言为空集合。</p>
+     */
+    public List<String> illegalParams() {
+        return Collections.emptyList();
+    }
+
+    /**
+     * 校验 extra JDBC 参数不含该方言的禁止项（对齐 SQLBot {@code checkParams}）。
+     *
+     * @param extraJdbc    形如 {@code k=v&k=v} 的额外参数
+     * @param illegalParams 禁止参数名集合
+     * @throws IllegalArgumentException 命中禁止参数时抛出（消息与 SQLBot 一致）
+     */
+    public static void checkParams(String extraJdbc, List<String> illegalParams) {
+        if (extraJdbc == null || extraJdbc.isEmpty() || illegalParams == null || illegalParams.isEmpty()) {
+            return;
+        }
+        for (String item : extraJdbc.split("&")) {
+            if (item.isEmpty()) {
+                continue;
+            }
+            int eq = item.indexOf('=');
+            if (eq <= 0) {
+                continue;
+            }
+            String key = item.substring(0, eq);
+            if (illegalParams.contains(key)) {
+                throw new IllegalArgumentException("Illegal Parameter: " + key);
+            }
+        }
     }
 
     /** 版本查询 SQL；null 表示不支持（SQLBot get_version_sql 返回 ''）。 */

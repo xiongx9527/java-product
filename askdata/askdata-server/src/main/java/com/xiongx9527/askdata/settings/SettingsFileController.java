@@ -27,7 +27,7 @@ public class SettingsFileController {
     private static final MediaType XLSX = MediaType.parseMediaType(
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
-    @Value("${askdata.excel-path:./data/excel}")
+    @Value("${askdata.excel.path:./data/excel}")
     private String excelPath;
 
     /**

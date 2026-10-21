@@ -35,6 +35,16 @@ public class AssistantRepository {
                 + "ORDER BY name, create_time", oid);
     }
 
+    /**
+     * 全部助手的域名（运行时动态 CORS 用；对齐 SQLBot {@code init_dynamic_cors}）。
+     *
+     * <p>不限工作空间：嵌入应用的域名需对所有实例生效。</p>
+     */
+    public List<Map<String, Object>> listAllDomains() {
+        return jdbc.queryForList("SELECT id, domain FROM sys_assistant WHERE domain IS NOT NULL "
+                + "AND domain <> ''");
+    }
+
     /** /system/assistant/advanced_application（高级应用 type=1）。 */
     public List<Map<String, Object>> listAdvancedApplications(long oid) {
         return jdbc.queryForList("SELECT " + COLUMNS + " FROM sys_assistant WHERE type = 1 AND oid = ? "
