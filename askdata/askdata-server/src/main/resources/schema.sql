@@ -522,6 +522,15 @@ CREATE TABLE IF NOT EXISTS sys_logs (
     request_path     VARCHAR(255)
 );
 
+-- 审计资源关联表（对齐 SQLBot sys_logs_resource）：每条审计记录关联的操作资源行
+CREATE TABLE IF NOT EXISTS sys_logs_resource (
+    id            BIGINT PRIMARY KEY,
+    log_id        BIGINT,
+    resource_id   VARCHAR(10000),
+    resource_name VARCHAR(10000),
+    module        VARCHAR(255)
+);
+
 -- ---------------------------------------------------------------------
 -- 数据权限（alembic 026/027/030/071；ds_rules 为规则组，
 -- permission_list/user_list 原为 JSONB，此处以 JSON 文本存储；

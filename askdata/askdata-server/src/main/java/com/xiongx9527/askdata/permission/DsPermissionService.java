@@ -3,6 +3,7 @@ import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import com.xiongx9527.askdata.common.audit.AuditModule;
+import com.xiongx9527.askdata.common.audit.AuditLog;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.BadRequestException;
@@ -109,6 +110,7 @@ public class DsPermissionService {
      * permissions: <json string>, expression_tree: <json string>}], users: [uid...]}。
      */
     @Transactional
+    @AuditLog(module = AuditModule.PERMISSION, operation = AuditOperationType.CREATE_OR_UPDATE)
     public long save(Map<String, Object> body) {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
@@ -150,13 +152,12 @@ public class DsPermissionService {
                     Rows.lngOrNull(entry, "ds_id"), Rows.lngOrNull(entry, "table_id"), expressionTree,
                     permissions, now);
         }
-        auditRecorder.success(AuditOperationType.CREATE_OR_UPDATE, AuditModule.PERMISSION,
-                String.valueOf(ruleId), name);
         return ruleId;
     }
 
     /** POST /ds_permission/delete/{id}。 */
     @Transactional
+    @AuditLog(module = AuditModule.PERMISSION, operation = AuditOperationType.DELETE)
     public void delete(long id) {
         currentUserService.requireWsAdmin();
         if (!dsPermissionRepository.findRule(id).isPresent()) {
@@ -164,6 +165,5 @@ public class DsPermissionService {
         }
         dsPermissionRepository.deletePermissionsByRule(id);
         dsPermissionRepository.deleteRule(id);
-        auditRecorder.success(AuditOperationType.DELETE, AuditModule.PERMISSION, String.valueOf(id));
     }
 }

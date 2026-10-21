@@ -2,6 +2,7 @@ package com.xiongx9527.askdata.training;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.audit.AuditModule;
+import com.xiongx9527.askdata.common.audit.AuditLog;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.common.datasource.DatasourceNameLookup;
 import com.xiongx9527.askdata.common.util.ExcelUtils;
@@ -150,6 +151,7 @@ public class TrainingService {
 
     /** PUT /system/data-training（create_or_update，对齐 SQLBot create_or_update）。 */
     @Transactional
+    @AuditLog(module = AuditModule.DATA_TRAINING, operation = AuditOperationType.CREATE_OR_UPDATE)
     public long createOrUpdate(Map<String, Object> body) {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
@@ -170,8 +172,6 @@ public class TrainingService {
         }
         long newId = trainingRepository.insert(oid, datasource, question, description, enabled,
                 advancedApplication, System.currentTimeMillis());
-        auditRecorder.success(AuditOperationType.CREATE_OR_UPDATE, AuditModule.DATA_TRAINING,
-                String.valueOf(newId), question);
         if (trainingRecallService != null) {
             trainingRecallService.saveEmbeddings(java.util.Collections.singletonList(newId));
         }
@@ -187,8 +187,6 @@ public class TrainingService {
             throw new BadRequestException("Data training already exists in db");
         }
         trainingRepository.update(id, datasource, question, description, enabled, advancedApplication);
-        auditRecorder.success(AuditOperationType.CREATE_OR_UPDATE, AuditModule.DATA_TRAINING,
-                String.valueOf(id), question);
         if (trainingRecallService != null) {
             trainingRecallService.saveEmbeddings(java.util.Collections.singletonList(id));
         }
@@ -197,15 +195,16 @@ public class TrainingService {
 
     /** DELETE /system/data-training（body 为 id 数组）。 */
     @Transactional
+    @AuditLog(module = AuditModule.DATA_TRAINING, operation = AuditOperationType.DELETE)
     public void delete(List<Long> ids) {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
         trainingRepository.deleteByIds(oid, ids);
-        auditRecorder.success(AuditOperationType.DELETE, AuditModule.DATA_TRAINING, String.join(",", strIds(ids)));
     }
 
     /** GET /system/data-training/{id}/enable/{enabled}。 */
     @Transactional
+    @AuditLog(module = AuditModule.DATA_TRAINING, operation = AuditOperationType.UPDATE)
     public void enable(long id, boolean enabled) {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
@@ -213,7 +212,6 @@ public class TrainingService {
             throw new BadRequestException("Data training does not exist");
         }
         trainingRepository.updateEnabled(id, enabled);
-        auditRecorder.success(AuditOperationType.UPDATE, AuditModule.DATA_TRAINING, String.valueOf(id));
     }
 
     // ------------------------------------------------------------------
@@ -221,6 +219,7 @@ public class TrainingService {
     // ------------------------------------------------------------------
 
     /** GET /system/data-training/export（xlsx 流）。 */
+    @AuditLog(module = AuditModule.DATA_TRAINING, operation = AuditOperationType.EXPORT)
     public void export(HttpServletResponse response, String question, List<Long> dsList, List<Long> advList)
             throws IOException {
         currentUserService.requireWsAdmin();
@@ -233,7 +232,6 @@ public class TrainingService {
         columns.add(new ExcelUtils.Column("生效数据源", "datasource_name"));
         columns.add(new ExcelUtils.Column("高级应用", "advanced_application_name"));
         writeExcel(response, "data_training.xlsx", columns, results);
-        auditRecorder.success(AuditOperationType.EXPORT, AuditModule.DATA_TRAINING, null);
     }
 
     /** GET /system/data-training/template（含示例行的导入模板）。 */
@@ -259,6 +257,7 @@ public class TrainingService {
      * 失败行生成 _error.xlsx 回执（经 /system/download-fail-info 下载）。
      */
     @Transactional
+    @AuditLog(module = AuditModule.DATA_TRAINING, operation = AuditOperationType.IMPORT)
     public Map<String, Object> uploadExcel(byte[] content, String filename) throws IOException {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
@@ -341,8 +340,6 @@ public class TrainingService {
         result.put("original_count", originalCount);
         result.put("error_excel_filename", failed.isEmpty() ? null
                 : writeErrorExcel(filename, failed));
-        auditRecorder.success(AuditOperationType.IMPORT, AuditModule.DATA_TRAINING, null,
-                "success=" + successCount + ", failed=" + failed.size());
         return result;
     }
 

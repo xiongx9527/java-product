@@ -4,26 +4,22 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-import org.springframework.web.servlet.i18n.AcceptHeaderLocaleResolver;
 import org.springframework.web.servlet.i18n.LocaleChangeInterceptor;
 
-import java.util.Locale;
-
 /**
- * 多语言解析配置（A4 i18n 骨架）：
+ * 多语言解析配置（A9：对齐 SQLBot 五语言 zh-CN/zh-TW/en/ko-KR/th-TH）。
  * <ul>
- *   <li>缺省语言中文，并按请求 {@code Accept-Language} 自动切换；</li>
- *   <li>额外支持 {@code ?lang=zh_CN|en} 参数切换（LocaleChangeInterceptor）。</li>
+ *   <li>缺省语言中文（zh-CN），支持 {@code ?lang=zh-CN|zh-TW|en|ko-KR|th-TH} 参数切换；</li>
+ *   <li>无 lang 参数时按 {@code Accept-Language} 自动切换；</li>
+ *   <li>LocaleChangeInterceptor 将 lang 写入 Cookie，跨请求保持。</li>
  * </ul>
  */
 @Configuration
 public class LocaleConfig implements WebMvcConfigurer {
 
     @Bean
-    public AcceptHeaderLocaleResolver localeResolver() {
-        AcceptHeaderLocaleResolver resolver = new AcceptHeaderLocaleResolver();
-        resolver.setDefaultLocale(Locale.SIMPLIFIED_CHINESE);
-        return resolver;
+    public AskdataLocaleResolver localeResolver() {
+        return new AskdataLocaleResolver();
     }
 
     @Bean

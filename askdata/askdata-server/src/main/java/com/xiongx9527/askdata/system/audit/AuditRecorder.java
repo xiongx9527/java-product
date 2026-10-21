@@ -15,8 +15,6 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import jakarta.servlet.http.HttpServletRequest;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -24,15 +22,11 @@ import java.util.Optional;
  * 审计日志写入组件（移植 SQLBot {@code common/audit/schemas/logger_decorator.py} 的
  * LogConfig/system_log 约定）：在各业务操作点记录 sys_logs。
  *
- * <p>可复用：各模块在操作成功后调用 {@link #success}，失败时调用 {@link #failure}；
- * 写入异常不影响业务流程（仅告警日志）。当前上下文无登录用户时跳过记录。</p>
- *
- * <p>相对早期实现补齐三点：</p>
- * <ul>
- *   <li>{@code execution_time} 记录<b>真实耗时</b>（毫秒），此前硬编码 0；</li>
- *   <li>客户端 IP 走 {@link AuditClientIpResolver} 的六级链 + RFC 7239；</li>
- *   <li>资源名解析 + {@code sys_logs_resource} 关联行写入。</li>
- * </ul>
+ * <p>写操作优先经 {@link com.xiongx9527.askdata.common.audit.AuditLog} 切面
+ * （{@link #recordTimed}）自动记录，含真实 {@code execution_time}、资源名（经
+ * {@code AuditResourceNameResolver} 解析）、资源关联行（写入 {@code sys_logs_resource}）。
+ * 写入异常不影响业务流程（仅告警日志）。当前上下文无登录用户时跳过普通记录（登录审计见
+ * {@link #recordLogin}）。</p>
  */
 @Component
 public class AuditRecorder {
@@ -45,41 +39,43 @@ public class AuditRecorder {
 
     private final UserRepository userRepository;
 
+    private final AuditClientIpResolver clientIpResolver;
+
     private final AuditResourceNameResolver resourceNameResolver;
 
     public AuditRecorder(JdbcTemplate jdbc, IdGenerator idGenerator, UserRepository userRepository,
-                         AuditResourceNameResolver resourceNameResolver) {
+                         AuditClientIpResolver clientIpResolver, AuditResourceNameResolver resourceNameResolver) {
         this.jdbc = jdbc;
         this.idGenerator = idGenerator;
         this.userRepository = userRepository;
+        this.clientIpResolver = clientIpResolver;
         this.resourceNameResolver = resourceNameResolver;
     }
 
     /** 操作成功记录（对齐 SQLBot save_on_success_only 语义：仅成功时落库）。 */
     public void success(AuditOperationType type, AuditModule module, String resourceId) {
-        record(type, module, resourceId, null, null, null, "success", null, 0L);
+        record(type, module, resourceId, null, null, null, "success", null);
     }
 
     /** 操作成功记录（带 remark，对齐 SQLBot remark_expr）。 */
     public void success(AuditOperationType type, AuditModule module, String resourceId, String remark) {
-        record(type, module, resourceId, remark, null, null, "success", null, 0L);
+        record(type, module, resourceId, remark, null, null, "success", null);
     }
 
     /** 操作失败记录（带错误信息）。 */
     public void failure(AuditOperationType type, AuditModule module, String resourceId, String errorMessage) {
-        record(type, module, resourceId, null, null, null, "failed", errorMessage, 0L);
+        record(type, module, resourceId, null, null, null, "failed", errorMessage);
     }
 
     /**
-     * 完整记录入口。
+     * 带真实执行耗时的完整记录入口（由审计切面调用）。
      *
-     * @param operationDetail 操作详情（SQLBot operation_detail；可为空）
-     * @param resourceName    资源名称（对齐 SQLBot resource_name；为空时自动解析）
-     * @param executionTime   执行耗时（毫秒；真实值，非 0）
+     * @param resourceName    资源名称（为空则按 module + resourceId 查表解析）
+     * @param executionTimeMs 实际执行耗时（毫秒）
      */
-    public void record(AuditOperationType type, AuditModule module, String resourceId, String remark,
-                       String operationDetail, String resourceName, String status, String errorMessage,
-                       long executionTime) {
+    public void recordTimed(AuditOperationType type, AuditModule module, String resourceId, String remark,
+                            String operationDetail, String resourceName, String status, String errorMessage,
+                            long executionTimeMs) {
         try {
             Long uid = currentUid();
             if (uid == null) {
@@ -88,22 +84,29 @@ public class AuditRecorder {
             Optional<Map<String, Object>> user = userRepository.findById(uid);
             long oid = user.map(u -> Rows.lng(u, "oid", 0L)).orElse(0L);
             String userName = user.map(u -> Rows.str(u, "name")).orElse(null);
-            String ip = AuditClientIpResolver.resolve(currentRequest());
+            String ip = clientIp();
             String ua = userAgent();
             long logId = idGenerator.nextId();
-            String resolvedName = resourceName;
-            if ((resolvedName == null || resolvedName.isEmpty()) && resourceId != null && !resourceId.isEmpty()) {
-                resolvedName = resourceNameResolver.resolve(resourceId, module.code());
-            }
+            String resolvedName = (resourceName == null || resourceName.isEmpty())
+                    ? resourceNameResolver.resolve(module, resourceId) : resourceName;
             jdbc.update("INSERT INTO sys_logs (id, operation_type, operation_detail, user_id, user_name, "
                             + "operation_status, oid, ip_address, user_agent, execution_time, error_message, "
                             + "create_time, module, remark, resource_id, resource_name, request_method, request_path) "
                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     logId, type.code(), operationDetail, uid, userName, status, oid, ip, ua,
-                    executionTime, errorMessage, System.currentTimeMillis(), module.code(), remark,
+                    executionTimeMs, errorMessage, System.currentTimeMillis(), module.code(), remark,
                     resourceId == null ? null : String.valueOf(resourceId), resolvedName,
                     requestMethod(), requestPath());
-            linkResources(logId, resourceId, module, resolvedName);
+            if (resourceId != null && !resourceId.isEmpty()) {
+                try {
+                    jdbc.update("INSERT INTO sys_logs_resource (id, log_id, resource_id, resource_name, module) "
+                                    + "VALUES (?, ?, ?, ?, ?)",
+                            idGenerator.nextId(), logId, String.valueOf(resourceId), resolvedName, module.code());
+                } catch (Exception e) {
+                    // 资源关联行写入失败不影响主审计记录
+                    log.warn("audit resource row failed: {}", e.getMessage());
+                }
+            }
         } catch (Exception e) {
             // 审计写入不得影响业务流程（对齐 SQLBot SystemLogger.create_log 的容错）
             log.warn("audit record failed: {}", e.getMessage());
@@ -111,30 +114,32 @@ public class AuditRecorder {
     }
 
     /**
-     * 写入 {@code sys_logs_resource} 关联行（对齐 SQLBot 的多对多资源关联）。
-     *
-     * <p>表不存在（老库未升级）时静默忽略——审计主记录已落库，关联行缺失不应报错。</p>
+     * 登录审计（成功/失败均记录，对齐 SQLBot 对登录的 @system_log）：登录时无已登录用户，
+     * 故以尝试登录的账号名记录 user_name，user_id 为空。
      */
-    private void linkResources(long logId, String resourceId, AuditModule module, String resourceName) {
-        if (resourceId == null || resourceId.isEmpty()) {
-            return;
-        }
+    public void recordLogin(String account, AuditOperationType type, String status, String errorMessage,
+                            long executionTimeMs) {
         try {
-            List<String> ids = new ArrayList<>();
-            ids.add(resourceId);
-            List<Map<String, Object>> resources = resourceNameResolver.resolveAll(ids, module.code());
-            for (Map<String, Object> resource : resources) {
-                jdbc.update("INSERT INTO sys_logs_resource (id, resource_id, module, resource_name, log_id) "
-                                + "VALUES (?, ?, ?, ?, ?)",
-                        idGenerator.nextId(), resource.get("resource_id"), resource.get("module"),
-                        resourceName != null ? resourceName : resource.get("resource_name"), logId);
-            }
+            long logId = idGenerator.nextId();
+            jdbc.update("INSERT INTO sys_logs (id, operation_type, user_id, user_name, operation_status, oid, "
+                            + "ip_address, user_agent, execution_time, error_message, create_time, module, "
+                            + "resource_id, resource_name, request_method, request_path) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    logId, type.code(), null, account, status, 0L, clientIp(), userAgent(),
+                    executionTimeMs, errorMessage, System.currentTimeMillis(), AuditModule.USER.code(),
+                    null, null, requestMethod(), requestPath());
         } catch (Exception e) {
-            log.debug("写入审计资源关联失败（忽略）: {}", e.getMessage());
+            log.warn("audit login record failed: {}", e.getMessage());
         }
     }
 
-    private Long currentUid() {
+    /** 完整记录入口（保留给历史手动调用，execution_time 恒为 0）。 */
+    public void record(AuditOperationType type, AuditModule module, String resourceId, String remark,
+                       String operationDetail, String resourceName, String status, String errorMessage) {
+        recordTimed(type, module, resourceId, remark, operationDetail, resourceName, status, errorMessage, 0L);
+    }
+
+    protected Long currentUid() {
         try {
             return StpUtil.getLoginIdAsLong();
         } catch (Exception e) {
@@ -147,6 +152,10 @@ public class AuditRecorder {
             return ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest();
         }
         return null;
+    }
+
+    private String clientIp() {
+        return clientIpResolver.resolve(currentRequest());
     }
 
     private String userAgent() {

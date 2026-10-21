@@ -1,6 +1,7 @@
 package com.xiongx9527.askdata.prompt;
 
 import com.xiongx9527.askdata.common.audit.AuditModule;
+import com.xiongx9527.askdata.common.audit.AuditLog;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.common.datasource.DatasourceNameLookup;
 import com.xiongx9527.askdata.common.util.ExcelUtils;
@@ -142,6 +143,7 @@ public class CustomPromptService {
 
     /** PUT /system/custom_prompt（create_or_update，body 带 id 为更新）。 */
     @Transactional
+    @AuditLog(module = AuditModule.PROMPT_WORDS, operation = AuditOperationType.CREATE_OR_UPDATE)
     public long createOrUpdate(Map<String, Object> body) {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
@@ -164,8 +166,6 @@ public class CustomPromptService {
             }
             customPromptRepository.update(id, name, prompt, specificDs,
                     customPromptRepository.datasourceIdsJson(datasourceIds), advancedApplication);
-            auditRecorder.success(AuditOperationType.CREATE_OR_UPDATE, AuditModule.PROMPT_WORDS,
-                    String.valueOf(id), name);
             return id;
         }
         if (customPromptRepository.nameExists(oid, type, name, null)) {
@@ -174,13 +174,12 @@ public class CustomPromptService {
         long newId = customPromptRepository.insert(oid, type, name, prompt, specificDs,
                 customPromptRepository.datasourceIdsJson(datasourceIds), advancedApplication,
                 System.currentTimeMillis());
-        auditRecorder.success(AuditOperationType.CREATE_OR_UPDATE, AuditModule.PROMPT_WORDS,
-                String.valueOf(newId), name);
         return newId;
     }
 
     /** DELETE /system/custom_prompt（body 为 id 数组）。 */
     @Transactional
+    @AuditLog(module = AuditModule.PROMPT_WORDS, operation = AuditOperationType.DELETE)
     public void delete(List<Long> ids) {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
@@ -191,7 +190,6 @@ public class CustomPromptService {
                 strIds.add(String.valueOf(id));
             }
         }
-        auditRecorder.success(AuditOperationType.DELETE, AuditModule.PROMPT_WORDS, String.join(",", strIds));
     }
 
     // ------------------------------------------------------------------
@@ -199,6 +197,7 @@ public class CustomPromptService {
     // ------------------------------------------------------------------
 
     /** POST /system/custom_prompt/{type}/export（xlsx 流；body 为筛选条件）。 */
+    @AuditLog(module = AuditModule.PROMPT_WORDS, operation = AuditOperationType.EXPORT)
     public void export(HttpServletResponse response, String type, Map<String, Object> filter) throws IOException {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
@@ -221,7 +220,6 @@ public class CustomPromptService {
             out.write(bytes);
             out.flush();
         }
-        auditRecorder.success(AuditOperationType.EXPORT, AuditModule.PROMPT_WORDS, null);
     }
 
     /** GET /system/custom_prompt/template（含示例行的导入模板）。 */
@@ -278,6 +276,7 @@ public class CustomPromptService {
      * 四列：提示词名称/提示词内容/生效数据源名称/高级应用名称。
      */
     @Transactional
+    @AuditLog(module = AuditModule.PROMPT_WORDS, operation = AuditOperationType.IMPORT)
     public Map<String, Object> uploadExcel(String type, byte[] content, String filename) throws IOException {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
@@ -347,8 +346,6 @@ public class CustomPromptService {
         result.put("duplicate_count", 0);
         result.put("original_count", originalCount);
         result.put("error_excel_filename", null);
-        auditRecorder.success(AuditOperationType.IMPORT, AuditModule.PROMPT_WORDS, null,
-                "success=" + successCount + ", failed=" + failed.size());
         return result;
     }
 
