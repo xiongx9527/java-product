@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.audit.AuditModule;
+import com.xiongx9527.askdata.common.audit.AuditLog;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.BadRequestException;
@@ -193,6 +194,7 @@ public class DashboardService {
 
     /** POST /dashboard/create_resource（新建目录，对齐 SQLBot create_resource）。 */
     @Transactional
+    @AuditLog(module = AuditModule.DASHBOARD, operation = AuditOperationType.CREATE)
     public Map<String, Object> createResource(Map<String, Object> body) {
         Map<String, Object> user = currentUserService.currentUser();
         String id = UUID.randomUUID().toString().replace("-", "");
@@ -201,12 +203,12 @@ public class DashboardService {
                 String.valueOf(currentUserService.oidOf(user)), null,
                 intOf(body.get("level"), 0), nodeTypeOf(body, "folder"), typeOf(body),
                 null, null, null, 1, String.valueOf(Rows.lng(user, "id", 0L)), now);
-        auditRecorder.success(AuditOperationType.CREATE, AuditModule.DASHBOARD, id);
         return baseInfo(id, body, user);
     }
 
     /** POST /dashboard/update_resource（重命名，对齐 SQLBot update_resource）。 */
     @Transactional
+    @AuditLog(module = AuditModule.DASHBOARD, operation = AuditOperationType.UPDATE)
     public Map<String, Object> updateResource(Map<String, Object> body) {
         Map<String, Object> user = currentUserService.currentUser();
         String id = Rows.str(body, "id");
@@ -214,12 +216,12 @@ public class DashboardService {
         long now = System.currentTimeMillis() / 1000;
         dashboardRepository.updateName(id, requiredText(body, "name"),
                 String.valueOf(Rows.lng(user, "id", 0L)), now);
-        auditRecorder.success(AuditOperationType.UPDATE, AuditModule.DASHBOARD, id);
         return baseInfo(id, body, user);
     }
 
     /** POST /dashboard/create_canvas（新建画布，对齐 SQLBot create_canvas）。 */
     @Transactional
+    @AuditLog(module = AuditModule.DASHBOARD, operation = AuditOperationType.CREATE)
     public Map<String, Object> createCanvas(Map<String, Object> body) {
         Map<String, Object> user = currentUserService.currentUser();
         String id = UUID.randomUUID().toString().replace("-", "");
@@ -229,12 +231,12 @@ public class DashboardService {
                 intOf(body.get("level"), 1), nodeTypeOf(body, "leaf"), typeOf(body),
                 Rows.str(body, "canvas_style_data"), Rows.str(body, "component_data"),
                 Rows.str(body, "canvas_view_info"), 1, String.valueOf(Rows.lng(user, "id", 0L)), now);
-        auditRecorder.success(AuditOperationType.CREATE, AuditModule.DASHBOARD, id);
         return baseInfo(id, body, user);
     }
 
     /** POST /dashboard/update_canvas（保存画布，对齐 SQLBot update_canvas）。 */
     @Transactional
+    @AuditLog(module = AuditModule.DASHBOARD, operation = AuditOperationType.UPDATE)
     public Map<String, Object> updateCanvas(Map<String, Object> body) {
         Map<String, Object> user = currentUserService.currentUser();
         String id = Rows.str(body, "id");
@@ -243,7 +245,6 @@ public class DashboardService {
         dashboardRepository.updateCanvas(id, requiredText(body, "name"), Rows.str(body, "component_data"),
                 Rows.str(body, "canvas_style_data"), Rows.str(body, "canvas_view_info"),
                 String.valueOf(Rows.lng(user, "id", 0L)), now);
-        auditRecorder.success(AuditOperationType.UPDATE, AuditModule.DASHBOARD, id);
         return baseInfo(id, body, user);
     }
 
@@ -272,6 +273,7 @@ public class DashboardService {
 
     /** DELETE /dashboard/delete_resource/{resource_id}/{name}。 */
     @Transactional
+    @AuditLog(module = AuditModule.DASHBOARD, operation = AuditOperationType.DELETE)
     public boolean deleteResource(String resourceId) {
         Map<String, Object> user = currentUserService.currentUser();
         Map<String, Object> row = dashboardRepository.findById(resourceId)
@@ -280,13 +282,12 @@ public class DashboardService {
             throw new BadRequestException(messageResolver.get("dashboard.resource.not.owned", resourceId));
         }
         dashboardRepository.deleteById(resourceId);
-        auditRecorder.success(AuditOperationType.DELETE, AuditModule.DASHBOARD, resourceId,
-                Rows.str(row, "name"));
         return true;
     }
 
     /** DELETE /dashboard/move_resource/{id}（移动到目标父节点，body 带 pid）。 */
     @Transactional
+    @AuditLog(module = AuditModule.DASHBOARD, operation = AuditOperationType.UPDATE)
     public void moveResource(String id, Map<String, Object> body) {
         Map<String, Object> user = currentUserService.currentUser();
         requireOwned(id, user);
@@ -296,7 +297,6 @@ public class DashboardService {
         }
         dashboardRepository.updatePid(id, pid, String.valueOf(Rows.lng(user, "id", 0L)),
                 System.currentTimeMillis() / 1000);
-        auditRecorder.success(AuditOperationType.UPDATE, AuditModule.DASHBOARD, id);
     }
 
     // ------------------------------------------------------------------

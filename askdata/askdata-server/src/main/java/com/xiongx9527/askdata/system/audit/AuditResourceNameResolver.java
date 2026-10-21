@@ -1,0 +1,75 @@
+package com.xiongx9527.askdata.system.audit;
+
+import com.xiongx9527.askdata.common.audit.AuditModule;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 审计资源名解析（对齐 SQLBot {@code common/audit/schemas/log_utils.py:build_resource_union_query}
+ * 的跨表资源名解析）。
+ *
+ * <p>给定 module + resourceId，按模块映射到对应业务表查询展示名（名称列）。任一映射缺失或查询失败，
+ * 均安全返回 {@code null}（不抛异常、不影响审计写入）。</p>
+ */
+@Component
+public class AuditResourceNameResolver {
+
+    /** module -> [table, idColumn, nameColumn] */
+    private static final Map<AuditModule, String[]> TABLE_MAP = Map.ofEntries(
+            Map.entry(AuditModule.DASHBOARD, new String[]{"core_dashboard", "id", "name"}),
+            Map.entry(AuditModule.DATASOURCE, new String[]{"core_datasource", "id", "name"}),
+            Map.entry(AuditModule.PERMISSION, new String[]{"ds_permission", "id", "name"}),
+            Map.entry(AuditModule.RULES, new String[]{"ds_rules", "id", "name"}),
+            Map.entry(AuditModule.TERMINOLOGY, new String[]{"terminology", "id", "word"}),
+            Map.entry(AuditModule.DATA_TRAINING, new String[]{"data_training", "id", "question"}),
+            Map.entry(AuditModule.PROMPT_WORDS, new String[]{"custom_prompt", "id", "name"}),
+            Map.entry(AuditModule.APPLICATION, new String[]{"sys_assistant", "id", "name"}),
+            Map.entry(AuditModule.USER, new String[]{"sys_user", "id", "name"}),
+            Map.entry(AuditModule.WORKSPACE, new String[]{"sys_workspace", "id", "name"}),
+            Map.entry(AuditModule.AI_MODEL, new String[]{"ai_model", "id", "name"}),
+            Map.entry(AuditModule.API_KEY, new String[]{"sys_apikey", "id", "name"}),
+            Map.entry(AuditModule.MEMBER, new String[]{"sys_user", "id", "name"})
+    );
+
+    private final JdbcTemplate jdbc;
+
+    public AuditResourceNameResolver(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
+
+    public String resolve(AuditModule module, String resourceId) {
+        if (resourceId == null || resourceId.isEmpty()) {
+            return null;
+        }
+        String[] mapping = TABLE_MAP.get(module);
+        if (mapping == null) {
+            return null;
+        }
+        try {
+            Object idParam = toIdParam(resourceId);
+            List<String> rows = jdbc.query(
+                    "SELECT " + mapping[2] + " FROM " + mapping[0] + " WHERE " + mapping[1] + " = ?",
+                    (ps) -> ps.setObject(1, idParam),
+                    (rs, i) -> rs.getString(1));
+            if (rows.isEmpty()) {
+                return null;
+            }
+            String name = rows.get(0);
+            return name == null ? null : name;
+        } catch (Exception e) {
+            // 资源名解析失败不影响审计落地
+            return null;
+        }
+    }
+
+    private Object toIdParam(String resourceId) {
+        try {
+            return Long.parseLong(resourceId.trim());
+        } catch (NumberFormatException e) {
+            return resourceId;
+        }
+    }
+}

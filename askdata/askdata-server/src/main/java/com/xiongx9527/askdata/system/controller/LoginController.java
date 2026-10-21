@@ -4,7 +4,9 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.common.web.Result;
+import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
+import com.xiongx9527.askdata.system.audit.AuditRecorder;
 import com.xiongx9527.askdata.system.repository.UserRepository;
 import com.xiongx9527.askdata.system.web.TokenVO;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,63 +35,84 @@ public class LoginController {
 
     private final MessageResolver messages;
 
-    public LoginController(UserRepository userRepository, MessageResolver messages) {
+    private final AuditRecorder auditRecorder;
+
+    public LoginController(UserRepository userRepository, MessageResolver messages, AuditRecorder auditRecorder) {
         this.userRepository = userRepository;
         this.messages = messages;
+        this.auditRecorder = auditRecorder;
     }
 
     @PostMapping({"/login/access-token"})
     public Result<TokenVO> accessToken(@RequestParam(required = false) String username,
                                        @RequestParam(required = false) String password) {
+        long start = System.currentTimeMillis();
         String account = CryptoUtil.decryptSqlbot(username);
         String plainPwd = CryptoUtil.decryptSqlbot(password);
-        Optional<Map<String, Object>> userRow = account == null
-                ? Optional.empty()
-                : userRepository.findByAccount(account);
-        if (!userRow.isPresent()
-                || !CryptoUtil.md5Hex(plainPwd == null ? "" : plainPwd).equals(String.valueOf(userRow.get().get("password")))) {
-            throw new BadRequestException(messages.get("login.account.pwd.error"));
-        }
+        try {
+            Optional<Map<String, Object>> userRow = account == null
+                    ? Optional.empty()
+                    : userRepository.findByAccount(account);
+            if (!userRow.isPresent()
+                    || !CryptoUtil.md5Hex(plainPwd == null ? "" : plainPwd).equals(String.valueOf(userRow.get().get("password")))) {
+                throw new BadRequestException(messages.get("login.account.pwd.error"));
+            }
 
-        Map<String, Object> user = userRow.get();
-        long oid = toLong(user.get("oid"));
-        long status = toLong(user.get("status"));
-        long origin = toLong(user.get("origin"));
-        if (oid == 0) {
-            throw new BadRequestException(messages.get("login.no.workspace"));
-        }
-        if (status != 1) {
-            throw new BadRequestException(messages.get("login.user.disabled"));
-        }
-        if (origin != 0) {
-            throw new BadRequestException(messages.get("login.third.party"));
-        }
+            Map<String, Object> user = userRow.get();
+            long oid = toLong(user.get("oid"));
+            long status = toLong(user.get("status"));
+            long origin = toLong(user.get("origin"));
+            if (oid == 0) {
+                throw new BadRequestException(messages.get("login.no.workspace"));
+            }
+            if (status != 1) {
+                throw new BadRequestException(messages.get("login.user.disabled"));
+            }
+            if (origin != 0) {
+                throw new BadRequestException(messages.get("login.third.party"));
+            }
 
-        StpUtil.login(toLong(user.get("id")));
-        return Result.ok(new TokenVO(StpUtil.getTokenValue()));
+            StpUtil.login(toLong(user.get("id")));
+            auditRecorder.recordLogin(account, AuditOperationType.LOGIN, "success", null,
+                    System.currentTimeMillis() - start);
+            return Result.ok(new TokenVO(StpUtil.getTokenValue()));
+        } catch (Throwable t) {
+            auditRecorder.recordLogin(account, AuditOperationType.LOGIN, "failed", t.getMessage(),
+                    System.currentTimeMillis() - start);
+            throw t;
+        }
     }
 
     @PostMapping({"/login/change-pwd"})
     public Result<Map<String, Object>> changePwd(@RequestBody Map<String, String> editor) {
+        long start = System.currentTimeMillis();
         String account = CryptoUtil.decryptSqlbot(editor.get("account"));
         String pwd = CryptoUtil.decryptSqlbot(editor.get("pwd"));
         String newPwd = CryptoUtil.decryptSqlbot(editor.get("new_pwd"));
-        Optional<Map<String, Object>> userRow = account == null
-                ? Optional.empty()
-                : userRepository.findByAccount(account);
-        if (!userRow.isPresent()
-                || !CryptoUtil.md5Hex(pwd == null ? "" : pwd).equals(String.valueOf(userRow.get().get("password")))) {
-            throw new BadRequestException(messages.get("login.account.pwd.error"));
+        try {
+            Optional<Map<String, Object>> userRow = account == null
+                    ? Optional.empty()
+                    : userRepository.findByAccount(account);
+            if (!userRow.isPresent()
+                    || !CryptoUtil.md5Hex(pwd == null ? "" : pwd).equals(String.valueOf(userRow.get().get("password")))) {
+                throw new BadRequestException(messages.get("login.account.pwd.error"));
+            }
+            long origin = toLong(userRow.get().get("origin"));
+            if (origin != 0) {
+                throw new BadRequestException(messages.get("login.third.party"));
+            }
+            if (newPwd == null || !isValidPwdFormat(newPwd)) {
+                throw new BadRequestException(messages.get("login.pwd.format"));
+            }
+            userRepository.updatePassword(toLong(userRow.get().get("id")), CryptoUtil.md5Hex(newPwd));
+            auditRecorder.recordLogin(account, AuditOperationType.UPDATE_PWD, "success", null,
+                    System.currentTimeMillis() - start);
+            return Result.ok(null);
+        } catch (Throwable t) {
+            auditRecorder.recordLogin(account, AuditOperationType.UPDATE_PWD, "failed", t.getMessage(),
+                    System.currentTimeMillis() - start);
+            throw t;
         }
-        long origin = toLong(userRow.get().get("origin"));
-        if (origin != 0) {
-            throw new BadRequestException(messages.get("login.third.party"));
-        }
-        if (newPwd == null || !isValidPwdFormat(newPwd)) {
-            throw new BadRequestException(messages.get("login.pwd.format"));
-        }
-        userRepository.updatePassword(toLong(userRow.get().get("id")), CryptoUtil.md5Hex(newPwd));
-        return Result.ok(null);
     }
 
     @PostMapping({"/login/logout"})

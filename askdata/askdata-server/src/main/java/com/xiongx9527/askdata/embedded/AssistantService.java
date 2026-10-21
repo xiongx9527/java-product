@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.audit.AuditModule;
+import com.xiongx9527.askdata.common.audit.AuditLog;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.BadRequestException;
@@ -155,6 +156,7 @@ public class AssistantService {
 
     /** POST /system/assistant（创建；生成 app_id/app_secret 嵌入密钥）。 */
     @Transactional
+    @AuditLog(module = AuditModule.APPLICATION, operation = AuditOperationType.CREATE)
     public Map<String, Object> create(Map<String, Object> body) {
         currentUserService.requireWsAdmin();
         Map<String, Object> user = currentUserService.currentUser();
@@ -167,13 +169,13 @@ public class AssistantService {
                 Rows.str(body, "configuration"), newAppId(), newAppSecret(), createOid,
                 Rows.bool(body, "enable_custom_model", false), Rows.str(body, "custom_model"),
                 System.currentTimeMillis() / 1000);
-        auditRecorder.success(AuditOperationType.CREATE, AuditModule.APPLICATION, String.valueOf(id), name);
         return view(assistantRepository.findById(id)
                 .orElseThrow(() -> new BadRequestException(messageResolver.get("assistant.not.found.simple"))));
     }
 
     /** PUT /system/assistant（更新；非 admin 不允许跨工作空间移动）。 */
     @Transactional
+    @AuditLog(module = AuditModule.APPLICATION, operation = AuditOperationType.UPDATE)
     public void update(Map<String, Object> body) {
         currentUserService.requireWsAdmin();
         Map<String, Object> user = currentUserService.currentUser();
@@ -188,11 +190,11 @@ public class AssistantService {
         assistantRepository.update(id, requiredText(body, "name"), intOf(body.get("type"), 0),
                 requiredText(body, "domain"), Rows.str(body, "description"), Rows.str(body, "configuration"),
                 oid, Rows.bool(body, "enable_custom_model", false), Rows.str(body, "custom_model"));
-        auditRecorder.success(AuditOperationType.UPDATE, AuditModule.APPLICATION, String.valueOf(id));
     }
 
     /** DELETE /system/assistant/{id}。 */
     @Transactional
+    @AuditLog(module = AuditModule.APPLICATION, operation = AuditOperationType.DELETE)
     public void delete(long id) {
         currentUserService.requireWsAdmin();
         Map<String, Object> user = currentUserService.currentUser();
@@ -203,7 +205,6 @@ public class AssistantService {
             throw new BadRequestException(messageResolver.get("assistant.not.found", id));
         }
         assistantRepository.delete(id);
-        auditRecorder.success(AuditOperationType.DELETE, AuditModule.APPLICATION, String.valueOf(id));
     }
 
     /**
@@ -211,6 +212,7 @@ public class AssistantService {
      * multipart 表单 data（JSON）+ files（logo/float_icon，文件名以 {@code ,<flag>} 结尾）。
      */
     @Transactional
+    @AuditLog(module = AuditModule.APPLICATION, operation = AuditOperationType.UPDATE)
     public void updateUi(String dataJson, List<MultipartFile> files) throws Exception {
         currentUserService.requireWsAdmin();
         Map<String, Object> uiSchema = objectMapper.readValue(dataJson,
@@ -239,7 +241,6 @@ public class AssistantService {
             config.put(key, entry.getValue());
         }
         assistantRepository.updateConfiguration(id, objectMapper.writeValueAsString(config));
-        auditRecorder.success(AuditOperationType.UPDATE, AuditModule.APPLICATION, String.valueOf(id));
     }
 
     // ------------------------------------------------------------------
@@ -269,6 +270,7 @@ public class AssistantService {
 
     /** POST /system/embedded（创建页面嵌入应用）。 */
     @Transactional
+    @AuditLog(module = AuditModule.APPLICATION, operation = AuditOperationType.CREATE)
     public Map<String, Object> createEmbedded(Map<String, Object> body) {
         currentUserService.requireWsAdmin();
         Map<String, Object> user = currentUserService.currentUser();
@@ -278,13 +280,13 @@ public class AssistantService {
                 Rows.str(body, "configuration"), newAppId(), newAppSecret(),
                 currentUserService.oidOf(user), Rows.bool(body, "enable_custom_model", false),
                 Rows.str(body, "custom_model"), System.currentTimeMillis() / 1000);
-        auditRecorder.success(AuditOperationType.CREATE, AuditModule.APPLICATION, String.valueOf(id), name);
         return view(assistantRepository.findById(id)
                 .orElseThrow(() -> new BadRequestException(messageResolver.get("assistant.embedded.not.found.simple"))));
     }
 
     /** PUT /system/embedded（更新页面嵌入应用）。 */
     @Transactional
+    @AuditLog(module = AuditModule.APPLICATION, operation = AuditOperationType.UPDATE)
     public void updateEmbedded(Map<String, Object> body) {
         currentUserService.requireWsAdmin();
         Map<String, Object> user = currentUserService.currentUser();
@@ -299,11 +301,11 @@ public class AssistantService {
         assistantRepository.update(id, requiredText(body, "name"), intOf(body.get("type"), 4),
                 requiredText(body, "domain"), Rows.str(body, "description"), Rows.str(body, "configuration"),
                 oid, Rows.bool(body, "enable_custom_model", false), Rows.str(body, "custom_model"));
-        auditRecorder.success(AuditOperationType.UPDATE, AuditModule.APPLICATION, String.valueOf(id));
     }
 
     /** DELETE /system/embedded（body 为 id 数组）。 */
     @Transactional
+    @AuditLog(module = AuditModule.APPLICATION, operation = AuditOperationType.DELETE)
     public void deleteEmbedded(List<Long> ids) {
         currentUserService.requireWsAdmin();
         assistantRepository.deleteByIds(ids);
@@ -313,18 +315,17 @@ public class AssistantService {
                 strIds.add(String.valueOf(id));
             }
         }
-        auditRecorder.success(AuditOperationType.DELETE, AuditModule.APPLICATION, String.join(",", strIds));
     }
 
     /** PATCH /system/embedded/secret/{id}（重置 app_secret）。 */
     @Transactional
+    @AuditLog(module = AuditModule.APPLICATION, operation = AuditOperationType.UPDATE)
     public String resetSecret(long id) {
         currentUserService.requireWsAdmin();
         assistantRepository.findById(id)
                 .orElseThrow(() -> new BadRequestException(messageResolver.get("assistant.embedded.not.found", id)));
         String secret = newAppSecret();
         assistantRepository.updateAppSecret(id, secret);
-        auditRecorder.success(AuditOperationType.UPDATE, AuditModule.APPLICATION, String.valueOf(id));
         return secret;
     }
 

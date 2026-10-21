@@ -1,6 +1,7 @@
 package com.xiongx9527.askdata.terminology;
 
 import com.xiongx9527.askdata.common.audit.AuditModule;
+import com.xiongx9527.askdata.common.audit.AuditLog;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.common.datasource.DatasourceNameLookup;
 import com.xiongx9527.askdata.common.util.ExcelUtils;
@@ -186,7 +187,6 @@ public class TerminologyService {
         for (String other : otherWords) {
             terminologyRepository.insertChild(oid, id, other, specificDs, dsJson, enabled, advancedApplication, now);
         }
-        auditRecorder.success(AuditOperationType.CREATE_OR_UPDATE, AuditModule.TERMINOLOGY, String.valueOf(id), word);
         return id;
     }
 
@@ -208,21 +208,21 @@ public class TerminologyService {
         for (String other : otherWords) {
             terminologyRepository.insertChild(oid, id, other, specificDs, dsJson, enabled, advancedApplication, now);
         }
-        auditRecorder.success(AuditOperationType.CREATE_OR_UPDATE, AuditModule.TERMINOLOGY, String.valueOf(id), word);
         return id;
     }
 
     /** DELETE /system/terminology（body 为 id 数组，级联删除子记录）。 */
     @Transactional
+    @AuditLog(module = AuditModule.TERMINOLOGY, operation = AuditOperationType.DELETE)
     public void delete(List<Long> ids) {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
         terminologyRepository.deleteByIds(oid, ids);
-        auditRecorder.success(AuditOperationType.DELETE, AuditModule.TERMINOLOGY, String.join(",", strIds(ids)));
     }
 
     /** GET /system/terminology/{id}/enable/{enabled}（父与子记录同步启停）。 */
     @Transactional
+    @AuditLog(module = AuditModule.TERMINOLOGY, operation = AuditOperationType.UPDATE)
     public void enable(long id, boolean enabled) {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
@@ -230,7 +230,6 @@ public class TerminologyService {
             throw new BadRequestException("Terminology does not exist");
         }
         terminologyRepository.updateEnabled(id, enabled);
-        auditRecorder.success(AuditOperationType.UPDATE, AuditModule.TERMINOLOGY, String.valueOf(id));
     }
 
     // ------------------------------------------------------------------
@@ -238,6 +237,7 @@ public class TerminologyService {
     // ------------------------------------------------------------------
 
     /** GET /system/terminology/export（xlsx 流）。 */
+    @AuditLog(module = AuditModule.TERMINOLOGY, operation = AuditOperationType.EXPORT)
     public void export(HttpServletResponse response, String word, List<Long> dsList, List<Long> advList)
             throws IOException {
         currentUserService.requireWsAdmin();
@@ -252,7 +252,6 @@ public class TerminologyService {
         columns.add(new ExcelUtils.Column("全部数据源", "all_data_sources"));
         columns.add(new ExcelUtils.Column("高级应用", "advanced_application_name"));
         writeExcel(response, "terminology.xlsx", columns, results);
-        auditRecorder.success(AuditOperationType.EXPORT, AuditModule.TERMINOLOGY, null);
     }
 
     /** GET /system/terminology/template（含示例行的导入模板）。 */
@@ -289,6 +288,7 @@ public class TerminologyService {
      * 六列：术语名称/同义词/术语描述/生效数据源/全部数据源(Y|N)/高级应用名称。
      */
     @Transactional
+    @AuditLog(module = AuditModule.TERMINOLOGY, operation = AuditOperationType.IMPORT)
     public Map<String, Object> uploadExcel(byte[] content, String filename) throws IOException {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
@@ -380,8 +380,6 @@ public class TerminologyService {
         result.put("duplicate_count", duplicateCount);
         result.put("original_count", originalCount);
         result.put("error_excel_filename", failed.isEmpty() ? null : writeErrorExcel(filename, failed));
-        auditRecorder.success(AuditOperationType.IMPORT, AuditModule.TERMINOLOGY, null,
-                "success=" + successCount + ", failed=" + failed.size());
         return result;
     }
 
