@@ -155,9 +155,15 @@ public class JdbcEngine {
      */
     public String buildJdbcUrl(DatasourceType type, DatasourceConf conf) {
         String url;
-        // 非法 JDBC 参数拦截（对齐 SQLBot get_uri_from_config → checkParams）
+        // 非法 JDBC 参数拦截（对齐 SQLBot get_uri_from_config → checkParams）；
+        // MySQL 系额外封禁现代 Connector/J 同义参数 allowLoadLocalInfile（A5：非法 JDBC 连接参数拦截）
+        List<String> blocked = new ArrayList<>(type.illegalParams());
+        if (type == DatasourceType.MYSQL || type == DatasourceType.DORIS
+                || type == DatasourceType.STARROCKS) {
+            blocked.add("allowLoadLocalInfile");
+        }
         try {
-            DatasourceType.checkParams(conf.getExtraJdbc(), type.illegalParams());
+            DatasourceType.checkParams(conf.getExtraJdbc(), blocked);
         } catch (IllegalArgumentException e) {
             throw new DatasourceException(e.getMessage(), e);
         }

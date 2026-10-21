@@ -5,10 +5,12 @@ import net.sf.jsqlparser.JSQLParserException;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.statement.Statement;
 import net.sf.jsqlparser.statement.select.Select;
+import net.sf.jsqlparser.statement.select.SetOperationList;
 import net.sf.jsqlparser.statement.select.WithItem;
 
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -18,8 +20,9 @@ import java.util.regex.Pattern;
  *
  * <p>与 SQLBot 一致采用<b>保守拒绝</b>：</p>
  * <ul>
- *   <li>仅允许 {@code SELECT} / {@code WITH}（CTE）开头；</li>
+ *   <li>仅允许 {@code SELECT} / {@code WITH}（CTE）/ 只读 {@code UNION} 结构；</li>
  *   <li>解析失败即拒绝（{@code Parse SQL Error}），避免正则近似绕过；</li>
+ *   <li>多语句（含隐藏写操作，如 {@code SELECT 1; DROP TABLE t}）一律拒绝；</li>
  *   <li>CTE 内部的写操作（如 {@code WITH x AS (DELETE FROM t RETURNING *) SELECT * FROM x}）被拒绝——
  *       通过 AST 递归遍历 {@code WITH} 子查询体实现，正则首关键字近似无法覆盖此类形态；</li>
  *   <li>拒绝危险模式（{@code INTO OUTFILE}/{@code INTO DUMPFILE}/{@code EXEC(}/{@code COPY ... TO PROGRAM}）；</li>
@@ -38,9 +41,10 @@ public final class SqlSafety {
     private static final Set<String> COMMON_DANGEROUS_FUNCTIONS =
             new HashSet<>(Arrays.asList("version", "current_user", "user", "database"));
 
-    // 函数调用：标识符后跟 '('（用 Pattern.quote 避免源码中出现字面量反斜杠）
+    // 函数调用：标识符（含下划线，对齐 SQLBot 函数名 current_user/load_file 等）后跟 '('。
+    // 用 (?i) 忽略大小写 + 负向回顾断言保证函数名不被嵌入到更长标识符中；用 Pattern.quote 避免源码字面量反斜杠。
     private static final Pattern FUNCTION_CALL =
-            Pattern.compile("(?i)([A-Za-z_][A-Za-z0-9]*)[ ]*" + Pattern.quote("("));
+            Pattern.compile("(?i)(?<![A-Za-z0-9_])" + "([A-Za-z_][A-Za-z0-9_]*)[ ]*" + Pattern.quote("("));
 
     private SqlSafety() {
     }
@@ -65,14 +69,19 @@ public final class SqlSafety {
                         "SQL can only contain read operations: SQL contains dangerous pattern");
             }
         }
-        Statement statement;
+        List<Statement> statements;
         try {
-            statement = CCJSqlParserUtil.parse(normalized);
+            statements = CCJSqlParserUtil.parseStatements(normalized).getStatements();
         } catch (JSQLParserException e) {
             // 保守拒绝：解析失败即视为不安全
             throw new DatasourceException("SQL can only contain read operations: Parse SQL Error");
         }
-        if (containsWriteOperation(statement)) {
+        // 多语句（含隐藏写操作）保守拒绝
+        if (statements.size() != 1) {
+            throw new DatasourceException(
+                    "SQL can only contain read operations: Only a single read statement is allowed");
+        }
+        if (containsWriteOperation(statements.get(0))) {
             throw new DatasourceException(
                     "SQL can only contain read operations: Write operation is not allowed");
         }
@@ -87,26 +96,46 @@ public final class SqlSafety {
         }
     }
 
-    /** 递归判定语句是否包含写操作（含 CTE 子查询体）。仅 SELECT / WITH(CTE) / UNION 只读结构放行。 */
+    /**
+     * 递归判定语句是否包含写操作（含 CTE 子查询体）。仅 SELECT / WITH(CTE) / UNION 只读结构放行。
+     */
     private static boolean containsWriteOperation(Statement statement) {
         if (statement instanceof Select) {
             Select select = (Select) statement;
             if (select.getWithItemsList() != null) {
                 for (WithItem<?> withItem : select.getWithItemsList()) {
-                    try {
-                        if (containsWriteOperation(withItem.getSelect())) {
-                            return true;
-                        }
-                    } catch (ClassCastException e) {
-                        // CTE 体内是写操作语句（DELETE/INSERT/...），getSelect() 转型失败 → 直接拒绝
+                    if (cteBodyIsWrite(withItem)) {
                         return true;
                     }
                 }
             }
             return false;
         }
-        // 非 SELECT 语句（INSERT/UPDATE/DELETE/DROP/EXPLAIN/SHOW/...）一律按写操作/不允许处理
+        if (statement instanceof SetOperationList) {
+            SetOperationList setOp = (SetOperationList) statement;
+            if (setOp.getWithItemsList() != null) {
+                for (WithItem<?> withItem : setOp.getWithItemsList()) {
+                    if (cteBodyIsWrite(withItem)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        // 非只读结构（INSERT/UPDATE/DELETE/DROP/EXPLAIN/SHOW/...）一律按写操作/不允许处理
         return true;
+    }
+
+    /** CTE 子查询体为写操作语句（DELETE/INSERT/...）时返回 true。 */
+    private static boolean cteBodyIsWrite(WithItem<?> withItem) {
+        Statement inner;
+        try {
+            inner = withItem.getSelect();
+        } catch (ClassCastException e) {
+            // CTE 体内是写操作语句（ParenthesedDelete/Insert 等无法转型为 Select）→ 拒绝
+            return true;
+        }
+        return inner == null || containsWriteOperation(inner);
     }
 
     private static String stripTrailingSemicolons(String sql) {

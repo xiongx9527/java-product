@@ -22,6 +22,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.xiongx9527.askdata.datasource.DatasourceException;
+
 /**
  * A5 执行安全单测：
  * <ul>
@@ -83,9 +85,11 @@ class JdbcEngineParameterizedTest {
 
     @Test
     void illegalJdbcParamAllowLoadLocalInfileBlocked() {
-        assertThrows(IllegalArgumentException.class,
-                () -> DatasourceType.checkParams("allowLoadLocalInfile=true",
-                        DatasourceType.MYSQL.illegalParams()));
+        // 现代 Connector/J 同义参数 allowLoadLocalInfile 在 buildJdbcUrl 一并拦截（A5）
+        DatasourceConf conf = new DatasourceConf();
+        conf.setExtraJdbc("allowLoadLocalInfile=true");
+        assertThrows(DatasourceException.class,
+                () -> engine.buildJdbcUrl(DatasourceType.MYSQL, conf));
     }
 
     @Test
@@ -97,6 +101,7 @@ class JdbcEngineParameterizedTest {
 
     @Test
     void mysqlIllegalParamsContainsLocalInfile() {
-        assertEquals(List.of("local_infile", "allowLoadLocalInfile"), DatasourceType.MYSQL.illegalParams());
+        // 对齐 SQLBot：MYSQL.illegalParams 精确为 [local_infile]
+        assertEquals(List.of("local_infile"), DatasourceType.MYSQL.illegalParams());
     }
 }

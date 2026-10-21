@@ -39,9 +39,9 @@ public enum DatasourceType {
 
         @Override
         public List<String> illegalParams() {
-            // SQLBot DB.mysql.illegalParams：禁止 local_infile（本地文件读取，防目录穿越）；
-            // 同时封禁现代 Connector/J 的同义参数 allowLoadLocalInfile（A5：非法 JDBC 连接参数拦截）
-            return Collections.unmodifiableList(Arrays.asList("local_infile", "allowLoadLocalInfile"));
+            // SQLBot DB.mysql.illegalParams：禁止 local_infile（本地文件读取，防目录穿越）。
+            // 现代 Connector/J 的同义参数 allowLoadLocalInfile 在 JdbcEngine.buildJdbcUrl 一并拦截（见 A5）。
+            return Collections.unmodifiableList(Arrays.asList("local_infile"));
         }
 
         @Override
