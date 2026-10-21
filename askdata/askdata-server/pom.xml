@@ -321,6 +321,17 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- 本地 embedding 模型（D8/A6）：ONNX Runtime 驱动 shibing624_text2vec-base-chinese
+             （768 维归一化）。模型权重不进 git（793MB），运行时从可配置目录加载
+             （askdata.embedding.model-path，默认 /opt/askdata/models）；
+             模型缺失/加载失败时 ai/LocalEmbeddingModel 降级为不可用，
+             向量召回回落词法，问数主链路不报错。 -->
+        <dependency>
+            <groupId>com.microsoft.onnxruntime</groupId>
+            <artifactId>onnxruntime</artifactId>
+            <version>1.20.0</version>
+        </dependency>
     </dependencies>
 
     <build>

@@ -21,10 +21,13 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * 术语库（对齐 SQLBot apps/terminology：api/terminology.py + curd/terminology.py）：
@@ -43,15 +46,26 @@ public class TerminologyService {
 
     private final AuditRecorder auditRecorder;
 
-    @Value("${askdata.excel-path:./data/excel}")
+    private final TerminologyRecallService terminologyRecallService;
+
+    @Value("${askdata.excel.path:./data/excel}")
     private String excelPath;
 
+    @Autowired
     public TerminologyService(TerminologyRepository terminologyRepository, CurrentUserService currentUserService,
-                              DatasourceNameLookup datasourceNameLookup, AuditRecorder auditRecorder) {
+                              DatasourceNameLookup datasourceNameLookup, AuditRecorder auditRecorder,
+                              TerminologyRecallService terminologyRecallService) {
         this.terminologyRepository = terminologyRepository;
         this.currentUserService = currentUserService;
         this.datasourceNameLookup = datasourceNameLookup;
         this.auditRecorder = auditRecorder;
+        this.terminologyRecallService = terminologyRecallService;
+    }
+
+    /** 构造（保留旧签名；未注入向量召回服务时向量写入被跳过，词法召回不受影响）。 */
+    public TerminologyService(TerminologyRepository terminologyRepository, CurrentUserService currentUserService,
+                              DatasourceNameLookup datasourceNameLookup, AuditRecorder auditRecorder) {
+        this(terminologyRepository, currentUserService, datasourceNameLookup, auditRecorder, null);
     }
 
     // ------------------------------------------------------------------
@@ -187,6 +201,9 @@ public class TerminologyService {
             terminologyRepository.insertChild(oid, id, other, specificDs, dsJson, enabled, advancedApplication, now);
         }
         auditRecorder.success(AuditOperationType.CREATE_OR_UPDATE, AuditModule.TERMINOLOGY, String.valueOf(id), word);
+        if (terminologyRecallService != null) {
+            terminologyRecallService.saveEmbeddings(java.util.Collections.singletonList(id));
+        }
         return id;
     }
 
@@ -209,6 +226,9 @@ public class TerminologyService {
             terminologyRepository.insertChild(oid, id, other, specificDs, dsJson, enabled, advancedApplication, now);
         }
         auditRecorder.success(AuditOperationType.CREATE_OR_UPDATE, AuditModule.TERMINOLOGY, String.valueOf(id), word);
+        if (terminologyRecallService != null) {
+            terminologyRecallService.saveEmbeddings(java.util.Collections.singletonList(id));
+        }
         return id;
     }
 
@@ -436,8 +456,11 @@ public class TerminologyService {
 
     /**
      * 问数前术语上下文（对齐 SQLBot get_terminology_template + to_xml_string）：
-     * 把问题中出现的术语（标准词 + 同义词集合）及其含义注入 prompt，辅助 LLM 消歧。
-     * 术语表无 embedding 列，采用子串匹配（等价于 SQLBot 非向量召回路径）。
+     * 把命中的术语（标准词 + 同义词集合）及其含义注入 prompt，辅助 LLM 消歧。
+     *
+     * <p><b>召回</b>：向量召回（{@code terminology.embedding} 余弦相似度 &gt; 0.4，取前 5 条）
+     * + 词法召回（子串匹配）——对齐 SQLBot {@code select_terminology_by_word}。
+     * 向量不可用（未配置远程模型且本地模型缺失）时自动退化为纯词法召回，<b>不报错</b>。</p>
      *
      * @return 术语上下文文本；无匹配时返回空串
      */
@@ -459,15 +482,26 @@ public class TerminologyService {
                 g.description = Rows.str(row, "description");
             }
         }
+        // 命中集合 = 向量召回 ∪ 词法召回（向量不可用时退化为纯词法）
+        Set<Long> hitIds = new HashSet<>();
+        if (terminologyRecallService != null) {
+            for (Long id : terminologyRecallService.recall(question, oid,
+                    dsId > 0 ? dsId : null, advancedApp)) {
+                hitIds.add(id);
+            }
+        }
         String lower = question.toLowerCase();
         StringBuilder sb = new StringBuilder();
         int matched = 0;
-        for (TermGroup g : groups.values()) {
-            boolean hit = false;
-            for (String w : g.words) {
-                if (w != null && !w.isEmpty() && lower.contains(w.toLowerCase())) {
-                    hit = true;
-                    break;
+        for (Map.Entry<Long, TermGroup> entry : groups.entrySet()) {
+            TermGroup g = entry.getValue();
+            boolean hit = hitIds.contains(entry.getKey());
+            if (!hit) {
+                for (String w : g.words) {
+                    if (w != null && !w.isEmpty() && lower.contains(w.toLowerCase())) {
+                        hit = true;
+                        break;
+                    }
                 }
             }
             if (!hit) {

@@ -22,6 +22,31 @@ spring:
 askdata:
   excel:
     path: ./data/excel
+  # CORS 允许来源（等价 SQLBot BACKEND_CORS_ORIGINS；逗号/分号分隔）。
+  # 留空表示放开全部；助手应用的 domain 会在运行时动态加入（见 common/web/CorsConfig）。
+  cors:
+    origins: ""
+  # 数据源连接池（对齐 SQLBot ConnectionPoolManager(max_pools=500)）：
+  # 按数据源 id 缓存连接，LRU 淘汰（淘汰即关闭底层连接）。
+  datasource:
+    pool:
+      max-pools: 500
+  # 雪花 ID 位段（对齐 SQLBot common/utils/snowflake.py：41/5/5/12）：
+  # worker-id 缺省按 PID 派生（同机多实例不撞号），datacenter-id 缺省 0，epoch 缺省 0。
+  id:
+    worker-id: -1
+    datacenter-id: 0
+    epoch: 0
+  # 本地 embedding 模型（D8/A6）：shibing624/text2vec-base-chinese（ONNX，768 维归一化）。
+  # 模型权重随构建产物交付到 model-path（不进 git，793MB）；
+  # 目录缺失或加载失败时向量召回降级为词法，问数主链路不报错。
+  embedding:
+    model-path: /opt/askdata/models
+    # 启动期向量回填开关（关闭则不做回填；开启时由单 worker 守卫保证集群内只跑一次）。
+    backfill-enabled: true
+  # 应用密钥（落库加密用；缺省与历史常量一致，可用环境变量 ASKDATA_SECRET_KEY 覆盖）
+  secret:
+    key: ${ASKDATA_SECRET_KEY:AskDataSecret001}
 
 # MCP server：复用 fw-plus 封装（fw-plus-ai-mcp-server-spring-boot-starter），取代手写 JSON-RPC。
 # 前缀固定为 fw-plus.ai.mcp.*；缺省即开；传输 http-sse（GET /mcp/sse 建流 + POST /mcp/messages/{uuid}）。

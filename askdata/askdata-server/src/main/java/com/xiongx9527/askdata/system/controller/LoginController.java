@@ -4,6 +4,9 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.common.web.Result;
+import com.xiongx9527.askdata.common.audit.AuditModule;
+import com.xiongx9527.askdata.common.audit.AuditOperationType;
+import com.xiongx9527.askdata.system.audit.AuditRecorder;
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
 import com.xiongx9527.askdata.system.repository.UserRepository;
 import com.xiongx9527.askdata.system.web.TokenVO;
@@ -33,9 +36,12 @@ public class LoginController {
 
     private final MessageResolver messages;
 
-    public LoginController(UserRepository userRepository, MessageResolver messages) {
+    private final AuditRecorder auditRecorder;
+
+    public LoginController(UserRepository userRepository, MessageResolver messages, AuditRecorder auditRecorder) {
         this.userRepository = userRepository;
         this.messages = messages;
+        this.auditRecorder = auditRecorder;
     }
 
     @PostMapping({"/login/access-token"})
@@ -48,6 +54,11 @@ public class LoginController {
                 : userRepository.findByAccount(account);
         if (!userRow.isPresent()
                 || !CryptoUtil.md5Hex(plainPwd == null ? "" : plainPwd).equals(String.valueOf(userRow.get().get("password")))) {
+            // 登录失败也记录审计（对齐 SQLBot 登录路径的 @system_log）
+            if (auditRecorder != null) {
+                auditRecorder.failure(AuditOperationType.LOGIN, AuditModule.USER, account,
+                        messages.get("login.account.pwd.error"));
+            }
             throw new BadRequestException(messages.get("login.account.pwd.error"));
         }
 
@@ -66,6 +77,11 @@ public class LoginController {
         }
 
         StpUtil.login(toLong(user.get("id")));
+        // 登录成功审计（资源 id = 用户 id）
+        if (auditRecorder != null) {
+            auditRecorder.record(AuditOperationType.LOGIN, AuditModule.USER, String.valueOf(user.get("id")),
+                    String.valueOf(user.get("name")), null, String.valueOf(user.get("name")), "success", null, 0L);
+        }
         return Result.ok(new TokenVO(StpUtil.getTokenValue()));
     }
 

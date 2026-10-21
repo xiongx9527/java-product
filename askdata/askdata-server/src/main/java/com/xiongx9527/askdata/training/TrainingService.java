@@ -26,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * SQL 示例训练（对齐 SQLBot apps/data_training：api/data_training.py + curd/data_training.py）：
@@ -50,18 +51,29 @@ public class TrainingService {
 
     private final ObjectMapper objectMapper;
 
+    private final TrainingRecallService trainingRecallService;
+
     /** Excel 文件目录（对齐 SQLBot settings.EXCEL_PATH，用于失败明细回执）。 */
-    @Value("${askdata.excel-path:./data/excel}")
+    @Value("${askdata.excel.path:./data/excel}")
     private String excelPath;
 
+    @Autowired
     public TrainingService(TrainingRepository trainingRepository, CurrentUserService currentUserService,
                            DatasourceNameLookup datasourceNameLookup, AuditRecorder auditRecorder,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper, TrainingRecallService trainingRecallService) {
         this.trainingRepository = trainingRepository;
         this.currentUserService = currentUserService;
         this.datasourceNameLookup = datasourceNameLookup;
         this.auditRecorder = auditRecorder;
         this.objectMapper = objectMapper;
+        this.trainingRecallService = trainingRecallService;
+    }
+
+    /** 构造（保留旧签名；未注入向量写入服务时向量写入被跳过，词法召回不受影响）。 */
+    public TrainingService(TrainingRepository trainingRepository, CurrentUserService currentUserService,
+                           DatasourceNameLookup datasourceNameLookup, AuditRecorder auditRecorder,
+                           ObjectMapper objectMapper) {
+        this(trainingRepository, currentUserService, datasourceNameLookup, auditRecorder, objectMapper, null);
     }
 
     // ------------------------------------------------------------------
@@ -160,6 +172,9 @@ public class TrainingService {
                 advancedApplication, System.currentTimeMillis());
         auditRecorder.success(AuditOperationType.CREATE_OR_UPDATE, AuditModule.DATA_TRAINING,
                 String.valueOf(newId), question);
+        if (trainingRecallService != null) {
+            trainingRecallService.saveEmbeddings(java.util.Collections.singletonList(newId));
+        }
         return newId;
     }
 
@@ -174,6 +189,9 @@ public class TrainingService {
         trainingRepository.update(id, datasource, question, description, enabled, advancedApplication);
         auditRecorder.success(AuditOperationType.CREATE_OR_UPDATE, AuditModule.DATA_TRAINING,
                 String.valueOf(id), question);
+        if (trainingRecallService != null) {
+            trainingRecallService.saveEmbeddings(java.util.Collections.singletonList(id));
+        }
         return id;
     }
 

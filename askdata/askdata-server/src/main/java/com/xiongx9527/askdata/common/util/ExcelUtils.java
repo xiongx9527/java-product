@@ -86,41 +86,26 @@ public final class ExcelUtils {
         }
     }
 
-    /** 读取 xlsx 全部行为字符串矩阵（跳过整行空白；读取首个工作表）。 */
+    /**
+     * 读取 xlsx/xls 全部行为字符串矩阵（跳过整行空白）。
+     *
+     * <p><b>读全部 sheet</b>（对齐 SQLBot 遍历全部 sheet 的行为；此前只读 {@code getSheetAt(0)}），
+     * 且按内容嗅探格式，故旧版 {@code .xls}（BIFF8）也可读。</p>
+     *
+     * <p><b>表头保留</b>：每个 sheet 的首个非空行（表头）仍作为结果矩阵的第 0 行返回，
+     * 与本方法的历史契约一致——既有调用点（术语/训练/提示词导入）按 {@code i = 1} 起
+     * 跳过表头。{@link ExcelReadSupport.SheetData} 把表头与数据行分开存放，本方法
+     * 在此重新拼回「表头 + 数据行」的连续矩阵。</p>
+     *
+     * @throws IOException 解析失败
+     */
     public static List<String[]> readRows(InputStream inputStream) throws IOException {
         List<String[]> result = new ArrayList<>();
-        DataFormatter formatter = new DataFormatter(Locale.ROOT);
-        try (Workbook workbook = new XSSFWorkbook(inputStream)) {
-            Sheet sheet = workbook.getSheetAt(0);
-            for (Row row : sheet) {
-                if (row == null) {
-                    continue;
-                }
-                int last = row.getLastCellNum();
-                if (last < 0) {
-                    last = 0;
-                }
-                String[] values = new String[last];
-                boolean blank = true;
-                for (int i = 0; i < last; i++) {
-                    Cell cell = row.getCell(i);
-                    String text = "";
-                    if (cell != null && cell.getCellType() != CellType.BLANK) {
-                        text = formatter.formatCellValue(cell);
-                        if (text == null) {
-                            text = "";
-                        }
-                        text = text.trim();
-                    }
-                    values[i] = text;
-                    if (!text.isEmpty()) {
-                        blank = false;
-                    }
-                }
-                if (!blank) {
-                    result.add(values);
-                }
+        for (ExcelReadSupport.SheetData sheet : ExcelReadSupport.readAllSheets(inputStream)) {
+            if (sheet.headers != null && sheet.headers.length > 0) {
+                result.add(sheet.headers);
             }
+            result.addAll(sheet.rows);
         }
         return result;
     }

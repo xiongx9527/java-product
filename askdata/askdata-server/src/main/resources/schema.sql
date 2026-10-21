@@ -574,3 +574,53 @@ CREATE TABLE IF NOT EXISTS sys_assistant (
 );
 
 -- ---------------------------------------------------------------------
+-- =====================================================================
+-- askdata-sqlbot-full-parity / infra-toolchain：审计资源关联表 + 会话表缺失列
+-- （对应 SQLBot sys_logs_resource / chat / chat_record / chat_log 实际 DDL，
+--   取自 192.168.1.100 上运行中的 SQLBot 实例 PG 库 sqlbot 的 information_schema）
+-- 全部为幂等语句：CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- 审计资源关联表（SQLBot common/audit/models/log_model.py 的 SystemLogsResource：
+-- 审计日志与资源的多对多关联；id 为 identity，log_id 关联 sys_logs.id）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sys_logs_resource (
+    id            BIGINT PRIMARY KEY,
+    resource_id   VARCHAR(255),
+    module        VARCHAR(255),
+    resource_name VARCHAR(255),
+    log_id        BIGINT
+);
+
+-- ---------------------------------------------------------------------
+-- 单 worker 启动守卫（对齐 SQLBot common/utils/distributed_lock.py 的
+-- SingleWorkerGuard；H2 无 advisory lock，改用表行独占锁实现）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sys_single_worker_lock (
+    lock_key   VARCHAR(255) PRIMARY KEY,
+    acquired_at BIGINT,
+    owner      VARCHAR(255)
+);
+
+-- ---------------------------------------------------------------------
+-- 会话表缺失列（对齐 SQLBot 实际 DDL；幂等追加，既有数据不迁移）
+-- ---------------------------------------------------------------------
+ALTER TABLE chat ADD COLUMN IF NOT EXISTS brief_generate BOOLEAN DEFAULT FALSE;
+ALTER TABLE chat ADD COLUMN IF NOT EXISTS recommended_question_answer CLOB;
+ALTER TABLE chat ADD COLUMN IF NOT EXISTS recommended_question CLOB;
+ALTER TABLE chat ADD COLUMN IF NOT EXISTS recommended_generate BOOLEAN DEFAULT FALSE;
+
+ALTER TABLE chat_record ADD COLUMN IF NOT EXISTS ai_modal_id BIGINT;
+ALTER TABLE chat_record ADD COLUMN IF NOT EXISTS engine_type VARCHAR(64);
+ALTER TABLE chat_record ADD COLUMN IF NOT EXISTS sql_exec_result CLOB;
+ALTER TABLE chat_record ADD COLUMN IF NOT EXISTS recommended_question_answer CLOB;
+ALTER TABLE chat_record ADD COLUMN IF NOT EXISTS datasource_select_answer CLOB;
+ALTER TABLE chat_record ADD COLUMN IF NOT EXISTS extracted_keywords CLOB;
+ALTER TABLE chat_record ADD COLUMN IF NOT EXISTS expanded_keywords CLOB;
+
+ALTER TABLE chat_log ADD COLUMN IF NOT EXISTS type VARCHAR(255);
+ALTER TABLE chat_log ADD COLUMN IF NOT EXISTS pid BIGINT;
+ALTER TABLE chat_log ADD COLUMN IF NOT EXISTS ai_modal_id BIGINT;
+ALTER TABLE chat_log ADD COLUMN IF NOT EXISTS base_modal VARCHAR(255);
+ALTER TABLE chat_log ADD COLUMN IF NOT EXISTS reasoning_content CLOB;

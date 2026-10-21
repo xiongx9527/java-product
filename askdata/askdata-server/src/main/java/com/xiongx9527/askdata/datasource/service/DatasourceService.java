@@ -9,6 +9,8 @@ import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.datasource.DatasourceException;
 import com.xiongx9527.askdata.datasource.embedding.TableEmbeddingService;
 import com.xiongx9527.askdata.datasource.engine.ColumnSchema;
+import com.xiongx9527.askdata.datasource.embedding.DatasourceEmbeddingService;
+import com.xiongx9527.askdata.datasource.engine.ConnectionPoolManager;
 import com.xiongx9527.askdata.datasource.engine.DatasourceConf;
 import com.xiongx9527.askdata.datasource.engine.DatasourceType;
 import com.xiongx9527.askdata.datasource.engine.JdbcEngine;
@@ -29,6 +31,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * 数据源模块（对齐 SQLBot apps/datasource/api/datasource.py + apps/datasource/crud/datasource.py）：
@@ -64,10 +67,19 @@ public class DatasourceService {
 
     private final TableEmbeddingService tableEmbeddingService;
 
+    /** 连接池管理器（数据源更新/删除时移除其池）。 */
+    private final ConnectionPoolManager poolManager;
+
+    /** 数据源级向量服务（新增/勾选表/字段同步后回填 {@code core_datasource.embedding}）。 */
+    private final DatasourceEmbeddingService datasourceEmbeddingService;
+
+    @Autowired
     public DatasourceService(DatasourceRepository datasourceRepository, TableRepository tableRepository,
                              FieldRepository fieldRepository, ExcelService excelService, JdbcEngine engine,
                              CurrentUserService currentUserService, ObjectMapper objectMapper,
-                             MessageResolver messageResolver, TableEmbeddingService tableEmbeddingService) {
+                             MessageResolver messageResolver, TableEmbeddingService tableEmbeddingService,
+                             ConnectionPoolManager poolManager,
+                             DatasourceEmbeddingService datasourceEmbeddingService) {
         this.datasourceRepository = datasourceRepository;
         this.tableRepository = tableRepository;
         this.fieldRepository = fieldRepository;
@@ -77,6 +89,17 @@ public class DatasourceService {
         this.objectMapper = objectMapper;
         this.messageResolver = messageResolver;
         this.tableEmbeddingService = tableEmbeddingService;
+        this.poolManager = poolManager == null ? new ConnectionPoolManager() : poolManager;
+        this.datasourceEmbeddingService = datasourceEmbeddingService;
+    }
+
+    /** 构造（保留旧签名；未注入数据源向量服务时该能力降级为不可用，不影响主链路）。 */
+    public DatasourceService(DatasourceRepository datasourceRepository, TableRepository tableRepository,
+                             FieldRepository fieldRepository, ExcelService excelService, JdbcEngine engine,
+                             CurrentUserService currentUserService, ObjectMapper objectMapper,
+                             MessageResolver messageResolver, TableEmbeddingService tableEmbeddingService) {
+        this(datasourceRepository, tableRepository, fieldRepository, excelService, engine, currentUserService,
+                objectMapper, messageResolver, tableEmbeddingService, new ConnectionPoolManager(), null);
     }
 
     /**
@@ -88,6 +111,21 @@ public class DatasourceService {
             tableEmbeddingService.backfill(dsId);
         } catch (Exception e) {
             log.warn("表级向量回填触发失败 ds={}（不影响主链路）: {}", dsId, e.getMessage());
+        }
+    }
+
+    /**
+     * 数据源级向量回填（{@code core_datasource.embedding}）：
+     * 新增数据源、勾选表、字段同步后触发；失败只日志不抛错。
+     */
+    private void backfillDatasourceEmbedding(long dsId) {
+        if (datasourceEmbeddingService == null) {
+            return;
+        }
+        try {
+            datasourceEmbeddingService.saveEmbedding(dsId);
+        } catch (Exception e) {
+            log.warn("数据源级向量回填触发失败 ds={}（不影响主链路）: {}", dsId, e.getMessage());
         }
     }
 
@@ -139,7 +177,7 @@ public class DatasourceService {
     /** GET /datasource/check/{ds_id}：按已存配置连通检查。 */
     public boolean checkById(long id) {
         Map<String, Object> row = requireAccessible(id);
-        return engine.checkConnection(typeOf(Rows.str(row, "type")), confOf(Rows.str(row, "configuration")), true);
+        return engine.checkConnection(typeOf(Rows.str(row, "type")), confOf(Rows.str(row, "configuration")), true, id);
     }
 
     // ------------------------------------------------------------------
@@ -169,6 +207,7 @@ public class DatasourceService {
                 .orElseThrow(() -> new DatasourceException(messageResolver.get("ds.not.found", id)));
         syncTables(row, type, parseConf(plainConf), Rows.mapList(Rows.get(body, "tables")));
         updateNum(row, type, parseConf(plainConf));
+        backfillDatasourceEmbedding(id);
         return toVo(datasourceRepository.findById(id).orElse(row));
     }
 
@@ -193,6 +232,8 @@ public class DatasourceService {
                 Rows.get(body, "description") == null ? Rows.str(existing, "description")
                         : Rows.str(body, "description"),
                 type.getType(), type.getDbName(), DatasourceCrypto.encodeForStore(plainConf));
+        // 连接信息变更：移除该数据源的连接池（下次查询重建，避免旧连接串残留）
+        poolManager.removeDatasource(id);
     }
 
     /** POST /datasource/delete/{id}/{name}：excel 类型先 drop 应用库中的表（对齐 SQLBot delete_ds）。 */
@@ -214,6 +255,8 @@ public class DatasourceService {
         datasourceRepository.delete(id);
         tableRepository.deleteByDsId(id);
         fieldRepository.deleteByDsId(id);
+        // 数据源删除：关闭并移除其连接池（对齐 SQLBot remove_pool）
+        poolManager.removeDatasource(id);
     }
 
     /** POST /datasource/chooseTables/{id}：连通检查 + 同步勾选表/字段（对齐 SQLBot chooseTables）。 */
@@ -224,10 +267,11 @@ public class DatasourceService {
                 .orElseThrow(() -> new BadRequestException(messageResolver.get("ds.not.found", id)));
         DatasourceType type = typeOf(Rows.str(row, "type"));
         DatasourceConf conf = confOf(Rows.str(row, "configuration"));
-        engine.checkConnection(type, conf, true);
+        engine.checkConnection(type, conf, true, id);
         syncTables(row, type, conf, tables);
         updateNum(row, type, conf);
         backfillTableEmbeddings(id);
+        backfillDatasourceEmbedding(id);
     }
 
     /** POST /datasource/editTable：更新表勾选/自定义注释（对齐 SQLBot updateTable）。 */
@@ -271,11 +315,11 @@ public class DatasourceService {
         DatasourceConf conf = confOf(Rows.str(row, "configuration"));
         String tableName = Rows.str(table, "table_name");
         boolean exists = type.usesAppDatabase() ? engine.appTableExists(tableName)
-                : engine.tables(type, conf).stream().anyMatch(item -> tableName.equals(item.getTableName()));
+                : engine.tables(type, conf, dsId).stream().anyMatch(item -> tableName.equals(item.getTableName()));
         if (!exists) {
             throw new DatasourceException(messageResolver.get("ds.table.not.exists"));
         }
-        List<ColumnSchema> fields = engine.fields(type, conf, tableName);
+        List<ColumnSchema> fields = engine.fields(type, conf, tableName, dsId);
         syncFieldRows(dsId, tableId, fields);
         backfillTableEmbeddings(dsId);
     }
@@ -287,14 +331,14 @@ public class DatasourceService {
     /** POST /datasource/getTables/{id}：数据源实时表列表。 */
     public List<Map<String, Object>> getTables(long id) {
         Map<String, Object> row = requireAccessible(id);
-        return tablesVo(typeOf(Rows.str(row, "type")), confOf(Rows.str(row, "configuration")));
+        return tablesVo(typeOf(Rows.str(row, "type")), confOf(Rows.str(row, "configuration")), id);
     }
 
     /** POST /datasource/getTablesByConf：按请求配置实时表列表（ws_admin）。 */
     public List<Map<String, Object>> getTablesByConf(Map<String, Object> body) {
         currentUserService.requireWsAdmin();
         DatasourceType type = typeOf(Rows.str(body, "type"));
-        return tablesVo(type, confOf(Rows.str(body, "configuration")));
+        return tablesVo(type, confOf(Rows.str(body, "configuration")), null);
     }
 
     /** POST /datasource/getSchemaByConf：按请求配置取 schema 列表（ws_admin）。 */
@@ -310,7 +354,7 @@ public class DatasourceService {
         Map<String, Object> row = requireAccessible(id);
         DatasourceType type = typeOf(Rows.str(row, "type"));
         List<Map<String, Object>> result = new ArrayList<>();
-        for (ColumnSchema field : engine.fields(type, confOf(Rows.str(row, "configuration")), tableName)) {
+        for (ColumnSchema field : engine.fields(type, confOf(Rows.str(row, "configuration")), tableName, id)) {
             result.add(Rows.of("fieldName", field.getFieldName(), "fieldType", field.getFieldType(),
                     "fieldComment", field.getFieldComment()));
         }
@@ -375,14 +419,14 @@ public class DatasourceService {
         DatasourceType type = typeOf(Rows.str(dsRow, "type"));
         DatasourceConf conf = confOf(Rows.str(dsRow, "configuration"));
         String sql = type.previewSql(fieldNames, Rows.str(tableRow, "table_name"), conf, null);
-        return engine.execSql(type, conf, sql);
+        return engine.execSql(type, conf, sql, id);
     }
 
     /** POST /datasource/execSql/{id}：执行只读 SQL（对齐 SQLBot execSql → exec_sql(origin_column=True)）。 */
     public Map<String, Object> execSql(long id, Map<String, Object> body) {
         Map<String, Object> row = requireAccessible(id);
         DatasourceType type = typeOf(Rows.str(row, "type"));
-        return engine.execSql(type, confOf(Rows.str(row, "configuration")), Rows.str(body, "sql"));
+        return engine.execSql(type, confOf(Rows.str(row, "configuration")), Rows.str(body, "sql"), id);
     }
 
     /** POST /datasource/fieldEnum/{ds_id}/{id}（SQLBot 保留路由）：字段去重值。 */
@@ -408,7 +452,7 @@ public class DatasourceService {
         String tableName = Rows.str(table, "table_name");
         String sql = "SELECT DISTINCT " + DatasourceType.quote(type, fieldName) + " FROM "
                 + DatasourceType.quote(type, tableName);
-        Map<String, Object> result = engine.execSql(type, conf, sql);
+        Map<String, Object> result = engine.execSql(type, conf, sql, dsId);
         List<?> columns = (List<?>) result.get("fields");
         List<Object> values = new ArrayList<>();
         if (columns != null && !columns.isEmpty()) {
@@ -547,7 +591,7 @@ public class DatasourceService {
                         tableComment == null ? "" : tableComment);
             }
             tableIds.add(tableId);
-            List<ColumnSchema> fields = engine.fields(type, conf, tableName);
+            List<ColumnSchema> fields = engine.fields(type, conf, tableName, dsId);
             syncFieldRows(dsId, tableId, fields);
         }
         if (tableIds.isEmpty()) {
@@ -584,7 +628,7 @@ public class DatasourceService {
         if (type.usesAppDatabase()) {
             total = conf.getSheets().size();
         } else {
-            total = engine.tables(type, conf).size();
+            total = engine.tables(type, conf, dsId).size();
         }
         long selected = tableRepository.countByDsId(dsId);
         datasourceRepository.updateNum(dsId, selected + "/" + total);
@@ -627,7 +671,7 @@ public class DatasourceService {
         }
     }
 
-    private List<Map<String, Object>> tablesVo(DatasourceType type, DatasourceConf conf) {
+    private List<Map<String, Object>> tablesVo(DatasourceType type, DatasourceConf conf, Long dsId) {
         List<Map<String, Object>> result = new ArrayList<>();
         if (type.usesAppDatabase()) {
             // excel：表清单以 configuration.sheets 为准（对齐前端编辑流），避免泄漏应用库元数据表
@@ -637,7 +681,7 @@ public class DatasourceService {
             }
             return result;
         }
-        for (com.xiongx9527.askdata.datasource.engine.TableSchema table : engine.tables(type, conf)) {
+        for (com.xiongx9527.askdata.datasource.engine.TableSchema table : engine.tables(type, conf, dsId)) {
             result.add(Rows.of("tableName", table.getTableName(), "tableComment", table.getTableComment()));
         }
         return result;

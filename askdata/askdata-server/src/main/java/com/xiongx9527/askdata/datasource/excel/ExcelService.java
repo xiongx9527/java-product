@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.datasource.excel;
 
+import com.xiongx9527.askdata.common.util.ExcelReadSupport;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.datasource.DatasourceException;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
@@ -742,22 +743,19 @@ public class ExcelService {
     // ------------------------------------------------------------------
 
     /** 保存上传文件并返回存储名（{base}_{10 位随机}.{ext}，对齐 SQLBot）。 */
+    /**
+     * 保存上传文件。
+     *
+     * <p>文件名处理（对齐 SQLBot 的上传约定）：<b>basename 消毒</b>（去掉目录片段与
+     * {@code ..}，防路径穿越）+ <b>随机化存储名</b>（防同名覆盖）。</p>
+     */
     private String saveUpload(MultipartFile file) {
         String originalName = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
         String extension = extensionOf(originalName);
-        if (!Arrays.asList("xlsx", "xls", "csv").contains(extension)) {
+        if (!Arrays.asList(ExcelReadSupport.ALLOWED_EXTENSIONS).contains(extension)) {
             throw new DatasourceException("Only support .xlsx/.xls/.csv");
         }
-        String base = originalName;
-        int slash = Math.max(base.lastIndexOf('/'), base.lastIndexOf('\\'));
-        if (slash >= 0) {
-            base = base.substring(slash + 1);
-        }
-        int dot = base.lastIndexOf('.');
-        if (dot > 0) {
-            base = base.substring(0, dot);
-        }
-        String filename = base + "_" + randomSuffix() + "." + extension;
+        String filename = ExcelReadSupport.randomizeFileName(originalName);
         try {
             Files.createDirectories(excelDir);
             file.transferTo(excelDir.resolve(filename).toFile());
