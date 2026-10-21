@@ -41,6 +41,13 @@ public class ApiExceptionHandler {
         return error(HttpStatus.UNAUTHORIZED, "authenticate invalid: " + e.getMessage());
     }
 
+    @ExceptionHandler(AuthFailureException.class)
+    public ResponseEntity<String> authFailure(AuthFailureException e) {
+        // 支线通道（API Key / 嵌入助手）的鉴权失败：与 AuthChannelFilter 的 401 口径一致。
+        log.info("支线通道鉴权失败: {}", e.getMessage());
+        return error(HttpStatus.UNAUTHORIZED, "Authentication invalid【" + e.getMessage() + "】");
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<String> serverError(Exception e) {
         log.error("未处理异常: " + e.getMessage(), e);

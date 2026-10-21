@@ -26,6 +26,8 @@
         <!-- 统一版本属性：fw-plus 与 Spring Boot 各只此一处，供全 POM 引用 -->
         <revision>0.3.0-SNAPSHOT</revision>
         <spring-boot.version>3.5.8</spring-boot.version>
+        <justauth.version>1.16.6</justauth.version>
+        <justauth-spring-boot-starter.version>1.4.0</justauth-spring-boot-starter.version>
     </properties>
 
 
@@ -339,7 +341,60 @@
             <artifactId>onnxruntime</artifactId>
             <version>1.20.0</version>
         </dependency>
+        <!-- SSO 第三方授权（brief D9）：JustAuth 统一抽象授权跳转/回调/用户信息。
+             坐标以本机 ~/.m2 实际存在者为准：me.zhyd.oauth:JustAuth。
+             justauth-spring-boot-starter 传递的 hutool-core:5.6.5 本机缺失，改由项目已有的
+             hutool-all:5.8.47 提供。 -->
+        <dependency>
+            <groupId>me.zhyd.oauth</groupId>
+            <artifactId>JustAuth</artifactId>
+            <version>${justauth.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.xkcoding.justauth</groupId>
+            <artifactId>justauth-spring-boot-starter</artifactId>
+            <version>${justauth-spring-boot-starter.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>cn.hutool</groupId>
+                    <artifactId>hutool-core</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>me.zhyd.oauth</groupId>
+                    <artifactId>JustAuth</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
     </dependencies>
+
+    <!--
+      JustAuth 构件本地缓存来源仓库 ID（离线构建命中本地缓存，不触发网络）。
+    -->
+    <repositories>
+        <repository>
+            <id>alimaven</id>
+            <name>aliyun maven (cached source of JustAuth)</name>
+            <url>https://maven.aliyun.com/repository/public</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+        <repository>
+            <id>aliyun</id>
+            <name>aliyun maven (cached source of justauth-spring-boot-starter)</name>
+            <url>https://maven.aliyun.com/repository/public</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
 
     <build>
         <pluginManagement>

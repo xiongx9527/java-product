@@ -2,6 +2,7 @@ package com.xiongx9527.askdata.system.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.xiongx9527.askdata.common.util.Rows;
+import com.xiongx9527.askdata.common.web.AuthContext;
 import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.common.web.PageResult;
 import com.xiongx9527.askdata.common.web.Result;
@@ -62,10 +63,17 @@ public class UserController {
 
     @GetMapping({"/user/info"})
     public Result<UserInfoVO> info() {
-        long uid = toLong(StpUtil.getLoginId());
-        long exp = System.currentTimeMillis() / 1000L + StpUtil.getTokenTimeout();
         long now = System.currentTimeMillis() / 1000L;
-        return Result.ok(toUserInfo(userRepository.findById(uid), exp, now));
+        // 支线通道（API Key / 嵌入助手）：当前用户已在 AuthChannelFilter 校验并放入 AuthContext，
+        // 对齐 SQLBot 的 request.state.current_user（该通道不签发会话，故无 exp）。
+        AuthContext context = AuthContext.current();
+        if (context != null && context.getCurrentUser() != null) {
+            return Result.ok(toUserInfo(context.getCurrentUser(), 0L, now));
+        }
+        // 主通道（Sa-Token）
+        long uid = toLong(StpUtil.getLoginId());
+        long exp = now + StpUtil.getTokenTimeout();
+        return Result.ok(toUserInfo(userRepository.findById(uid).orElse(null), exp, now));
     }
 
     @GetMapping({"/user/ws"})
@@ -188,20 +196,35 @@ public class UserController {
         if (!row.isPresent()) {
             throw new BadRequestException("Login user does not exist");
         }
-        Map<String, Object> user = row.get();
-        long id = toLong(user.get("id"));
-        String account = String.valueOf(user.get("account"));
-        long oid = toLong(user.get("oid"));
+        return toUserInfo(row.get(), exp, now);
+    }
+
+    /**
+     * 用户视图构造（主通道与支线通道共用）。
+     *
+     * <p>支线通道的用户视图来自 {@link AuthContext}，字段是 API Key / 嵌入助手鉴权时
+     * 组装的精简视图（id/account/name/email/oid/status/origin/language），
+     * 与 {@code sys_user} 行同构，因此这里统一按行处理。</p>
+     */
+    private UserInfoVO toUserInfo(Map<String, Object> user, long exp, long now) {
+        if (user == null) {
+            throw new BadRequestException("Login user does not exist");
+        }
+        // 用 Rows 取值（大小写不敏感）：H2 在 MySQL 兼容模式下返回大写列标签（ID/ACCOUNT/…），
+        // 直接 map.get("id") 会取不到值。支线通道的用户视图是小写键，主通道是 H2 大写键，两条路径都要覆盖。
+        long id = Rows.lng(user, "id", 0L);
+        String account = Rows.str(user, "account");
+        long oid = Rows.lng(user, "oid", 0L);
         UserInfoVO vo = new UserInfoVO();
         vo.setId(id);
-        vo.setAccount(account);
-        vo.setName(String.valueOf(user.get("name")));
-        vo.setEmail(String.valueOf(user.get("email")));
+        vo.setAccount(account == null ? "" : account);
+        vo.setName(Rows.str(user, "name"));
+        vo.setEmail(Rows.str(user, "email"));
         vo.setOid(oid);
-        String language = user.get("language") == null ? "zh-CN" : String.valueOf(user.get("language"));
-        vo.setLanguage(language);
-        vo.setStatus(toLong(user.get("status")));
-        vo.setOrigin(toLong(user.get("origin")));
+        String language = Rows.str(user, "language");
+        vo.setLanguage(language == null ? "zh-CN" : language);
+        vo.setStatus(Rows.lng(user, "status", 0L));
+        vo.setOrigin(Rows.lng(user, "origin", 0L));
         vo.setWeight(userRepository.weightOf(id, oid));
         vo.setExp(exp);
         vo.setTime(now);

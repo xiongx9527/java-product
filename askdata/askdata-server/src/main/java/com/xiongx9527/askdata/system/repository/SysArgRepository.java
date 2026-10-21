@@ -29,6 +29,17 @@ public class SysArgRepository {
                 + "ORDER BY sort_no, id");
     }
 
+    /**
+     * /system/appearance/ui：外观参数（pkey 以 appearance. 开头的行）。
+     *
+     * <p>注意：{@link #listWithoutAppearance()} 排除 appearance.* 是为通用参数列表；
+     * 外观端点需要自己的查询（SQLBot xpack get_group_args('appearance') 语义）。</p>
+     */
+    public List<Map<String, Object>> listAppearance() {
+        return jdbc.queryForList("SELECT " + COLUMNS + " FROM sys_arg WHERE pkey LIKE 'appearance.%' "
+                + "ORDER BY sort_no, id");
+    }
+
     /** /system/parameter/{login|chat}：按前缀分组。 */
     public List<Map<String, Object>> listByPrefix(String prefix) {
         return jdbc.queryForList(

@@ -31,6 +31,12 @@ public class ApiKeyRepository {
         return jdbc.queryForList("SELECT " + COLUMNS + " FROM sys_apikey WHERE id = ?", id).stream().findFirst();
     }
 
+    /** 按 access_key 查（API Key 鉴权通道用；SQLBot get_api_key 语义）。 */
+    public Optional<Map<String, Object>> findByAccessKey(String accessKey) {
+        return jdbc.queryForList("SELECT " + COLUMNS + " FROM sys_apikey WHERE access_key = ? LIMIT 1", accessKey)
+                .stream().findFirst();
+    }
+
     public long countByUid(long uid) {
         Long count = jdbc.queryForObject("SELECT COUNT(*) FROM sys_apikey WHERE uid = ?", Long.class, uid);
         return count == null ? 0L : count;

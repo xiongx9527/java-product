@@ -84,6 +84,12 @@ public class AssistantRepository {
         return jdbc.queryForList("SELECT " + COLUMNS + " FROM sys_assistant WHERE id = ?", id).stream().findFirst();
     }
 
+    /** 按 app_id 查（嵌入应用信息端点 /system/assistant/app/{appId} 用）。 */
+    public Optional<Map<String, Object>> findByAppId(String appId) {
+        return jdbc.queryForList("SELECT " + COLUMNS + " FROM sys_assistant WHERE app_id = ? LIMIT 1", appId)
+                .stream().findFirst();
+    }
+
     public long insert(String name, int type, String domain, String description, String configuration,
                        String appId, String appSecret, Long oid, boolean enableCustomModel, String customModel,
                        long createTime) {
