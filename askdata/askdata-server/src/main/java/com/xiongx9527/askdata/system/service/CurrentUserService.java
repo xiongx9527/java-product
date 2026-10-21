@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.xiongx9527.askdata.common.util.Rows;
+import com.xiongx9527.askdata.common.web.AuthContext;
 import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.system.repository.UserRepository;
 import com.xiongx9527.askdata.system.repository.UserWsRepository;
@@ -16,6 +17,12 @@ import java.util.Map;
  * - isAdmin：{@code id==1 && account=='admin'}；
  * - ws_admin：isAdmin 或当前工作空间 weight > 0；
  * - 管理员专属接口非管理员调用时拒绝（HTTP 400 + 文本，前端直接展示）。
+ *
+ * <p><b>跨通道</b>：SQLBot 把校验通过的当前用户挂在 {@code request.state.current_user}，
+ * 业务层统一从该处取用户，因此 API Key（{@code sk}）与嵌入助手（{@code assistant} /
+ * {@code embedded}）两条支线通道的请求同样能访问业务接口。askdata 侧对应的载体是
+ * {@link AuthContext}（由 {@code AuthChannelFilter} 填充）；主通道（Sa-Token）没有
+ * 支线 token，此时仍走 Sa-Token 登录态。</p>
  */
 @Service
 public class CurrentUserService {
@@ -32,11 +39,23 @@ public class CurrentUserService {
     }
 
     public long uid() {
-        // Sa-Token 拦截器已保证登录；此处仍可能抛 NotLoginException（由异常处理器转 401）
+        // 支线通道（API Key / 嵌入助手）：用户已在 AuthChannelFilter 校验并放入 AuthContext。
+        AuthContext context = AuthContext.current();
+        if (context != null && context.getCurrentUser() != null) {
+            return Rows.lng(context.getCurrentUser(), "id", 0L);
+        }
+        // 主通道：Sa-Token 拦截器已保证登录；此处仍可能抛 NotLoginException（由异常处理器转 401）
         return StpUtil.getLoginIdAsLong();
     }
 
     public Map<String, Object> currentUser() {
+        // 支线通道：直接用鉴权时确定好的当前用户（对齐 SQLBot request.state.current_user）。
+        //  - sk / embedded 通道：鉴权时取的是 sys_user 整行（含 system_variables，行权限依赖该列）；
+        //  - assistant 通道：SQLBot 用的是合成用户 sqlbot-inner-assistant（无库行），保持原样。
+        AuthContext context = AuthContext.current();
+        if (context != null && context.getCurrentUser() != null) {
+            return context.getCurrentUser();
+        }
         return userRepository.findById(uid())
                 .orElseThrow(() -> new BadRequestException(messageResolver.get("user.login.not.exists")));
     }

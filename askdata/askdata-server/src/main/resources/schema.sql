@@ -624,3 +624,38 @@ ALTER TABLE chat_log ADD COLUMN IF NOT EXISTS pid BIGINT;
 ALTER TABLE chat_log ADD COLUMN IF NOT EXISTS ai_modal_id BIGINT;
 ALTER TABLE chat_log ADD COLUMN IF NOT EXISTS base_modal VARCHAR(255);
 ALTER TABLE chat_log ADD COLUMN IF NOT EXISTS reasoning_content CLOB;
+
+-- =====================================================================
+-- askdata-sqlbot-full-parity / auth-whitelist：SSO 认证源与企业平台同步表（append）
+-- =====================================================================
+-- askdata-sqlbot-full-parity / auth-whitelist：SSO 认证源与企业平台同步表
+-- （对应 SQLBot sys_authentication / sys_user_platform / sys_platform_token 实际 DDL，
+--   取自运行实例 192.168.1.100 的 PG 库 sqlbot；本段为 append-only，幂等可重复执行）
+-- =====================================================================
+
+-- SSO 认证源（SQLBot alembic 048；type 1=CAS 2=OIDC 3=LDAP 4=OAuth2 5=SAML2 6..9=企业 IM）
+CREATE TABLE IF NOT EXISTS sys_authentication (
+    id          BIGINT PRIMARY KEY,
+    name        VARCHAR(255) NOT NULL,
+    type        INT          NOT NULL,
+    config      VARCHAR(10000),
+    enable      BOOLEAN      NOT NULL DEFAULT FALSE,
+    valid       BOOLEAN      NOT NULL DEFAULT FALSE,
+    create_time BIGINT       NOT NULL DEFAULT 0
+);
+
+-- 企业平台用户绑定（SQLBot alembic 049；uid/origin/platform_uid）
+CREATE TABLE IF NOT EXISTS sys_user_platform (
+    id          BIGINT PRIMARY KEY,
+    uid         BIGINT       NOT NULL,
+    origin      INT          NOT NULL DEFAULT 0,
+    platform_uid VARCHAR(255) NOT NULL
+);
+
+-- 平台临时令牌（SQLBot 运行实例实际 DDL；id/token/create_time/exp_time）
+CREATE TABLE IF NOT EXISTS sys_platform_token (
+    id          BIGINT PRIMARY KEY,
+    token       VARCHAR(255) NOT NULL,
+    create_time BIGINT       NOT NULL,
+    exp_time    BIGINT       NOT NULL
+);
