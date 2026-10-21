@@ -173,7 +173,7 @@ public class EmbeddingService {
     }
 
     /**
-     * 写入向量到指定表的 {@code embedding} 列。
+     * 写入向量到指定表的向量列（{@code core_table} 为 {@code table_embedding}，其余为 {@code embedding}）。
      *
      * @param table    表名（白名单内的业务表）
      * @param id       记录 id
@@ -185,7 +185,7 @@ public class EmbeddingService {
             return false;
         }
         try {
-            jdbc.update("UPDATE " + table + " SET embedding = ? WHERE id = ?", toJson(vector), id);
+            jdbc.update("UPDATE " + table + " SET " + embeddingColumn(table) + " = ? WHERE id = ?", toJson(vector), id);
             return true;
         } catch (Exception e) {
             log.info("写入向量失败 {}/{}: {}", table, id, e.getMessage());
@@ -200,6 +200,11 @@ public class EmbeddingService {
         }
         return "terminology".equals(table) || "data_training".equals(table)
                 || "core_table".equals(table) || "core_datasource".equals(table);
+    }
+
+    /** 各对象类型的向量列名：表级为 {@code table_embedding}，其余为 {@code embedding}。 */
+    private static String embeddingColumn(String table) {
+        return "core_table".equals(table) ? "table_embedding" : "embedding";
     }
 
     // ------------------------------------------------------------------
