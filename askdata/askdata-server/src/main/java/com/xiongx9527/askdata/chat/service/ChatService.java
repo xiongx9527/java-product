@@ -198,15 +198,21 @@ public class ChatService {
         if (data.isEmpty()) {
             throw new BadRequestException("数据为空");
         }
-        List<String> columns = new ArrayList<>();
-        for (Object field : objectList(result.get("fields"))) {
-            columns.add(String.valueOf(field));
+        Map<String, Object> chart = parseChart(Rows.str(record, "chart"));
+        // 按完整图表配置还原导出字段（对齐 SQLBot export_excel：columns → axis.x/y/series，
+        // 多指标 y 为数组）；无图表配置时回落查询结果 fields
+        List<Map<String, Object>> fields = ChatChartBuilder.chartFields(chart);
+        if (fields.isEmpty()) {
+            fields = new ArrayList<>();
+            for (Object field : objectList(result.get("fields"))) {
+                fields.add(Rows.of("name", String.valueOf(field), "value", String.valueOf(field)));
+            }
         }
         List<Map<String, Object>> rows = new ArrayList<>(data);
         rows.addAll(Rows.mapList(recordPredictDataRaw(record)));
-        String title = chartTitle(Rows.str(record, "chart"));
+        String title = chartTitle(chart);
         return new ChatExcel.ExportFile(title + ".xlsx",
-                ChatExcel.buildResultWorkbook(columns, rows, title));
+                ChatExcel.buildResultWorkbook(fields, rows, title));
     }
 
     // ------------------------------------------------------------------
@@ -293,19 +299,24 @@ public class ChatService {
         }
     }
 
-    private String chartTitle(String chartJson) {
+    private Map<String, Object> parseChart(String chartJson) {
         if (chartJson == null || chartJson.isEmpty()) {
-            return "Excel";
+            return null;
         }
         try {
-            Map<String, Object> chart = objectMapper.readValue(chartJson,
-                    new TypeReference<Map<String, Object>>() {
-                    });
-            Object title = chart == null ? null : chart.get("title");
-            return title == null || String.valueOf(title).isEmpty() ? "Excel" : String.valueOf(title);
+            return objectMapper.readValue(chartJson, new TypeReference<Map<String, Object>>() {
+            });
         } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String chartTitle(Map<String, Object> chart) {
+        if (chart == null) {
             return "Excel";
         }
+        Object title = chart.get("title");
+        return title == null || String.valueOf(title).isEmpty() ? "Excel" : String.valueOf(title);
     }
 
     private String datasourceName(long dsId) {

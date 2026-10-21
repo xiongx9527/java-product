@@ -74,6 +74,15 @@ public class ChatQuestionService {
 
     private static final String OPERATE_RECOMMEND_QUESTIONS = "recommend_questions";
 
+    /** A2 知识增强链路操作（对齐 SQLBot OperationEnum：EXTRACT_KEYWORDS/FILTER_TERMS/FILTER_SQL_EXAMPLE/FILTER_CUSTOM_PROMPT）。 */
+    private static final String OPERATE_EXTRACT_KEYWORDS = "extract_keywords";
+
+    private static final String OPERATE_FILTER_TERMS = "filter_terms";
+
+    private static final String OPERATE_FILTER_SQL_EXAMPLE = "filter_sql_example";
+
+    private static final String OPERATE_FILTER_CUSTOM_PROMPT = "filter_custom_prompt";
+
     /**
      * {@code /regenerate} 后可跟记录 id；命令必须独占整个提问
      * （对齐 SQLBot {@code parse_quick_command}：命令不在串尾时按普通提问处理的语义）。
@@ -102,6 +111,8 @@ public class ChatQuestionService {
 
     private final ChatChartBuilder chartBuilder;
 
+    private final ChatKnowledgeService chatKnowledgeService;
+
     private final ObjectMapper objectMapper;
 
     private final PermissionEnforcer permissionEnforcer;
@@ -112,7 +123,7 @@ public class ChatQuestionService {
                                CurrentUserService currentUserService, SchemaContextBuilder schemaContextBuilder,
                                ChatModelClient modelClient, ChatModelRouter modelRouter,
                                ChatChartBuilder chartBuilder, ObjectMapper objectMapper,
-                               PermissionEnforcer permissionEnforcer) {
+                               PermissionEnforcer permissionEnforcer, ChatKnowledgeService chatKnowledgeService) {
         this.chatRepository = chatRepository;
         this.recommendedQuestionRepository = recommendedQuestionRepository;
         this.datasourceRepository = datasourceRepository;
@@ -124,6 +135,7 @@ public class ChatQuestionService {
         this.chartBuilder = chartBuilder;
         this.objectMapper = objectMapper;
         this.permissionEnforcer = permissionEnforcer;
+        this.chatKnowledgeService = chatKnowledgeService;
     }
 
     // ==================================================================
@@ -206,10 +218,30 @@ public class ChatQuestionService {
                 emit(writer, Rows.of("type", "question", "question", question));
                 emit(writer, Rows.of("type", "info", "msg", "sql generating"));
 
+                // -- A2 知识增强：关键词提取 → 术语过滤 → SQL 示例/自定义提示词过滤
+                // （未配置 embedding 模型时术语召回退化为词法匹配，不报错）
+                long knowledgeStart = System.currentTimeMillis();
+                ChatKnowledgeService.KnowledgeContext knowledge =
+                        chatKnowledgeService.prepare(question, oid, dsId);
+                chatRepository.saveKeywords(recordId, knowledge.getExtractedKeywords(),
+                        knowledge.getExpandedKeywords());
+                logOperation(recordId, oid, uid, OPERATE_EXTRACT_KEYWORDS, knowledgeStart, 0L, false,
+                        Rows.of("keywords", knowledge.getExtractedKeywords(),
+                                "expanded_keywords", knowledge.getExpandedKeywords()));
+                logOperation(recordId, oid, uid, OPERATE_FILTER_TERMS, knowledgeStart, 0L, false,
+                        Rows.of("terms", knowledge.getTermGroups()));
+                logOperation(recordId, oid, uid, OPERATE_FILTER_SQL_EXAMPLE, knowledgeStart, 0L, false,
+                        Rows.of("examples", knowledge.getSqlExamples()));
+                logOperation(recordId, oid, uid, OPERATE_FILTER_CUSTOM_PROMPT, knowledgeStart, 0L, false,
+                        Rows.of("prompts", knowledge.getCustomPrompts()));
+
                 // -- 生成 SQL（流式） + 只读校验 + 错误回喂修复一轮
                 long sqlStart = System.currentTimeMillis();
+                String customPromptText = String.join("\n", knowledge.getCustomPrompts());
                 String sqlText = generateText(writer, aiModel,
-                        schemaContextBuilder.buildSqlMessages(question, dsId), "sql-result", totalTokens);
+                        schemaContextBuilder.buildSqlMessages(question, dsId, knowledge.getTerminologyText(),
+                                customPromptText, knowledge.getSqlExamples()),
+                        "sql-result", totalTokens);
                 String sql = sqlText == null ? null : extractSql(sqlText);
                 if (sql == null) {
                     // 一次修复：把「未输出 SQL」的语义错误回喂

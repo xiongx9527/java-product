@@ -187,6 +187,15 @@ public class ChatRepository {
         updateRecordField(id, "predict_data", predictDataJson);
     }
 
+    /**
+     * 保存问数知识链路的关键词（A2：extracted_keywords / expanded_keywords）。
+     * 未命中术语时写空串（列非 NULL，便于前端与日志判读）。
+     */
+    public void saveKeywords(long id, String extractedKeywords, String expandedKeywords) {
+        updateRecordField(id, "extracted_keywords", extractedKeywords == null ? "" : extractedKeywords);
+        updateRecordField(id, "expanded_keywords", expandedKeywords == null ? "" : expandedKeywords);
+    }
+
     public void finishRecord(long id, long runTime, long totalTokens) {
         jdbc.update("UPDATE chat_record SET finish = TRUE, finish_time = ?, run_time = ?, total_tokens = ? "
                         + "WHERE id = ?",

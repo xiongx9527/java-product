@@ -155,6 +155,75 @@ public class ChatChartBuilder {
         return built;
     }
 
+    /**
+     * 从完整图表配置还原字段序列（对齐 SQLBot {@code export_excel} 的字段还原与
+     * {@code convert_object_array_for_pandas} 的取值口径）：
+     * {@code columns → axis.x → axis.y（多指标为数组）→ axis.series}，
+     * 按 {@code value} 去重保序；每项为 {@code {name, value}}（name 缺省回落 value）。
+     *
+     * <p>图表绑定的列名可能写作 {@code alias.column}（Hive/MySQL 驱动返回形态），
+     * 数据行已由 {@code DataFormatUtil.normalizeQualifiedColumnKeys} 补短名，
+     * 取值侧（ChatExcel）再按短名兜底解析。</p>
+     *
+     * @param chart 图表配置（type/title/columns/axis）；null 或非法时返回空列表
+     * @return 有序字段列表；无可用字段时为空列表
+     */
+    public static List<Map<String, Object>> chartFields(Map<String, Object> chart) {
+        List<Map<String, Object>> fields = new ArrayList<>();
+        if (chart == null) {
+            return fields;
+        }
+        Set<String> seen = new HashSet<>();
+        addFields(fields, seen, axisEntries(chart.get("columns")));
+        Object axis = chart.get("axis");
+        if (axis instanceof Map) {
+            Map<?, ?> axisMap = (Map<?, ?>) axis;
+            addFields(fields, seen, axisEntries(axisMap.get("x")));
+            addFields(fields, seen, axisEntries(axisMap.get("y")));
+            addFields(fields, seen, axisEntries(axisMap.get("series")));
+        }
+        return fields;
+    }
+
+    /** 轴/列节点 → {name, value} 列表（兼容单对象与多指标数组两种形态）。 */
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> axisEntries(Object node) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (node instanceof List) {
+            for (Object item : (List<Object>) node) {
+                addAxisEntry(result, item);
+            }
+        } else {
+            addAxisEntry(result, node);
+        }
+        return result;
+    }
+
+    private static void addAxisEntry(List<Map<String, Object>> result, Object item) {
+        if (!(item instanceof Map)) {
+            return;
+        }
+        Map<?, ?> entry = (Map<?, ?>) item;
+        Object value = entry.get("value");
+        Object name = entry.get("name");
+        if (value == null && name == null) {
+            return;
+        }
+        String fieldValue = value == null ? String.valueOf(name) : String.valueOf(value);
+        String fieldName = name == null || String.valueOf(name).isEmpty() ? fieldValue : String.valueOf(name);
+        result.add(Rows.of("name", fieldName, "value", fieldValue));
+    }
+
+    private static void addFields(List<Map<String, Object>> fields, Set<String> seen,
+                                  List<Map<String, Object>> candidates) {
+        for (Map<String, Object> candidate : candidates) {
+            String value = String.valueOf(candidate.get("value"));
+            if (seen.add(value)) {
+                fields.add(candidate);
+            }
+        }
+    }
+
     /** 从模型输出中截取最外层 JSON 对象（兼容 ```json 围栏与前后说明文字）。 */
     static String extractJson(String raw) {
         if (raw == null || raw.trim().isEmpty()) {

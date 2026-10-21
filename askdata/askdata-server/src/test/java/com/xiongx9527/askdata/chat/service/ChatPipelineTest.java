@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import com.xiongx9527.askdata.ai.EmbeddingService;
+import com.xiongx9527.askdata.ai.LocalEmbeddingModel;
 import com.xiongx9527.askdata.chat.repository.ChatRepository;
 import com.xiongx9527.askdata.chat.repository.RecommendedQuestionRepository;
 import com.xiongx9527.askdata.chat.service.ChatChartBuilder;
@@ -24,6 +26,7 @@ import com.xiongx9527.askdata.datasource.repository.TableRepository;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
 import com.xiongx9527.askdata.system.repository.AiModelRepository;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
+import com.xiongx9527.askdata.terminology.TerminologyRecallService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -93,6 +96,8 @@ class ChatPipelineTest {
     private ChatService chatService;
 
     private ChatQuestionService chatQuestionService;
+
+    private ChatKnowledgeService chatKnowledgeService;
 
     private DatasourceService datasourceService;
 
@@ -165,9 +170,13 @@ class ChatPipelineTest {
                         objectMapper));
         chatService = new ChatService(chatRepository, recommendedQuestionRepository, datasourceRepository,
                 datasourceService, currentUserService, objectMapper);
+        chatKnowledgeService = new ChatKnowledgeService(
+                new TerminologyRecallService(new EmbeddingService(new LocalEmbeddingModel(excelDir.toString(), 128),
+                        modelRouter, modelClient, appJdbc, objectMapper), appJdbc),
+                schemaContextBuilder, appJdbc);
         chatQuestionService = new ChatQuestionService(chatRepository, recommendedQuestionRepository,
                 datasourceRepository, datasourceService, currentUserService, schemaContextBuilder, modelClient,
-                modelRouter, new ChatChartBuilder(objectMapper), objectMapper, null);
+                modelRouter, new ChatChartBuilder(objectMapper), objectMapper, null, chatKnowledgeService);
     }
 
     @AfterEach

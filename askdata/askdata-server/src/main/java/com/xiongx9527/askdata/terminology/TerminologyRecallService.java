@@ -110,19 +110,33 @@ public class TerminologyRecallService {
         return result;
     }
 
-    /** 词法召回（子串匹配，SQLBot 的 ILIKE '%'||word||'%' 语义）。 */
+    /**
+     * 词法召回（子串匹配，双向对齐 SQLBot {@code select_terminology_by_word} 的
+     * {@code :sentence ILIKE '%' || word || '%'} 语义）：
+     * <ul>
+     *   <li>词是句子的子串（{@code INSTR(sentence, word) > 0}，SQLBot 语义：自然语言提问命中术语）；</li>
+     *   <li>句子是词的子串（{@code word LIKE %sentence%}，既有语义：短提问/命令式整句命中）。</li>
+     * </ul>
+     * 向量不可用时本路径即唯一召回通道，问数主链路不报错。
+     */
     private List<Long> lexicalRecall(String sentence, long oid, Long datasource, Long advancedApp) {
         List<Long> result = new ArrayList<>();
         try {
             StringBuilder sql = new StringBuilder(
                     "SELECT DISTINCT t.id FROM terminology t LEFT JOIN terminology c ON c.pid = t.id "
                             + "WHERE t.oid = ? AND t.enabled = TRUE AND ("
-                            + "LOWER(t.word) LIKE ? OR LOWER(c.word) LIKE ?)");
-            String pattern = "%" + escapeLike(sentence.toLowerCase(java.util.Locale.ROOT)) + "%";
+                            + "LOWER(t.word) LIKE ? OR LOWER(c.word) LIKE ?"
+                            // 词为句子的子串（SQLBot 语义；NULL/空词不命中）
+                            + " OR (LENGTH(t.word) > 0 AND INSTR(LOWER(?), LOWER(t.word)) > 0)"
+                            + " OR (LENGTH(c.word) > 0 AND INSTR(LOWER(?), LOWER(c.word)) > 0))");
+            String lower = sentence.toLowerCase(java.util.Locale.ROOT);
+            String pattern = "%" + escapeLike(lower) + "%";
             List<Object> args = new ArrayList<>();
             args.add(oid);
             args.add(pattern);
             args.add(pattern);
+            args.add(lower);
+            args.add(lower);
             appendScope(sql, args, datasource, advancedApp);
             sql.append(" ORDER BY t.id LIMIT ").append(TOP_COUNT * 4);
             for (Map<String, Object> row : jdbc.queryForList(sql.toString(), args.toArray())) {
