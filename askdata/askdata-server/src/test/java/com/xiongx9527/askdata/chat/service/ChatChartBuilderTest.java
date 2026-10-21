@@ -123,4 +123,73 @@ class ChatChartBuilderTest {
         assertEquals("column", builder.build(result, "每个状态的订单数").get("type"));
         assertEquals("table", ChatChartBuilder.emptyTable().get("type"));
     }
+
+    // ------------------------------------------------------------------
+    // 图表配置字段还原（A7：导出/绑定按完整图表配置取字段，支持多指标）
+    // ------------------------------------------------------------------
+
+    @Test
+    void chartFieldsRestoreFullConfigOrderWithMultiQuota() {
+        Map<String, Object> chart = Rows.of(
+                "type", "column",
+                "title", "各城市销售额",
+                "columns", Arrays.asList(
+                        Rows.of("name", "状态", "value", "status"),
+                        Rows.of("name", "城市", "value", "_u2.city")),
+                "axis", Rows.of(
+                        "x", Rows.of("name", "城市", "value", "_u2.city"),
+                        "y", Arrays.asList(
+                                Rows.of("name", "订单数", "value", "cnt"),
+                                Rows.of("name", "金额", "value", "amount")),
+                        "series", Rows.of("name", "状态", "value", "status")));
+
+        List<Map<String, Object>> fields = ChatChartBuilder.chartFields(chart);
+
+        // columns → axis.x → axis.y（多指标数组）→ axis.series，按 value 去重保序
+        assertEquals(4, fields.size());
+        assertEquals("status", fields.get(0).get("value"));
+        assertEquals("状态", fields.get(0).get("name"));
+        assertEquals("_u2.city", fields.get(1).get("value"));
+        assertEquals("cnt", fields.get(2).get("value"));
+        assertEquals("订单数", fields.get(2).get("name"));
+        assertEquals("amount", fields.get(3).get("value"));
+    }
+
+    @Test
+    void chartFieldsSupportSingleQuotaAndNameFallback() {
+        Map<String, Object> chart = Rows.of(
+                "columns", Arrays.asList(Rows.of("value", "status")),
+                "axis", Rows.of("x", Rows.of("value", "status"), "y", Rows.of("value", "cnt")));
+        List<Map<String, Object>> fields = ChatChartBuilder.chartFields(chart);
+        // x 与 columns 的 status 去重；name 缺省回落 value
+        assertEquals(2, fields.size());
+        assertEquals("status", fields.get(0).get("name"));
+        assertEquals("status", fields.get(0).get("value"));
+        assertEquals("cnt", fields.get(1).get("value"));
+    }
+
+    @Test
+    void chartFieldsHandleEmptyAndInvalidConfig() {
+        assertTrue(ChatChartBuilder.chartFields(null).isEmpty());
+        assertTrue(ChatChartBuilder.chartFields(Rows.of("type", "table")).isEmpty());
+        assertTrue(ChatChartBuilder.chartFields(Rows.of("axis", "not-a-map")).isEmpty());
+        assertTrue(ChatChartBuilder.chartFields(Rows.of("columns", "not-a-list")).isEmpty());
+    }
+
+    @Test
+    void chartBuilderOutputFeedsChartFields() {
+        // 启发式构造（多数值列）产出的多指标配置可被 chartFields 还原
+        Map<String, Object> result = Rows.of(
+                "fields", Arrays.asList("status", "cnt", "amount"),
+                "fields_info", Arrays.asList(Rows.of("name", "status", "is_numeric", false),
+                        Rows.of("name", "cnt", "is_numeric", true),
+                        Rows.of("name", "amount", "is_numeric", true)),
+                "data", new ArrayList<>());
+        Map<String, Object> chart = builder.build(result, "每个状态的订单数");
+        List<Map<String, Object>> fields = ChatChartBuilder.chartFields(chart);
+        assertEquals(3, fields.size());
+        assertEquals("status", fields.get(0).get("value"));
+        assertEquals("cnt", fields.get(1).get("value"));
+        assertEquals("amount", fields.get(2).get("value"));
+    }
 }

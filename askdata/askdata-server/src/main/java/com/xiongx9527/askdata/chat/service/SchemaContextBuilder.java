@@ -236,11 +236,31 @@ public class SchemaContextBuilder {
 
     /** 构建 SQL 生成的 system + user 消息（含训练样例时附加参考）。 */
     public List<ModelMessage> buildSqlMessages(String question, Long dsId) {
+        return buildSqlMessages(question, dsId, "", "", null);
+    }
+
+    /**
+     * 构建 SQL 生成的 system + user 消息，含 A2 知识增强上下文：
+     * 业务术语（释义 + 同义词扩展）、自定义提示词与训练样例。
+     *
+     * @param terminologyText  术语模板文本（XML 形态；空串时省略该节）
+     * @param customPromptText 自定义提示词（空串时省略该节）
+     * @param sqlExamples      SQL 示例（null 时本方法自行召回；调用方已召回时传入以避免重复查询）
+     */
+    public List<ModelMessage> buildSqlMessages(String question, Long dsId, String terminologyText,
+                                               String customPromptText, List<String> sqlExamples) {
         List<ModelMessage> messages = new ArrayList<>();
-        List<String> samples = dsId == null ? Collections.<String>emptyList() : trainingSamples(dsId, question);
+        List<String> samples = sqlExamples != null ? sqlExamples
+                : (dsId == null ? Collections.<String>emptyList() : trainingSamples(dsId, question));
         messages.add(new ModelMessage("system", sqlSystemPrompt(!samples.isEmpty())));
         StringBuilder user = new StringBuilder();
         user.append("【数据库表结构】\n").append(dsId == null ? "（未选择数据源）" : buildSchemaText(dsId, question));
+        if (terminologyText != null && !terminologyText.isEmpty()) {
+            user.append("\n\n【业务术语】\n").append(terminologyText);
+        }
+        if (customPromptText != null && !customPromptText.isEmpty()) {
+            user.append("\n\n【自定义提示词】\n").append(customPromptText);
+        }
         if (!samples.isEmpty()) {
             user.append("\n\n【可参考的 SQL 样例】\n");
             for (String sample : samples) {
