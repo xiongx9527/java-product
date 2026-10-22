@@ -13,6 +13,7 @@ import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.datasource.engine.SqlSafety;
 import com.xiongx9527.askdata.datasource.repository.DatasourceRepository;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
+import com.xiongx9527.askdata.chart.server.ChartImageService;
 import com.xiongx9527.askdata.embedded.AssistantRepository;
 import com.xiongx9527.askdata.embedded.DynamicDatasource;
 import com.xiongx9527.askdata.embedded.DynamicDatasourceResolver;
@@ -124,6 +125,8 @@ public class ChatQuestionService {
 
     private final AssistantRepository assistantRepository;
 
+    private final ChartImageService chartImageService;
+
     public ChatQuestionService(ChatRepository chatRepository,
                                RecommendedQuestionRepository recommendedQuestionRepository,
                                DatasourceRepository datasourceRepository, DatasourceService datasourceService,
@@ -132,7 +135,8 @@ public class ChatQuestionService {
                                ChatChartBuilder chartBuilder, ObjectMapper objectMapper,
                                PermissionEnforcer permissionEnforcer, ChatKnowledgeService chatKnowledgeService,
                                DynamicDatasourceResolver dynamicDatasourceResolver,
-                               AssistantRepository assistantRepository) {
+                               AssistantRepository assistantRepository,
+                               ChartImageService chartImageService) {
         this.chatRepository = chatRepository;
         this.recommendedQuestionRepository = recommendedQuestionRepository;
         this.datasourceRepository = datasourceRepository;
@@ -147,6 +151,7 @@ public class ChatQuestionService {
         this.chatKnowledgeService = chatKnowledgeService;
         this.dynamicDatasourceResolver = dynamicDatasourceResolver;
         this.assistantRepository = assistantRepository;
+        this.chartImageService = chartImageService;
     }
 
     // ==================================================================
@@ -339,9 +344,19 @@ public class ChatQuestionService {
                 long chartStart = System.currentTimeMillis();
                 String chartJson = generateChart(writer, aiModel, question, result, totalTokens);
                 logOperation(recordId, oid, uid, OPERATE_GENERATE_CHART, chartStart, totalTokens.get(), false, null);
-                chatRepository.saveChart(recordId, chartJson, null);
+                // A4：服务端出图（SSR）图片 URL——对齐 SQLBot g2-ssr，供非交互/MCP/导出场景直接引用
+                String imageUrl = null;
+                try {
+                    imageUrl = chartImageService.renderFromResult(result, question);
+                } catch (Exception e) {
+                    log.debug("SSR 出图失败（降级无图）: {}", e.getMessage());
+                }
+                chatRepository.saveChart(recordId, chartJson, imageUrl);
                 emit(writer, Rows.of("type", "info", "msg", "chart generated"));
                 emit(writer, Rows.of("type", "chart", "content", chartJson));
+                if (imageUrl != null) {
+                    emit(writer, Rows.of("type", "imageUrl", "content", imageUrl));
+                }
 
                 // -- 推荐问题（仅在真的产出时才发帧：前端空数组会渲染为「获取失败」）
                 if (dynamic != null || recommendedEnabled(ds)) {

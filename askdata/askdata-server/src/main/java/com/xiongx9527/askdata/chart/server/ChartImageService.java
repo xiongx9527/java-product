@@ -52,10 +52,15 @@ public class ChartImageService {
         }
         List<Map<String, Object>> rows = asRows(result.get("rows"));
         if (rows.isEmpty()) {
+            rows = asRows(result.get("data"));
+        }
+        if (rows.isEmpty()) {
             return null;
         }
         try {
-            Map<String, Object> chart = chartBuilder.build(toResultShape(rows), question);
+            // 主链路 result 已含 fields/fields_info/data（直接复用）；MCP/AskdataNl2Sql 仅含 rows 时再归一化
+            Map<String, Object> shape = result.containsKey("fields") ? result : toResultShape(rows);
+            Map<String, Object> chart = chartBuilder.build(shape, question);
             if (chart == null) {
                 return null;
             }

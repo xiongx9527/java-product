@@ -12,6 +12,7 @@ import com.xiongx9527.askdata.chat.service.ChatChartBuilder;
 import com.xiongx9527.askdata.chat.service.ChatModelClient;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter;
 import com.xiongx9527.askdata.chat.service.ChatQuestionService;
+import com.xiongx9527.askdata.chart.server.ChartImageService;
 import com.xiongx9527.askdata.chat.service.ChatService;
 import com.xiongx9527.askdata.chat.service.SchemaContextBuilder;
 import com.xiongx9527.askdata.common.util.IdGenerator;
@@ -97,6 +98,7 @@ class ChatPipelineTest {
     private ChatService chatService;
 
     private ChatQuestionService chatQuestionService;
+    private final ChartImageService chartImageService = Mockito.mock(ChartImageService.class);
 
     private ChatKnowledgeService chatKnowledgeService;
 
@@ -184,7 +186,8 @@ class ChatPipelineTest {
                 datasourceRepository, datasourceService, currentUserService, schemaContextBuilder, modelClient,
                 modelRouter, new ChatChartBuilder(objectMapper), objectMapper, null, chatKnowledgeService,
                 new com.xiongx9527.askdata.embedded.DynamicDatasourceResolver(objectMapper),
-                new com.xiongx9527.askdata.embedded.AssistantRepository(appJdbc, idGenerator));
+                new com.xiongx9527.askdata.embedded.AssistantRepository(appJdbc, idGenerator),
+                chartImageService);
     }
 
     @AfterEach
@@ -202,6 +205,8 @@ class ChatPipelineTest {
     void questionStreamEmitsSqlTableChartAndFinishFrames() throws Exception {
         long chatId = Rows.lng(chatService.start(Rows.of("datasource", dsId)), "id", 0L);
         MockHttpServletResponse response = new MockHttpServletResponse();
+        Mockito.when(chartImageService.renderFromResult(Mockito.any(), Mockito.any()))
+                .thenReturn("/api/chart/image/test-token");
         chatQuestionService.streamQuestion(Rows.of("question", "每个状态的订单数", "chat_id", chatId), response);
 
         List<JsonNode> frames = parseFrames(response.getContentAsString());
@@ -217,6 +222,9 @@ class ChatPipelineTest {
         assertTrue(types.contains("sql-data"), types.toString());
         assertTrue(types.contains("chart-result"), types.toString());
         assertTrue(types.contains("chart"), types.toString());
+        // A4：服务端出图 URL 帧随 chart 之后下发（非交互/导出场景可直接引用）
+        assertTrue(types.contains("imageUrl"), types.toString());
+        assertTrue(types.indexOf("chart") < types.indexOf("imageUrl"), types.toString());
         assertTrue(types.contains("recommended_question"), types.toString());
         assertEquals("finish", types.get(types.size() - 1), types.toString());
         // id 帧必须早于 sql-data（前端据此拉取表格数据）

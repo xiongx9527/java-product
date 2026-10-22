@@ -6,6 +6,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.xiongx9527.askdata.ai.EmbeddingService;
 import com.xiongx9527.askdata.ai.LocalEmbeddingModel;
+import com.xiongx9527.askdata.chart.server.ChartImageService;
 import com.xiongx9527.askdata.chat.repository.ChatRepository;
 import com.xiongx9527.askdata.chat.repository.RecommendedQuestionRepository;
 import com.xiongx9527.askdata.chat.service.ChatKnowledgeService.KnowledgeContext;
@@ -187,7 +188,8 @@ class ChatKnowledgeChainTest {
                 datasourceRepository, datasourceService, currentUserService, schemaContextBuilder, modelClient,
                 modelRouter, new ChatChartBuilder(objectMapper), objectMapper, null, chatKnowledgeService,
                 new com.xiongx9527.askdata.embedded.DynamicDatasourceResolver(objectMapper),
-                new com.xiongx9527.askdata.embedded.AssistantRepository(appJdbc, idGenerator));
+                new com.xiongx9527.askdata.embedded.AssistantRepository(appJdbc, idGenerator),
+                Mockito.mock(ChartImageService.class));
     }
 
     @AfterEach

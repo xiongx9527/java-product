@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.chat.service.ChatChartBuilder;
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -34,6 +35,26 @@ class ChartImageServiceTest {
         String url = svc.renderFromResult(result, "monthly sales");
         assertNotNull(url);
         assertTrue(url.contains("/api/chart/image/"), "URL should point at /api/chart/image/: " + url);
+        String token = url.substring(url.lastIndexOf('/') + 1);
+        byte[] png = svc.get(token);
+        assertNotNull(png);
+        assertEquals((byte) 0x89, png[0]);
+    }
+
+    @Test
+    void rendersChatPipelineResultShape() {
+        // 主链路 result 形状为 {fields, fields_info, data}（无 rows）——SSR 必须同样出图
+        ChartImageService svc = service();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("fields", List.of("region", "cnt"));
+        result.put("fields_info", List.of(
+                Map.of("name", "region", "is_numeric", false),
+                Map.of("name", "cnt", "is_numeric", true)));
+        result.put("data", List.of(
+                Map.of("region", "east", "cnt", 3),
+                Map.of("region", "west", "cnt", 5)));
+        String url = svc.renderFromResult(result, "各地区订单数");
+        assertNotNull(url);
         String token = url.substring(url.lastIndexOf('/') + 1);
         byte[] png = svc.get(token);
         assertNotNull(png);
