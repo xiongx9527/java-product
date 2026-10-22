@@ -239,8 +239,11 @@ public class ChatQuestionService {
                 // -- A2 知识增强：关键词提取 → 术语过滤 → SQL 示例/自定义提示词过滤
                 // （未配置 embedding 模型时术语召回退化为词法匹配，不报错）
                 long knowledgeStart = System.currentTimeMillis();
+                // A9：高级应用知识范围隔离——请求携带的 assistant_id 作为知识作用域
+                // （仅影响术语/训练样例/自定义提示词的召回范围，不会扩大权限）
+                Long advancedAppId = Rows.lngOrNull(body, "assistant_id");
                 ChatKnowledgeService.KnowledgeContext knowledge =
-                        chatKnowledgeService.prepare(question, oid, dsId);
+                        chatKnowledgeService.prepare(question, oid, dsId, advancedAppId);
                 chatRepository.saveKeywords(recordId, knowledge.getExtractedKeywords(),
                         knowledge.getExpandedKeywords());
                 logOperation(recordId, oid, uid, OPERATE_EXTRACT_KEYWORDS, knowledgeStart, 0L, false,

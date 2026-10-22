@@ -67,7 +67,8 @@ public class DsPermissionService {
                     "id", ruleId,
                     "name", Rows.str(rule, "name"),
                     "permissions", permissions,
-                    "users", dsPermissionRepository.longArray(Rows.str(rule, "user_list"))));
+                    "users", dsPermissionRepository.longArray(Rows.str(rule, "user_list")),
+                    "white_list_user", dsPermissionRepository.longArray(Rows.str(rule, "white_list_user"))));
         }
         return result;
     }
@@ -101,6 +102,7 @@ public class DsPermissionService {
         view.put("permission_list", permissionList);
         view.put("expression_tree", expressionTree);
         view.put("tree", tree);
+        view.put("white_list_user", dsPermissionRepository.longArray(Rows.str(entry, "white_list_user")));
         return view;
     }
 
@@ -120,19 +122,21 @@ public class DsPermissionService {
         }
         List<Map<String, Object>> entries = Rows.mapList(Rows.get(body, "permissions"));
         List<Long> users = Rows.longList(Rows.get(body, "users"));
+        List<Long> whiteList = whiteListOf(body);
         long now = System.currentTimeMillis();
         String permissionListJson = dsPermissionRepository.toJson(entries);
         String userListJson = dsPermissionRepository.toJson(users);
+        String whiteListJson = dsPermissionRepository.toJson(whiteList);
         Long id = Rows.lngOrNull(body, "id");
         long ruleId;
         if (id != null) {
             if (!dsPermissionRepository.findRule(id).isPresent()) {
                 throw new BadRequestException(messageResolver.get("perm.ds.rule.not.exist"));
             }
-            dsPermissionRepository.updateRule(id, name, null, permissionListJson, userListJson);
+            dsPermissionRepository.updateRule(id, name, null, permissionListJson, userListJson, whiteListJson);
             ruleId = id;
         } else {
-            ruleId = dsPermissionRepository.insertRule(name, null, permissionListJson, userListJson, oid, now);
+            ruleId = dsPermissionRepository.insertRule(name, null, permissionListJson, userListJson, whiteListJson, oid, now);
         }
         dsPermissionRepository.deletePermissionsByRule(ruleId);
         for (Map<String, Object> entry : entries) {
@@ -150,9 +154,41 @@ public class DsPermissionService {
             }
             dsPermissionRepository.insertPermission(ruleId, Rows.str(entry, "name"), type,
                     Rows.lngOrNull(entry, "ds_id"), Rows.lngOrNull(entry, "table_id"), expressionTree,
-                    permissions, now);
+                    permissions, dsPermissionRepository.toJson(whiteListOf(entry)), now);
         }
         return ruleId;
+    }
+
+    /**
+     * 解析白名单用户：兼容 {@code white_list_user}/{@code white_list_users}，
+     * 值可为数组、JSON 数组字符串或逗号分隔字符串（对齐商业版白名单配置契约）。
+     */
+    private List<Long> whiteListOf(Map<String, Object> source) {
+        Object raw = Rows.get(source, "white_list_user");
+        if (raw == null) {
+            raw = Rows.get(source, "white_list_users");
+        }
+        if (raw instanceof String) {
+            String text = ((String) raw).trim();
+            if (text.isEmpty()) {
+                return new ArrayList<>();
+            }
+            if (text.startsWith("[")) {
+                return dsPermissionRepository.longArray(text);
+            }
+            List<Long> parsed = new ArrayList<>();
+            for (String part : text.split(",")) {
+                if (!part.trim().isEmpty()) {
+                    try {
+                        parsed.add(Long.parseLong(part.trim()));
+                    } catch (NumberFormatException ignored) {
+                        // 忽略非法项，保持配置可用
+                    }
+                }
+            }
+            return parsed;
+        }
+        return Rows.longList(raw);
     }
 
     /** POST /ds_permission/delete/{id}。 */

@@ -180,13 +180,28 @@ public class SchemaContextBuilder {
      * @return 样例文本列表；{@code data_training} 不存在或查询失败时返回空列表（降级）。
      */
     public List<String> trainingSamples(long dsId, String question) {
+        return trainingSamples(dsId, question, null);
+    }
+
+    /**
+     * 训练样例召回（A9 高级应用知识范围隔离）：{@code advancedAppId} 非空时只召回该高级应用的
+     * 训练样例，避免跨应用泄漏示例知识；为空时保持既有数据源级召回。
+     */
+    public List<String> trainingSamples(long dsId, String question, Long advancedAppId) {
         if (!trainingTableAvailable()) {
             return Collections.emptyList();
         }
         try {
-            List<Map<String, Object>> rows = jdbc.queryForList(
+            StringBuilder trainingSql = new StringBuilder(
                     "SELECT question, description, embedding FROM data_training "
-                            + "WHERE datasource = ? AND enabled = TRUE", dsId);
+                            + "WHERE datasource = ? AND enabled = TRUE");
+            List<Object> trainingArgs = new ArrayList<>();
+            trainingArgs.add(dsId);
+            if (advancedAppId != null) {
+                trainingSql.append(" AND advanced_application = ?");
+                trainingArgs.add(advancedAppId);
+            }
+            List<Map<String, Object>> rows = jdbc.queryForList(trainingSql.toString(), trainingArgs.toArray());
             if (rows.isEmpty()) {
                 return Collections.emptyList();
             }
@@ -200,7 +215,7 @@ public class SchemaContextBuilder {
             // 无向量时回落「实时 embedding 全部行」，再回落词法（对齐 SQLBot 语义）。
             List<Map<String, Object>> vectorHits = trainingRecallService == null
                     ? java.util.Collections.emptyList()
-                    : trainingRecallService.recallByDatasource(question, dsId);
+                    : trainingRecallService.recallByDatasource(question, dsId, advancedAppId);
             if (!vectorHits.isEmpty()) {
                 List<String> hits = new ArrayList<>();
                 for (Map<String, Object> hit : vectorHits) {

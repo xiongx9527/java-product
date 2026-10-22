@@ -130,14 +130,31 @@ public class TrainingRecallService {
      * @return 命中的样例行（按相似度降序）
      */
     public List<Map<String, Object>> recallByDatasource(String question, long datasource) {
+        return recallByDatasource(question, datasource, null);
+    }
+
+    /**
+     * SQL 示例向量召回（按数据源 + 高级应用隔离）。
+     *
+     * <p>{@code advancedApp} 非空时只召回该高级应用的训练样例（A9 知识范围隔离），
+     * 避免跨应用泄漏示例知识。</p>
+     */
+    public List<Map<String, Object>> recallByDatasource(String question, long datasource, Long advancedApp) {
         if (question == null || question.trim().isEmpty()) {
             return new ArrayList<>();
         }
         try {
-            List<Map<String, Object>> candidates = jdbc.queryForList(
+            StringBuilder sql = new StringBuilder(
                     "SELECT id, datasource, advanced_application, question, description, embedding "
                             + "FROM data_training WHERE datasource = ? AND enabled = TRUE "
-                            + "AND embedding IS NOT NULL", datasource);
+                            + "AND embedding IS NOT NULL");
+            List<Object> args = new ArrayList<>();
+            args.add(datasource);
+            if (advancedApp != null) {
+                sql.append(" AND advanced_application = ?");
+                args.add(advancedApp);
+            }
+            List<Map<String, Object>> candidates = jdbc.queryForList(sql.toString(), args.toArray());
             if (candidates.isEmpty()) {
                 return new ArrayList<>();
             }
