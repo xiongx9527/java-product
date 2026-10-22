@@ -234,6 +234,18 @@ class ChatKnowledgeChainTest {
         assertTrue(operates.contains("filter_sql_example"), operates.toString());
         assertTrue(operates.contains("filter_custom_prompt"), operates.toString());
 
+        // A3：降级原因随步骤落库（无 embedding 模型时术语召回走词法匹配，状态可观测而非静默）
+        String filterTermsMessage = null;
+        for (Map<String, Object> row : logs) {
+            if ("filter_terms".equals(Rows.str(row, "operate"))) {
+                filterTermsMessage = Rows.str(row, "message");
+            }
+        }
+        assertNotNull(filterTermsMessage);
+        assertTrue(filterTermsMessage.contains("degraded"), filterTermsMessage);
+        assertTrue(filterTermsMessage.contains("terminology: embedding model unavailable"),
+                filterTermsMessage);
+
         // 发给模型的 SQL 提示词包含业务术语（释义 + 同义词）、自定义提示词与 SQL 示例
         String sqlPrompt = sqlPromptOf();
         assertNotNull(sqlPrompt);

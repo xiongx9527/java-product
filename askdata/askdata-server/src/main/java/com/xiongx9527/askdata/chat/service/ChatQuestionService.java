@@ -254,10 +254,13 @@ public class ChatQuestionService {
                 logOperation(recordId, oid, uid, OPERATE_EXTRACT_KEYWORDS, knowledgeStart, 0L, false,
                         Rows.of("keywords", knowledge.getExtractedKeywords(),
                                 "expanded_keywords", knowledge.getExpandedKeywords()));
+                // A3：降级原因随步骤落库，可在 /chat/record/{id}/log 观测（不只停留在日志文件）
                 logOperation(recordId, oid, uid, OPERATE_FILTER_TERMS, knowledgeStart, 0L, false,
-                        Rows.of("terms", knowledge.getTermGroups()));
+                        Rows.of("terms", knowledge.getTermGroups(),
+                                "degraded", knowledge.degradationReasons()));
                 logOperation(recordId, oid, uid, OPERATE_FILTER_SQL_EXAMPLE, knowledgeStart, 0L, false,
-                        Rows.of("examples", knowledge.getSqlExamples()));
+                        Rows.of("examples", knowledge.getSqlExamples(),
+                                "degraded", knowledge.degradationReasons()));
                 logOperation(recordId, oid, uid, OPERATE_FILTER_CUSTOM_PROMPT, knowledgeStart, 0L, false,
                         Rows.of("prompts", knowledge.getCustomPrompts()));
 
