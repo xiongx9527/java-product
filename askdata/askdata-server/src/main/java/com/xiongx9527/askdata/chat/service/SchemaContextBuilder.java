@@ -237,7 +237,7 @@ public class SchemaContextBuilder {
 
     /** 构建 SQL 生成的 system + user 消息（含训练样例时附加参考）。 */
     public List<ModelMessage> buildSqlMessages(String question, Long dsId) {
-        return buildSqlMessages(question, dsId, "", "", null);
+        return buildSqlMessages(question, dsId, "", "", null, null);
     }
 
     /**
@@ -249,7 +249,8 @@ public class SchemaContextBuilder {
      * @param sqlExamples      SQL 示例（null 时本方法自行召回；调用方已召回时传入以避免重复查询）
      */
     public List<ModelMessage> buildSqlMessages(String question, Long dsId, String terminologyText,
-                                               String customPromptText, List<String> sqlExamples) {
+                                               String customPromptText, List<String> sqlExamples,
+                                               String historyText) {
         List<ModelMessage> messages = new ArrayList<>();
         List<String> samples = sqlExamples != null ? sqlExamples
                 : (dsId == null ? Collections.<String>emptyList() : trainingSamples(dsId, question));
@@ -267,6 +268,10 @@ public class SchemaContextBuilder {
             for (String sample : samples) {
                 user.append(sample).append("\n");
             }
+        }
+        // 验收 A3：追问时注入前序 Q&A，使 follow-up 能引用前文出现的表/列/实体
+        if (historyText != null && !historyText.isEmpty()) {
+            user.append("\n\n【前文问答（追问请优先引用其中已出现的表名、列名与实体）】\n").append(historyText);
         }
         user.append("\n\n【用户问题】\n").append(question)
                 .append("\n\n请只输出 SQL，使用 ```sql 代码块包裹。");
