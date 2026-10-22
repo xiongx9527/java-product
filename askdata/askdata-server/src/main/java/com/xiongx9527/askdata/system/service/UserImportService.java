@@ -5,6 +5,8 @@ import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
 import com.xiongx9527.askdata.system.repository.UserRepository;
+import com.xiongx9527.askdata.common.storage.AskdataFileStorage;
+import com.xiongx9527.askdata.common.storage.StoredFile;
 import com.xiongx9527.askdata.system.repository.UserWsRepository;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
@@ -13,16 +15,11 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.DirectoryStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -32,6 +29,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
@@ -42,8 +40,8 @@ import java.util.regex.Pattern;
  *   <li>逐行建号：MD5 口令、oid 归属当前管理员工作空间并写入 sys_user_ws 绑定，
  *       使导入用户可立即登录（login 要求 oid≠0 且 status=1/origin=0）；</li>
  *   <li>失败行（重复账号/邮箱格式错误/必填缺失/口令过短）收集行号+原因+原文，
- *       生成失败记录 Excel 落盘到 {@code askdata.excel.path}，返回 fileId 供下载；</li>
- *   <li>errorRecord(fileId) 按 fileId 读盘，不存在时抛 BadRequestException。</li>
+ *       生成失败记录 Excel 经通用文件存储（x-file-storage）落地，返回 fileId 供下载；</li>
+ *   <li>errorRecord(fileId) 按 fileId 从存储读回，不存在时抛 BadRequestException。</li>
  * </ul>
  * 三个端点均仅管理员可调（对齐 SQLBot SqlbotPermission(role=['admin'])）。
  */
@@ -88,17 +86,22 @@ public class UserImportService {
 
     private final IdGenerator idGenerator;
 
-    private final Path excelDir;
+    private final AskdataFileStorage fileStorage;
+
+    /** fileId -> 失败记录文件在通用存储中的 url（临时文件，24h TTL）。 */
+    private final Map<String, String> errorFileUrls = new ConcurrentHashMap<>();
+
+    /** fileId -> 写入时间戳（毫秒），用于 TTL 清理。 */
+    private final Map<String, Long> errorFileTimes = new ConcurrentHashMap<>();
 
     public UserImportService(UserRepository userRepository, UserWsRepository userWsRepository,
                              CurrentUserService currentUserService, IdGenerator idGenerator,
-                             @Value("${askdata.excel.path:./data/excel}") String excelPath) {
+                             AskdataFileStorage fileStorage) {
         this.userRepository = userRepository;
         this.userWsRepository = userWsRepository;
         this.currentUserService = currentUserService;
         this.idGenerator = idGenerator;
-        this.excelDir = Paths.get(excelPath == null || excelPath.isEmpty() ? "./data/excel" : excelPath)
-                .toAbsolutePath().normalize();
+        this.fileStorage = fileStorage;
     }
 
     // ------------------------------------------------------------------
@@ -194,13 +197,13 @@ public class UserImportService {
         if (fileId == null || !FILE_ID_REGEX.matcher(fileId).matches()) {
             throw new BadRequestException("Error record file not found: [" + fileId + "]");
         }
-        Path file = excelDir.resolve(ERROR_FILE_PREFIX + fileId + ".xlsx").normalize();
-        if (!file.startsWith(excelDir) || !Files.isRegularFile(file)) {
+        String url = errorFileUrls.get(fileId);
+        if (url == null) {
             throw new BadRequestException("Error record file not found: [" + fileId + "]");
         }
         try {
-            return Files.readAllBytes(file);
-        } catch (IOException e) {
+            return fileStorage.read(url);
+        } catch (RuntimeException e) {
             throw new BadRequestException("Error record file not found: [" + fileId + "]");
         }
     }
@@ -269,10 +272,12 @@ public class UserImportService {
             throw new BadRequestException("Generate error record failed: " + e.getMessage());
         }
         try {
-            Files.createDirectories(excelDir);
-            Files.write(excelDir.resolve(ERROR_FILE_PREFIX + fileId + ".xlsx"), content);
+            StoredFile stored = fileStorage.save(content, ERROR_FILE_PREFIX + fileId + ".xlsx",
+                    "user-import-error", AskdataFileStorage.contentTypeOf("x.xlsx"));
+            errorFileUrls.put(fileId, stored.url());
+            errorFileTimes.put(fileId, System.currentTimeMillis());
             cleanupExpiredErrorFiles();
-        } catch (IOException e) {
+        } catch (RuntimeException e) {
             throw new BadRequestException("Save error record failed: " + e.getMessage());
         }
         return fileId;
@@ -281,14 +286,13 @@ public class UserImportService {
     /** 清理超过 24 小时的失败记录文件（对齐 SQLBot 进程退出时清理临时文件的语义）。 */
     private void cleanupExpiredErrorFiles() {
         long deadline = System.currentTimeMillis() - ERROR_FILE_TTL_MILLIS;
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(excelDir, ERROR_FILE_PREFIX + "*")) {
-            for (Path path : stream) {
-                if (Files.getLastModifiedTime(path).toMillis() < deadline) {
-                    Files.deleteIfExists(path);
+        for (Map.Entry<String, Long> entry : errorFileTimes.entrySet()) {
+            if (entry.getValue() < deadline) {
+                String url = errorFileUrls.remove(entry.getKey());
+                if (url != null) {
+                    fileStorage.delete(url);
                 }
             }
-        } catch (IOException ignored) {
-            // 清理失败不影响导入结果
         }
     }
 
