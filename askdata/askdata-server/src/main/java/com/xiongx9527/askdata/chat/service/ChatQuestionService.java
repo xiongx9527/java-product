@@ -238,9 +238,11 @@ public class ChatQuestionService {
                 // -- 生成 SQL（流式） + 只读校验 + 错误回喂修复一轮
                 long sqlStart = System.currentTimeMillis();
                 String customPromptText = String.join("\n", knowledge.getCustomPrompts());
+                // 验收 A3：追问上下文（前序 Q&A）注入 SQL 生成，follow-up 可引用前文实体
+                String historyText = priorContext(chatId, currentRecordId.get());
                 String sqlText = generateText(writer, aiModel,
                         schemaContextBuilder.buildSqlMessages(question, dsId, knowledge.getTerminologyText(),
-                                customPromptText, knowledge.getSqlExamples()),
+                                customPromptText, knowledge.getSqlExamples(), historyText),
                         "sql-result", totalTokens);
                 String sql = sqlText == null ? null : extractSql(sqlText);
                 if (sql == null) {
@@ -508,6 +510,36 @@ public class ChatQuestionService {
             current = parent;
         }
         return baseQuestion == null ? "" : baseQuestion;
+    }
+
+    /**
+     * 验收 A3：取前序问答（最近若干条）作为追问上下文，使 follow-up 能引用前文出现的表/列/实体。
+     */
+    private String priorContext(long chatId, long excludeRecordId) {
+        List<Map<String, Object>> records = chatRepository.listRecordsByChat(chatId);
+        if (records == null || records.isEmpty()) {
+            return "";
+        }
+        List<String> blocks = new ArrayList<String>();
+        for (Map<String, Object> r : records) {
+            if (Rows.lng(r, "id", 0L) == excludeRecordId) {
+                continue;
+            }
+            String q = Rows.str(r, "question");
+            if (q.isEmpty()) {
+                continue;
+            }
+            String sql = Rows.str(r, "sql");
+            StringBuilder b = new StringBuilder("Q: ").append(q);
+            if (!sql.isEmpty()) {
+                b.append("\nA(SQL): ").append(sql);
+            }
+            blocks.add(b.toString());
+        }
+        if (blocks.size() > 5) {
+            blocks = blocks.subList(blocks.size() - 5, blocks.size());
+        }
+        return String.join("\n", blocks);
     }
 
     /** 数据源解析：会话已绑定则直接用，否则 RAG 选库（并回写会话）。 */

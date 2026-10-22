@@ -47,11 +47,15 @@ public class ChatKnowledgeService {
 
     private final JdbcTemplate jdbc;
 
+    private final ChatModelRouter modelRouter;
+
     public ChatKnowledgeService(TerminologyRecallService terminologyRecallService,
-                                SchemaContextBuilder schemaContextBuilder, JdbcTemplate jdbc) {
+                                SchemaContextBuilder schemaContextBuilder, JdbcTemplate jdbc,
+                                ChatModelRouter modelRouter) {
         this.terminologyRecallService = terminologyRecallService;
         this.schemaContextBuilder = schemaContextBuilder;
         this.jdbc = jdbc;
+        this.modelRouter = modelRouter;
     }
 
     /**
@@ -77,15 +81,24 @@ public class ChatKnowledgeService {
         /** 召回的自定义提示词文本。 */
         private final List<String> customPrompts;
 
+        /** 术语召回是否因无 embedding 模型而降级为词法匹配（验收 A3）。 */
+        private final boolean terminologyDegraded;
+
+        /** SQL 示例是否因 data_training 表缺失而不可用（验收 A3）。 */
+        private final boolean sqlExampleDegraded;
+
         KnowledgeContext(String extractedKeywords, String expandedKeywords, String terminologyText,
                          List<Map<String, Object>> termGroups, List<String> sqlExamples,
-                         List<String> customPrompts) {
+                         List<String> customPrompts, boolean terminologyDegraded,
+                         boolean sqlExampleDegraded) {
             this.extractedKeywords = extractedKeywords;
             this.expandedKeywords = expandedKeywords;
             this.terminologyText = terminologyText;
             this.termGroups = termGroups;
             this.sqlExamples = sqlExamples;
             this.customPrompts = customPrompts;
+            this.terminologyDegraded = terminologyDegraded;
+            this.sqlExampleDegraded = sqlExampleDegraded;
         }
 
         public String getExtractedKeywords() {
@@ -116,6 +129,28 @@ public class ChatKnowledgeService {
         public boolean hasTerms() {
             return !extractedKeywords.isEmpty();
         }
+
+        /** 术语召回是否因无 embedding 模型而降级（验收 A3）。 */
+        public boolean isTerminologyDegraded() {
+            return terminologyDegraded;
+        }
+
+        /** SQL 示例是否因 data_training 表缺失而不可用（验收 A3）。 */
+        public boolean isSqlExampleDegraded() {
+            return sqlExampleDegraded;
+        }
+
+        /** 降级原因清单（验收 A3：可观测的状态标志，供日志/测试断言）。 */
+        public List<String> degradationReasons() {
+            List<String> reasons = new ArrayList<String>();
+            if (terminologyDegraded) {
+                reasons.add("terminology: embedding model unavailable, degraded to lexical matching");
+            }
+            if (sqlExampleDegraded) {
+                reasons.add("sql_example: data_training table unavailable");
+            }
+            return reasons;
+        }
     }
 
     // ------------------------------------------------------------------
@@ -130,6 +165,15 @@ public class ChatKnowledgeService {
      * @param dsId     数据源 id（可空；非空时按 specific_ds/datasource_ids 过滤术语与提示词）
      */
     public KnowledgeContext prepare(String question, long oid, Long dsId) {
+        // 验收 A3：显式探测并登记降级，避免术语/示例在 embedding 缺失或表缺失时静默失效
+        boolean terminologyDegraded = !modelRouter.embeddingModel().isPresent();
+        boolean sqlExampleDegraded = !schemaContextBuilder.trainingTableAvailable();
+        if (terminologyDegraded) {
+            log.warn("术语召回降级：未配置 embedding 模型，退化为词法匹配（oid={}, dsId={}）", oid, dsId);
+        }
+        if (sqlExampleDegraded) {
+            log.warn("SQL 示例降级：data_training 表不可用，few-shot 示例缺失（oid={}, dsId={}）", oid, dsId);
+        }
         List<Map<String, Object>> groups = recallTerms(question, oid, dsId);
         List<String> matched = matchedWords(groups, question);
         String extracted = String.join(",", matched);
@@ -137,7 +181,8 @@ public class ChatKnowledgeService {
         String terminologyText = terminologyTemplate(groups);
         List<String> sqlExamples = trainingSamples(dsId, question);
         List<String> customPrompts = customPrompts(oid, dsId);
-        return new KnowledgeContext(extracted, expanded, terminologyText, groups, sqlExamples, customPrompts);
+        return new KnowledgeContext(extracted, expanded, terminologyText, groups, sqlExamples, customPrompts,
+                terminologyDegraded, sqlExampleDegraded);
     }
 
     /** 术语召回（向量 + 词法；向量不可用时仅词法，不报错）。 */
