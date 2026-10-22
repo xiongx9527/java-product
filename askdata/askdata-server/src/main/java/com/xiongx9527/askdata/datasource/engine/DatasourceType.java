@@ -574,6 +574,35 @@ public enum DatasourceType {
         return templateName;
     }
 
+    /**
+     * NL2SQL system prompt 注入的方言提示（验收 A1）。
+     *
+     * <p>说明该方言的标识符引用与分页约定，避免模型按默认 MySQL 生成错误语法。
+     * 通用分支由 {@link #getPrefix()}/{@link #getSuffix()} 推导引号风格；分页差异较大的
+     * 方言（SQL Server 的 TOP / Oracle、达梦的 ROWNUM）单独覆盖。</p>
+     */
+    public String sqlDialectHint() {
+        String quoteNote = (getPrefix().isEmpty() && getSuffix().isEmpty())
+                ? "（标识符一般无需引号，必要时可用双引号）"
+                : "（标识符用 " + getPrefix() + "名称" + getSuffix() + " 引用）";
+        switch (this) {
+            case SQLSERVER:
+                return "你正在查询的数据库方言是 " + getTemplateName() + "（Microsoft SQL Server）。标识符用 [名称] 引用；"
+                        + "分页使用 TOP n 或 OFFSET n ROWS FETCH NEXT m ROWS ONLY；字符串用单引号。";
+            case ORACLE:
+            case DM:
+                return "你正在查询的数据库方言是 " + getTemplateName() + "。标识符用 \"名称\" 引用；"
+                        + "分页使用 ROWNUM <= n 或 OFFSET n ROWS FETCH NEXT m ROWS ONLY；"
+                        + "跨表查询需带 schema 前缀（如 SCHEMA.TABLE）；字符串用单引号，"
+                        + "日期字面量用 DATE 'yyyy-mm-dd'。";
+            case ES:
+                return "Elasticsearch 不是关系型 SQL 数据库，NL2SQL 路径不适用；请使用其专用检索接口。";
+            default:
+                return "你正在查询的数据库方言是 " + getTemplateName() + "。" + quoteNote
+                        + "；分页使用 LIMIT n（必要时配合 OFFSET）；字符串用单引号。";
+        }
+    }
+
     /** excel 类型：数据存放在应用元数据库（对齐 SQLBot get_engine_config）。 */
     public boolean usesAppDatabase() {
         return false;

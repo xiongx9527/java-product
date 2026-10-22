@@ -10,6 +10,7 @@ import com.xiongx9527.askdata.datasource.repository.DatasourceRepository;
 import com.xiongx9527.askdata.training.TrainingRecallService;
 import com.xiongx9527.askdata.datasource.repository.FieldRepository;
 import com.xiongx9527.askdata.datasource.repository.TableRepository;
+import com.xiongx9527.askdata.datasource.engine.DatasourceType;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -252,7 +253,7 @@ public class SchemaContextBuilder {
         List<ModelMessage> messages = new ArrayList<>();
         List<String> samples = sqlExamples != null ? sqlExamples
                 : (dsId == null ? Collections.<String>emptyList() : trainingSamples(dsId, question));
-        messages.add(new ModelMessage("system", sqlSystemPrompt(!samples.isEmpty())));
+        messages.add(new ModelMessage("system", sqlSystemPrompt(!samples.isEmpty(), resolveType(dsId))));
         StringBuilder user = new StringBuilder();
         user.append("【数据库表结构】\n").append(dsId == null ? "（未选择数据源）" : buildSchemaText(dsId, question));
         if (terminologyText != null && !terminologyText.isEmpty()) {
@@ -276,7 +277,7 @@ public class SchemaContextBuilder {
     /** 构建 SQL 修复消息（把执行/校验错误回喂一轮）。 */
     public List<ModelMessage> buildSqlFixMessages(String question, Long dsId, String brokenSql, String error) {
         List<ModelMessage> messages = new ArrayList<>();
-        messages.add(new ModelMessage("system", sqlSystemPrompt(false)));
+        messages.add(new ModelMessage("system", sqlSystemPrompt(false, resolveType(dsId))));
         messages.add(new ModelMessage("user",
                 "【数据库表结构】\n" + (dsId == null ? "（未选择数据源）" : buildSchemaText(dsId, question))
                         + "\n\n【用户问题】\n" + question
@@ -608,14 +609,39 @@ public class SchemaContextBuilder {
     // 提示词文案
     // ------------------------------------------------------------------
 
-    private static String sqlSystemPrompt(boolean withTraining) {
-        return "你是一个严谨的数据库 SQL 专家，服务于一个中文问数（NL2SQL）系统。\n"
-                + "规则：\n"
-                + "1. 只能使用用户提供的表结构中的表与字段；\n"
-                + "2. 只生成一条只读 SELECT 语句，不要写 INSERT/UPDATE/DELETE/DDL；\n"
-                + "3. 结果用 ```sql 代码块包裹，不要解释；\n"
-                + "4. 需要聚合/排序/分页时合理处理，结果行数控制在 1000 行以内。\n"
-                + (withTraining ? "5. 已提供 SQL 样例作为参考，优先对齐其风格。\n" : "");
+    private static String sqlSystemPrompt(boolean withTraining, DatasourceType dialect) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("你是一个严谨的数据库 SQL 专家，服务于一个中文问数（NL2SQL）系统。\n")
+                .append("规则：\n")
+                .append("1. 只能使用用户提供的表结构中的表与字段；\n")
+                .append("2. 只生成一条只读 SELECT 语句，不要写 INSERT/UPDATE/DELETE/DDL；\n")
+                .append("3. 结果用 ```sql 代码块包裹，不要解释；\n")
+                .append("4. 需要聚合/排序/分页时合理处理，结果行数控制在 1000 行以内。\n");
+        if (dialect != null) {
+            // 验收 A1：注入方言特定的标识符引用与分页约定，避免模型默认按 MySQL 生成错误语法
+            sb.append(dialect.sqlDialectHint()).append("\n");
+        }
+        if (withTraining) {
+            sb.append("已提供 SQL 样例作为参考，优先对齐其风格。\n");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 由数据源 id 解析方言（验收 A1）；解析失败或未知类型时返回 null（退化为通用提示，不抛错）。
+     */
+    private DatasourceType resolveType(Long dsId) {
+        if (dsId == null) {
+            return null;
+        }
+        try {
+            return datasourceRepository.findById(dsId)
+                    .map(row -> DatasourceType.fromType(Rows.str(row, "type")))
+                    .orElse(null);
+        } catch (IllegalArgumentException e) {
+            log.info("未知数据源类型，退化为通用提示: dsId={}", dsId);
+            return null;
+        }
     }
 
     private static String chartSystemPrompt() {
