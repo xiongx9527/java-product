@@ -27,6 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -168,6 +169,38 @@ class TableEmbeddingServiceTest {
         assertEquals(501L, service.rankTables(DS, "库存盘点表差异有哪些").get(0).longValue());
         // 仅命中 custom_comment
         assertEquals(503L, service.rankTables(DS, "会员等级分布").get(0).longValue());
+    }
+
+    // ------------------------------------------------------------------
+    // ④-b 引号标识符显式提及优先（对齐 SQLBot _select_tables）
+    // ------------------------------------------------------------------
+
+    @Test
+    void quotedMentionRanksAboveUnquoted() {
+        table(601, "用户表", "用户信息", null);
+        table(602, "商品表", "商品信息", null);
+        // 两者都在问题中出现（mention 同分），但仅 用户表 被引号显式包裹 → 必须排第一
+        List<Long> ranked = service.rankTables(DS, "对比 \"用户表\" 和 商品表 的数量");
+        assertEquals(601L, ranked.get(0).longValue());
+    }
+
+    @Test
+    void quotedTableCommentIsExplicit() {
+        table(611, "t_order", "订单表", null);
+        table(612, "t_user", "用户表", null);
+        // 中文引号包裹的是表注释（订单表），同样算显式提及
+        List<Long> ranked = service.rankTables(DS, "统计 “订单表” 的金额，不要 用户表");
+        assertEquals(611L, ranked.get(0).longValue());
+    }
+
+    @Test
+    void quotedTokensExtracted() {
+        Set<String> tokens = com.xiongx9527.askdata.datasource.embedding.TableEmbeddingService
+                .quotedTokens("select * from `orders` join [users] on \"订单表\" and “商品”");
+        assertTrue(tokens.contains("orders"), tokens.toString());
+        assertTrue(tokens.contains("users"), tokens.toString());
+        assertTrue(tokens.contains("订单表"), tokens.toString());
+        assertTrue(tokens.contains("商品"), tokens.toString());
     }
 
     // ------------------------------------------------------------------

@@ -17,10 +17,13 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * 表级向量召回（table-rag-embedding）：为每张勾选表计算文档向量并回填
@@ -46,6 +49,16 @@ public class TableEmbeddingService {
     private static final double VECTOR_WEIGHT = 0.4D;
 
     private static final double MENTION_WEIGHT = 0.6D;
+
+    /**
+     * 显式提及加成：问题中以引号/反引号/方括号/中文引号包裹的表名（对齐 SQLBot {@code _select_tables}
+     * 的引号标识符提取）视为显式引用，优先进入候选。加成大到保证显式提及表排在其余（含向量高分）之前。
+     */
+    private static final double EXPLICIT_MENTION_BONUS = 10D;
+
+    /** 引号标识符："x" / `x` / [x] / “x”（捕获组 1-4 对应四种引号内容）。 */
+    private static final Pattern QUOTED_TOKEN = Pattern.compile(
+            "\"([^\"]+)\"|`([^`]+)`|\\[([^\\]]+)\\]|\u201c([^\u201d]+)\u201d");
 
     private final TableRepository tableRepository;
 
@@ -163,6 +176,7 @@ public class TableEmbeddingService {
         double[] questionVector = embed(q);
         Map<Long, String> stored = storedEmbeddings(dsId);
         double[] mention = mentionScores(tables, q);
+        Set<String> quoted = quotedTokens(q);
         List<Long> ids = new ArrayList<>();
         List<Double> scores = new ArrayList<>();
         for (int i = 0; i < tables.size(); i++) {
@@ -171,7 +185,12 @@ public class TableEmbeddingService {
             double[] tableVector = parseVector(stored.get(tableId));
             double vector = questionVector != null && tableVector != null
                     ? ChatModelClient.cosine(questionVector, tableVector) : -1D;
-            scores.add(hybrid(mention[i], vector));
+            double score = hybrid(mention[i], vector);
+            // A1 显式提及：引号包裹的表名/注释优先进入候选（对齐 SQLBot _select_tables）
+            if (!quoted.isEmpty() && explicitMention(tables.get(i), quoted)) {
+                score += EXPLICIT_MENTION_BONUS;
+            }
+            scores.add(score);
         }
         List<Integer> order = new ArrayList<>();
         for (int i = 0; i < scores.size(); i++) {
@@ -251,6 +270,40 @@ public class TableEmbeddingService {
     }
 
     /** 提及候选：表名 + 表注释（custom_comment 优先，再 table_comment），去空白。 */
+    /** 提取问题中被引号/反引号/方括号/中文引号包裹的 token（小写），用于显式提及判定。 */
+    static Set<String> quotedTokens(String question) {
+        Set<String> tokens = new LinkedHashSet<>();
+        if (question == null || question.isEmpty()) {
+            return tokens;
+        }
+        java.util.regex.Matcher m = QUOTED_TOKEN.matcher(question);
+        while (m.find()) {
+            for (int g = 1; g <= 4; g++) {
+                String v = m.group(g);
+                if (v != null) {
+                    String t = v.trim();
+                    if (!t.isEmpty()) {
+                        tokens.add(t.toLowerCase(Locale.ROOT));
+                    }
+                    break;
+                }
+            }
+        }
+        return tokens;
+    }
+
+    /** 表名或表注释（custom/table）被引号显式包裹即为显式提及（大小写不敏感）。 */
+    private static boolean explicitMention(Map<String, Object> table, Set<String> quoted) {
+        for (String candidate : new String[] {Rows.str(table, "table_name"),
+                Rows.str(table, "custom_comment"), Rows.str(table, "table_comment")}) {
+            if (candidate != null && !candidate.trim().isEmpty()
+                    && quoted.contains(candidate.trim().toLowerCase(Locale.ROOT))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static List<String> mentionTargets(Map<String, Object> table) {
         List<String> targets = new ArrayList<>();
         for (String candidate : new String[] {Rows.str(table, "table_name"),
