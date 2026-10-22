@@ -25,6 +25,14 @@ class NoHardcodedSecretsTest {
 
     private static final List<String> DENY = List.of("Root57@123456", "SQLBot@123456");
 
+    /**
+     * A5 补充：{@code @Value} 注解中 secret/password/key/token 类配置不得带非空缺省值，
+     * 否则等于把密钥写进版本库（历史漏检：askdata.secret-key 缺省 AskDataSecret001）。
+     */
+    private static final Pattern VALUE_DEFAULT_SECRET = Pattern.compile(
+            "@Value\\(\\s*\"\\$\\{[^}\"]*(?:secret|password|passwd|token|key)[^}\"]*:[^}\"]+\\}\"\\)",
+            Pattern.CASE_INSENSITIVE);
+
     @Test
     void noHardcodedSecretsInMainSource() throws IOException {
         List<String> offenders = new ArrayList<>();
@@ -60,6 +68,10 @@ class NoHardcodedSecretsTest {
                     continue;
                 }
                 offenders.add(p + " : 疑似硬编码密钥赋值 " + m.group());
+            }
+            var vd = VALUE_DEFAULT_SECRET.matcher(content);
+            while (vd.find()) {
+                offenders.add(p + " : @Value 缺省值疑似密钥 " + vd.group());
             }
         } catch (IOException e) {
             fail("读取文件失败: " + p);
