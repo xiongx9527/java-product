@@ -179,7 +179,7 @@ class ChatPipelineTest {
         chatKnowledgeService = new ChatKnowledgeService(
                 new TerminologyRecallService(new EmbeddingService(new LocalEmbeddingModel(excelDir.toString(), 128),
                         modelRouter, modelClient, appJdbc, objectMapper), appJdbc),
-                schemaContextBuilder, appJdbc, Mockito.mock(ChatModelRouter.class));
+                schemaContextBuilder, appJdbc, Mockito.mock(ChatModelRouter.class), modelClient);
         chatQuestionService = new ChatQuestionService(chatRepository, recommendedQuestionRepository,
                 datasourceRepository, datasourceService, currentUserService, schemaContextBuilder, modelClient,
                 modelRouter, new ChatChartBuilder(objectMapper), objectMapper, null, chatKnowledgeService,

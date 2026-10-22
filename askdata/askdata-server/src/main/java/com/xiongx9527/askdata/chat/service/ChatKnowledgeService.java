@@ -12,6 +12,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -41,6 +42,15 @@ public class ChatKnowledgeService {
     /** 同义词扩展上限（对齐 SQLBot {@code expand_with_terminology} 的 max_keywords=10）。 */
     public static final int MAX_EXPANDED_KEYWORDS = 10;
 
+    /** LLM 实体抽取单次返回实体上限（避免模型输出噪声膨胀关键词）。 */
+    private static final int MAX_LLM_ENTITIES = 30;
+
+    /** LLM 业务实体抽取系统提示词（对齐 SQLBot extract_keywords：只抽实体、忽略时间/动作/修饰词）。 */
+    private static final String ENTITY_EXTRACTION_SYSTEM_PROMPT =
+            "你是一个面向数据分析的实体抽取器。给定对话历史与当前问题，抽取用于检索数据表/字段与业务术语的核心业务实体"
+            + "（如指标名、维度、表名、列名、业务对象），忽略时间词、动词、修饰词与疑问词。"
+            + "只输出逗号分隔的实体词列表，不要解释，不要 Markdown 代码块。";
+
     private final TerminologyRecallService terminologyRecallService;
 
     private final SchemaContextBuilder schemaContextBuilder;
@@ -49,13 +59,16 @@ public class ChatKnowledgeService {
 
     private final ChatModelRouter modelRouter;
 
+    private final ChatModelClient modelClient;
+
     public ChatKnowledgeService(TerminologyRecallService terminologyRecallService,
                                 SchemaContextBuilder schemaContextBuilder, JdbcTemplate jdbc,
-                                ChatModelRouter modelRouter) {
+                                ChatModelRouter modelRouter, ChatModelClient modelClient) {
         this.terminologyRecallService = terminologyRecallService;
         this.schemaContextBuilder = schemaContextBuilder;
         this.jdbc = jdbc;
         this.modelRouter = modelRouter;
+        this.modelClient = modelClient;
     }
 
     /**
@@ -87,10 +100,13 @@ public class ChatKnowledgeService {
         /** SQL 示例是否因 data_training 表缺失而不可用（验收 A3）。 */
         private final boolean sqlExampleDegraded;
 
+        /** 关键词提取是否走了 LLM 实体抽取（false 表示退化为词法命中，用于可观测，见 A2/2.1）。 */
+        private final boolean keywordLlmUsed;
+
         KnowledgeContext(String extractedKeywords, String expandedKeywords, String terminologyText,
                          List<Map<String, Object>> termGroups, List<String> sqlExamples,
                          List<String> customPrompts, boolean terminologyDegraded,
-                         boolean sqlExampleDegraded) {
+                         boolean sqlExampleDegraded, boolean keywordLlmUsed) {
             this.extractedKeywords = extractedKeywords;
             this.expandedKeywords = expandedKeywords;
             this.terminologyText = terminologyText;
@@ -99,6 +115,7 @@ public class ChatKnowledgeService {
             this.customPrompts = customPrompts;
             this.terminologyDegraded = terminologyDegraded;
             this.sqlExampleDegraded = sqlExampleDegraded;
+            this.keywordLlmUsed = keywordLlmUsed;
         }
 
         public String getExtractedKeywords() {
@@ -140,6 +157,11 @@ public class ChatKnowledgeService {
             return sqlExampleDegraded;
         }
 
+        /** 关键词提取是否走了 LLM 实体抽取（false = 退化为词法命中）。 */
+        public boolean isKeywordLlmUsed() {
+            return keywordLlmUsed;
+        }
+
         /** 降级原因清单（验收 A3：可观测的状态标志，供日志/测试断言）。 */
         public List<String> degradationReasons() {
             List<String> reasons = new ArrayList<String>();
@@ -165,7 +187,7 @@ public class ChatKnowledgeService {
      * @param dsId     数据源 id（可空；非空时按 specific_ds/datasource_ids 过滤术语与提示词）
      */
     public KnowledgeContext prepare(String question, long oid, Long dsId) {
-        return prepare(question, oid, dsId, null);
+        return prepare(question, oid, dsId, null, null);
     }
 
     /**
@@ -175,6 +197,15 @@ public class ChatKnowledgeService {
      *                      其他应用的知识不会进入本次提示词
      */
     public KnowledgeContext prepare(String question, long oid, Long dsId, Long advancedAppId) {
+        return prepare(question, oid, dsId, advancedAppId, null);
+    }
+
+    /**
+     * 执行知识增强四步（A9 隔离 + A2 LLM 实体抽取带历史上下文）。
+     *
+     * @param historyText 前序 Q&A 文本（可空）；非空时一并喂给 LLM 实体抽取，使追问能解析前文实体
+     */
+    public KnowledgeContext prepare(String question, long oid, Long dsId, Long advancedAppId, String historyText) {
         // 验收 A3：显式探测并登记降级，避免术语/示例在 embedding 缺失或表缺失时静默失效
         boolean terminologyDegraded = !modelRouter.embeddingModel().isPresent();
         boolean sqlExampleDegraded = !schemaContextBuilder.trainingTableAvailable();
@@ -185,14 +216,27 @@ public class ChatKnowledgeService {
             log.warn("SQL 示例降级：data_training 表不可用，few-shot 示例缺失（oid={}, dsId={}）", oid, dsId);
         }
         List<Map<String, Object>> groups = recallTerms(question, oid, dsId, advancedAppId);
+        // 2.1：LLM 业务实体抽取（带历史上下文）作为术语命中的补充种子；模型不可用/失败则退化为词法命中
         List<String> matched = matchedWords(groups, question);
-        String extracted = String.join(",", matched);
-        String expanded = String.join(",", expandKeywords(matched, groups));
+        boolean keywordLlmUsed = false;
+        List<String> llmEntities = extractEntitiesWithLlm(question, historyText);
+        Set<String> extractedSet = new LinkedHashSet<>(matched);
+        if (llmEntities != null) {
+            keywordLlmUsed = true;
+            for (String entity : llmEntities) {
+                if (entity != null && !entity.trim().isEmpty()) {
+                    extractedSet.add(entity.trim());
+                }
+            }
+        }
+        List<String> extractedList = new ArrayList<>(extractedSet);
+        String extracted = String.join(",", extractedList);
+        String expanded = String.join(",", expandKeywords(extractedList, groups));
         String terminologyText = terminologyTemplate(groups);
         List<String> sqlExamples = trainingSamples(dsId, question, advancedAppId);
         List<String> customPrompts = customPrompts(oid, dsId, advancedAppId);
         return new KnowledgeContext(extracted, expanded, terminologyText, groups, sqlExamples, customPrompts,
-                terminologyDegraded, sqlExampleDegraded);
+                terminologyDegraded, sqlExampleDegraded, keywordLlmUsed);
     }
 
     /** 术语召回（向量 + 词法；向量不可用时仅词法，不报错）。 */
@@ -252,6 +296,60 @@ public class ChatKnowledgeService {
             log.info("自定义提示词召回失败（降级为空）: {}", e.getMessage());
             return new ArrayList<>();
         }
+    }
+
+    // ------------------------------------------------------------------
+    // LLM 业务实体抽取（A2 / 2.1：对齐 SQLBot apps/chat/task/llm.py extract_keywords）
+    // ------------------------------------------------------------------
+
+    /**
+     * LLM 业务实体抽取：从「当前问题 + 前序问答」中抽核心业务实体，忽略时间/动作/修饰词。
+     * 未配置可用对话模型或调用失败时返回 null（调用方退化为词法命中，不影响主链路）。
+     */
+    private List<String> extractEntitiesWithLlm(String question, String historyText) {
+        Optional<ChatModelRouter.ModelRef> chat = modelRouter.defaultChatModel();
+        if (!chat.isPresent() || !chat.get().usable()) {
+            return null;
+        }
+        ChatModelRouter.ModelRef model = chat.get();
+        List<ChatModelClient.ModelMessage> messages = new ArrayList<>();
+        messages.add(new ChatModelClient.ModelMessage("system", ENTITY_EXTRACTION_SYSTEM_PROMPT));
+        StringBuilder user = new StringBuilder();
+        if (historyText != null && !historyText.trim().isEmpty()) {
+            user.append("【前文问答（解析实体时请优先引用其中已出现的表名、列名与业务实体）】\n")
+                    .append(historyText).append("\n\n");
+        }
+        user.append("【当前问题】\n").append(question == null ? "" : question);
+        messages.add(new ChatModelClient.ModelMessage("user", user.toString()));
+        try {
+            String raw = modelClient.generate(model.apiDomain, model.apiKey, model.baseModel, messages);
+            return parseEntities(raw);
+        } catch (Exception e) {
+            log.info("LLM 关键词抽取失败（退化为词法命中）: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** 解析 LLM 输出为实体列表：去代码块、按逗号/顿号/分号/换行切分、去空去重、上限 {@value #MAX_LLM_ENTITIES}。 */
+    private static List<String> parseEntities(String raw) {
+        if (raw == null || raw.trim().isEmpty()) {
+            return null;
+        }
+        String text = raw.trim();
+        if (text.startsWith("```")) {
+            int end = text.lastIndexOf("```");
+            if (end > 3) {
+                text = text.substring(3, end).trim();
+            }
+        }
+        Set<String> seen = new LinkedHashSet<>();
+        for (String part : text.split("[,，、;；\n\r]+")) {
+            String word = part.trim();
+            if (!word.isEmpty() && seen.size() < MAX_LLM_ENTITIES) {
+                seen.add(word);
+            }
+        }
+        return seen.isEmpty() ? null : new ArrayList<>(seen);
     }
 
     // ------------------------------------------------------------------

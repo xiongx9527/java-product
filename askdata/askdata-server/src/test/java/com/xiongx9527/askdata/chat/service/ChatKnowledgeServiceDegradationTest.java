@@ -42,7 +42,7 @@ class ChatKnowledgeServiceDegradationTest {
         when(router.embeddingModel()).thenReturn(
                 embeddingPresent ? Optional.of(mock(ChatModelRouter.ModelRef.class)) : Optional.empty());
 
-        return new ChatKnowledgeService(recall, schemaContextBuilder, jdbc, router);
+        return new ChatKnowledgeService(recall, schemaContextBuilder, jdbc, router, Mockito.mock(ChatModelClient.class));
     }
 
     @Test

@@ -180,7 +180,7 @@ class ChatKnowledgeChainTest {
                         objectMapper));
         chatKnowledgeService = new ChatKnowledgeService(
                 new TerminologyRecallService(embeddingService, appJdbc), schemaContextBuilder, appJdbc,
-                Mockito.mock(ChatModelRouter.class));
+                Mockito.mock(ChatModelRouter.class), modelClient);
         chatService = new ChatService(chatRepository, recommendedQuestionRepository, datasourceRepository,
                 datasourceService, currentUserService, objectMapper);
         chatQuestionService = new ChatQuestionService(chatRepository, recommendedQuestionRepository,

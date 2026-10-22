@@ -258,7 +258,7 @@ public class SchemaContextBuilder {
 
     /** 构建 SQL 生成的 system + user 消息（含训练样例时附加参考）。 */
     public List<ModelMessage> buildSqlMessages(String question, Long dsId) {
-        return buildSqlMessages(question, dsId, "", "", null, null);
+        return buildSqlMessages(question, dsId, "", "", null, null, question);
     }
 
     /**
@@ -271,13 +271,13 @@ public class SchemaContextBuilder {
      */
     public List<ModelMessage> buildSqlMessages(String question, Long dsId, String terminologyText,
                                                String customPromptText, List<String> sqlExamples,
-                                               String historyText) {
+                                               String historyText, String matchText) {
         List<ModelMessage> messages = new ArrayList<>();
         List<String> samples = sqlExamples != null ? sqlExamples
                 : (dsId == null ? Collections.<String>emptyList() : trainingSamples(dsId, question));
         messages.add(new ModelMessage("system", sqlSystemPrompt(!samples.isEmpty(), resolveType(dsId))));
         StringBuilder user = new StringBuilder();
-        user.append("【数据库表结构】\n").append(dsId == null ? "（未选择数据源）" : buildSchemaText(dsId, question));
+        user.append("【数据库表结构】\n").append(dsId == null ? "（未选择数据源）" : buildSchemaText(dsId, question, matchText));
         if (terminologyText != null && !terminologyText.isEmpty()) {
             user.append("\n\n【业务术语】\n").append(terminologyText);
         }
@@ -361,7 +361,7 @@ public class SchemaContextBuilder {
 
     /** 表结构文本（表注释 + 勾选字段 + 样例行），供 schema 提示词使用；不按问题排序。 */
     public String buildSchemaText(long dsId) {
-        return buildSchemaText(dsId, null);
+        return buildSchemaText(dsId, null, null);
     }
 
     /**
@@ -371,6 +371,15 @@ public class SchemaContextBuilder {
      * <p>question 为空、召回不可用或失败时退化为既有表次序，不抛错。</p>
      */
     public String buildSchemaText(long dsId, String question) {
+        return buildSchemaText(dsId, question, question);
+    }
+
+    /**
+     * 表结构文本（按 matchText 召回排序取 TOP-N）：问题点名或语义相关的表排在前面。
+     * {@code matchText} 缺省为 {@code question}；当知识增强链路给出 expanded_keywords（2.3，
+     * 对齐 SQLBot 用扩展关键词做表匹配）时，传扩展关键词可显著提升「同义表述」下的选表命中率。
+     */
+    public String buildSchemaText(long dsId, String question, String matchText) {
         List<Map<String, Object>> tables = tableRepository.listByDsIdChecked(dsId);
         if (tables.isEmpty()) {
             return "（该数据源未勾选任何表）";
@@ -381,7 +390,7 @@ public class SchemaContextBuilder {
         }
         StringBuilder sb = new StringBuilder();
         int count = 0;
-        for (Long tableId : topTableIds(dsId, question, new ArrayList<>(byId.keySet()))) {
+        for (Long tableId : topTableIds(dsId, question, matchText, new ArrayList<>(byId.keySet()))) {
             if (count >= MAX_TABLES) {
                 break;
             }
@@ -400,6 +409,14 @@ public class SchemaContextBuilder {
      * core_datasource 的勾选记录；与静态数据源共用同一提示词模板与方言提示。
      */
     public String buildSchemaTextForConf(DatasourceType type, DatasourceConf conf, String question) {
+        return buildSchemaTextForConf(type, conf, question, question);
+    }
+
+    /**
+     * 动态数据源表结构文本（A8），按 matchText 相关性排序取 TOP-N。
+     * {@code matchText} 缺省为 {@code question}；传扩展关键词可提升选表命中率（2.3）。
+     */
+    public String buildSchemaTextForConf(DatasourceType type, DatasourceConf conf, String question, String matchText) {
         List<TableSchema> tables;
         try {
             tables = datasourceService.tablesTransient(type, conf);
@@ -410,7 +427,8 @@ public class SchemaContextBuilder {
         if (tables == null || tables.isEmpty()) {
             return "（该数据源未发现任何表）";
         }
-        List<TableSchema> ordered = orderTablesByQuestion(tables, question);
+        String query = (matchText == null || matchText.trim().isEmpty()) ? question : matchText;
+        List<TableSchema> ordered = orderTablesByQuestion(tables, query);
         StringBuilder sb = new StringBuilder();
         int count = 0;
         for (TableSchema table : ordered) {
@@ -580,11 +598,11 @@ public class SchemaContextBuilder {
      */
     public List<ModelMessage> buildSqlMessagesForConf(String question, DatasourceType type, DatasourceConf conf,
                                                       String terminologyText, String customPromptText,
-                                                      String historyText) {
+                                                      String historyText, String matchText) {
         List<ModelMessage> messages = new ArrayList<>();
         messages.add(new ModelMessage("system", sqlSystemPrompt(false, type)));
         StringBuilder user = new StringBuilder();
-        user.append("【数据库表结构】\n").append(buildSchemaTextForConf(type, conf, question));
+        user.append("【数据库表结构】\n").append(buildSchemaTextForConf(type, conf, question, matchText));
         if (terminologyText != null && !terminologyText.isEmpty()) {
             user.append("\n\n【业务术语】\n").append(terminologyText);
         }
@@ -615,12 +633,13 @@ public class SchemaContextBuilder {
     }
 
     /** TOP-N 表 id：有问题时走表级向量召回排序（已按 MAX_TABLES 截断），否则保持既有次序。 */
-    private List<Long> topTableIds(long dsId, String question, List<Long> orderedIds) {
-        if (question == null || question.trim().isEmpty()) {
+    private List<Long> topTableIds(long dsId, String question, String matchText, List<Long> orderedIds) {
+        if ((question == null || question.trim().isEmpty())
+                && (matchText == null || matchText.trim().isEmpty())) {
             return orderedIds;
         }
         try {
-            List<Long> ranked = tableEmbeddingService.rankTables(dsId, question, MAX_TABLES);
+            List<Long> ranked = tableEmbeddingService.rankTables(dsId, question, matchText, MAX_TABLES);
             return ranked.isEmpty() ? orderedIds : ranked;
         } catch (Exception e) {
             // 召回异常（含向量读取失败）不影响 schema 提示词主链路，退化为既有次序

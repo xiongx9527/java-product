@@ -83,7 +83,7 @@ class ChatKnowledgeServiceTest {
         assertFalse(embeddingService.available(), "测试环境不应有可用向量模型");
         chatKnowledgeService = new ChatKnowledgeService(
                 new TerminologyRecallService(embeddingService, appJdbc), schemaContextBuilder, appJdbc,
-                Mockito.mock(ChatModelRouter.class));
+                Mockito.mock(ChatModelRouter.class), modelClient);
 
         // 术语库：父术语「销售额」（释义）+ 同义词子术语「GMV」
         long termId = terminologyRepository.insertParent(1L, "销售额", "指成交总金额（含税）", false, null, true, null,

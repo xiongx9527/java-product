@@ -136,7 +136,7 @@ public class TableEmbeddingService {
      * 按混合分降序返回数据源下全部勾选表 id（同分保持 {@code listByDsIdChecked} 的稳定次序）。
      */
     public List<Long> rankTables(long dsId, String question) {
-        return rankTables(dsId, question, Integer.MAX_VALUE);
+        return rankTables(dsId, question, question, Integer.MAX_VALUE);
     }
 
     /**
@@ -144,11 +144,22 @@ public class TableEmbeddingService {
      * （schema 上下文 TOP-N 截断用，N 由调用方的 {@code MAX_TABLES} 决定）。
      */
     public List<Long> rankTables(long dsId, String question, int limit) {
+        return rankTables(dsId, question, question, limit);
+    }
+
+    /**
+     * 按混合分降序返回数据源下勾选表 id，并截断到前 {@code limit} 个。
+     * {@code matchText} 为表匹配用的查询文本（缺省为 {@code question}）；当知识增强链路给出
+     * 扩展关键词（2.3，对齐 SQLBot 用 expanded_keywords 做表匹配）时，传扩展关键词可让语义相关的
+     * 表排在前面，提升「同义表述」下的选表命中率。
+     */
+    public List<Long> rankTables(long dsId, String question, String matchText, int limit) {
         List<Map<String, Object>> tables = tableRepository.listByDsIdChecked(dsId);
         if (tables.isEmpty()) {
             return Collections.emptyList();
         }
-        String q = question == null ? "" : question;
+        String q = (matchText == null || matchText.trim().isEmpty())
+                ? (question == null ? "" : question) : matchText;
         double[] questionVector = embed(q);
         Map<Long, String> stored = storedEmbeddings(dsId);
         double[] mention = mentionScores(tables, q);

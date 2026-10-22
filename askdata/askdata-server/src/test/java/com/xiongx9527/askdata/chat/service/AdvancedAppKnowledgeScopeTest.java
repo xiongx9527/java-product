@@ -82,7 +82,7 @@ class AdvancedAppKnowledgeScopeTest {
         ChatModelRouter router = Mockito.mock(ChatModelRouter.class);
         Mockito.when(router.embeddingModel()).thenReturn(Optional.empty());
 
-        ChatKnowledgeService service = new ChatKnowledgeService(recall, schema, jdbc, router);
+        ChatKnowledgeService service = new ChatKnowledgeService(recall, schema, jdbc, router, Mockito.mock(ChatModelClient.class));
         insertPrompt(1, 1L, "app7 prompt", 7L);
         insertPrompt(2, 1L, "app8 prompt", 8L);
         insertPrompt(3, 1L, "global prompt", null);

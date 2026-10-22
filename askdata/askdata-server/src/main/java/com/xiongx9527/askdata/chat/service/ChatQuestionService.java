@@ -247,13 +247,16 @@ public class ChatQuestionService {
                 // A9：高级应用知识范围隔离——请求携带的 assistant_id 作为知识作用域
                 // （仅影响术语/训练样例/自定义提示词的召回范围，不会扩大权限）
                 Long advancedAppId = Rows.lngOrNull(body, "assistant_id");
+                // 验收 A3：追问上下文（前序 Q&A）先于知识增强计算，供 LLM 实体抽取与 SQL 生成复用
+                String historyText = priorContext(chatId, currentRecordId.get());
                 ChatKnowledgeService.KnowledgeContext knowledge =
-                        chatKnowledgeService.prepare(question, oid, dsId, advancedAppId);
+                        chatKnowledgeService.prepare(question, oid, dsId, advancedAppId, historyText);
                 chatRepository.saveKeywords(recordId, knowledge.getExtractedKeywords(),
                         knowledge.getExpandedKeywords());
                 logOperation(recordId, oid, uid, OPERATE_EXTRACT_KEYWORDS, knowledgeStart, 0L, false,
                         Rows.of("keywords", knowledge.getExtractedKeywords(),
-                                "expanded_keywords", knowledge.getExpandedKeywords()));
+                                "expanded_keywords", knowledge.getExpandedKeywords(),
+                                "llm_used", knowledge.isKeywordLlmUsed()));
                 // A3：降级原因随步骤落库，可在 /chat/record/{id}/log 观测（不只停留在日志文件）
                 logOperation(recordId, oid, uid, OPERATE_FILTER_TERMS, knowledgeStart, 0L, false,
                         Rows.of("terms", knowledge.getTermGroups(),
@@ -267,14 +270,15 @@ public class ChatQuestionService {
                 // -- 生成 SQL（流式） + 只读校验 + 错误回喂修复一轮
                 long sqlStart = System.currentTimeMillis();
                 String customPromptText = String.join("\n", knowledge.getCustomPrompts());
-                // 验收 A3：追问上下文（前序 Q&A）注入 SQL 生成，follow-up 可引用前文实体
-                String historyText = priorContext(chatId, currentRecordId.get());
+                // 2.3：用扩展关键词驱动表级召回（对齐 SQLBot 用 expanded_keywords 做表匹配），提升同义表述选表命中率
+                String matchText = knowledge.getExpandedKeywords();
                 String sqlText = generateText(writer, aiModel,
                         dynamic != null
                                 ? schemaContextBuilder.buildSqlMessagesForConf(question, dynamic.getType(),
-                                        dynamic.getConf(), knowledge.getTerminologyText(), customPromptText, historyText)
+                                        dynamic.getConf(), knowledge.getTerminologyText(), customPromptText,
+                                        historyText, matchText)
                                 : schemaContextBuilder.buildSqlMessages(question, dsId, knowledge.getTerminologyText(),
-                                        customPromptText, knowledge.getSqlExamples(), historyText),
+                                        customPromptText, knowledge.getSqlExamples(), historyText, matchText),
                         "sql-result", totalTokens);
                 String sql = sqlText == null ? null : extractSql(sqlText);
                 if (sql == null) {
