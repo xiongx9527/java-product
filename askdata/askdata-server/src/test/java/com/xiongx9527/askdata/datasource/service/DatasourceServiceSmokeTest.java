@@ -80,6 +80,8 @@ class DatasourceServiceSmokeTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        // 非 Spring 测试：显式注入与 schema.sql 种子一致的应用密钥（A5 起密钥配置化，默认 AskDataSecret001）
+        DatasourceCrypto.configure(new CryptoUtil("AskDataSecret001"));
         // 每个测试方法独立内存库（DB_CLOSE_DELAY=-1 下同名库跨方法共享，故加唯一后缀）
         appJdbc = new JdbcTemplate(new DriverManagerDataSource(
                 "jdbc:h2:mem:svc_app_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));

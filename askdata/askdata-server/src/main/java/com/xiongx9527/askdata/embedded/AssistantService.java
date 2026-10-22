@@ -11,6 +11,7 @@ import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.common.web.PageResult;
 import com.xiongx9527.askdata.datasource.repository.DatasourceRepository;
+import com.xiongx9527.askdata.datasource.service.DatasourceService;
 import com.xiongx9527.askdata.system.audit.AuditRecorder;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import org.springframework.stereotype.Service;
@@ -48,17 +49,25 @@ public class AssistantService {
 
     private final ObjectMapper objectMapper;
 
+    private final DatasourceService datasourceService;
+
+    private final DynamicDatasourceResolver dynamicDatasourceResolver;
+
     private final SecureRandom random = new SecureRandom();
 
     public AssistantService(AssistantRepository assistantRepository, DatasourceRepository datasourceRepository,
                             CurrentUserService currentUserService, AssistantFileStorage fileStorage,
-                            AuditRecorder auditRecorder, ObjectMapper objectMapper) {
+                            AuditRecorder auditRecorder, ObjectMapper objectMapper,
+                            DatasourceService datasourceService,
+                            DynamicDatasourceResolver dynamicDatasourceResolver) {
         this.assistantRepository = assistantRepository;
         this.datasourceRepository = datasourceRepository;
         this.currentUserService = currentUserService;
         this.fileStorage = fileStorage;
         this.auditRecorder = auditRecorder;
         this.objectMapper = objectMapper;
+        this.datasourceService = datasourceService;
+        this.dynamicDatasourceResolver = dynamicDatasourceResolver;
     }
 
     // ------------------------------------------------------------------
@@ -152,6 +161,30 @@ public class AssistantService {
             return result;
         }
         return result;
+    }
+
+    /**
+     * 高级应用（assistant type 1/3）按请求从宿主拉取动态数据源（A8）：解析宿主下发的连接配置并
+     * 校验连接可用性，但<b>不持久化</b>（不写入 core_datasource，也不返回连接密钥）。
+     *
+     * @param assistantId 高级应用 id（type 必须为 1 或 3）
+     * @param hostConfig  宿主下发配置：{@code {type: "mysql", name?: "...", configuration: {...}}}
+     * @return 动态数据源视图 {@code {id:null, name, type, type_name, connected}}
+     */
+    public Map<String, Object> checkDynamicDatasource(long assistantId, Map<String, Object> hostConfig) {
+        currentUserService.requireWsAdmin();
+        Map<String, Object> assistant = assistantRepository.findById(assistantId)
+                .orElseThrow(() -> new BadRequestException("Assistant with id " + assistantId + " not found"));
+        int type = Rows.intg(assistant, "type", 0);
+        DynamicDatasource dynamic = dynamicDatasourceResolver.resolve(type, hostConfig);
+        boolean connected = datasourceService.checkConnectionTransient(dynamic.getType(), dynamic.getConf());
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("id", null);
+        view.put("name", dynamic.getName());
+        view.put("type", dynamic.typeName());
+        view.put("type_name", dynamic.getType().getDbName());
+        view.put("connected", connected);
+        return view;
     }
 
     /** POST /system/assistant（创建；生成 app_id/app_secret 嵌入密钥）。 */

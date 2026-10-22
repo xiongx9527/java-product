@@ -13,6 +13,8 @@ import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.datasource.engine.SqlSafety;
 import com.xiongx9527.askdata.datasource.repository.DatasourceRepository;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
+import com.xiongx9527.askdata.embedded.DynamicDatasource;
+import com.xiongx9527.askdata.embedded.DynamicDatasourceResolver;
 import com.xiongx9527.askdata.permission.PermissionEnforcer;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import org.slf4j.Logger;
@@ -117,13 +119,16 @@ public class ChatQuestionService {
 
     private final PermissionEnforcer permissionEnforcer;
 
+    private final DynamicDatasourceResolver dynamicDatasourceResolver;
+
     public ChatQuestionService(ChatRepository chatRepository,
                                RecommendedQuestionRepository recommendedQuestionRepository,
                                DatasourceRepository datasourceRepository, DatasourceService datasourceService,
                                CurrentUserService currentUserService, SchemaContextBuilder schemaContextBuilder,
                                ChatModelClient modelClient, ChatModelRouter modelRouter,
                                ChatChartBuilder chartBuilder, ObjectMapper objectMapper,
-                               PermissionEnforcer permissionEnforcer, ChatKnowledgeService chatKnowledgeService) {
+                               PermissionEnforcer permissionEnforcer, ChatKnowledgeService chatKnowledgeService,
+                               DynamicDatasourceResolver dynamicDatasourceResolver) {
         this.chatRepository = chatRepository;
         this.recommendedQuestionRepository = recommendedQuestionRepository;
         this.datasourceRepository = datasourceRepository;
@@ -136,6 +141,7 @@ public class ChatQuestionService {
         this.objectMapper = objectMapper;
         this.permissionEnforcer = permissionEnforcer;
         this.chatKnowledgeService = chatKnowledgeService;
+        this.dynamicDatasourceResolver = dynamicDatasourceResolver;
     }
 
     // ==================================================================
@@ -187,16 +193,29 @@ public class ChatQuestionService {
                 }
                 ModelRef aiModel = model.get();
 
-                Long dsId = resolveDatasource(chat, oid, question, writer);
-                if (dsId == null) {
-                    emitError(writer, "当前工作空间没有可用的数据源");
-                    return;
+                DynamicDatasource dynamic = resolveDynamicDatasource(body);
+                Long dsId;
+                Map<String, Object> ds = null;
+                if (dynamic != null) {
+                    // A8：高级应用按请求从宿主拉取动态数据源（不落库，dsId 为空）
+                    dsId = null;
+                } else {
+                    dsId = resolveDatasource(chat, oid, question, writer);
+                    if (dsId == null) {
+                        emitError(writer, "当前工作空间没有可用的数据源");
+                        return;
+                    }
+                    ds = datasourceRepository.findById(dsId).orElse(null);
                 }
-                Map<String, Object> ds = datasourceRepository.findById(dsId).orElse(null);
+                String dsType = dynamic != null ? dynamic.typeName() : dsTypeOf(ds);
+                String dsTypeName = dynamic != null ? dynamic.getType().getDbName()
+                        : (ds == null ? null : Rows.str(ds, "type_name"));
+                String dsName = dynamic != null ? dynamic.getName()
+                        : (ds == null ? null : Rows.str(ds, "name"));
                 emit(writer, Rows.of("type", "model", "id", aiModel.id, "name", aiModel.name));
                 emit(writer, Rows.of("type", "datasource", "id", dsId,
-                        "datasource_name", ds == null ? null : Rows.str(ds, "name"),
-                        "engine_type", ds == null ? null : Rows.str(ds, "type_name")));
+                        "datasource_name", dsName,
+                        "engine_type", dsTypeName));
 
                 // first_chat 标记来自请求（ChatCreator 的快捷提问记录才置位，前端据此渲染首问引导）；
                 // 会话摘要则在会话尚无记录时生成（对齐 SQLBot change_title 的首问语义）
@@ -205,9 +224,8 @@ public class ChatQuestionService {
                 long recordId = chatRepository.insertRecord(chatId, question, uid, oid, dsId, firstChat,
                         regenerateRecordId);
                 chatRepository.touchChat(chatId);
-                if (Rows.lng(chat, "datasource", 0L) <= 0L) {
-                    chatRepository.setChatDatasource(chatId, dsId,
-                            ds == null ? null : Rows.str(ds, "type_name"), dsTypeOf(ds));
+                if (dsId != null && Rows.lng(chat, "datasource", 0L) <= 0L) {
+                    chatRepository.setChatDatasource(chatId, dsId, dsTypeName, dsType);
                 }
                 currentRecordId.set(recordId);
 
@@ -241,20 +259,23 @@ public class ChatQuestionService {
                 // 验收 A3：追问上下文（前序 Q&A）注入 SQL 生成，follow-up 可引用前文实体
                 String historyText = priorContext(chatId, currentRecordId.get());
                 String sqlText = generateText(writer, aiModel,
-                        schemaContextBuilder.buildSqlMessages(question, dsId, knowledge.getTerminologyText(),
-                                customPromptText, knowledge.getSqlExamples(), historyText),
+                        dynamic != null
+                                ? schemaContextBuilder.buildSqlMessagesForConf(question, dynamic.getType(),
+                                        dynamic.getConf(), knowledge.getTerminologyText(), customPromptText, historyText)
+                                : schemaContextBuilder.buildSqlMessages(question, dsId, knowledge.getTerminologyText(),
+                                        customPromptText, knowledge.getSqlExamples(), historyText),
                         "sql-result", totalTokens);
                 String sql = sqlText == null ? null : extractSql(sqlText);
                 if (sql == null) {
                     // 一次修复：把「未输出 SQL」的语义错误回喂
-                    sqlText = regenerateSql(aiModel, question, dsId, sqlText, "模型未输出可执行的 SQL", writer);
+                    sqlText = regenerateSql(aiModel, question, dsId, dynamic, sqlText, "模型未输出可执行的 SQL", writer);
                     sql = sqlText == null ? null : extractSql(sqlText);
                 }
-                String validation = sql == null ? "模型未输出可执行的 SQL" : validateSql(sql, dsTypeOf(ds), dsId);
+                String validation = sql == null ? "模型未输出可执行的 SQL" : validateSql(sql, dsType, dsId);
                 if (validation != null) {
-                    String fixed = regenerateSql(aiModel, question, dsId, sql == null ? "" : sql, validation, writer);
+                    String fixed = regenerateSql(aiModel, question, dsId, dynamic, sql == null ? "" : sql, validation, writer);
                     String fixedSql = fixed == null ? null : extractSql(fixed);
-                    if (fixedSql != null && validateSql(fixedSql, dsTypeOf(ds), dsId) == null) {
+                    if (fixedSql != null && validateSql(fixedSql, dsType, dsId) == null) {
                         sqlText = fixed;
                         sql = fixedSql;
                         validation = null;
@@ -267,7 +288,7 @@ public class ChatQuestionService {
                     return;
                 }
                 // -- 行/列权限强制（A3）：普通用户注入行过滤、隐藏无权限列；管理员/白名单跳过
-                PermissionEnforcer.EnforcedQuery enforced = permissionEnforcer == null
+                PermissionEnforcer.EnforcedQuery enforced = (dynamic != null || dsId == null || permissionEnforcer == null)
                         ? null : permissionEnforcer.enforce(oid, uid, dsId, sql);
                 if (enforced != null) {
                     sql = enforced.getSql();
@@ -285,7 +306,9 @@ public class ChatQuestionService {
                 // -- 执行 SQL → 表格数据
                 emit(writer, Rows.of("type", "info", "msg", "sql executing"));
                 long execStart = System.currentTimeMillis();
-                Map<String, Object> result = datasourceService.execSql(dsId, Rows.of("sql", sql));
+                Map<String, Object> result = dynamic != null
+                        ? datasourceService.execSqlTransient(dynamic.getType(), dynamic.getConf(), sql)
+                        : datasourceService.execSql(dsId, Rows.of("sql", sql));
                 if (enforced != null) {
                     result = permissionEnforcer.applyHiddenColumns(result, enforced.getHiddenColumns());
                 }
@@ -306,7 +329,7 @@ public class ChatQuestionService {
                 emit(writer, Rows.of("type", "chart", "content", chartJson));
 
                 // -- 推荐问题（仅在真的产出时才发帧：前端空数组会渲染为「获取失败」）
-                if (recommendedEnabled(ds)) {
+                if (dynamic != null || recommendedEnabled(ds)) {
                     long recommendStart = System.currentTimeMillis();
                     List<String> recommended = recommendQuestions(aiModel, question, DEFAULT_ARTICLES_NUMBER);
                     logOperation(recordId, oid, uid, OPERATE_RECOMMEND_QUESTIONS, recommendStart, 0L, false, null);
@@ -557,13 +580,43 @@ public class ChatQuestionService {
         return dsId;
     }
 
+    /**
+     * 解析请求中的动态数据源（A8）：仅高级应用（assistant type 1/3）允许按请求从宿主拉取，
+     * 不写入 core_datasource；未携带时返回 null，走既有静态数据源链路。
+     */
+    private DynamicDatasource resolveDynamicDatasource(Map<String, Object> body) {
+        Object raw = body.get("dynamic_datasource");
+        if (raw == null) {
+            return null;
+        }
+        Map<String, Object> hostConfig;
+        if (raw instanceof Map) {
+            hostConfig = objectMapper.convertValue(raw, new TypeReference<Map<String, Object>>() {
+            });
+        } else {
+            try {
+                hostConfig = objectMapper.readValue(String.valueOf(raw),
+                        new TypeReference<Map<String, Object>>() {
+                        });
+            } catch (Exception e) {
+                throw new BadRequestException("Invalid dynamic datasource: " + e.getMessage());
+            }
+        }
+        int assistantType = Rows.intg(body, "assistant_type", DynamicDatasourceResolver.TYPE_ADVANCED_APP);
+        return dynamicDatasourceResolver.resolve(assistantType, hostConfig);
+    }
+
     /** 错误回喂修复一轮（不流式重发，仅用于纠错），失败返回 null。 */
-    private String regenerateSql(ModelRef aiModel, String question, Long dsId, String brokenSql, String error,
-                                 FrameWriter writer) {
+    private String regenerateSql(ModelRef aiModel, String question, Long dsId, DynamicDatasource dynamic,
+                                 String brokenSql, String error, FrameWriter writer) {
         try {
+            List<ModelMessage> fixMessages = dynamic != null
+                    ? schemaContextBuilder.buildSqlFixMessagesForConf(question, dynamic.getType(),
+                            dynamic.getConf(), brokenSql == null ? "" : brokenSql, error)
+                    : schemaContextBuilder.buildSqlFixMessages(question, dsId,
+                            brokenSql == null ? "" : brokenSql, error);
             String text = modelClient.generate(aiModel.apiDomain, aiModel.apiKey, aiModel.baseModel,
-                    schemaContextBuilder.buildSqlFixMessages(question, dsId,
-                            brokenSql == null ? "" : brokenSql, error));
+                    fixMessages);
             if (text == null) {
                 return null;
             }
