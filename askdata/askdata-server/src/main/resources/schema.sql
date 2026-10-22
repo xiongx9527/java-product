@@ -564,6 +564,46 @@ CREATE TABLE IF NOT EXISTS ds_rules (
 );
 
 -- ---------------------------------------------------------------------
+-- 定时问数任务（A10：cron/interval 周期问数，复用 NL2SQL+执行；
+-- 导出 CSV/XLSX 或推送 webhook；任务运行历史与重试）
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS scheduled_task (
+    id               BIGINT PRIMARY KEY,
+    name             VARCHAR(255) NOT NULL,
+    oid              BIGINT,
+    create_by        BIGINT,
+    datasource_id    BIGINT,
+    question         VARCHAR(2000),
+    cron             VARCHAR(128),
+    interval_seconds BIGINT,
+    export_format    VARCHAR(16),
+    export_path      VARCHAR(1024),
+    push_url         VARCHAR(1024),
+    enabled          BOOLEAN NOT NULL DEFAULT FALSE,
+    running          BOOLEAN NOT NULL DEFAULT FALSE,
+    last_run_at      BIGINT,
+    next_run_at      BIGINT,
+    create_time      BIGINT,
+    update_time      BIGINT
+);
+
+CREATE TABLE IF NOT EXISTS scheduled_task_run (
+    id           BIGINT PRIMARY KEY,
+    task_id      BIGINT,
+    oid          BIGINT,
+    trigger_type VARCHAR(16),
+    status       VARCHAR(16),
+    sql          VARCHAR(10000),
+    row_count    INT,
+    export_path  VARCHAR(1024),
+    error        VARCHAR(4000),
+    started_at   BIGINT,
+    finished_at  BIGINT,
+    duration_ms  BIGINT,
+    create_time  BIGINT
+);
+
+-- ---------------------------------------------------------------------
 -- 小助手/嵌入应用（alembic 022/032/036/061/066；type 0=普通小助手、
 -- 1=高级应用、4=页面嵌入；app_id/app_secret 为嵌入密钥）
 -- ---------------------------------------------------------------------

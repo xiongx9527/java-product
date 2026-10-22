@@ -473,6 +473,25 @@ public class DatasourceService {
         return engine.fields(type, conf, tableName, null);
     }
 
+    // ------------------------------------------------------------------
+    // 后台任务（A10 定时任务：无登录用户上下文）
+    // ------------------------------------------------------------------
+
+    /** 后台任务的数据源方言解析（不做用户归属校验；归属由任务创建时校验保证）。 */
+    public DatasourceType typeAsSystem(long id) {
+        Map<String, Object> row = datasourceRepository.findById(id)
+                .orElseThrow(() -> new BadRequestException("Datasource with id " + id + " not found"));
+        return typeOf(Rows.str(row, "type"));
+    }
+
+    /** 后台任务执行只读 SQL（不做用户归属校验；与静态数据源共用同一执行链路）。 */
+    public Map<String, Object> execSqlAsSystem(long id, String sql) {
+        Map<String, Object> row = datasourceRepository.findById(id)
+                .orElseThrow(() -> new BadRequestException("Datasource with id " + id + " not found"));
+        DatasourceType type = typeOf(Rows.str(row, "type"));
+        return engine.execSql(type, confOf(Rows.str(row, "configuration")), sql, id);
+    }
+
     /** POST /datasource/fieldEnum/{ds_id}/{id}（SQLBot 保留路由）：字段去重值。 */
     public List<Object> fieldEnum(long dsId, long fieldId) {
         Map<String, Object> dsRow = requireAccessible(dsId);
