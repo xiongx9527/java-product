@@ -1,0 +1,66 @@
+schema: comet.native.children.v2
+acceptance_index:
+  A1:
+    source: brief.md
+    text: "A1：主聊天 NL2SQL 在生成 SQL 时把数据源方言（对应 DatasourceType 的 dialect 名，如 PostgreSQL/Oracle/ClickHouse）注入 system prompt，并使用该方言的引号/分页/类型约定；对任意非 MySQL 数据源生成的 SQL 在该方言下语法正确且可执行（由针对非 MySQL 数据源的集成/单测验证）。"
+  A2:
+    source: brief.md
+    text: "A2：MCP question_answer 与 SimpleAssistant 的 NL2SQL 不再硬编码 MySQL，不再每次问数全库 DatabaseMetaData 扫描；复用与主路径一致的 top-N RAG schema 选择 + dialect 注入 + 校验；移除 AskdataNl2Sql 中字面量 MySQL 与全表 dump 逻辑，且对非 MySQL 数据源产出正确 SQL（集成测试覆盖）。"
+  A3:
+    source: brief.md
+    text: "A3：追问将前序 Q&A 上下文注入 SQL 生成使 follow-up 能引用前文实体；术语库/SQL 示例在无 embedding 模型或对应表缺失时系统显式记录降级（日志/状态标志）而非静默失效（有对应测试或可观测日志断言）。"
+  A4:
+    source: brief.md
+    text: "A4：提供服务端图表渲染将 G2 配置渲染为 PNG（等价 SQLBot g2-ssr）；MCP/非交互与导出场景返回图片 URL；给定 chart config 服务端能产出 PNG 且 MCP 问数返回图片链接（有对应测试）。"
+  A5:
+    source: brief.md
+    text: "A5：问数结果支持 CSV 导出（XLSX 已有）；代码与 schema.sql 中不存在硬编码口令/密钥字面量；密钥/口令改为可配置，缺省值不写入版本库，且配置缺失时应用可正常启动（有测试/静态检查）。"
+  A6:
+    source: brief.md
+    text: "A6：对声明支持的 13 种数据源中 oracle/dm/kingbase/redshift/es/hive 等非 MySQL 引擎，在驱动就位时元数据（表/字段）可提取且样本查询可执行；补全缺失驱动/方言策略并验证（测试或容器验证覆盖）。"
+  A7:
+    source: brief.md
+    text: "A7：支持外部身份提供方登录与账号绑定：OIDC、CAS、SAML2、企业微信、钉钉、飞书、Lark（在已有 LDAP/SSO 基础上扩展）；每种协议可完成授权登录并自动开通本地账号，有对应配置与测试（可用 mock IdP 验证）。"
+  A8:
+    source: brief.md
+    text: "A8：高级应用（assistant type 1/3）支持按请求从宿主拉取数据源（动态数据源），不持久化该数据源；与静态数据源问数路径行为一致且有集成测试覆盖。"
+  A9:
+    source: brief.md
+    text: "A9：行/列权限支持 advanced-app 知识作用域隔离，权限模型（DsPermission/DsRules 风格）对齐 SQLBot 商业级表达（含 user_list/permission_list JSONB 匹配、多规则 AND/交集），运行时强制；多规则组合正确且有测试。"
+  A10:
+    source: brief.md
+    text: "A10：定时调度支持创建周期性问数任务（cron 或固定间隔），按调度自动执行已保存的问数（复用现有 NL2SQL 与执行链路），并将结果按配置导出（CSV/XLSX）或推送；调度任务可增删改查、启停，记录执行历史与失败重试；有对应配置与集成测试。"
+children:
+  - name: nl2sql-dialect
+    depends_on: []
+    covers: ['A1']
+  - name: nl2sql-mcp-parity
+    depends_on: []
+    covers: ['A2']
+  - name: nl2sql-multiturn-calibration
+    depends_on: ['nl2sql-dialect']
+    covers: ['A3']
+  - name: chart-server-image
+    depends_on: []
+    covers: ['A4']
+  - name: export-csv-secrets
+    depends_on: []
+    covers: ['A5']
+  - name: engine-execution-parity
+    depends_on: []
+    covers: ['A6']
+  - name: sso-external-idp
+    depends_on: []
+    covers: ['A7']
+  - name: dynamic-ds-advanced-app
+    depends_on: ['nl2sql-mcp-parity']
+    covers: ['A8']
+  - name: permission-commercial-depth
+    depends_on: []
+    covers: ['A9']
+  - name: scheduled-tasks
+    depends_on: []
+    covers: ['A10']
+  - name: a5-secret-default-repair
+    depends_on: []
+    covers: ['A5']

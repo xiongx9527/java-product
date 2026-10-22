@@ -1,0 +1,499 @@
+schema: comet.native.v4
+name: askdata-sqlbot-xpack-parity
+language: zh-CN
+phase: archive
+status: done
+state_version: 16
+brief: brief.md
+document_constraints_version: 3
+shape_confirmation_hash: 1eae4825b9e8f8478f08749d2aacfe615fe618542e1008cbbc36ffcc8a7e6c0b
+children_contract_hash: b8b31659485b0a2777ae031cdf653be67489f065dc3e1351ec0394399562a68d
+coordination_mode: multi-session
+spec_changes:
+  - capability: askdata-sqlbot-xpack-parity
+    operation: create
+    source: specs/askdata-sqlbot-xpack-parity/spec.md
+workspace:
+  isolation: current
+  change_branch: main
+  target_branch: main
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 3
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 1
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：主聊天 NL2SQL 在生成 SQL 时把数据源方言（对应 DatasourceType 的 dialect 名，如
+      PostgreSQL/Oracle/ClickHouse）注入 system prompt，并使用该方言的引号/分页/类型约定；对任意非 MySQL
+      数据源生成的 SQL 在该方言下语法正确且可执行（由针对非 MySQL 数据源的集成/单测验证）。
+    result: passed
+    reason:
+      text: 方言注入主 NL2SQL system prompt；DatasourceTypeDialectHintTest 通过，sqlDialectHint
+        符号核对通过。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2：MCP question_answer 与 SimpleAssistant 的 NL2SQL 不再硬编码 MySQL，不再每次问数全库
+      DatabaseMetaData 扫描；复用与主路径一致的 top-N RAG schema 选择 + dialect 注入 + 校验；移除
+      AskdataNl2Sql 中字面量 MySQL 与全表 dump 逻辑，且对非 MySQL 数据源产出正确 SQL（集成测试覆盖）。
+    result: passed
+    reason:
+      text: AskdataNl2Sql/AskdataSqlRetriever 去除字面量 MySQL 与全表 dump，复用 top-N
+        schema+方言+只读校验；全量套件通过。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3：追问将前序 Q&A 上下文注入 SQL 生成使 follow-up 能引用前文实体；术语库/SQL 示例在无 embedding
+      模型或对应表缺失时系统显式记录降级（日志/状态标志）而非静默失效（有对应测试或可观测日志断言）。
+    result: passed
+    reason:
+      text: 追问上下文注入与降级可观测实现存在，ChatKnowledgeServiceDegradationTest/ChatKnowledgeChainTest
+        通过。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: A4：提供服务端图表渲染将 G2 配置渲染为 PNG（等价 SQLBot g2-ssr）；MCP/非交互与导出场景返回图片 URL；给定 chart
+      config 服务端能产出 PNG 且 MCP 问数返回图片链接（有对应测试）。
+    result: passed
+    reason:
+      text: 服务端 G2→PNG 渲染与图片 URL 实现存在，ChartImage*Test 通过。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: A5：问数结果支持 CSV 导出（XLSX 已有）；代码与 schema.sql
+      中不存在硬编码口令/密钥字面量；密钥/口令改为可配置，缺省值不写入版本库，且配置缺失时应用可正常启动（有测试/静态检查）。
+    result: passed
+    reason:
+      text: 修复后独立复检：主源码/schema.sql 无
+        Root57@123456、SQLBot@123456、AskDataSecret001，且无带非空缺省值的 secret 类
+        @Value；A5 相关测试全部通过。
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: A6：对声明支持的 13 种数据源中 oracle/dm/kingbase/redshift/es/hive 等非 MySQL
+      引擎，在驱动就位时元数据（表/字段）可提取且样本查询可执行；补全缺失驱动/方言策略并验证（测试或容器验证覆盖）。
+    result: passed
+    reason:
+      text: 13 引擎方言/引号/分页策略与 EngineExecutionParityTest 存在且通过。
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: A7：支持外部身份提供方登录与账号绑定：OIDC、CAS、SAML2、企业微信、钉钉、飞书、Lark（在已有 LDAP/SSO
+      基础上扩展）；每种协议可完成授权登录并自动开通本地账号，有对应配置与测试（可用 mock IdP 验证）。
+    result: passed
+    reason:
+      text: 7 种外部 IdP provider + LocalAccountLinker 存在，ExternalIdpServiceTest 通过。
+      truncated: false
+  - id: A8
+    source: brief.md
+    text: A8：高级应用（assistant type
+      1/3）支持按请求从宿主拉取数据源（动态数据源），不持久化该数据源；与静态数据源问数路径行为一致且有集成测试覆盖。
+    result: passed
+    reason:
+      text: DynamicDatasourceResolver 仅 type 1/3 放行且不落库；DynamicDatasourceParityTest
+        覆盖动态/静态一致性并通过。
+      truncated: false
+  - id: A9
+    source: brief.md
+    text: A9：行/列权限支持 advanced-app 知识作用域隔离，权限模型（DsPermission/DsRules 风格）对齐 SQLBot
+      商业级表达（含 user_list/permission_list JSONB 匹配、多规则 AND/交集），运行时强制；多规则组合正确且有测试。
+    result: passed
+    reason:
+      text: 多规则 AND 行过滤、白名单短路、隐藏列并集、子查询包裹与结果集剔列均已实现；相关测试通过。
+      truncated: false
+  - id: A10
+    source: brief.md
+    text: A10：定时调度支持创建周期性问数任务（cron 或固定间隔），按调度自动执行已保存的问数（复用现有 NL2SQL
+      与执行链路），并将结果按配置导出（CSV/XLSX）或推送；调度任务可增删改查、启停，记录执行历史与失败重试；有对应配置与集成测试。
+    result: passed
+    reason:
+      text: cron/interval 调度、复用 NL2SQL 执行、CSV/XLSX 导出与 webhook
+        推送、CRUD/启停/历史/重试均实现；相关测试通过。
+      truncated: false
+builder_handoff:
+  candidate_id: 9772514a-c952-430a-82c9-65344103e2c6
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:929d7d9c-90c3-46a5-a050-ef562543e8c9
+  iteration: 1
+  summary:
+    text: 10 个子任务全部实现并集成；验证阶段发现 A5 硬编码缺省密钥并已修复。父级全量回归 496 个测试通过（4 skipped，0 失败）。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+  acceptance_review:
+    - id: A1
+      status: implemented-with-evidence
+      evidence:
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/chat/service/SchemaContextBuilder.java:771-785
+          sqlSystemPrompt appends dialect.sqlDialectHint()
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/datasource/engine/DatasourceType.java
+          sqlDialectHint/quoting/paging per engine
+        - askdata/askdata-server/src/test/java/com/xiongx9527/askdata/datasource/engine/DatasourceTypeDialectHintTest.java
+      note: 主聊天 NL2SQL 的 system prompt 注入数据源方言（PostgreSQL/Oracle/ClickHouse
+        等），引号/分页/类型约定随方言变化；DatasourceTypeDialectHintTest 覆盖非 MySQL 方言。
+    - id: A2
+      status: implemented-with-evidence
+      evidence:
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/ai/AskdataNl2Sql.java
+          移除字面量 MySQL 与全表 DatabaseMetaData dump
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/ai/AskdataSqlRetriever.java
+          复用 top-N schema 选择
+        - askdata/askdata-server/src/test/java/com/xiongx9527/askdata/ai/AskdataNl2SqlDialectTest.java
+        - askdata/askdata-server/src/test/java/com/xiongx9527/askdata/ai/AskdataSqlRetrieverTest.java
+      note: MCP question_answer 与 SimpleAssistant 的 NL2SQL 不再硬编码
+        MySQL、不再全库扫描，改为与主路径一致的 top-N RAG schema + 方言注入 + 只读校验。
+    - id: A3
+      status: implemented-with-evidence
+      evidence:
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/chat/service/ChatQuestionService.java
+          priorContext + historyText 注入 buildSqlMessages
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/chat/service/ChatKnowledgeService.java
+          degradationReasons（embedding 缺失 / 知识表缺失）
+        - askdata/askdata-server/src/test/java/com/xiongx9527/askdata/chat/service/ChatKnowledgeServiceDegradationTest.java
+        - askdata/askdata-server/src/test/java/com/xiongx9527/askdata/chat/service/ChatKnowledgeChainTest.java
+      note: 追问把前序 Q&A 注入 SQL 生成；术语/示例校准在无 embedding 或表缺失时显式登记降级（日志 + 状态），有断言覆盖。
+    - id: A4
+      status: implemented-with-evidence
+      evidence:
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/chart/server/ChartImageRenderer.java
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/chart/server/ChartImageService.java
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/chart/server/ChartImageController.java
+        - askdata/askdata-server/src/test/java/com/xiongx9527/askdata/chart/server/ChartImageRendererTest.java
+        - askdata/askdata-server/src/test/java/com/xiongx9527/askdata/chart/server/ChartImageControllerTest.java
+      note: 服务端把 G2 配置渲染为 PNG（等价 g2-ssr），非交互/MCP/导出场景返回图片 URL。
+    - id: A5
+      status: implemented-with-evidence
+      evidence:
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/chat/support/ChatExcel.java
+          Format.CSV + buildResultCsv
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/common/web/EmbeddedTokenAuthenticator.java
+          @Value 缺省已清空，未配置时用运行期随机密钥
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/embedded/AssistantPublicController.java
+          @Value 缺省已清空，未配置时用运行期随机密钥
+        - askdata/askdata-server/src/test/java/com/xiongx9527/askdata/NoHardcodedSecretsTest.java
+          新增 @Value 缺省值规则，覆盖 secret/password/token/key 属性
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/system/auth/CryptoUtil.java
+          密钥配置化 + 未配置时运行期兜底
+      note: 新增 CSV 导出；主源码与 schema.sql 无硬编码口令/密钥；验证阶段发现并修复了 askdata.secret-key 的 @Value
+        硬编码缺省值，并补强静态检查覆盖注解形式。
+    - id: A6
+      status: implemented-with-evidence
+      evidence:
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/datasource/engine/DatasourceType.java
+          13 引擎方言/引号/分页/类型映射
+        - askdata/askdata-server/src/test/java/com/xiongx9527/askdata/datasource/engine/EngineExecutionParityTest.java
+      note: 非 MySQL
+        引擎（oracle/dm/kingbase/redshift/es/hive）在驱动就位时元数据可提取、样本查询可执行；EngineExecutionParityTest
+        覆盖。
+    - id: A7
+      status: implemented-with-evidence
+      evidence:
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/system/sso/OidcProvider.java
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/system/sso/CasProvider.java
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/system/sso/Saml2Provider.java
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/system/sso/WechatWorkProvider.java
+          / DingTalkProvider.java / FeishuProvider.java / LarkProvider.java
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/system/sso/LocalAccountLinker.java
+        - askdata/askdata-server/src/test/java/com/xiongx9527/askdata/system/sso/ExternalIdpServiceTest.java
+      note: 7 种外部 IdP 授权登录 + 本地账号自动开通/绑定；ExternalIdpServiceTest 用 mock IdP 走授权码回调。
+    - id: A8
+      status: implemented-with-evidence
+      evidence:
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/embedded/DynamicDatasourceResolver.java
+          仅 type 1/3 放行，不写 core_datasource
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/chat/service/ChatQuestionService.java
+          dsId 保持 null，走 execSqlTransient
+        - askdata/askdata-server/src/test/java/com/xiongx9527/askdata/embedded/DynamicDatasourceParityTest.java
+        - askdata/askdata-server/src/test/java/com/xiongx9527/askdata/embedded/DynamicDatasourceResolverTest.java
+        - askdata/askdata-server/src/test/java/com/xiongx9527/askdata/embedded/AssistantDsEndpointTest.java
+      note: 高级应用（assistant type 1/3）按请求从宿主取数据源、不持久化，执行结果与静态数据源路径一致。
+    - id: A9
+      status: implemented-with-evidence
+      evidence:
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/permission/DsPermissionQueryService.java
+          多规则 AND 行过滤 + white_list_user 规则/条目短路 + 隐藏列并集（等价允许列交集）
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/permission/PermissionEnforcer.java
+          行过滤子查询包裹 + 结果集剔除无权限列
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/training/TrainingRecallService.java
+          advanced_application 作用域
+        - askdata/askdata-server/src/test/java/com/xiongx9527/askdata/permission/DsPermissionQueryServiceTest.java
+        - askdata/askdata-server/src/test/java/com/xiongx9527/askdata/chat/service/AdvancedAppKnowledgeScopeTest.java
+      note: DsPermission/DsRules 商业级表达（user_list/permission_list JSONB 匹配、白名单），多规则
+        AND/交集，运行时 SQL 改写强制，并支持 advanced-app 知识作用域隔离。
+    - id: A10
+      status: implemented-with-evidence
+      evidence:
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/scheduled/ScheduledTaskSchedule.java
+          cron(6 段)/interval 计算
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/scheduled/ScheduledTaskExecutor.java
+          复用 NL2SQL + SqlSafety + execSqlAsSystem，导出 CSV/XLSX 或 webhook 推送
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/scheduled/ScheduledTaskScheduler.java
+          claim() 抢占防重复执行
+        - askdata/askdata-server/src/main/java/com/xiongx9527/askdata/scheduled/ScheduledTaskService.java
+          CRUD/启停/立即执行/重试/历史
+        - askdata/askdata-server/src/test/java/com/xiongx9527/askdata/scheduled/ScheduledTaskIntegrationTest.java
+        - askdata/askdata-server/src/test/java/com/xiongx9527/askdata/scheduled/ScheduledTaskScheduleTest.java
+      note: 定时问数任务支持 cron/固定间隔，复用现有 NL2SQL 与执行链路，结果导出或推送，支持增删改查/启停/执行历史/失败重试。
+  checks:
+    - name:
+        text: askdata-server 全量测试（集成分支）
+        truncated: false
+      result: passed
+      note:
+        text: "Tests run: 496, Failures: 0, Errors: 0, Skipped: 4; BUILD SUCCESS"
+        truncated: false
+    - name:
+        text: 各子任务独立复核（Runtime 回执）
+        truncated: false
+      result: passed
+      note:
+        text: 10 个子任务均通过 supervisor-checks 的 Runtime 检查回执，并在集成工作区完成集成检查
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 前端构建未执行：10 个子任务均未修改 askdata/askdata-server/web 下任何文件，且该环境无
+        node_modules，Maven 直接复用已提交的 web/dist 静态资源。
+      truncated: false
+    - text: A6 以 H2 与方言/元数据单测验证，未接入真实 Oracle/DM/Kingbase/Redshift/ES/Hive 容器。
+      truncated: false
+    - text: A7 以 mock IdP 验证授权码流程，未接入真实企业租户。
+      truncated: false
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-10-22T08:54:14.113Z
+blockers: []
+verification:
+  candidate_id: 9772514a-c952-430a-82c9-65344103e2c6
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:0b51c382-ca0c-470b-b966-5343fea2d623
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: full-suite
+      name:
+        text: askdata-server 全量测试（集成工作区）
+        truncated: false
+      argv_display:
+        - text: -lc
+          truncated: false
+        - text: export
+            JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home
+            && mvn -o -pl askdata/askdata-server -Dmaven.test.skip=false test
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 222825
+    - id: v2-secrets-scan
+      name:
+        text: 独立扫描硬编码口令/密钥（含 @Value 缺省值）
+        truncated: false
+      argv_display:
+        - text: -lc
+          truncated: false
+        - text: if grep -rn 'Root57@123456\|SQLBot@123456\|AskDataSecret001'
+            askdata/askdata-server/src/main/java
+            askdata/askdata-server/src/main/resources/schema.sql; then echo
+            forbidden-literal-found; exit 1; fi; if grep -rn
+            '@Value("[^"}]*secret[^"}]*:[^"}]\+'
+            askdata/askdata-server/src/main/java; then echo
+            value-default-secret-found; exit 1; fi; echo clean
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 270
+    - id: v2-capability-symbols
+      name:
+        text: 独立核对各验收点关键实现符号
+        truncated: false
+      argv_display:
+        - text: -lc
+          truncated: false
+        - text: set -e; if [ ! -f
+            "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/chat/service/SchemaContextBuilder.java"
+            ]; then echo missing
+            askdata/askdata-server/src/main/java/com/xiongx9527/askdata/chat/service/SchemaContextBuilder.java;
+            exit 1; fi; if ! grep -q "sqlDialectHint"
+            "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/chat/service/SchemaContextBuilder.java";
+            then echo missing sqlDialectHint in
+            askdata/askdata-server/src/main/java/com/xiongx9527/askdata/chat/service/SchemaContextBuilder.java;
+            exit 1; fi; if [ ! -f
+            "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/embedded/DynamicDatasourceResolver.java"
+            ]; then echo missing
+            askdata/askdata-server/src/main/java/com/xiongx9527/askdata/embedded/DynamicDatasourceResolver.java;
+            exit 1; fi; if ! grep -q "isAdvancedApplication"
+            "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/embedded/DynamicDatasourceResolver.java";
+            then echo missing isAdvancedApplication in
+            askdata/askdata-server/src/main/java/com/xiongx9527/askdata/embedded/DynamicDatasourceResolver.java;
+            exit 1; fi; if [ ! -f
+            "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/scheduled/ScheduledTaskExecutor.java"
+            ]; then echo missing
+            askdata/askdata-server/src/main/java/com/xiongx9527/askdata/scheduled/ScheduledTaskExecutor.java;
+            exit 1; fi; if ! grep -q "execSqlAsSystem"
+            "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/scheduled/ScheduledTaskExecutor.java";
+            then echo missing execSqlAsSystem in
+            askdata/askdata-server/src/main/java/com/xiongx9527/askdata/scheduled/ScheduledTaskExecutor.java;
+            exit 1; fi; if [ ! -f
+            "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/permission/PermissionEnforcer.java"
+            ]; then echo missing
+            askdata/askdata-server/src/main/java/com/xiongx9527/askdata/permission/PermissionEnforcer.java;
+            exit 1; fi; if ! grep -q "applyHiddenColumns"
+            "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/permission/PermissionEnforcer.java";
+            then echo missing applyHiddenColumns in
+            askdata/askdata-server/src/main/java/com/xiongx9527/askdata/permission/PermissionEnforcer.java;
+            exit 1; fi; if [ ! -f
+            "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/system/sso/LarkProvider.java"
+            ]; then echo missing
+            askdata/askdata-server/src/main/java/com/xiongx9527/askdata/system/sso/LarkProvider.java;
+            exit 1; fi; if ! grep -q "class"
+            "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/system/sso/LarkProvider.java";
+            then echo missing class in
+            askdata/askdata-server/src/main/java/com/xiongx9527/askdata/system/sso/LarkProvider.java;
+            exit 1; fi; if [ ! -f
+            "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/chart/server/ChartImageRenderer.java"
+            ]; then echo missing
+            askdata/askdata-server/src/main/java/com/xiongx9527/askdata/chart/server/ChartImageRenderer.java;
+            exit 1; fi; if ! grep -q "render"
+            "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/chart/server/ChartImageRenderer.java";
+            then echo missing render in
+            askdata/askdata-server/src/main/java/com/xiongx9527/askdata/chart/server/ChartImageRenderer.java;
+            exit 1; fi; if [ ! -f
+            "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/chat/support/ChatExcel.java"
+            ]; then echo missing
+            askdata/askdata-server/src/main/java/com/xiongx9527/askdata/chat/support/ChatExcel.java;
+            exit 1; fi; if ! grep -q "Format"
+            "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/chat/support/ChatExcel.java";
+            then echo missing Format in
+            askdata/askdata-server/src/main/java/com/xiongx9527/askdata/chat/support/ChatExcel.java;
+            exit 1; fi; if [ ! -f
+            "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/permission/DsPermissionQueryService.java"
+            ]; then echo missing
+            askdata/askdata-server/src/main/java/com/xiongx9527/askdata/permission/DsPermissionQueryService.java;
+            exit 1; fi; if ! grep -q "white_list_user"
+            "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/permission/DsPermissionQueryService.java";
+            then echo missing white_list_user in
+            askdata/askdata-server/src/main/java/com/xiongx9527/askdata/permission/DsPermissionQueryService.java;
+            exit 1; fi; if [ ! -f
+            "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/ai/AskdataNl2Sql.java"
+            ]; then echo missing
+            askdata/askdata-server/src/main/java/com/xiongx9527/askdata/ai/AskdataNl2Sql.java;
+            exit 1; fi; if ! grep -q "DatasourceType"
+            "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/ai/AskdataNl2Sql.java";
+            then echo missing DatasourceType in
+            askdata/askdata-server/src/main/java/com/xiongx9527/askdata/ai/AskdataNl2Sql.java;
+            exit 1; fi; echo all-symbols-present
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 88
+    - id: v2-a5-tests
+      name:
+        text: A5 相关测试独立复跑
+        truncated: false
+      argv_display:
+        - text: -lc
+          truncated: false
+        - text: export
+            JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home
+            && mvn -o -pl askdata/askdata-server -Dmaven.test.skip=false
+            -Dsurefire.failIfNoSpecifiedTests=false
+            -Dtest=NoHardcodedSecretsTest,EmbeddedTokenAuthenticatorTest,ChatExcelCsvTest,DatasourceCryptoTest
+            test
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 36572
+  summary:
+    text: 独立复核通过：集成工作区全量 496 测试通过（4 skipped）；独立扫描确认无硬编码口令/密钥（含 @Value 缺省值形式）；9
+      个能力点关键符号全部存在；A5 修复后相关测试复跑通过。10 项验收全部通过。
+    truncated: false
+  risks:
+    - text: A6 以 H2 与方言/元数据单测验证，未接入真实 Oracle/DM/Kingbase/Redshift/ES/Hive 容器。
+      truncated: false
+    - text: A7 以 mock IdP 验证授权码流程，未接入真实企业租户。
+      truncated: false
+    - text: 未配置 askdata.secret-key 时嵌入/访问 token 使用进程内随机密钥，重启后旧 token 失效。
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-10-22T08:59:28.920Z
+history:
+  - goal_cycle: 1
+    iteration: 0
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-10-21T23:37:05.521Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A5
+    summary:
+      text: 独立复核：集成工作区全量测试 496 通过（4 skipped），能力符号核对通过；但独立扫描发现 AskDataSecret001
+        仍作为硬编码缺省密钥出现在两处 @Value 注解中，A5 不通过，其余 9 项通过。
+      truncated: false
+    completed_at: 2026-10-22T07:25:36.082Z
+  - goal_cycle: 2
+    iteration: 2
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native Shape artifacts changed
+      truncated: false
+    completed_at: 2026-10-22T08:45:54.231Z
+  - goal_cycle: 3
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 独立复核通过：集成工作区全量 496 测试通过（4 skipped）；独立扫描确认无硬编码口令/密钥（含 @Value 缺省值形式）；9
+        个能力点关键符号全部存在；A5 修复后相关测试复跑通过。10 项验收全部通过。
+      truncated: false
+    completed_at: 2026-10-22T08:59:28.920Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-10-21T14:53:07.444Z
