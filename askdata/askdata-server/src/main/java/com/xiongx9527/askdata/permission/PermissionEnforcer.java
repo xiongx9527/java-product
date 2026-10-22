@@ -14,6 +14,8 @@ import net.sf.jsqlparser.expression.Alias;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.select.Select;
+import net.sf.jsqlparser.statement.select.SetOperationList;
+import net.sf.jsqlparser.statement.select.WithItem;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -89,12 +91,8 @@ public class PermissionEnforcer {
             return new EnforcedQuery(sql, Collections.emptySet());
         }
         try {
-            Select select = (Select) CCJSqlParserUtil.parse(sql);
-            PlainSelect plain = select.getPlainSelect();
-            if (plain == null) {
-                return new EnforcedQuery(sql, Collections.emptySet());
-            }
-            List<String> tables = collectBaseTables(plain);
+            Statement stmt = CCJSqlParserUtil.parse(sql);
+            List<String> tables = collectAllTableNames(stmt);
             if (tables.isEmpty()) {
                 return new EnforcedQuery(sql, Collections.emptySet());
             }
@@ -108,7 +106,7 @@ public class PermissionEnforcer {
                     tableFilters.put(tableName, filter);
                 }
             }
-            String rewritten = rewriteSqlWithRowFilters(select, plain, tableFilters);
+            String rewritten = rewriteSqlWithRowFilters(stmt, tableFilters);
 
             // 列权限：收集隐藏列
             Set<String> hidden = new HashSet<>();
@@ -134,44 +132,95 @@ public class PermissionEnforcer {
             return sql;
         }
         try {
-            Select select = (Select) CCJSqlParserUtil.parse(sql);
-            PlainSelect plain = select.getPlainSelect();
-            if (plain == null) {
-                return sql;
-            }
-            return rewriteSqlWithRowFilters(select, plain, tableFilters);
+            Statement stmt = CCJSqlParserUtil.parse(sql);
+            return rewriteSqlWithRowFilters(stmt, tableFilters);
         } catch (JSQLParserException e) {
             return sql;
         }
     }
 
-    /** 把行权限片段以子查询包裹方式注入到对应表（filter 出现在最终 SQL 中）。 */
-    String rewriteSqlWithRowFilters(Select select, PlainSelect plain, Map<String, String> tableFilters) {
+    /** 递归对整条语句施加行权限片段，覆盖 UNION/CTE/子查询/FROM-JOIN 各处的基表（A3 复杂 SQL 不外溢）。 */
+    String rewriteSqlWithRowFilters(Statement stmt, Map<String, String> tableFilters) {
         if (tableFilters == null || tableFilters.isEmpty()) {
-            return select.toString();
+            return stmt.toString();
         }
-        boolean changed = false;
-        FromItem from = plain.getFromItem();
-        FromItem wrappedFrom = wrapIfNeeded(from, tableFilters);
-        if (wrappedFrom != null) {
-            plain.setFromItem(wrappedFrom);
-            changed = true;
+        rewriteStatement(stmt, tableFilters);
+        return stmt.toString();
+    }
+
+    /** 递归处理语句：SELECT 走 rewriteSelect；UNION/集合操作逐支处理且其 CTE 体也处理。 */
+    private void rewriteStatement(Statement stmt, Map<String, String> tableFilters) {
+        if (stmt instanceof Select s) {
+            rewriteSelect(s, tableFilters);
+        } else if (stmt instanceof SetOperationList sol) {
+            rewriteSetOperation(sol, tableFilters);
         }
-        List<Join> joins = plain.getJoins();
-        if (joins != null) {
-            for (Join join : joins) {
-                FromItem right = join.getRightItem();
-                FromItem wrappedRight = wrapIfNeeded(right, tableFilters);
-                if (wrappedRight != null) {
-                    join.setRightItem(wrappedRight);
-                    changed = true;
+    }
+
+    /** 处理单个 SELECT：先递归 CTE 体，再处理 UNION/集合操作体，最后包裹 FROM/JOIN 中的匹配基表（含 FROM 子查询）。 */
+    private void rewriteSelect(Select select, Map<String, String> tableFilters) {
+        if (select.getWithItemsList() != null) {
+            for (WithItem<?> w : select.getWithItemsList()) {
+                Select s = w.getSelect();
+                if (s != null) {
+                    rewriteSelect(s, tableFilters);
                 }
             }
         }
-        if (!changed) {
-            return select.toString();
+        // 集合操作（UNION/INTERSECT/EXCEPT）体不得绕过行权限：解析为 SetOperationList 时逐支递归
+        SetOperationList setOp = null;
+        try {
+            setOp = select.getSetOperationList();
+        } catch (ClassCastException ignore) {
+            setOp = null;
         }
-        return select.toString();
+        if (setOp != null) {
+            rewriteSetOperation(setOp, tableFilters);
+            return;
+        }
+        PlainSelect ps = select.getPlainSelect();
+        if (ps == null) {
+            return;
+        }
+        FromItem wrappedFrom = rewriteFromItem(ps.getFromItem(), tableFilters);
+        if (wrappedFrom != null) {
+            ps.setFromItem(wrappedFrom);
+        }
+        List<Join> joins = ps.getJoins();
+        if (joins != null) {
+            for (Join join : joins) {
+                FromItem wrappedRight = rewriteFromItem(join.getRightItem(), tableFilters);
+                if (wrappedRight != null) {
+                    join.setRightItem(wrappedRight);
+                }
+            }
+        }
+    }
+
+    /** 处理集合操作：其 WITH 体与各 SELECT 分支逐一递归（A3 复杂 SQL 不外溢）。 */
+    private void rewriteSetOperation(SetOperationList sol, Map<String, String> tableFilters) {
+        if (sol.getWithItemsList() != null) {
+            for (WithItem<?> w : sol.getWithItemsList()) {
+                Select s = w.getSelect();
+                if (s != null) {
+                    rewriteSelect(s, tableFilters);
+                }
+            }
+        }
+        for (Select s : sol.getSelects()) {
+            rewriteSelect(s, tableFilters);
+        }
+    }
+
+    /** FROM/JOIN 项的改写：基表按 filter 包裹为子查询；子查询（含 CTE 引用的内层）递归处理后返回 null。 */
+    private FromItem rewriteFromItem(FromItem item, Map<String, String> tableFilters) {
+        if (item instanceof Table t) {
+            return wrapIfNeeded(t, tableFilters);
+        }
+        if (item instanceof Select s) {
+            rewriteSelect(s, tableFilters);
+        }
+        return null;
     }
 
     /** 若 fromItem 是带行权限的表，则返回包裹了 WHERE 的子查询；否则返回 null。 */
@@ -223,25 +272,81 @@ public class PermissionEnforcer {
         return CCJSqlParserUtil.parseExpression(f);
     }
 
-    /** 收集主查询 FROM/JOIN 中的基表名（不含子查询内的表）。 */
-    private List<String> collectBaseTables(PlainSelect plain) {
-        List<String> tables = new ArrayList<>();
-        addTableName(plain.getFromItem(), tables);
-        List<Join> joins = plain.getJoins();
-        if (joins != null) {
-            for (Join join : joins) {
-                addTableName(join.getRightItem(), tables);
-            }
-        }
-        return tables;
+    /** 递归收集语句中所有基表名（含 CTE 体、UNION 各支、FROM/JOIN 子查询），用于权限规则匹配。 */
+    private List<String> collectAllTableNames(Statement stmt) {
+        Set<String> names = new HashSet<>();
+        collectFromStatement(stmt, names);
+        return new ArrayList<>(names);
     }
 
-    private void addTableName(FromItem item, List<String> tables) {
-        if (item instanceof Table) {
-            String name = ((Table) item).getName();
-            if (name != null && !name.isEmpty()) {
-                tables.add(name);
+    private void collectFromStatement(Statement stmt, Set<String> names) {
+        if (stmt instanceof Select s) {
+            collectFromSelect(s, names);
+        } else if (stmt instanceof SetOperationList sol) {
+            if (sol.getWithItemsList() != null) {
+                for (WithItem<?> w : sol.getWithItemsList()) {
+                    Select s = w.getSelect();
+                    if (s != null) {
+                        collectFromSelect(s, names);
+                    }
+                }
             }
+            for (Select s : sol.getSelects()) {
+                collectFromSelect(s, names);
+            }
+        }
+    }
+
+    private void collectFromSelect(Select select, Set<String> names) {
+        if (select.getWithItemsList() != null) {
+            for (WithItem<?> w : select.getWithItemsList()) {
+                Select s = w.getSelect();
+                if (s != null) {
+                    collectFromSelect(s, names);
+                }
+            }
+        }
+        SetOperationList setOp = null;
+        try {
+            setOp = select.getSetOperationList();
+        } catch (ClassCastException ignore) {
+            setOp = null;
+        }
+        if (setOp != null) {
+            if (setOp.getWithItemsList() != null) {
+                for (WithItem<?> w : setOp.getWithItemsList()) {
+                    Select s = w.getSelect();
+                    if (s != null) {
+                        collectFromSelect(s, names);
+                    }
+                }
+            }
+            for (Select s : setOp.getSelects()) {
+                collectFromSelect(s, names);
+            }
+            return;
+        }
+        PlainSelect ps = select.getPlainSelect();
+        if (ps == null) {
+            return;
+        }
+        collectFromItem(ps.getFromItem(), names);
+        List<Join> joins = ps.getJoins();
+        if (joins != null) {
+            for (Join join : joins) {
+                collectFromItem(join.getRightItem(), names);
+            }
+        }
+    }
+
+    private void collectFromItem(FromItem item, Set<String> names) {
+        if (item instanceof Table t) {
+            String name = t.getName();
+            if (name != null && !name.isEmpty()) {
+                names.add(name);
+            }
+        } else if (item instanceof Select s) {
+            collectFromSelect(s, names);
         }
     }
 

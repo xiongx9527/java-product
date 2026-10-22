@@ -153,4 +153,82 @@ class PermissionEnforcerTest {
         assertEquals("SELECT id FROM orders", enforced.getSql());
         assertTrue(enforced.getHiddenColumns().isEmpty());
     }
+
+    // ---- 复杂 SQL：UNION / CTE / 子查询 不得绕过行权限（A3 复杂 SQL 不外溢） ----
+
+    @Test
+    void unionAllBranchesFiltered() {
+        Map<String, String> filters = new LinkedHashMap<>();
+        filters.put("orders", "(region = 'east')");
+        String rewritten = enforcer.applyRowFilters(
+                "SELECT id FROM orders WHERE amount > 1 UNION SELECT id FROM orders WHERE amount < 9",
+                filters);
+        assertTrue(rewritten.contains("region = 'east'"), rewritten);
+        assertEquals(2, countOccurrences(rewritten.toLowerCase(), "from (select * from orders where"),
+                "both UNION branches must be wrapped: " + rewritten);
+    }
+
+    @Test
+    void cteBodyFiltered() {
+        Map<String, String> filters = new LinkedHashMap<>();
+        filters.put("orders", "(region = 'east')");
+        String rewritten = enforcer.applyRowFilters(
+                "WITH tmp AS (SELECT id FROM orders) SELECT id FROM tmp", filters);
+        assertTrue(rewritten.contains("region = 'east'"), rewritten);
+        assertTrue(rewritten.toLowerCase().contains("from (select * from orders where"), rewritten);
+    }
+
+    @Test
+    void fromSubqueryFiltered() {
+        Map<String, String> filters = new LinkedHashMap<>();
+        filters.put("orders", "(region = 'east')");
+        String rewritten = enforcer.applyRowFilters(
+                "SELECT x.id FROM (SELECT id FROM orders) x", filters);
+        assertTrue(rewritten.contains("region = 'east'"), rewritten);
+        assertTrue(rewritten.toLowerCase().contains("from (select * from orders where"), rewritten);
+    }
+
+    @Test
+    void joinSubqueriesFiltered() {
+        Map<String, String> filters = new LinkedHashMap<>();
+        filters.put("orders", "(region = 'east')");
+        String rewritten = enforcer.applyRowFilters(
+                "SELECT a.id FROM (SELECT id FROM orders) a JOIN (SELECT id FROM orders) b ON a.id = b.id",
+                filters);
+        assertTrue(rewritten.contains("region = 'east'"), rewritten);
+        assertEquals(2, countOccurrences(rewritten.toLowerCase(), "from (select * from orders where"),
+                "both joined subqueries must be wrapped: " + rewritten);
+    }
+
+    @Test
+    void unionRewrittenSqlActuallyFiltersRowsOnH2() throws Exception {
+        try (Connection c = DriverManager.getConnection("jdbc:h2:mem:perm_union;DB_CLOSE_DELAY=-1", "sa", "")) {
+            try (Statement s = c.createStatement()) {
+                s.execute("CREATE TABLE orders (id INT, region VARCHAR(20))");
+                s.execute("INSERT INTO orders VALUES (1, 'east'), (2, 'west'), (3, 'east'), (4, 'west')");
+            }
+            Map<String, String> filters = new LinkedHashMap<>();
+            filters.put("orders", "(region = 'east')");
+            String rewritten = enforcer.applyRowFilters(
+                    "SELECT id FROM orders UNION SELECT id FROM orders", filters);
+            try (Statement s = c.createStatement(); ResultSet rs = s.executeQuery(rewritten)) {
+                int count = 0;
+                while (rs.next()) {
+                    count++;
+                }
+                // 仅 east 行（id 1,3）存活：未过滤会是 4 行，过滤后 2 行，证明 UNION 分支未被绕过
+                assertEquals(2, count, "row permission must filter UNION to east region only");
+            }
+        }
+    }
+
+    private static int countOccurrences(String haystack, String needle) {
+        int count = 0;
+        int idx = 0;
+        while ((idx = haystack.indexOf(needle, idx)) >= 0) {
+            count++;
+            idx += needle.length();
+        }
+        return count;
+    }
 }
