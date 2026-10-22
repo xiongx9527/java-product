@@ -54,6 +54,10 @@ askdata:
     export-dir: ./data/exports
     push-timeout-seconds: 10
 
+  # 通用文件存储（x-file-storage）本地平台根目录；切 OSS/MinIO 等远端平台时由下方 dromara.x-file-storage 配置。
+  file-storage:
+    local-path: ./data/files
+
 # MCP server：复用 fw-plus 封装（fw-plus-ai-mcp-server-spring-boot-starter），取代手写 JSON-RPC。
 # 前缀固定为 fw-plus.ai.mcp.*；缺省即开；传输 http-sse（GET /mcp/sse 建流 + POST /mcp/messages/{uuid}）。
 # 鉴权 sa-token-login：复用现有 Sa-Token 登录会话（token 头 X-SQLBOT-TOKEN，见上方 sa-token 配置）。
@@ -86,3 +90,15 @@ logging:
   level:
     root: INFO
     org.springframework.web: INFO
+
+# 通用文件存储 x-file-storage（对齐 SQLBot 文件存储）。默认本地平台（离线可用）；
+# 生产可改为 aliyun-oss / minio / tencent-cos 等远端平台（平台清单见 x-file-storage 文档），并同步切换 default-platform。
+dromara:
+  x-file-storage:
+    default-platform: local
+    local:
+      - platform: local
+        enable-storage: true
+        base-path: ./data/files
+        # domain 留空：文件经 /api/file/download 或各自业务端点访问，不直接暴露静态域名
+        domain: ""

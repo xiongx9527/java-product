@@ -2,11 +2,15 @@ package com.xiongx9527.askdata.chart.server;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.chat.service.ChatChartBuilder;
+import com.xiongx9527.askdata.common.storage.FileStorageTestFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -21,8 +25,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ChartImageControllerTest {
 
     private ChartImageService service() {
+        Path dir;
+        try {
+            dir = Files.createTempDirectory("chart-img");
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
         return new ChartImageService(new ChatChartBuilder(new ObjectMapper()),
-                new ChartImageRenderer(), new ObjectMapper());
+                new ChartImageRenderer(), new ObjectMapper(),
+                FileStorageTestFactory.askdata(dir));
     }
 
     @Test

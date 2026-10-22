@@ -28,6 +28,8 @@
         <spring-boot.version>3.5.8</spring-boot.version>
         <justauth.version>1.16.6</justauth.version>
         <justauth-spring-boot-starter.version>1.4.0</justauth-spring-boot-starter.version>
+        <!-- 通用文件存储（对齐 SQLBot 文件存储）：本地默认，可配置切 OSS/MinIO 等 -->
+        <x-file-storage.version>2.2.1</x-file-storage.version>
     </properties>
 
 
@@ -293,6 +295,31 @@
             <groupId>com.github.jsqlparser</groupId>
             <artifactId>jsqlparser</artifactId>
             <version>5.1</version>
+        </dependency>
+
+        <!-- 通用文件存储 x-file-storage（对齐 SQLBot 文件存储）：本地默认、可配置切 OSS/MinIO 等；
+             cn.hutool 由项目已有的 hutool-all 提供，排除 hutool-core 避免重复类 -->
+        <dependency>
+            <groupId>org.dromara.x-file-storage</groupId>
+            <artifactId>x-file-storage-core</artifactId>
+            <version>${x-file-storage.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>cn.hutool</groupId>
+                    <artifactId>hutool-core</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.dromara.x-file-storage</groupId>
+            <artifactId>x-file-storage-spring</artifactId>
+            <version>${x-file-storage.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>cn.hutool</groupId>
+                    <artifactId>hutool-core</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- 数据源引擎 JDBC 驱动（brief D6：mysql/h2/pg 为首选全集，随包提供；

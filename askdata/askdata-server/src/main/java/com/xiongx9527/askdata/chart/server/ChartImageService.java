@@ -2,6 +2,8 @@ package com.xiongx9527.askdata.chart.server;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.chat.service.ChatChartBuilder;
+import com.xiongx9527.askdata.common.storage.AskdataFileStorage;
+import com.xiongx9527.askdata.common.storage.StoredFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,11 +21,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * accessible image URL.
  *
  * <p>Flow: Q&A result (rows) -> ChatChartBuilder normalized config -> ChartImageRenderer raster
- * -> in-memory store (token -> PNG bytes) -> returns {baseUrl}/{token} URL for MCP / non-interactive
- * / export consumers.</p>
+ * -> 持久化到文件存储（x-file-storage，默认本地）-> 返回 {baseUrl}/{token} URL，供 MCP / 非交互 /
+ * 导出场景回访。</p>
  *
- * <p>The store is in-process memory (not persisted); tokens are unguessable random UUIDs. The base
- * URL is configurable via askdata.chart.image-base-url (default /api/chart/image).</p>
+ * <p>图片字节经 {@link AskdataFileStorage} 落文件存储（重启不丢、可切 OSS/MinIO）；进程内仅保留
+ * token -> url 元数据映射，不再驻留字节。token 为不可猜测的随机 UUID。base URL 可配
+ * （askdata.chart.image-base-url，默认 /api/chart/image）。</p>
  */
 @Service
 public class ChartImageService {
@@ -34,16 +37,18 @@ public class ChartImageService {
     private final ChatChartBuilder chartBuilder;
     private final ChartImageRenderer renderer;
     private final ObjectMapper objectMapper;
-    private final Map<String, byte[]> store = new ConcurrentHashMap<>();
+    private final AskdataFileStorage fileStorage;
+    private final Map<String, String> tokenToUrl = new ConcurrentHashMap<>();
 
     @Value("${askdata.chart.image-base-url:/api/chart/image}")
     private String imageBaseUrl = "/api/chart/image";
 
     public ChartImageService(ChatChartBuilder chartBuilder, ChartImageRenderer renderer,
-                             ObjectMapper objectMapper) {
+                             ObjectMapper objectMapper, AskdataFileStorage fileStorage) {
         this.chartBuilder = chartBuilder;
         this.renderer = renderer;
         this.objectMapper = objectMapper;
+        this.fileStorage = fileStorage;
     }
 
     public String renderFromResult(Map<String, Object> result, String question) {
@@ -66,7 +71,9 @@ public class ChartImageService {
             }
             byte[] png = renderer.renderPng(chart, rows);
             String token = UUID.randomUUID().toString().replace("-", "");
-            store.put(token, png);
+            // 持久化到文件存储（重启不丢、可切 OSS/MinIO）；进程内仅保留 token -> url 元数据
+            StoredFile stored = fileStorage.save(png, token + ".png", "chart", "image/png");
+            tokenToUrl.put(token, stored.url());
             String base = imageBaseUrl.endsWith("/") ? imageBaseUrl : imageBaseUrl + "/";
             return base + token;
         } catch (Exception e) {
@@ -76,11 +83,23 @@ public class ChartImageService {
     }
 
     public byte[] get(String token) {
-        return token == null ? null : store.get(token);
+        if (token == null) {
+            return null;
+        }
+        String url = tokenToUrl.get(token);
+        if (url == null) {
+            return null;
+        }
+        try {
+            return fileStorage.read(url);
+        } catch (Exception e) {
+            log.warn("chart image read failed for token {}: {}", token, e.getMessage());
+            return null;
+        }
     }
 
     public int cachedCount() {
-        return store.size();
+        return tokenToUrl.size();
     }
 
     @SuppressWarnings("unchecked")
