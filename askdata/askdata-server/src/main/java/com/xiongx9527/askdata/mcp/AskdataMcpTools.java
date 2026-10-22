@@ -7,7 +7,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.fw.plus.ai.autoconfigure.langchain4j.support.assistant.SimpleAssistant;
 import com.xiongx9527.fw.plus.common.util.SpringUtils;
 import com.xiongx9527.askdata.ai.AskdataNl2Sql;
+import com.xiongx9527.askdata.chart.server.ChartImageService;
+import com.xiongx9527.askdata.chat.service.ChatChartBuilder;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,6 +25,8 @@ import java.util.Map;
  */
 @McpService
 public class AskdataMcpTools {
+
+    private static final Logger log = LoggerFactory.getLogger(AskdataMcpTools.class);
 
     /**
      * 列出 askdata 数据源（返回 JSON 数组）。
@@ -82,6 +88,19 @@ public class AskdataMcpTools {
         }
         // 验收 A2：datasourceId 非空时在该数据源（可能为 PostgreSQL/Oracle 等非 MySQL）上生成并执行正确方言的 SQL
         Map<String, Object> result = beans.values().iterator().next().ask(question, datasourceId);
+        // 验收 A4：服务端出图，非交互/MCP 场景返回图片 URL
+        try {
+            ChartImageService imageService = SpringUtils.getBean(ChartImageService.class);
+            ChatChartBuilder chartBuilder = SpringUtils.getBean(ChatChartBuilder.class);
+            if (imageService != null && chartBuilder != null) {
+                String imageUrl = imageService.renderFromResult(result, question);
+                if (imageUrl != null) {
+                    result.put("imageUrl", imageUrl);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("MCP question_answer 出图失败（降级无图）: {}", e.getMessage());
+        }
         return mapper.writeValueAsString(result);
     }
 }
