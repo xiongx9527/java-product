@@ -14,10 +14,9 @@ import org.springframework.context.annotation.Primary;
  * {@link org.dromara.x.file.storage.core.FileStorageService} 由 {@link AskdataFileStorage}
  * 包装成 askdata 统一的文件存取入口。</p>
  *
- * <p>注册进程内 {@link InMemoryFileRecorder} 作为 {@link FileRecorder}，使凭 url 的反查/下载/删除可用
- * （x-file-storage 自动装配自带的默认 FileRecorder 为 no-op，凭 url 无法反查）。以独立 Bean 名 +
- * {@link Primary} 覆盖自动装配默认实现，避免同名 Bean 冲突；集群部署需落库 FileRecorder 时改为自定义
- * 并移除本 Bean。</p>
+ * <p>注册落库 {@link JdbcFileRecorder} 作为 {@link FileRecorder}，使凭 url 的反查/下载/删除在重启与
+ * 多实例下均可用（x-file-storage 自动装配自带的默认 FileRecorder 为 no-op）。以独立 Bean 名 +
+ * {@link Primary} 覆盖自动装配默认实现，避免同名 Bean 冲突。</p>
  */
 @Configuration
 @EnableFileStorage
@@ -25,7 +24,7 @@ public class FileStorageConfig {
 
     @Bean
     @Primary
-    public FileRecorder askdataFileRecorder() {
-        return new InMemoryFileRecorder();
+    public FileRecorder askdataFileRecorder(FileStorageRecordRepository repository) {
+        return new JdbcFileRecorder(repository);
     }
 }

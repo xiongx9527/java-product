@@ -708,3 +708,19 @@ CREATE TABLE IF NOT EXISTS sys_platform_token (
     create_time BIGINT       NOT NULL,
     exp_time    BIGINT       NOT NULL
 );
+
+-- =====================================================================
+-- 通用文件存储记录（x-file-storage FileRecorder 落库；对齐 SQLBot 文件存储元数据）。
+-- url 唯一（存储文件名随机，冲突概率可忽略），凭 url 反查 FileInfo，重启/多实例均可用。
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS file_storage (
+    id                BIGINT        PRIMARY KEY,
+    url               VARCHAR(2000) NOT NULL,
+    platform          VARCHAR(64),
+    path              VARCHAR(1000),
+    filename          VARCHAR(512),
+    original_filename VARCHAR(512),
+    content_type      VARCHAR(255),
+    size              BIGINT,
+    create_time       BIGINT        NOT NULL DEFAULT 0
+);
