@@ -160,25 +160,42 @@ public class DsPermissionQueryService {
     // 规则 + 权限条目匹配
     // ------------------------------------------------------------------
 
+    /**
+     * 命中当前用户的权限条目（多规则 AND/交集语义的基础：调用方对同一表的多条命中条目
+     * 以 AND 组合行过滤、以并集隐藏列）。
+     *
+     * <p>白名单优先：条目或所属规则组的 {@code white_list_user} 命中用户时，该条规则对该用户
+     * 不生效（商业版 white_list 语义）。</p>
+     */
     private List<Map<String, Object>> permissionsFor(long oid, long userId, long tableId, String type) {
         List<Map<String, Object>> all = permRepo.listPermissionsByTableAndType(tableId, type);
         List<Map<String, Object>> matched = new ArrayList<>();
         for (Map<String, Object> perm : all) {
             long ruleId = Rows.lng(perm, "auth_target_id", 0L);
             long permId = Rows.lng(perm, "id", 0L);
-            if (ruleContainsUser(ruleId, oid, userId, permId)) {
+            Optional<Map<String, Object>> rule = permRepo.findRule(ruleId);
+            if (!rule.isPresent()) {
+                continue;
+            }
+            if (isWhitelisted(userId, perm, rule.get())) {
+                continue;
+            }
+            if (ruleContainsUser(rule.get(), oid, userId, permId)) {
                 matched.add(perm);
             }
         }
         return matched;
     }
 
-    private boolean ruleContainsUser(long ruleId, long oid, long userId, long permissionId) {
-        Optional<Map<String, Object>> rule = permRepo.findRule(ruleId);
-        if (!rule.isPresent()) {
-            return false;
+    /** 白名单判定：条目自身或所属规则组的 white_list_user 命中当前用户即豁免。 */
+    private boolean isWhitelisted(long userId, Map<String, Object> permission, Map<String, Object> rule) {
+        if (permRepo.longArray(Rows.str(permission, "white_list_user")).contains(userId)) {
+            return true;
         }
-        Map<String, Object> r = rule.get();
+        return rule != null && permRepo.longArray(Rows.str(rule, "white_list_user")).contains(userId);
+    }
+
+    private boolean ruleContainsUser(Map<String, Object> r, long oid, long userId, long permissionId) {
         long ruleOid = Rows.lng(r, "oid", 0L);
         if (ruleOid != 0L && ruleOid != oid) {
             return false;
@@ -188,10 +205,7 @@ public class DsPermissionQueryService {
         if (permList.isEmpty() || !permList.contains(permissionId)) {
             return false;
         }
-        if (userList.isEmpty() || !userList.contains(userId)) {
-            return false;
-        }
-        return true;
+        return !userList.isEmpty() && userList.contains(userId);
     }
 
     // ------------------------------------------------------------------

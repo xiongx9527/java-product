@@ -165,6 +165,16 @@ public class ChatKnowledgeService {
      * @param dsId     数据源 id（可空；非空时按 specific_ds/datasource_ids 过滤术语与提示词）
      */
     public KnowledgeContext prepare(String question, long oid, Long dsId) {
+        return prepare(question, oid, dsId, null);
+    }
+
+    /**
+     * 执行知识增强四步（A9：高级应用知识范围隔离）。
+     *
+     * @param advancedAppId 高级应用 id（可空）；非空时术语/训练样例/自定义提示词均按该应用隔离，
+     *                      其他应用的知识不会进入本次提示词
+     */
+    public KnowledgeContext prepare(String question, long oid, Long dsId, Long advancedAppId) {
         // 验收 A3：显式探测并登记降级，避免术语/示例在 embedding 缺失或表缺失时静默失效
         boolean terminologyDegraded = !modelRouter.embeddingModel().isPresent();
         boolean sqlExampleDegraded = !schemaContextBuilder.trainingTableAvailable();
@@ -174,24 +184,24 @@ public class ChatKnowledgeService {
         if (sqlExampleDegraded) {
             log.warn("SQL 示例降级：data_training 表不可用，few-shot 示例缺失（oid={}, dsId={}）", oid, dsId);
         }
-        List<Map<String, Object>> groups = recallTerms(question, oid, dsId);
+        List<Map<String, Object>> groups = recallTerms(question, oid, dsId, advancedAppId);
         List<String> matched = matchedWords(groups, question);
         String extracted = String.join(",", matched);
         String expanded = String.join(",", expandKeywords(matched, groups));
         String terminologyText = terminologyTemplate(groups);
-        List<String> sqlExamples = trainingSamples(dsId, question);
-        List<String> customPrompts = customPrompts(oid, dsId);
+        List<String> sqlExamples = trainingSamples(dsId, question, advancedAppId);
+        List<String> customPrompts = customPrompts(oid, dsId, advancedAppId);
         return new KnowledgeContext(extracted, expanded, terminologyText, groups, sqlExamples, customPrompts,
                 terminologyDegraded, sqlExampleDegraded);
     }
 
     /** 术语召回（向量 + 词法；向量不可用时仅词法，不报错）。 */
-    private List<Map<String, Object>> recallTerms(String question, long oid, Long dsId) {
+    private List<Map<String, Object>> recallTerms(String question, long oid, Long dsId, Long advancedAppId) {
         if (question == null || question.trim().isEmpty()) {
             return new ArrayList<>();
         }
         try {
-            return terminologyRecallService.recallGroups(question, oid, dsId, null);
+            return terminologyRecallService.recallGroups(question, oid, dsId, advancedAppId);
         } catch (Exception e) {
             log.info("术语召回失败（降级为无术语）: {}", e.getMessage());
             return new ArrayList<>();
@@ -199,12 +209,12 @@ public class ChatKnowledgeService {
     }
 
     /** 训练样例召回（data_training 缺失或失败时返回空，不报错）。 */
-    private List<String> trainingSamples(Long dsId, String question) {
+    private List<String> trainingSamples(Long dsId, String question, Long advancedAppId) {
         if (dsId == null) {
             return new ArrayList<>();
         }
         try {
-            List<String> samples = schemaContextBuilder.trainingSamples(dsId, question);
+            List<String> samples = schemaContextBuilder.trainingSamples(dsId, question, advancedAppId);
             return samples == null ? new ArrayList<>() : samples;
         } catch (Exception e) {
             log.info("SQL 示例召回失败（降级为空）: {}", e.getMessage());
@@ -217,20 +227,26 @@ public class ChatKnowledgeService {
      * {@code type = 'GENERATE_SQL'} + oid 匹配 + 数据源作用域
      * （{@code specific_ds=false} 或 {@code datasource_ids} 含该数据源）。
      */
-    private List<String> customPrompts(long oid, Long dsId) {
+    private List<String> customPrompts(long oid, Long dsId, Long advancedAppId) {
         try {
-            if (dsId == null) {
-                return jdbc.queryForList(
-                        "SELECT prompt FROM custom_prompt WHERE oid = ? AND type = 'GENERATE_SQL' "
-                                + "AND (specific_ds = FALSE OR specific_ds IS NULL) ORDER BY create_time",
-                        String.class, oid);
+            StringBuilder sql = new StringBuilder(
+                    "SELECT prompt FROM custom_prompt WHERE oid = ? AND type = 'GENERATE_SQL' ");
+            List<Object> args = new ArrayList<>();
+            args.add(oid);
+            if (advancedAppId != null) {
+                // A9：高级应用知识范围隔离——仅该应用的自定义提示词
+                sql.append(" AND advanced_application = ?");
+                args.add(advancedAppId);
             }
-            return jdbc.queryForList(
-                    "SELECT prompt FROM custom_prompt WHERE oid = ? AND type = 'GENERATE_SQL' "
-                            + "AND (specific_ds = FALSE OR specific_ds IS NULL OR ("
-                            + "INSTR(',' || COALESCE(REPLACE(REPLACE(datasource_ids, '[', ''), ']', ''), '') "
-                            + "|| ',', ',' || ? || ',') > 0)) ORDER BY create_time",
-                    String.class, oid, String.valueOf(dsId));
+            if (dsId == null) {
+                sql.append(" AND (specific_ds = FALSE OR specific_ds IS NULL) ORDER BY create_time");
+            } else {
+                sql.append(" AND (specific_ds = FALSE OR specific_ds IS NULL OR (");
+                sql.append("INSTR(',' || COALESCE(REPLACE(REPLACE(datasource_ids, '[', ''), ']', ''), '') ");
+                sql.append("|| ',', ',' || ? || ',') > 0)) ORDER BY create_time");
+                args.add(String.valueOf(dsId));
+            }
+            return jdbc.queryForList(sql.toString(), String.class, args.toArray());
         } catch (Exception e) {
             // custom_prompt 表缺失/列不一致时降级为空，不影响主链路
             log.info("自定义提示词召回失败（降级为空）: {}", e.getMessage());
