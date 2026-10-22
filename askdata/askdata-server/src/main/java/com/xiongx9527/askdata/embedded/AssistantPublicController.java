@@ -42,9 +42,11 @@ public class AssistantPublicController {
     private final String secretKey;
 
     public AssistantPublicController(AssistantRepository assistantRepository,
-                                     @Value("${askdata.secret-key:AskDataSecret001}") String secretKey) {
+                                     @Value("${askdata.secret-key:}") String secretKey) {
         this.assistantRepository = assistantRepository;
-        this.secretKey = secretKey;
+        // 验收 A5：签名密钥不再内置缺省值；未配置时用运行期随机密钥（重启后旧访问 token 失效，属预期）
+        this.secretKey = (secretKey == null || secretKey.isEmpty())
+                ? java.util.UUID.randomUUID().toString() : secretKey;
     }
 
     /**
