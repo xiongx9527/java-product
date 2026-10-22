@@ -38,7 +38,9 @@ public class AskdataAssistantConfig {
     public AskdataSqlRetriever askdataSqlRetriever(DataSource dataSource, ChatModel chatModel) throws Exception {
         String structure = AskdataNl2Sql.buildDatabaseStructure(dataSource);
         PromptTemplate promptTemplate = PromptTemplate.from(AskdataNl2Sql.SQL_PROMPT);
-        return new AskdataSqlRetriever(dataSource, "MySQL", structure, promptTemplate, chatModel, MAX_RETRIES);
+        // 验收 A2：方言由应用库连接动态探测，不再硬编码 MySQL
+        String dialect = AskdataNl2Sql.detectDialect(dataSource).getTemplateName();
+        return new AskdataSqlRetriever(dataSource, dialect, structure, promptTemplate, chatModel, MAX_RETRIES);
     }
 
     @Bean

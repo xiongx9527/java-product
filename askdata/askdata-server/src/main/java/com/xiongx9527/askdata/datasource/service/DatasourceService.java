@@ -429,6 +429,19 @@ public class DatasourceService {
         return engine.execSql(type, confOf(Rows.str(row, "configuration")), Rows.str(body, "sql"), id);
     }
 
+    /** 解析数据源方言类型（验收 A2：供 NL2SQL 注入正确方言，不再硬编码 MySQL）。 */
+    public DatasourceType type(long id) {
+        Map<String, Object> row = requireAccessible(id);
+        return typeOf(Rows.str(row, "type"));
+    }
+
+    /** 在指定数据源上执行只读 SQL，返回 {fields, data}（验收 A2：dsId 路径的执行入口）。 */
+    public Map<String, Object> execSql(long id, String sql) {
+        Map<String, Object> row = requireAccessible(id);
+        DatasourceType type = typeOf(Rows.str(row, "type"));
+        return engine.execSql(type, confOf(Rows.str(row, "configuration")), sql, id);
+    }
+
     /** POST /datasource/fieldEnum/{ds_id}/{id}（SQLBot 保留路由）：字段去重值。 */
     public List<Object> fieldEnum(long dsId, long fieldId) {
         Map<String, Object> dsRow = requireAccessible(dsId);
