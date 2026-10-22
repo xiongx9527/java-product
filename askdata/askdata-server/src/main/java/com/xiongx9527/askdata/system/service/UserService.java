@@ -171,6 +171,30 @@ public class UserService {
         return get(id);
     }
 
+    /**
+     * 外部 IdP 登录自动开通/绑定本地账号（origin=2 标记外部来源，无需管理员上下文）。
+     * 已存在同名账号直接返回其 id；否则创建并绑定默认工作空间（id=1）。
+     */
+    public long provisionExternalUser(String account, String name, String email) {
+        if (account == null || account.trim().isEmpty()) {
+            throw new BadRequestException("account is required for external identity");
+        }
+        String safeAccount = account.trim();
+        java.util.Optional<Map<String, Object>> existing = userRepository.findByAccount(safeAccount);
+        if (existing.isPresent()) {
+            return ((Number) existing.get().get("id")).longValue();
+        }
+        String safeEmail = (email != null && !email.isEmpty() && EMAIL_REGEX.matcher(email).matches())
+                ? email : safeAccount + "@sso.local";
+        String safeName = (name != null && !name.isEmpty()) ? name : safeAccount;
+        long id = idGenerator.nextId();
+        userRepository.insert(id, safeAccount, safeName, CryptoUtil.md5Hex(resolveDefaultPassword()),
+                safeEmail, 0L, 1, System.currentTimeMillis(), "zh-CN", 2, null);
+        bindUser(id, 1L, 0);
+        userRepository.updateOid(id, 1L);
+        return id;
+    }
+
     @Transactional
     public void update(Map<String, Object> body) {
         currentUserService.requireAdmin();
