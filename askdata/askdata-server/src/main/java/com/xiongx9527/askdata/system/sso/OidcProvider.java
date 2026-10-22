@@ -4,7 +4,12 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
-/** OIDC 授权码流程（A7）。 */
+/**
+ * OIDC 授权码流程（A7）：授权码换 token → 校验 id_token（签名/iss/aud/exp/nonce）→ 身份。
+ *
+ * <p>id_token 的校验见 {@link OidcIdTokenVerifier}；未配置 JWKS 或 IdP 证书时拒绝登录，
+ * 避免只凭 token 响应体就建立会话。</p>
+ */
 public class OidcProvider implements ExternalIdpProvider {
 
     @Override
@@ -19,7 +24,9 @@ public class OidcProvider implements ExternalIdpProvider {
                 + "&response_type=code"
                 + "&scope=" + enc("openid profile email")
                 + "&redirect_uri=" + enc(cfg.getRedirectUri())
-                + "&state=" + enc(state);
+                + "&state=" + enc(state)
+                // nonce 复用服务端签发的 state（同样随机、一次性），用于绑定 id_token 与本次请求
+                + (state == null || state.isEmpty() ? "" : "&nonce=" + enc(state));
     }
 
     @Override
@@ -34,29 +41,41 @@ public class OidcProvider implements ExternalIdpProvider {
             throw new IllegalStateException("oidc token exchange failed: " + token.status);
         }
         Map<String, Object> t = SsoJson.parseObject(token.body);
-        String sub = SsoJson.str(t, "sub");
-        if (sub == null) {
-            sub = SsoJson.str(t, "user_id");
-        }
-        IdpHttpClient.Response info = http.get(cfg.getUserInfoUrl(),
-                Map.of("Authorization", "Bearer " + (sub != null ? "" : "") + strOrEmpty(t, "access_token")));
-        Map<String, Object> u = SsoJson.parseObject(info.body);
-        String email = SsoJson.str(u, "email");
-        String name = SsoJson.str(u, "name");
+        Map<String, Object> claims = OidcIdTokenVerifier.verify(
+                SsoJson.str(t, "id_token"), cfg, cb.getState(), http);
+
+        String sub = SsoJson.str(claims, "sub");
+        String email = SsoJson.str(claims, "email");
+        String name = SsoJson.str(claims, "name");
         if (name == null) {
-            name = SsoJson.str(u, "preferred_username");
+            name = SsoJson.str(claims, "preferred_username");
         }
-        if (sub == null) {
-            sub = SsoJson.str(u, "sub");
+        if (sub == null || email == null || name == null) {
+            // 授权服务器未把资料放进 id_token 时，用 access_token 补 userinfo
+            IdpHttpClient.Response info = http.get(cfg.getUserInfoUrl(),
+                    Map.of("Authorization", "Bearer " + strOrEmpty(t, "access_token")));
+            if (info.ok()) {
+                Map<String, Object> u = SsoJson.parseObject(info.body);
+                if (sub == null) {
+                    sub = SsoJson.str(u, "sub");
+                }
+                if (email == null) {
+                    email = SsoJson.str(u, "email");
+                }
+                if (name == null) {
+                    name = SsoJson.str(u, "name");
+                }
+            }
         }
-        if (sub == null) {
-            sub = SsoJson.str(u, "user_id");
+        if (sub == null || sub.isEmpty()) {
+            throw new IllegalStateException("oidc identity has no subject");
         }
-        return new ExternalIdentity(sub, name, email, sub, u);
+        return new ExternalIdentity(sub, name, email, sub, claims);
     }
 
     private static String strOrEmpty(Map<String, Object> m, String k) {
-        return SsoJson.str(m, k) == null ? "" : SsoJson.str(m, k);
+        String value = SsoJson.str(m, k);
+        return value == null ? "" : value;
     }
 
     private static String enc(String s) {
@@ -67,3 +86,4 @@ public class OidcProvider implements ExternalIdpProvider {
         }
     }
 }
+

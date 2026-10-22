@@ -26,22 +26,30 @@ public class ExternalIdpController {
     private final ExternalIdpConfigProvider configProvider;
     private final LocalAccountLinker linker;
 
+    private final IdpStateStore stateStore;
+
     public ExternalIdpController(ExternalIdpService idpService,
                                  ExternalIdpConfigProvider configProvider,
-                                 LocalAccountLinker linker) {
+                                 LocalAccountLinker linker,
+                                 IdpStateStore stateStore) {
         this.idpService = idpService;
         this.configProvider = configProvider;
         this.linker = linker;
+        this.stateStore = stateStore;
     }
 
+    /**
+     * 跳转 IdP 授权页：state 由服务端签发（一次性、限时），不再由调用方传入，
+     * 回调必须带回同一个 state，否则拒绝（防登录 CSRF）。
+     */
     @GetMapping("/{type}/authorize")
-    public ResponseEntity<Void> authorize(@PathVariable String type,
-                                          @RequestParam(required = false) String state) {
+    public ResponseEntity<Void> authorize(@PathVariable String type) {
         IdpType idpType = parse(type);
         ExternalIdpConfig cfg = configProvider.get(idpType);
         if (cfg == null || !cfg.isEnabled()) {
             throw new BadRequestException("idp not configured or disabled: " + type);
         }
+        String state = stateStore.issue(idpType);
         String url = idpService.authorizationUrl(idpType, cfg, state);
         return ResponseEntity.status(302).location(URI.create(url)).build();
     }
@@ -53,6 +61,12 @@ public class ExternalIdpController {
         ExternalIdpConfig cfg = configProvider.get(idpType);
         if (cfg == null || !cfg.isEnabled()) {
             throw new BadRequestException("idp not configured or disabled: " + type);
+        }
+        // 先校验 state：未知/已使用/过期/协议不匹配一律拒绝
+        try {
+            stateStore.consume(idpType, params.get("state"));
+        } catch (IllegalStateException e) {
+            throw new BadRequestException(e.getMessage());
         }
         IdpCallback cb = IdpCallback.fromQuery(params);
         ExternalIdentity identity = idpService.resolveIdentity(idpType, cfg, cb,

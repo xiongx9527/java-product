@@ -22,6 +22,9 @@ public class ScheduledTaskProperties {
     /** 推送 webhook 超时（秒）。 */
     private int pushTimeoutSeconds = 10;
 
+    /** 并发执行任务的线程数（单任务耗时不应阻塞其他任务的调度）。 */
+    private int workerThreads = 2;
+
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
     public long getPollIntervalMs() { return pollIntervalMs; }
@@ -30,5 +33,7 @@ public class ScheduledTaskProperties {
     public void setExportDir(String exportDir) { this.exportDir = exportDir; }
     public int getPushTimeoutSeconds() { return pushTimeoutSeconds; }
     public void setPushTimeoutSeconds(int pushTimeoutSeconds) { this.pushTimeoutSeconds = pushTimeoutSeconds; }
+    public int getWorkerThreads() { return workerThreads; }
+    public void setWorkerThreads(int workerThreads) { this.workerThreads = Math.max(1, workerThreads); }
 }
 

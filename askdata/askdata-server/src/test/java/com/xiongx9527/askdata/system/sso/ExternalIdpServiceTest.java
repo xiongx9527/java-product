@@ -4,12 +4,14 @@ import com.xiongx9527.askdata.system.service.UserService;
 
 import org.junit.jupiter.api.Test;
 
-import java.util.Base64;
+import java.security.KeyPair;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -18,7 +20,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * 验收 A7：外部 IdP（OIDC/CAS/SAML2/企业微信/钉钉/飞书/Lark）可完成授权登录解析并自动开通本地账号。
- * 采用 mock IdP（StubHttp）验证协议流程，无需真实 IdP。
+ * 采用 mock IdP（StubHttp）+ 真实 RS256/XMLDSig 签名验证协议流程，无需真实 IdP。
  */
 class ExternalIdpServiceTest {
 
@@ -64,16 +66,73 @@ class ExternalIdpServiceTest {
     private final ExternalIdpService service = new ExternalIdpService();
 
     @Test
-    void oidcResolvesIdentity() {
+    void oidcVerifiesSignedIdTokenAndResolvesIdentity() throws Exception {
+        KeyPair pair = IdpTestCrypto.rsaKeyPair();
+        Map<String, Object> claims = new LinkedHashMap<String, Object>();
+        claims.put("iss", "https://idp");
+        claims.put("aud", "cid");
+        claims.put("sub", "sub-123");
+        claims.put("email", "a@b.com");
+        claims.put("name", "Alice");
+        claims.put("exp", System.currentTimeMillis() / 1000L + 300L);
+        claims.put("nonce", "st-1");
+        String idToken = IdpTestCrypto.idToken(pair.getPrivate(), "k1", claims);
+
+        ExternalIdpConfig oidc = cfg();
+        oidc.setExtra(Map.of("jwks-url", "https://idp/jwks", "issuer", "https://idp"));
         StubHttp http = new StubHttp(Map.of(
-                "token", "{\"access_token\":\"at\",\"sub\":\"sub-123\"}",
+                "jwks", IdpTestCrypto.jwks(pair, "k1"),
+                "token", "{\"access_token\":\"at\",\"id_token\":\"" + idToken + "\"}",
                 "userinfo", "{\"email\":\"a@b.com\",\"name\":\"Alice\"}"));
-        ExternalIdentity idp = service.resolveIdentity(IdpType.OIDC, cfg(),
-                IdpCallback.fromQuery(Map.of("code", "c")), http);
+
+        IdpCallback callback = new IdpCallback();
+        callback.setCode("c");
+        callback.setState("st-1");
+        ExternalIdentity idp = service.resolveIdentity(IdpType.OIDC, oidc, callback, http);
         assertEquals("sub-123", idp.getAccount());
         assertEquals("Alice", idp.getName());
         assertEquals("a@b.com", idp.getEmail());
         assertEquals("sub-123", idp.getExternalId());
+    }
+
+    @Test
+    void oidcRejectsTokenWithWrongSignature() throws Exception {
+        KeyPair signer = IdpTestCrypto.rsaKeyPair();
+        KeyPair other = IdpTestCrypto.rsaKeyPair();
+        Map<String, Object> claims = new LinkedHashMap<String, Object>();
+        claims.put("aud", "cid");
+        claims.put("sub", "sub-123");
+        claims.put("exp", System.currentTimeMillis() / 1000L + 300L);
+        String idToken = IdpTestCrypto.idToken(signer.getPrivate(), "k1", claims);
+
+        ExternalIdpConfig oidc = cfg();
+        oidc.setExtra(Map.of("jwks-url", "https://idp/jwks"));
+        StubHttp http = new StubHttp(Map.of(
+                "jwks", IdpTestCrypto.jwks(other, "k1"),
+                "token", "{\"access_token\":\"at\",\"id_token\":\"" + idToken + "\"}"));
+        IdpCallback callback = new IdpCallback();
+        callback.setCode("c");
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> service.resolveIdentity(IdpType.OIDC, oidc, callback, http));
+        assertTrue(error.getMessage().contains("signature"), error.getMessage());
+    }
+
+    @Test
+    void oidcRejectsTokenWithoutVerificationMaterial() throws Exception {
+        KeyPair pair = IdpTestCrypto.rsaKeyPair();
+        Map<String, Object> claims = new LinkedHashMap<String, Object>();
+        claims.put("aud", "cid");
+        claims.put("sub", "sub-123");
+        claims.put("exp", System.currentTimeMillis() / 1000L + 300L);
+        String idToken = IdpTestCrypto.idToken(pair.getPrivate(), "k1", claims);
+        StubHttp http = new StubHttp(Map.of(
+                "token", "{\"access_token\":\"at\",\"id_token\":\"" + idToken + "\"}"));
+        IdpCallback callback = new IdpCallback();
+        callback.setCode("c");
+        // 未配置 jwks-url / id-token-cert：拒绝而不是静默接受
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> service.resolveIdentity(IdpType.OIDC, cfg(), callback, http));
+        assertTrue(error.getMessage().contains("jwks-url"), error.getMessage());
     }
 
     @Test
@@ -105,17 +164,54 @@ class ExternalIdpServiceTest {
     }
 
     @Test
-    void saml2ResolvesIdentityFromBase64Assertion() {
-        String xml = "<Response><Assertion><Subject><NameID>nid-1</NameID></Subject>"
-                + "<AttributeStatement><Attribute Name='uid'><AttributeValue>uidval</AttributeValue></Attribute>"
-                + "<Attribute Name='email'><AttributeValue>e@f.com</AttributeValue></Attribute>"
-                + "</AttributeStatement></Assertion></Response>";
-        String base64 = Base64.getEncoder().encodeToString(xml.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    void saml2VerifiesSignatureThenResolvesIdentity() throws Exception {
+        KeyPair pair = IdpTestCrypto.rsaKeyPair();
+        String xml = IdpTestCrypto.signedSamlResponse(pair.getPrivate(), "uidval", "e@f.com");
+
+        ExternalIdpConfig saml = cfg();
+        saml.setExtra(Map.of("saml-cert", IdpTestCrypto.publicKeyBase64(pair)));
         IdpCallback cb = new IdpCallback();
-        cb.setSamlResponse(base64);
-        ExternalIdentity idp = service.resolveIdentity(IdpType.SAML2, cfg(), cb, new StubHttp(Map.of()));
+        cb.setSamlResponse(IdpTestCrypto.base64(xml));
+
+        ExternalIdentity idp = service.resolveIdentity(IdpType.SAML2, saml, cb, new StubHttp(Map.of()));
         assertEquals("saml:uidval", idp.getAccount());
         assertEquals("e@f.com", idp.getEmail());
+    }
+
+    @Test
+    void saml2RejectsUnsignedAssertion() {
+        ExternalIdpConfig saml = cfg();
+        saml.setExtra(Map.of("saml-cert", "AAAA"));
+        IdpCallback cb = new IdpCallback();
+        cb.setSamlResponse(IdpTestCrypto.base64(IdpTestCrypto.unsignedSamlResponse("uidval", "e@f.com")));
+
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> service.resolveIdentity(IdpType.SAML2, saml, cb, new StubHttp(Map.of())));
+        assertTrue(error.getMessage().contains("not signed"), error.getMessage());
+    }
+
+    @Test
+    void saml2RejectsAssertionWithoutConfiguredCertificate() {
+        IdpCallback cb = new IdpCallback();
+        cb.setSamlResponse(IdpTestCrypto.base64(IdpTestCrypto.unsignedSamlResponse("uidval", "e@f.com")));
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> service.resolveIdentity(IdpType.SAML2, cfg(), cb, new StubHttp(Map.of())));
+        assertTrue(error.getMessage().contains("certificate is not configured"), error.getMessage());
+    }
+
+    @Test
+    void saml2RejectsTamperedAssertion() throws Exception {
+        KeyPair pair = IdpTestCrypto.rsaKeyPair();
+        String xml = IdpTestCrypto.signedSamlResponse(pair.getPrivate(), "uidval", "e@f.com");
+        String tampered = xml.replace("uidval", "attacker");
+
+        ExternalIdpConfig saml = cfg();
+        saml.setExtra(Map.of("saml-cert", IdpTestCrypto.publicKeyBase64(pair)));
+        IdpCallback cb = new IdpCallback();
+        cb.setSamlResponse(IdpTestCrypto.base64(tampered));
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> service.resolveIdentity(IdpType.SAML2, saml, cb, new StubHttp(Map.of())));
+        assertTrue(error.getMessage().contains("signature"), error.getMessage());
     }
 
     @Test
@@ -139,8 +235,17 @@ class ExternalIdpServiceTest {
     void authorizationUrlContainsClientAndState() {
         String url = service.authorizationUrl(IdpType.OIDC, cfg(), "st123");
         assertNotNull(url);
-        org.junit.jupiter.api.Assertions.assertTrue(url.contains("client_id=cid"));
-        org.junit.jupiter.api.Assertions.assertTrue(url.contains("state=st123"));
+        assertTrue(url.contains("client_id=cid"));
+        assertTrue(url.contains("state=st123"));
+        // nonce 与 state 绑定，供 id_token 校验使用
+        assertTrue(url.contains("nonce=st123"), url);
+    }
+
+    @Test
+    void samlAuthorizationUrlCarriesAuthnRequest() {
+        String url = service.authorizationUrl(IdpType.SAML2, cfg(), "st123");
+        assertTrue(url.contains("SAMLRequest="), url);
+        assertTrue(url.contains("RelayState=st123"), url);
     }
 }
 

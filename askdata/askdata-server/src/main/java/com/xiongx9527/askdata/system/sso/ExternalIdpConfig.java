@@ -109,4 +109,10 @@ public class ExternalIdpConfig {
     public String getExtra(String key) {
         return extra == null ? null : extra.get(key);
     }
+
+    /** 取 extra 配置（去空白；缺失或空串返回 null，便于调用方按「未配置」处理）。 */
+    public String extra(String key) {
+        String value = getExtra(key);
+        return value == null || value.trim().isEmpty() ? null : value.trim();
+    }
 }
