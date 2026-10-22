@@ -186,7 +186,8 @@ class ChatKnowledgeChainTest {
         chatQuestionService = new ChatQuestionService(chatRepository, recommendedQuestionRepository,
                 datasourceRepository, datasourceService, currentUserService, schemaContextBuilder, modelClient,
                 modelRouter, new ChatChartBuilder(objectMapper), objectMapper, null, chatKnowledgeService,
-                new com.xiongx9527.askdata.embedded.DynamicDatasourceResolver(objectMapper));
+                new com.xiongx9527.askdata.embedded.DynamicDatasourceResolver(objectMapper),
+                new com.xiongx9527.askdata.embedded.AssistantRepository(appJdbc, idGenerator));
     }
 
     @AfterEach

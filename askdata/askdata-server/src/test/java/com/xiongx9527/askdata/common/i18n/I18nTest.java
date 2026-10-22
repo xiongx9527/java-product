@@ -39,6 +39,19 @@ class I18nTest {
     }
 
     @Test
+    void resolvesScheduledModuleMessagesPerLocale() {
+        ResourceBundleMessageSource src = source();
+        assertEquals("请选择数据源",
+                src.getMessage("scheduled.datasource.required", null, Locale.SIMPLIFIED_CHINESE));
+        assertEquals("Datasource is required",
+                src.getMessage("scheduled.datasource.required", null, Locale.ENGLISH));
+        assertEquals("定时任务不存在: 7",
+                src.getMessage("scheduled.task.not.found", new Object[]{7L}, Locale.SIMPLIFIED_CHINESE));
+        assertEquals("Scheduled task is running: 9",
+                src.getMessage("scheduled.task.running", new Object[]{9L}, Locale.ENGLISH));
+    }
+
+    @Test
     void resolvesParameterizedMessage() {
         ResourceBundleMessageSource src = source();
         // 无占位符的键，验证多键可用

@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.ai;
 
+import com.xiongx9527.askdata.chat.service.ChatQuestionService;
 import com.xiongx9527.askdata.chat.service.SchemaContextBuilder;
 import com.xiongx9527.askdata.datasource.engine.DatasourceType;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
@@ -15,7 +16,6 @@ import org.springframework.stereotype.Service;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
-import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,7 +27,8 @@ import java.util.Map;
  *
  * <p>验收 A2：不再硬编码 MySQL、不再每次问数全库 DatabaseMetaData 扫描。
  * 方言由数据源类型（或应用库连接的元数据）动态解析；schema 文本复用主路径的
- * SchemaContextBuilder.buildSchemaText(long)（top-N RAG 选表），而非实时全库扫描。
+ * SchemaContextBuilder top-N 选表（{@code buildSchemaText(long, String)} 或
+ * {@code buildSchemaTextForConnection(DataSource, String)}），而非实时全库扫描。
  * 选定数据源（dsId）时，SQL 在该数据源上执行（通过 DatasourceService），
  * 因此非 MySQL 数据源也能产出并执行正确方言的 SQL。</p>
  *
@@ -42,9 +43,6 @@ public class AskdataNl2Sql {
     private static final int MAX_RETRIES = 3;
 
     private static final int ROW_LIMIT = 200;
-
-    /** 应用库 fallback 路径的全库扫描表数上限（避免大库超长提示词）。 */
-    private static final int APP_DB_TABLE_CAP = 200;
 
     /** 与 langchain4j SqlDatabaseContentRetriever 默认提示词一致（变量 {{sqlDialect}}/{{databaseStructure}}）。 */
     public static final String SQL_PROMPT = """
@@ -89,10 +87,11 @@ public class AskdataNl2Sql {
         String structure;
         if (dsId != null) {
             dialectType = datasourceService.type(dsId);
-            structure = schemaContextBuilder.buildSchemaText(dsId);
+            structure = schemaContextBuilder.buildSchemaText(dsId, question);
         } else {
+            // A2：应用库 fallback 不再全库 dump 完整 schema，改为 top-N 选表（按问题相关性）
             dialectType = detectDialect(dataSource);
-            structure = buildDatabaseStructure(dataSource);
+            structure = schemaContextBuilder.buildSchemaTextForConnection(dataSource, question);
         }
         AskdataSqlRetriever retriever = new AskdataSqlRetriever(
                 dataSource, dialectType.getTemplateName(), structure,
@@ -103,6 +102,14 @@ public class AskdataNl2Sql {
             throw new IllegalStateException("模型未能生成合法 SQL，请调整问题表述或重试");
         }
         AskdataSqlRetriever.checkSql(sql);
+        if (dsId != null) {
+            // 与主聊天路径一致：只允许查询已勾选的表（防模型幻觉到未授权表）
+            String tableError = ChatQuestionService.validateTables(sql,
+                    schemaContextBuilder.checkedTableNames(dsId));
+            if (tableError != null) {
+                throw new IllegalArgumentException(tableError);
+            }
+        }
         List<Map<String, Object>> rows = execute(sql, dsId);
         Map<String, Object> out = new LinkedHashMap<String, Object>();
         out.put("question", question);
@@ -163,31 +170,5 @@ public class AskdataNl2Sql {
             log.warn("方言探测失败，退化为 MySQL: {}", e.getMessage());
             return DatasourceType.MYSQL;
         }
-    }
-
-    public static String buildDatabaseStructure(DataSource dataSource) throws Exception {
-        StringBuilder sb = new StringBuilder();
-        int count = 0;
-        try (Connection conn = dataSource.getConnection()) {
-            DatabaseMetaData md = conn.getMetaData();
-            try (ResultSet tables = md.getTables(null, null, "%", new String[]{"TABLE"})) {
-                while (tables.next() && count < APP_DB_TABLE_CAP) {
-                    String table = tables.getString("TABLE_NAME");
-                    sb.append("CREATE TABLE ").append(table).append(" (");
-                    List<String> cols = new ArrayList<String>();
-                    try (ResultSet columns = md.getColumns(null, null, table, "%")) {
-                        while (columns.next()) {
-                            cols.add(columns.getString("COLUMN_NAME") + " "
-                                    + columns.getString("TYPE_NAME"));
-                        }
-                    }
-                    sb.append(String.join(", ", cols)).append(");");
-                    count++;
-                }
-            }
-        }
-        String structure = sb.toString();
-        log.info("NL2SQL fallback databaseStructure 表数={}", count);
-        return structure;
     }
 }

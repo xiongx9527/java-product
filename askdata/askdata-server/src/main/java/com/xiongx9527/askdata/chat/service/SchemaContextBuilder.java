@@ -20,6 +20,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -416,6 +419,89 @@ public class SchemaContextBuilder {
             }
             sb.append(tableBlockForConf(type, conf, table));
             count++;
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 表结构文本（应用库连接版，A2）：未登记为数据源、无勾选元数据的连接（如应用元数据库）
+     * 不再每次问数全库 dump 完整 schema——只读取表名，按问题相关性排序后仅展开
+     * {@value #MAX_TABLES} 张表的字段，与静态数据源的 top-N 选表语义一致。
+     *
+     * @param dataSource 目标连接（只读使用）
+     * @param question   用户问题，用于表名相关性排序
+     */
+    public String buildSchemaTextForConnection(DataSource dataSource, String question) {
+        try (Connection conn = dataSource.getConnection()) {
+            List<String> tables = tableNamesOf(conn);
+            if (tables.isEmpty()) {
+                return "（数据库未发现任何表）";
+            }
+            StringBuilder sb = new StringBuilder();
+            int count = 0;
+            for (String table : orderNamesByQuestion(tables, question)) {
+                if (count >= MAX_TABLES) {
+                    break;
+                }
+                sb.append(connectionTableBlock(conn, table));
+                count++;
+            }
+            log.info("应用库 schema 选表：候选 {}，进入提示词 {} 张", tables.size(), count);
+            return sb.toString();
+        } catch (Exception e) {
+            log.info("应用库表结构读取失败: {}", e.getMessage());
+            return "（数据库表结构不可用）";
+        }
+    }
+
+    /** 连接内的用户表名（仅名称，不展开字段）。 */
+    private static List<String> tableNamesOf(Connection conn) throws Exception {
+        List<String> names = new ArrayList<>();
+        try (ResultSet tables = conn.getMetaData().getTables(null, null, "%", new String[]{"TABLE"})) {
+            while (tables.next()) {
+                String name = tables.getString("TABLE_NAME");
+                if (name != null && !name.isEmpty()) {
+                    names.add(name);
+                }
+            }
+        }
+        return names;
+    }
+
+    /** 按问题点名相关性排序表名（点名的表排前，其余保持元数据次序）。 */
+    private static List<String> orderNamesByQuestion(List<String> names, String question) {
+        if (question == null || question.trim().isEmpty()) {
+            return names;
+        }
+        String lower = question.toLowerCase(Locale.ROOT);
+        List<String> hit = new ArrayList<>();
+        List<String> rest = new ArrayList<>();
+        for (String name : names) {
+            if (lower.contains(name.toLowerCase(Locale.ROOT))) {
+                hit.add(name);
+            } else {
+                rest.add(name);
+            }
+        }
+        hit.addAll(rest);
+        return hit;
+    }
+
+    /** 单表字段块（表名 + 字段名/类型）；字段行按 TABLE_NAME 精确匹配过滤，避免元数据通配符串表。 */
+    private static String connectionTableBlock(Connection conn, String tableName) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Table ").append(tableName).append(":\n");
+        try (ResultSet columns = conn.getMetaData().getColumns(null, null, tableName, "%")) {
+            while (columns.next()) {
+                String owner = columns.getString("TABLE_NAME");
+                if (owner != null && !owner.equalsIgnoreCase(tableName)) {
+                    continue;
+                }
+                sb.append("  - ").append(columns.getString("COLUMN_NAME")).append(" ")
+                        .append(columns.getString("TYPE_NAME")).append("\n");
+            }
+        } catch (Exception e) {
+            log.info("应用库字段读取失败 table={}: {}", tableName, e.getMessage());
         }
         return sb.toString();
     }

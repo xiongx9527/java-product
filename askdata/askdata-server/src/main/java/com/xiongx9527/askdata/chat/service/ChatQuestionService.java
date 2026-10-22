@@ -13,6 +13,7 @@ import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.datasource.engine.SqlSafety;
 import com.xiongx9527.askdata.datasource.repository.DatasourceRepository;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
+import com.xiongx9527.askdata.embedded.AssistantRepository;
 import com.xiongx9527.askdata.embedded.DynamicDatasource;
 import com.xiongx9527.askdata.embedded.DynamicDatasourceResolver;
 import com.xiongx9527.askdata.permission.PermissionEnforcer;
@@ -121,6 +122,8 @@ public class ChatQuestionService {
 
     private final DynamicDatasourceResolver dynamicDatasourceResolver;
 
+    private final AssistantRepository assistantRepository;
+
     public ChatQuestionService(ChatRepository chatRepository,
                                RecommendedQuestionRepository recommendedQuestionRepository,
                                DatasourceRepository datasourceRepository, DatasourceService datasourceService,
@@ -128,7 +131,8 @@ public class ChatQuestionService {
                                ChatModelClient modelClient, ChatModelRouter modelRouter,
                                ChatChartBuilder chartBuilder, ObjectMapper objectMapper,
                                PermissionEnforcer permissionEnforcer, ChatKnowledgeService chatKnowledgeService,
-                               DynamicDatasourceResolver dynamicDatasourceResolver) {
+                               DynamicDatasourceResolver dynamicDatasourceResolver,
+                               AssistantRepository assistantRepository) {
         this.chatRepository = chatRepository;
         this.recommendedQuestionRepository = recommendedQuestionRepository;
         this.datasourceRepository = datasourceRepository;
@@ -142,6 +146,7 @@ public class ChatQuestionService {
         this.permissionEnforcer = permissionEnforcer;
         this.chatKnowledgeService = chatKnowledgeService;
         this.dynamicDatasourceResolver = dynamicDatasourceResolver;
+        this.assistantRepository = assistantRepository;
     }
 
     // ==================================================================
@@ -274,11 +279,11 @@ public class ChatQuestionService {
                     sqlText = regenerateSql(aiModel, question, dsId, dynamic, sqlText, "模型未输出可执行的 SQL", writer);
                     sql = sqlText == null ? null : extractSql(sqlText);
                 }
-                String validation = sql == null ? "模型未输出可执行的 SQL" : validateSql(sql, dsType, dsId);
+                String validation = sql == null ? "模型未输出可执行的 SQL" : validateSql(sql, dsType, dsId, dynamic);
                 if (validation != null) {
                     String fixed = regenerateSql(aiModel, question, dsId, dynamic, sql == null ? "" : sql, validation, writer);
                     String fixedSql = fixed == null ? null : extractSql(fixed);
-                    if (fixedSql != null && validateSql(fixedSql, dsType, dsId) == null) {
+                    if (fixedSql != null && validateSql(fixedSql, dsType, dsId, dynamic) == null) {
                         sqlText = fixed;
                         sql = fixedSql;
                         validation = null;
@@ -605,8 +610,20 @@ public class ChatQuestionService {
                 throw new BadRequestException("Invalid dynamic datasource: " + e.getMessage());
             }
         }
-        int assistantType = Rows.intg(body, "assistant_type", DynamicDatasourceResolver.TYPE_ADVANCED_APP);
-        return dynamicDatasourceResolver.resolve(assistantType, hostConfig);
+        // A8：动态数据源仅对已登记的高级应用（type 1/3）开放。类型以 sys_assistant 记录为准，
+        // 不信任请求体自报的 assistant_type——否则任意账号都能让服务端连接任意 JDBC 地址。
+        Long assistantId = Rows.lngOrNull(body, "assistant_id");
+        if (assistantId == null) {
+            throw new BadRequestException(
+                    "Dynamic datasource requires assistant_id of an advanced application");
+        }
+        Map<String, Object> assistant = assistantRepository.findById(assistantId)
+                .orElseThrow(() -> new BadRequestException("Assistant with id " + assistantId + " not found"));
+        long oid = currentUserService.oidOf(currentUserService.currentUser());
+        if (Rows.lng(assistant, "oid", 0L) != oid) {
+            throw new BadRequestException("Assistant with id " + assistantId + " not found");
+        }
+        return dynamicDatasourceResolver.resolve(Rows.intg(assistant, "type", 0), hostConfig);
     }
 
     /** 错误回喂修复一轮（不流式重发，仅用于纠错），失败返回 null。 */
@@ -637,14 +654,43 @@ public class ChatQuestionService {
      * @return 错误信息；通过时返回 null
      */
     public String validateSql(String sql, String dsType, Long dsId) {
+        return validateSql(sql, dsType, dsId, null);
+    }
+
+    /**
+     * 只读 SELECT 校验（静态 / 动态数据源共用）：先过 {@link SqlSafety}，再校验表名白名单。
+     *
+     * <p>A8：动态数据源没有 core_datasource 勾选记录，白名单改为实时读取该连接的表名，
+     * 与静态数据源一样拦截模型幻觉出的表，而不是把错误留到执行阶段。</p>
+     *
+     * @return 错误信息；通过时返回 null
+     */
+    public String validateSql(String sql, String dsType, Long dsId, DynamicDatasource dynamic) {
         String safety = validateSqlSafety(sql, dsType);
         if (safety != null) {
             return safety;
+        }
+        if (dynamic != null) {
+            return validateTables(sql, dynamicTableNames(dynamic));
         }
         if (dsId == null) {
             return null;
         }
         return validateTables(sql, schemaContextBuilder.checkedTableNames(dsId));
+    }
+
+    /** 动态数据源当前表名（实时元数据）；读取失败返回 null（不阻断，交由执行阶段报真实错误）。 */
+    private List<String> dynamicTableNames(DynamicDatasource dynamic) {
+        try {
+            List<String> names = new ArrayList<String>();
+            for (com.xiongx9527.askdata.datasource.engine.TableSchema table
+                    : datasourceService.tablesTransient(dynamic.getType(), dynamic.getConf())) {
+                names.add(table.getTableName());
+            }
+            return names;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** 只读安全性校验（SELECT/WITH 白名单 + 危险模式/函数），通过返回 null。 */
@@ -658,7 +704,7 @@ public class ChatQuestionService {
     }
 
     /** 表名白名单校验（防幻觉到未勾选的表），通过返回 null。 */
-    static String validateTables(String sql, List<String> allowed) {
+    public static String validateTables(String sql, List<String> allowed) {
         if (allowed == null || allowed.isEmpty()) {
             return null;
         }

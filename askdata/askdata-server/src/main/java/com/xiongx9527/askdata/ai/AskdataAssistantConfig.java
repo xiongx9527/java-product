@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.ai;
 
+import com.xiongx9527.askdata.chat.service.SchemaContextBuilder;
 import com.xiongx9527.fw.plus.ai.autoconfigure.langchain4j.support.assistant.AssistantBuilder;
 import com.xiongx9527.fw.plus.ai.autoconfigure.langchain4j.support.assistant.SimpleAssistant;
 import dev.langchain4j.model.chat.ChatModel;
@@ -32,15 +33,17 @@ public class AskdataAssistantConfig {
     private static final int MAX_RETRIES = 3;
 
     /**
-     * NL2SQL 检索器：databaseStructure 由元数据库实时结构生成；作为 Assistant 的 RAG content retriever。
+     * NL2SQL 检索器：schema 在每次检索时按问题 top-N 选表（A2），不在启动期做全库 schema dump；
+     * 作为 Assistant 的 RAG content retriever。
      */
     @Bean
-    public AskdataSqlRetriever askdataSqlRetriever(DataSource dataSource, ChatModel chatModel) throws Exception {
-        String structure = AskdataNl2Sql.buildDatabaseStructure(dataSource);
+    public AskdataSqlRetriever askdataSqlRetriever(DataSource dataSource, ChatModel chatModel,
+                                                   SchemaContextBuilder schemaContextBuilder) {
         PromptTemplate promptTemplate = PromptTemplate.from(AskdataNl2Sql.SQL_PROMPT);
         // 验收 A2：方言由应用库连接动态探测，不再硬编码 MySQL
         String dialect = AskdataNl2Sql.detectDialect(dataSource).getTemplateName();
-        return new AskdataSqlRetriever(dataSource, dialect, structure, promptTemplate, chatModel, MAX_RETRIES);
+        return new AskdataSqlRetriever(dataSource, dialect, "", promptTemplate, chatModel, MAX_RETRIES,
+                query -> schemaContextBuilder.buildSchemaTextForConnection(dataSource, query.text()));
     }
 
     @Bean

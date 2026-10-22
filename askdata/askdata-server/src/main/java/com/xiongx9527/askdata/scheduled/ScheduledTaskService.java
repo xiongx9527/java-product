@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.scheduled;
 
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
@@ -23,11 +24,14 @@ public class ScheduledTaskService {
 
     private final CurrentUserService currentUserService;
 
+    private final MessageResolver messageResolver;
+
     public ScheduledTaskService(ScheduledTaskRepository repository, ScheduledTaskExecutor executor,
-                                CurrentUserService currentUserService) {
+                                CurrentUserService currentUserService, MessageResolver messageResolver) {
         this.repository = repository;
         this.executor = executor;
         this.currentUserService = currentUserService;
+        this.messageResolver = messageResolver;
     }
 
     /** 当前工作空间（管理员全部，普通用户仅自己创建）的定时任务。 */
@@ -61,7 +65,7 @@ public class ScheduledTaskService {
         String question = required(body, "question");
         Long datasourceId = Rows.lngOrNull(body, "datasource_id");
         if (datasourceId == null) {
-            throw new BadRequestException("datasource_id is required");
+            throw new BadRequestException(messageResolver.get("scheduled.datasource.required"));
         }
         Long id = Rows.lngOrNull(body, "id");
         ScheduledTask task;
@@ -128,7 +132,7 @@ public class ScheduledTaskService {
         ScheduledTask task = requireOwned(id, currentUserService.currentUser());
         long now = System.currentTimeMillis();
         if (!repository.claim(id, now)) {
-            throw new BadRequestException("Scheduled task with id " + id + " is running");
+            throw new BadRequestException(messageResolver.get("scheduled.task.running", id));
         }
         return runView(executor.execute(task, ScheduledTaskRun.TRIGGER_MANUAL));
     }
@@ -136,11 +140,11 @@ public class ScheduledTaskService {
     /** 重试一次历史运行（失败重试入口）。 */
     public Map<String, Object> retry(long runId) {
         ScheduledTaskRun previous = repository.findRun(runId)
-                .orElseThrow(() -> new BadRequestException("Scheduled task run with id " + runId + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("scheduled.run.not.found", runId)));
         ScheduledTask task = requireOwned(previous.getTaskId(), currentUserService.currentUser());
         long now = System.currentTimeMillis();
         if (!repository.claim(task.getId(), now)) {
-            throw new BadRequestException("Scheduled task with id " + task.getId() + " is running");
+            throw new BadRequestException(messageResolver.get("scheduled.task.running", task.getId()));
         }
         return runView(executor.execute(task, ScheduledTaskRun.TRIGGER_RETRY));
     }
@@ -161,13 +165,13 @@ public class ScheduledTaskService {
 
     private ScheduledTask requireOwned(long id, Map<String, Object> user) {
         ScheduledTask task = repository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Scheduled task with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("scheduled.task.not.found", id)));
         if (currentUserService.isAdmin(user)) {
             return task;
         }
         if (task.getOid() != currentUserService.oidOf(user)
                 || task.getCreateBy() != Rows.lng(user, "id", 0L)) {
-            throw new BadRequestException("Scheduled task with id " + id + " not found");
+            throw new BadRequestException(messageResolver.get("scheduled.task.not.found", id));
         }
         return task;
     }
@@ -175,7 +179,7 @@ public class ScheduledTaskService {
     private String required(Map<String, Object> body, String key) {
         String value = Rows.str(body, key);
         if (value == null || value.trim().isEmpty()) {
-            throw new BadRequestException(key + " is required");
+            throw new BadRequestException(messageResolver.get("scheduled.field.required", key));
         }
         return value.trim();
     }

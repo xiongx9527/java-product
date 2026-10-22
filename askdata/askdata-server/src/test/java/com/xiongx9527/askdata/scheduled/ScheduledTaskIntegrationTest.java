@@ -144,8 +144,8 @@ class ScheduledTaskIntegrationTest {
         properties.setExportDir(exportDir.toString());
         ScheduledTaskRepository repository = new ScheduledTaskRepository(appJdbc, idGenerator);
         ScheduledTaskExecutor executor = new ScheduledTaskExecutor(repository, datasourceService,
-                schemaContextBuilder, modelClient, modelRouter, properties, objectMapper);
-        service = new ScheduledTaskService(repository, executor, currentUserService);
+                schemaContextBuilder, modelClient, modelRouter, properties, objectMapper, messageResolver);
+        service = new ScheduledTaskService(repository, executor, currentUserService, messageResolver);
     }
 
     @AfterEach

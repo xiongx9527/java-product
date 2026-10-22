@@ -8,6 +8,7 @@ import com.xiongx9527.askdata.chat.service.ChatModelRouter.ModelRef;
 import com.xiongx9527.askdata.chat.service.ChatQuestionService;
 import com.xiongx9527.askdata.chat.service.SchemaContextBuilder;
 import com.xiongx9527.askdata.chat.support.ChatExcel;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.datasource.engine.SqlSafety;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
@@ -58,10 +59,12 @@ public class ScheduledTaskExecutor {
 
     private final ObjectMapper objectMapper;
 
+    private final MessageResolver messageResolver;
+
     public ScheduledTaskExecutor(ScheduledTaskRepository repository, DatasourceService datasourceService,
                                  SchemaContextBuilder schemaContextBuilder, ChatModelClient modelClient,
                                  ChatModelRouter modelRouter, ScheduledTaskProperties properties,
-                                 ObjectMapper objectMapper) {
+                                 ObjectMapper objectMapper, MessageResolver messageResolver) {
         this.repository = repository;
         this.datasourceService = datasourceService;
         this.schemaContextBuilder = schemaContextBuilder;
@@ -69,6 +72,7 @@ public class ScheduledTaskExecutor {
         this.modelRouter = modelRouter;
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.messageResolver = messageResolver;
     }
 
     /**
@@ -96,7 +100,7 @@ public class ScheduledTaskExecutor {
         try {
             Optional<ModelRef> model = modelRouter.defaultChatModel();
             if (!model.isPresent() || !model.get().usable()) {
-                throw new IllegalStateException("默认大模型尚未配置（请到系统-AI 模型设置默认模型）");
+                throw new IllegalStateException(messageResolver.get("scheduled.no.default.model"));
             }
             ModelRef aiModel = model.get();
             List<ModelMessage> messages =
@@ -104,7 +108,7 @@ public class ScheduledTaskExecutor {
             String text = modelClient.generate(aiModel.apiDomain, aiModel.apiKey, aiModel.baseModel, messages);
             sql = ChatQuestionService.extractSql(text);
             if (sql == null) {
-                throw new IllegalStateException("模型未输出可执行的 SQL");
+                throw new IllegalStateException(messageResolver.get("scheduled.no.sql"));
             }
             SqlSafety.checkRead(sql, datasourceService.typeAsSystem(task.getDatasourceId()).getType());
             Map<String, Object> result = datasourceService.execSqlAsSystem(task.getDatasourceId(), sql);

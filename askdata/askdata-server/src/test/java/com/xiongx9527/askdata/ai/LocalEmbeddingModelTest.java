@@ -1,10 +1,11 @@
 package com.xiongx9527.askdata.ai;
 
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Assumptions;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 
@@ -19,13 +20,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>覆盖三件事：</p>
  * <ol>
- *   <li><b>分词正确性</b>：WordPiece 切词与 HuggingFace {@code BertTokenizer} 逐 token 一致
- *       （参考值取自 SQLBot 运行实例 {@code shibing624_text2vec-base-chinese} 的实际分词输出）；</li>
+ *   <li><b>分词正确性</b>：WordPiece 切词、CJK 单字切分、标点切分、续接前缀（{@code ##}）、
+ *       词表外 {@code [UNK]} 与 HuggingFace {@code BertTokenizer} 语义一致；</li>
+ *   <li><b>编码</b>：{@code [CLS]}/{@code [SEP]} 包裹、批量 padding 与 attention mask；</li>
  *   <li><b>降级</b>：模型目录缺失 / 权重缺失时 {@link LocalEmbeddingModel#embed(String)} 返回
- *       {@code null} 且<b>不抛异常</b>（问数主链路的可用性前提）；</li>
- *   <li><b>推理</b>：模型目录存在且权重有效时，向量维度为 768 且 L2 范数为 1
- *       （模型文件不入 git，故仅在部署机上有权重时执行，见 {@code @EnabledIf}）。</li>
+ *       {@code null} 且<b>不抛异常</b>（问数主链路的可用性前提）。</li>
  * </ol>
+ *
+ * <p>分词用例使用本测试自带的固定词表（{@link #VOCAB}），不依赖未入库的模型权重：
+ * 期望值由该词表唯一确定，因此可在任意环境（含 CI）稳定执行，不再跳过。</p>
+ *
+ * <p>推理用例依赖部署机上的真实权重（{@code -Daskdata.embedding.model-path=...}）；
+ * 权重缺失时不断言“跳过”，而是断言文档化的降级契约（不可用 + 给出原因 + 返回 null），
+ * 避免出现不做任何断言的空跑用例。</p>
  */
 class LocalEmbeddingModelTest {
 
@@ -33,20 +40,36 @@ class LocalEmbeddingModelTest {
     private static final String MODEL_PATH =
             System.getProperty("askdata.embedding.model-path", "/opt/askdata/models");
 
-    // ------------------------------------------------------------------
-    // 分词（对照 HuggingFace BertTokenizer 的实际输出）
-    // ------------------------------------------------------------------
+    /**
+     * 分词契约词表：顺序即 id（{@code [PAD]} 固定为 0，便于断言 padding 位）。
+     * 每个条目对应下方断言中的一个期望 token。
+     */
+    private static final List<String> VOCAB = Arrays.asList(
+            "[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]",
+            "hello", "world",
+            "订", "单", "金", "额", "统", "计",
+            "中", "文", "english", "混", "合", "123",
+            "tab", "new", "line",
+            "c", "+", "&", "java",
+            "em", "##o", "##ji", "test",
+            "re", "##pe", "##at", "##word");
+
+    private static Path vocabFile;
+
+    @BeforeAll
+    static void writeVocab() throws Exception {
+        Path dir = Files.createTempDirectory("askdata-embedding-vocab");
+        vocabFile = dir.resolve("vocab.txt");
+        Files.write(vocabFile, VOCAB, StandardCharsets.UTF_8);
+    }
 
     private BertWordPieceTokenizer tokenizer() throws Exception {
-        java.nio.file.Path vocab = java.nio.file.Paths.get(System.getProperty("askdata.embedding.vocab",
-                "/opt/askdata/models/embedding/shibing624_text2vec-base-chinese/onnx/vocab.txt"));
-        // vocab ships with the model weights (not in git). Tokenizer comparison
-        // depends on the real vocab; skip when the model is not deployed
-        // (degrade path is covered by the tests below).
-        Assumptions.assumeTrue(java.nio.file.Files.exists(vocab),
-                "vocab missing (model not deployed), skip tokenizer comparison");
-        return BertWordPieceTokenizer.fromVocabFile(vocab, true, true);
+        return BertWordPieceTokenizer.fromVocabFile(vocabFile, true, true);
     }
+
+    // ------------------------------------------------------------------
+    // 分词（期望值由 VOCAB 唯一确定，与 HF BertTokenizer 语义一致）
+    // ------------------------------------------------------------------
 
     @Test
     void tokenizerMatchesHuggingFaceBertTokenizer() throws Exception {
@@ -98,7 +121,7 @@ class LocalEmbeddingModelTest {
         assertEquals(1L, encoding.attentionMask[1]);
         assertEquals(1L, encoding.attentionMask[2]);
         assertEquals(0L, encoding.attentionMask[3]);
-        // padding 位的 input_ids 填 padId
+        // padding 位的 input_ids 填 padId（词表中 [PAD] 位于 0）
         assertEquals(0L, encoding.inputIds[3]);
         // 第二条占 [4,8)：4 位全有效
         for (int i = 4; i < 8; i++) {
@@ -121,8 +144,8 @@ class LocalEmbeddingModelTest {
 
     @Test
     void missingWeightFileDegradesWithoutThrowing() throws Exception {
-        java.nio.file.Path base = java.nio.file.Files.createTempDirectory("askdata-embedding-missing");
-        java.nio.file.Files.createDirectories(base.resolve(LocalEmbeddingModel.MODEL_SUBDIR).resolve("onnx"));
+        Path base = Files.createTempDirectory("askdata-embedding-missing");
+        Files.createDirectories(base.resolve(LocalEmbeddingModel.MODEL_SUBDIR).resolve("onnx"));
         LocalEmbeddingModel model = new LocalEmbeddingModel(base.toString(), 128);
         assertFalse(model.available());
         assertNull(model.embed("订单金额统计"));
@@ -136,14 +159,15 @@ class LocalEmbeddingModelTest {
     }
 
     // ------------------------------------------------------------------
-    // 推理（需要部署机上的真实权重；无权重时跳过）
+    // 推理契约（有权重时校验维度/归一化与语义区分；无权重时校验降级契约）
     // ------------------------------------------------------------------
 
     @Test
-    void embeddingDimensionIs768AndNormalized() {
+    void embeddingIs768DimensionalAndNormalizedOrDegradesExplicitly() {
         LocalEmbeddingModel model = new LocalEmbeddingModel(MODEL_PATH, 128);
         if (!model.available()) {
-            // 部署机未提供模型：降级路径已在上面的用例覆盖
+            assertNotNull(model.unavailableReason(), "模型不可用时必须给出可观测原因");
+            assertNull(model.embed("订单金额统计"), "模型不可用时必须返回 null 而不是抛错或伪造向量");
             return;
         }
         double[] vector = model.embed("订单金额统计");
@@ -157,9 +181,12 @@ class LocalEmbeddingModelTest {
     }
 
     @Test
-    void semanticallyRelatedTextsHaveHigherCosineThanUnrelated() {
+    void semanticallyRelatedTextsScoreHigherOrDegradesExplicitly() {
         LocalEmbeddingModel model = new LocalEmbeddingModel(MODEL_PATH, 128);
         if (!model.available()) {
+            assertNotNull(model.unavailableReason(), "模型不可用时必须给出可观测原因");
+            assertNull(model.embedAll(Arrays.asList("订单金额统计", "hello world")),
+                    "模型不可用时批量接口必须返回 null");
             return;
         }
         List<String> texts = Arrays.asList("订单金额统计", "今天的销售额是多少", "hello world");
@@ -180,3 +207,4 @@ class LocalEmbeddingModelTest {
         return dot;
     }
 }
+

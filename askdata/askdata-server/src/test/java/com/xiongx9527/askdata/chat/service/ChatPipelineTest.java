@@ -54,6 +54,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -101,6 +102,10 @@ class ChatPipelineTest {
 
     private DatasourceService datasourceService;
 
+    private IdGenerator idGenerator;
+
+    private com.xiongx9527.askdata.embedded.AssistantRepository assistantRepository;
+
     private long dsId;
 
     private HttpServer stubServer;
@@ -130,7 +135,7 @@ class ChatPipelineTest {
         }
 
         JdbcEngine engine = new JdbcEngine(appJdbc, objectMapper);
-        IdGenerator idGenerator = new IdGenerator();
+        idGenerator = new IdGenerator();
         DatasourceRepository datasourceRepository = new DatasourceRepository(appJdbc, idGenerator);
         TableRepository tableRepository = new TableRepository(appJdbc, idGenerator);
         FieldRepository fieldRepository = new FieldRepository(appJdbc, idGenerator);
@@ -162,6 +167,7 @@ class ChatPipelineTest {
                 System.currentTimeMillis());
 
         ChatRepository chatRepository = new ChatRepository(appJdbc, idGenerator, objectMapper);
+        assistantRepository = new com.xiongx9527.askdata.embedded.AssistantRepository(appJdbc, idGenerator);
         RecommendedQuestionRepository recommendedQuestionRepository =
                 new RecommendedQuestionRepository(appJdbc, idGenerator);
         SchemaContextBuilder schemaContextBuilder = new SchemaContextBuilder(datasourceRepository, tableRepository,
@@ -177,7 +183,8 @@ class ChatPipelineTest {
         chatQuestionService = new ChatQuestionService(chatRepository, recommendedQuestionRepository,
                 datasourceRepository, datasourceService, currentUserService, schemaContextBuilder, modelClient,
                 modelRouter, new ChatChartBuilder(objectMapper), objectMapper, null, chatKnowledgeService,
-                new com.xiongx9527.askdata.embedded.DynamicDatasourceResolver(objectMapper));
+                new com.xiongx9527.askdata.embedded.DynamicDatasourceResolver(objectMapper),
+                new com.xiongx9527.askdata.embedded.AssistantRepository(appJdbc, idGenerator));
     }
 
     @AfterEach
@@ -440,6 +447,112 @@ class ChatPipelineTest {
     // ------------------------------------------------------------------
     // 桩服务器：模拟 OpenAI 兼容 SSE
     // ------------------------------------------------------------------
+
+    // ------------------------------------------------------------------
+    // A8 动态数据源：请求内下发、不落库，但与静态路径行为一致
+    // ------------------------------------------------------------------
+
+    private String dynamicUrl;
+
+    private String createDynamicDatabase() throws Exception {
+        String url = "jdbc:h2:mem:chat_dynamic_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1";
+        try (Connection connection = DriverManager.getConnection(url, "sa", "");
+             Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE \"orders\" (\"id\" BIGINT PRIMARY KEY, \"user_id\" BIGINT,"
+                    + " \"amount\" DECIMAL(10,2), \"status\" VARCHAR(20))");
+            statement.execute("INSERT INTO \"orders\" VALUES (1, 100, 9.90, 'PAID'), (2, 101, 5.00, 'NEW')");
+        }
+        return url;
+    }
+
+    private com.xiongx9527.askdata.embedded.DynamicDatasource dynamicDatasource() {
+        com.xiongx9527.askdata.datasource.engine.DatasourceConf conf =
+                new com.xiongx9527.askdata.datasource.engine.DatasourceConf();
+        conf.setDatabase(dynamicUrl);
+        conf.setUsername("sa");
+        conf.setPassword("");
+        return new com.xiongx9527.askdata.embedded.DynamicDatasource(DatasourceType.H2, conf, "宿主动态库");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void dynamicDatasourceQuestionRunsSamePipelineWithoutPersistingDatasource() throws Exception {
+        dynamicUrl = createDynamicDatabase();
+        long assistantId = assistantRepository.insert("高级应用", 1, "example.com", "", "{}",
+                "app-a8", "secret-a8", 1L, false, null, System.currentTimeMillis());
+        long datasourceCountBefore = appJdbc.queryForObject("SELECT COUNT(*) FROM core_datasource", Long.class);
+
+        long chatId = Rows.lng(chatService.start(new java.util.HashMap<String, Object>()), "id", 0L);
+        Map<String, Object> body = Rows.of("question", "每个状态的订单数", "chat_id", chatId,
+                "assistant_id", assistantId);
+        body.put("dynamic_datasource", Rows.of("type", "h2", "name", "宿主动态库",
+                "configuration", Rows.of("database", dynamicUrl, "username", "sa", "password", "")));
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        chatQuestionService.streamQuestion(body, response);
+
+        List<JsonNode> frames = parseFrames(response.getContentAsString());
+        List<String> types = typesOf(frames);
+        // 与静态路径同一套协议帧：SQL → 表格 → 图表 → 推荐 → 结束
+        assertTrue(types.contains("sql"), types.toString());
+        assertTrue(types.contains("sql-data"), types.toString());
+        assertTrue(types.contains("chart"), types.toString());
+        assertTrue(types.contains("recommended_question"), types.toString());
+        assertEquals("finish", types.get(types.size() - 1), types.toString());
+        // datasource 帧不带持久化 id
+        JsonNode dsFrame = frameOf(frames, "datasource");
+        assertTrue(dsFrame.get("id") == null || dsFrame.get("id").isNull(), dsFrame.toString());
+        assertEquals("宿主动态库", dsFrame.get("datasource_name").asText());
+
+        // SQL 在动态库执行（2 行），静态库同表有 3 行
+        Map<String, Object> chat = chatService.get(chatId, true);
+        List<Map<String, Object>> records = (List<Map<String, Object>>) chat.get("records");
+        assertEquals(1, records.size());
+        assertEquals(STUB_SQL, records.get(0).get("sql"));
+        Map<String, Object> data = (Map<String, Object>) records.get(0).get("data");
+        assertEquals(2, ((List<?>) data.get("data")).size(), "动态库 PAID/NEW 两行");
+        // 记录照常落库，但不持久化该数据源
+        assertNull(records.get(0).get("datasource"), records.get(0).toString());
+        assertEquals(datasourceCountBefore,
+                appJdbc.queryForObject("SELECT COUNT(*) FROM core_datasource", Long.class).longValue());
+    }
+
+    @Test
+    void dynamicDatasourceRejectsUnknownTablesLikeStaticPath() throws Exception {
+        dynamicUrl = createDynamicDatabase();
+        com.xiongx9527.askdata.embedded.DynamicDatasource dynamic = dynamicDatasource();
+
+        String unknown = chatQuestionService.validateSql(
+                "SELECT * FROM \"orders\" JOIN \"ghost\" ON 1 = 1", "h2", null, dynamic);
+        assertNotNull(unknown, "动态数据源必须拦截未存在的表");
+        assertTrue(unknown.contains("ghost"), unknown);
+        assertNull(chatQuestionService.validateSql("SELECT * FROM \"orders\"", "h2", null, dynamic));
+    }
+
+    @Test
+    void dynamicDatasourceRequiresPersistedAdvancedApplication() throws Exception {
+        dynamicUrl = createDynamicDatabase();
+        long chatId = Rows.lng(chatService.start(new java.util.HashMap<String, Object>()), "id", 0L);
+        Map<String, Object> body = Rows.of("question", "每个状态的订单数", "chat_id", chatId);
+        body.put("dynamic_datasource", Rows.of("type", "h2", "name", "宿主动态库",
+                "configuration", Rows.of("database", dynamicUrl, "username", "sa", "password", "")));
+        // 缺少 assistant_id：不允许仅凭请求体自报类型使用动态数据源
+        MockHttpServletResponse missingAssistant = new MockHttpServletResponse();
+        chatQuestionService.streamQuestion(body, missingAssistant);
+        String missingText = missingAssistant.getContentAsString();
+        assertTrue(missingText.contains("assistant_id"), missingText);
+
+        // 普通助手（type 0）不允许使用动态数据源
+        long normalAssistant = assistantRepository.insert("普通助手", 0, "example.com", "", "{}",
+                "app-a8-normal", "secret-a8-normal", 1L, false, null, System.currentTimeMillis());
+        Map<String, Object> withAssistant = Rows.of("question", "每个状态的订单数", "chat_id", chatId,
+                "assistant_id", normalAssistant);
+        withAssistant.put("dynamic_datasource", body.get("dynamic_datasource"));
+        MockHttpServletResponse normalResponse = new MockHttpServletResponse();
+        chatQuestionService.streamQuestion(withAssistant, normalResponse);
+        String normalText = normalResponse.getContentAsString();
+        assertTrue(normalText.contains("advanced applications"), normalText);
+    }
 
     private void startStubServer() throws Exception {
         stubServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
