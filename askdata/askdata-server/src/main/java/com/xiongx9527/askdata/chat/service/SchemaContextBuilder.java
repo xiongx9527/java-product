@@ -10,7 +10,10 @@ import com.xiongx9527.askdata.datasource.repository.DatasourceRepository;
 import com.xiongx9527.askdata.training.TrainingRecallService;
 import com.xiongx9527.askdata.datasource.repository.FieldRepository;
 import com.xiongx9527.askdata.datasource.repository.TableRepository;
+import com.xiongx9527.askdata.datasource.engine.ColumnSchema;
+import com.xiongx9527.askdata.datasource.engine.DatasourceConf;
 import com.xiongx9527.askdata.datasource.engine.DatasourceType;
+import com.xiongx9527.askdata.datasource.engine.TableSchema;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -367,6 +370,142 @@ public class SchemaContextBuilder {
             count++;
         }
         return sb.toString();
+    }
+
+    /**
+     * 表结构文本（动态数据源版，A8）：直接从连接配置实时读取表/字段，不依赖
+     * core_datasource 的勾选记录；与静态数据源共用同一提示词模板与方言提示。
+     */
+    public String buildSchemaTextForConf(DatasourceType type, DatasourceConf conf, String question) {
+        List<TableSchema> tables;
+        try {
+            tables = datasourceService.tablesTransient(type, conf);
+        } catch (Exception e) {
+            log.info("动态数据源表结构读取失败: {}", e.getMessage());
+            return "（动态数据源表结构不可用）";
+        }
+        if (tables == null || tables.isEmpty()) {
+            return "（该数据源未发现任何表）";
+        }
+        List<TableSchema> ordered = orderTablesByQuestion(tables, question);
+        StringBuilder sb = new StringBuilder();
+        int count = 0;
+        for (TableSchema table : ordered) {
+            if (count >= MAX_TABLES) {
+                break;
+            }
+            sb.append(tableBlockForConf(type, conf, table));
+            count++;
+        }
+        return sb.toString();
+    }
+
+    private List<TableSchema> orderTablesByQuestion(List<TableSchema> tables, String question) {
+        if (question == null || question.trim().isEmpty()) {
+            return tables;
+        }
+        String lower = question.toLowerCase(Locale.ROOT);
+        List<TableSchema> hit = new ArrayList<>();
+        List<TableSchema> rest = new ArrayList<>();
+        for (TableSchema table : tables) {
+            String name = table.getTableName();
+            if (name != null && lower.contains(name.toLowerCase(Locale.ROOT))) {
+                hit.add(table);
+            } else {
+                rest.add(table);
+            }
+        }
+        hit.addAll(rest);
+        return hit;
+    }
+
+    private String tableBlockForConf(DatasourceType type, DatasourceConf conf, TableSchema table) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Table ").append(table.getTableName());
+        if (table.getTableComment() != null && !table.getTableComment().trim().isEmpty()) {
+            sb.append(" (").append(table.getTableComment()).append(")");
+        }
+        sb.append(":\n");
+        List<ColumnSchema> fields;
+        try {
+            fields = datasourceService.fieldsTransient(type, conf, table.getTableName());
+        } catch (Exception e) {
+            fields = new ArrayList<>();
+        }
+        List<String> fieldNames = new ArrayList<>();
+        for (ColumnSchema field : fields) {
+            fieldNames.add(field.getFieldName());
+            sb.append("  - ").append(field.getFieldName()).append(" ").append(field.getFieldType());
+            if (field.getFieldComment() != null && !field.getFieldComment().trim().isEmpty()) {
+                sb.append("  ").append(field.getFieldComment());
+            }
+            sb.append("\n");
+        }
+        sb.append(sampleRowsTextForConf(type, conf, table.getTableName(), fieldNames));
+        return sb.toString();
+    }
+
+    private String sampleRowsTextForConf(DatasourceType type, DatasourceConf conf, String tableName,
+                                         List<String> fieldNames) {
+        if (fieldNames.isEmpty()) {
+            return "";
+        }
+        try {
+            String sql = type.previewSql(fieldNames, tableName, conf, null);
+            Map<String, Object> preview = datasourceService.execSqlTransient(type, conf, sql);
+            List<Map<String, Object>> data = Rows.mapList(preview.get("data"));
+            if (data.isEmpty()) {
+                return "";
+            }
+            StringBuilder sb = new StringBuilder("  Sample rows:\n");
+            for (int i = 0; i < data.size() && i < SAMPLE_ROWS; i++) {
+                sb.append("    ").append(compactJson(data.get(i))).append("\n");
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            log.info("动态数据源样例行读取失败（跳过）: {}", e.getMessage());
+            return "";
+        }
+    }
+
+    /**
+     * 构建 SQL 生成消息（动态数据源版，A8）：与静态数据源同一套 system 提示词（含方言提示）
+     * 与 user 结构，仅表结构来源改为连接配置实时读取。
+     */
+    public List<ModelMessage> buildSqlMessagesForConf(String question, DatasourceType type, DatasourceConf conf,
+                                                      String terminologyText, String customPromptText,
+                                                      String historyText) {
+        List<ModelMessage> messages = new ArrayList<>();
+        messages.add(new ModelMessage("system", sqlSystemPrompt(false, type)));
+        StringBuilder user = new StringBuilder();
+        user.append("【数据库表结构】\n").append(buildSchemaTextForConf(type, conf, question));
+        if (terminologyText != null && !terminologyText.isEmpty()) {
+            user.append("\n\n【业务术语】\n").append(terminologyText);
+        }
+        if (customPromptText != null && !customPromptText.isEmpty()) {
+            user.append("\n\n【自定义提示词】\n").append(customPromptText);
+        }
+        if (historyText != null && !historyText.isEmpty()) {
+            user.append("\n\n【前文问答（追问请优先引用其中已出现的表名、列名与实体）】\n").append(historyText);
+        }
+        user.append("\n\n【用户问题】\n").append(question)
+                .append("\n\n请只输出 SQL，使用 ```sql 代码块包裹。");
+        messages.add(new ModelMessage("user", user.toString()));
+        return messages;
+    }
+
+    /** 构建 SQL 修复消息（动态数据源版，A8）。 */
+    public List<ModelMessage> buildSqlFixMessagesForConf(String question, DatasourceType type, DatasourceConf conf,
+                                                         String brokenSql, String error) {
+        List<ModelMessage> messages = new ArrayList<>();
+        messages.add(new ModelMessage("system", sqlSystemPrompt(false, type)));
+        messages.add(new ModelMessage("user",
+                "【数据库表结构】\n" + buildSchemaTextForConf(type, conf, question)
+                        + "\n\n【用户问题】\n" + question
+                        + "\n\n【上次生成的 SQL】\n" + brokenSql
+                        + "\n\n【错误】\n" + error
+                        + "\n\n请修正后只输出一条正确的 SQL，使用 ```sql 代码块包裹。"));
+        return messages;
     }
 
     /** TOP-N 表 id：有问题时走表级向量召回排序（已按 MAX_TABLES 截断），否则保持既有次序。 */

@@ -54,6 +54,20 @@ public class AssistantController {
         return Result.ok(assistantService.datasources(id));
     }
 
+    /**
+     * 高级应用按请求校验宿主下发的动态数据源（A8）：不落库、不返回连接密钥。
+     * body: {@code {assistant_id: 1, datasource: {type: "mysql", name: "...", configuration: {...}}}}
+     */
+    @PostMapping({"/system/assistant/dynamic_datasource"})
+    @SuppressWarnings("unchecked")
+    public Result<Map<String, Object>> checkDynamicDatasource(@RequestBody Map<String, Object> body) {
+        long assistantId = com.xiongx9527.askdata.common.util.Rows.lng(body, "assistant_id", 0L);
+        Object config = body.get("datasource");
+        Map<String, Object> hostConfig = config instanceof Map
+                ? (Map<String, Object>) config : null;
+        return Result.ok(assistantService.checkDynamicDatasource(assistantId, hostConfig));
+    }
+
     @PostMapping({"/system/assistant"})
     public Result<Map<String, Object>> create(@RequestBody Map<String, Object> creator) {
         return Result.ok(assistantService.create(creator));
