@@ -48,6 +48,11 @@ public class ResponseEnvelopeAdvice implements ResponseBodyAdvice<Object> {
         if (body == null) {
             return body;
         }
+        // 纯文本正文不包装：ApiExceptionHandler 的错误响应是 text/plain detail，
+        // 套成 Map 会让 StringHttpMessageConverter 抛 ClassCastException（表现为 500）。
+        if (body instanceof String) {
+            return body;
+        }
         // 非 JSON 响应不包装（流式 text/event-stream、文件下载等）
         if (selectedContentType != null && !isJson(selectedContentType)) {
             return body;
@@ -94,8 +99,13 @@ public class ResponseEnvelopeAdvice implements ResponseBodyAdvice<Object> {
         return false;
     }
 
-    /** 响应体是否已是 {@code {code,data,msg}} 结构。 */
+    /** 响应体是否已是 {@code {code,data,msg}} 结构（Map，或控制器返回的 {@link Result} 对象）。 */
     static boolean isAlreadyWrapped(Object body) {
+        // 控制器普遍返回 Result<T>：这是对象而不是 Map，必须显式识别，否则会被再包一层，
+        // 前端只解一层 data，拿到的仍是 {code,data,msg}，登录与所有列表都会失效。
+        if (body instanceof Result) {
+            return true;
+        }
         if (!(body instanceof Map)) {
             return false;
         }

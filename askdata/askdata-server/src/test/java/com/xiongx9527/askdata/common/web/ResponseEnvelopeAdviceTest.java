@@ -30,6 +30,13 @@ class ResponseEnvelopeAdviceTest {
     }
 
     @Test
+    void resultObjectIsAlreadyWrapped() {
+        // 控制器普遍返回 Result<T>：不得再包一层，否则前端解一层后仍拿到 {code,data,msg}
+        assertTrue(ResponseEnvelopeAdvice.isAlreadyWrapped(Result.ok("payload")));
+        assertTrue(ResponseEnvelopeAdvice.isAlreadyWrapped(Result.ok()));
+    }
+
+    @Test
     void partialEnvelopeIsNotConsideredWrapped() {
         Map<String, Object> partial = new LinkedHashMap<>();
         partial.put("code", 0);

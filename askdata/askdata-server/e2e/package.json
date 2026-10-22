@@ -1,0 +1,14 @@
+{
+  "name": "askdata-e2e",
+  "private": true,
+  "version": "1.0.0",
+  "description": "askdata Playwright 端到端测试（登录/主路由/接口/定时任务）",
+  "scripts": {
+    "test": "playwright test",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1"
+  }
+}
+

@@ -87,7 +87,7 @@ class ValueAddModulesSmokeTest {
                 .andExpect(status().isOk()).andReturn();
         String createdBody = created.getResponse().getContentAsString(StandardCharsets.UTF_8);
         assertTrue(createdBody.contains("\"code\":0"), createdBody);
-        long id = Long.parseLong(createdBody.replaceAll("(?s).*\"data\":(\\d+).*", "$1"));
+        long id = Long.parseLong(createdBody.replaceAll("(?s).*\"data\":\"?(\\d+).*", "$1"));
 
         MvcResult page = mockMvc.perform(auth(get("/api/v1/system/data-training/page/1/10")))
                 .andExpect(status().isOk()).andReturn();
@@ -129,7 +129,7 @@ class ValueAddModulesSmokeTest {
                 .andExpect(status().isOk()).andReturn();
         String createdBody = created.getResponse().getContentAsString(StandardCharsets.UTF_8);
         assertTrue(createdBody.contains("\"code\":0"), createdBody);
-        long id = Long.parseLong(createdBody.replaceAll("(?s).*\"data\":(\\d+).*", "$1"));
+        long id = Long.parseLong(createdBody.replaceAll("(?s).*\"data\":\"?(\\d+).*", "$1"));
 
         MvcResult page = mockMvc.perform(auth(get("/api/v1/system/terminology/page/1/10")))
                 .andExpect(status().isOk()).andReturn();
@@ -177,7 +177,7 @@ class ValueAddModulesSmokeTest {
                 .andExpect(status().isOk()).andReturn();
         String createdBody = created.getResponse().getContentAsString(StandardCharsets.UTF_8);
         assertTrue(createdBody.contains("\"code\":0"), createdBody);
-        long id = Long.parseLong(createdBody.replaceAll("(?s).*\"data\":(\\d+).*", "$1"));
+        long id = Long.parseLong(createdBody.replaceAll("(?s).*\"data\":\"?(\\d+).*", "$1"));
 
         MvcResult page = mockMvc.perform(auth(post("/api/v1/system/custom_prompt/GENERATE_SQL/page/1/10")
                         .contentType(MediaType.APPLICATION_JSON).content("{}")))
@@ -323,7 +323,7 @@ class ValueAddModulesSmokeTest {
                 .andExpect(status().isOk()).andReturn();
         String savedBody = saved.getResponse().getContentAsString(StandardCharsets.UTF_8);
         assertTrue(savedBody.contains("\"code\":0"), savedBody);
-        long ruleId = Long.parseLong(savedBody.replaceAll("(?s).*\"data\":(\\d+).*", "$1"));
+        long ruleId = Long.parseLong(savedBody.replaceAll("(?s).*\"data\":\"?(\\d+).*", "$1"));
 
         MvcResult list = mockMvc.perform(auth(post("/api/v1/ds_permission/list")))
                 .andExpect(status().isOk()).andReturn();
@@ -349,7 +349,7 @@ class ValueAddModulesSmokeTest {
                                 + "\"type\":0,\"description\":\"smoke\"}")))
                 .andExpect(status().isOk()).andReturn();
         String createdBody = created.getResponse().getContentAsString(StandardCharsets.UTF_8);
-        long assistantId = Long.parseLong(createdBody.replaceAll("(?s).*\"id\":(\\d+).*", "$1"));
+        long assistantId = Long.parseLong(createdBody.replaceAll("(?s).*\"id\":\"?(\\d+).*", "$1"));
         assertTrue(createdBody.contains("app_id"), "app_id should be generated");
 
         MvcResult list = mockMvc.perform(auth(get("/api/v1/system/assistant")))
@@ -376,7 +376,7 @@ class ValueAddModulesSmokeTest {
                                 + "\"type\":4,\"description\":\"smoke\"}")))
                 .andExpect(status().isOk()).andReturn();
         String embeddedBody = embedded.getResponse().getContentAsString(StandardCharsets.UTF_8);
-        long embeddedId = Long.parseLong(embeddedBody.replaceAll("(?s).*\"id\":(\\d+).*", "$1"));
+        long embeddedId = Long.parseLong(embeddedBody.replaceAll("(?s).*\"id\":\"?(\\d+).*", "$1"));
 
         MvcResult page = mockMvc.perform(auth(get("/api/v1/system/embedded/1/10")))
                 .andExpect(status().isOk()).andReturn();
@@ -409,7 +409,7 @@ class ValueAddModulesSmokeTest {
                                 + "\"type\":0,\"description\":\"smoke\"}")))
                 .andExpect(status().isOk()).andReturn();
         long assistantId = Long.parseLong(created.getResponse().getContentAsString(StandardCharsets.UTF_8)
-                .replaceAll("(?s).*\"id\":(\\d+).*", "$1"));
+                .replaceAll("(?s).*\"id\":\"?(\\d+).*", "$1"));
 
         // 1x1 PNG；文件名带 ,logo 标志位（对齐前端 SetUi 约定）
         byte[] png = Base64.getDecoder().decode(
