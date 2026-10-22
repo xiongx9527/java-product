@@ -70,8 +70,9 @@ public class AskdataMcpTools {
      * 问数（NL2SQL）：自然语言 → SQL（框架 SqlDatabaseContentRetriever）→ 只读执行，返回 question/sql/rows。
      * 未装配模型时返回可读错误。
      */
-    @Tool(value = "question_answer", description = "问数：自然语言转SQL并只读执行，返回 SQL 与结果行")
-    public String question_answer(@ToolArg("question") String question) throws Exception {
+    @Tool(value = "question_answer", description = "问数：自然语言转SQL并只读执行，返回 SQL 与结果行；可指定 datasourceId 在选定数据源上执行（非 MySQL 亦支持）")
+    public String question_answer(@ToolArg("question") String question,
+                                 @ToolArg(value = "datasourceId", required = false) Long datasourceId) throws Exception {
         ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
         Map<String, AskdataNl2Sql> beans = SpringUtils.getBeansOfType(AskdataNl2Sql.class);
         if (beans.isEmpty()) {
@@ -79,7 +80,8 @@ public class AskdataMcpTools {
             err.put("error", "question_answer 未装配：需配置默认对话模型并设置 askdata.assistant.enabled=true");
             return mapper.writeValueAsString(err);
         }
-        Map<String, Object> result = beans.values().iterator().next().ask(question);
+        // 验收 A2：datasourceId 非空时在该数据源（可能为 PostgreSQL/Oracle 等非 MySQL）上生成并执行正确方言的 SQL
+        Map<String, Object> result = beans.values().iterator().next().ask(question, datasourceId);
         return mapper.writeValueAsString(result);
     }
 }

@@ -36,8 +36,8 @@ public class AskdataSqlRetriever extends SqlDatabaseContentRetriever {
         return cleaned;
     }
 
-    @Override
-    protected void validate(String sqlQuery) {
+    /** 共享的只读/单语句/危险片段校验（验收 A2）；生成 SQL 后、执行前调用。 */
+    public static void checkSql(String sqlQuery) {
         String t = sqlQuery == null ? "" : sqlQuery.trim();
         if (t.endsWith(";")) {
             t = t.substring(0, t.length() - 1);
@@ -54,6 +54,11 @@ public class AskdataSqlRetriever extends SqlDatabaseContentRetriever {
                 throw new IllegalArgumentException("检测到危险语句片段: " + fragment.trim());
             }
         }
+    }
+
+    @Override
+    protected void validate(String sqlQuery) {
+        checkSql(sqlQuery);
     }
 
     /** 最近一次成功生成的 SQL（clean 之后、执行之前的最终值）。 */
