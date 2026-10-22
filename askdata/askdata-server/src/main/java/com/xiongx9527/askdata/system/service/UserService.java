@@ -35,8 +35,23 @@ public class UserService {
     @Autowired
     private MessageResolver messageResolver;
 
-    /** SQLBot settings.DEFAULT_PWD。 */
-    public static final String DEFAULT_PWD = "SQLBot@123456";
+    /**
+     * 默认口令：可配置（askdata.user.default-password），缺省不写入源码。
+     * 未配置时回退到运行期生成的随机口令，避免版本库中出现硬编码口令字面量；
+     * 实际部署应通过配置显式设定（保证老库/新用户口令可预期）。
+     */
+    @org.springframework.beans.factory.annotation.Value("${askdata.user.default-password:}")
+    private String defaultPasswordConfig;
+
+    private String resolvedDefaultPassword;
+
+    private String resolveDefaultPassword() {
+        if (resolvedDefaultPassword == null) {
+            resolvedDefaultPassword = (defaultPasswordConfig == null || defaultPasswordConfig.isEmpty())
+                    ? java.util.UUID.randomUUID().toString() : defaultPasswordConfig;
+        }
+        return resolvedDefaultPassword;
+    }
 
     public static final List<String> SUPPORTED_LANGUAGES =
             Collections.unmodifiableList(java.util.Arrays.asList("zh-CN", "zh-TW", "en", "ko-KR", "th-TH"));
@@ -118,7 +133,7 @@ public class UserService {
                 .map(row -> Rows.str(row, "pval"))
                 .filter(pval -> "true".equalsIgnoreCase(pval))
                 .map(pval -> "")
-                .orElse(DEFAULT_PWD);
+                .orElse(resolveDefaultPassword());
     }
 
     // ------------------------------------------------------------------
@@ -143,7 +158,7 @@ public class UserService {
         long id = idGenerator.nextId();
         String systemVariables = serializeSystemVariables(body);
         // 对齐 SQLBot create：新用户 oid=0，绑定工作空间后取首个
-        userRepository.insert(id, account, name, CryptoUtil.md5Hex(DEFAULT_PWD), email, 0L, status,
+        userRepository.insert(id, account, name, CryptoUtil.md5Hex(resolveDefaultPassword()), email, 0L, status,
                 System.currentTimeMillis(), "zh-CN", origin, systemVariables);
         long oid = 0L;
         for (Long wsId : new TreeSet<>(oidList)) {
@@ -229,7 +244,7 @@ public class UserService {
 
     public void resetPassword(long id) {
         currentUserService.requireAdmin();
-        userRepository.updatePassword(id, CryptoUtil.md5Hex(DEFAULT_PWD));
+        userRepository.updatePassword(id, CryptoUtil.md5Hex(resolveDefaultPassword()));
     }
 
     public void changeOwnPassword(String pwd, String newPwd) {

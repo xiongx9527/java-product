@@ -138,10 +138,12 @@ public class ChatController {
 
     /** GET /chat/record/{rid}/excel/export/{chat_id}（对齐 SQLBot export_excel）。 */
     @GetMapping({"/chat/record/{rid}/excel/export/{chat_id}"})
-    public void exportExcel(@PathVariable("rid") long rid, @PathVariable("chat_id") long chatId,
+    public void exportExcel(@PathVariable("rid") long rid, @PathVariable("chat_id") long chatId, @RequestParam(value = "format", defaultValue = "XLSX") String format,
                             HttpServletResponse response) throws IOException {
-        ChatExcel.ExportFile file = chatService.exportExcel(rid);
-        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        ChatExcel.Format fmt = ChatExcel.Format.valueOf(format.toUpperCase(java.util.Locale.ROOT));
+        ChatExcel.ExportFile file = chatService.exportExcel(rid, fmt);
+        response.setContentType(fmt == ChatExcel.Format.CSV ? "text/csv;charset=utf-8"
+                : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setHeader("Content-Disposition",
                 "attachment; filename=" + URLEncoder.encode(file.filename, StandardCharsets.UTF_8.name()));
         try (OutputStream out = response.getOutputStream()) {
