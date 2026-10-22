@@ -54,10 +54,15 @@ public class AskdataFileStorage {
 
     /** 保存上传文件到指定 path（如 "chart"、"assistant"、"excel"），返回存储信息。 */
     public StoredFile save(MultipartFile file, String path) {
+        return save(file, file.getOriginalFilename(), path);
+    }
+
+    /** 保存上传文件并显式指定原始文件名（用于剥离 "名字,标志" 等约定后缀，保证扩展名正确）。 */
+    public StoredFile save(MultipartFile file, String originalFilename, String path) {
         try {
             FileInfo info = svc().of(file)
                     .setPath(path)
-                    .setOriginalFilename(file.getOriginalFilename())
+                    .setOriginalFilename(originalFilename)
                     .upload();
             return toStored(info);
         } catch (Exception e) {
