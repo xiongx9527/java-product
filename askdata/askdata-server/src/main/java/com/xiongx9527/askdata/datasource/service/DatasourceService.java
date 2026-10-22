@@ -14,6 +14,7 @@ import com.xiongx9527.askdata.datasource.engine.ConnectionPoolManager;
 import com.xiongx9527.askdata.datasource.engine.DatasourceConf;
 import com.xiongx9527.askdata.datasource.engine.DatasourceType;
 import com.xiongx9527.askdata.datasource.engine.JdbcEngine;
+import com.xiongx9527.askdata.datasource.engine.TableSchema;
 import com.xiongx9527.askdata.datasource.excel.ExcelService;
 import com.xiongx9527.askdata.datasource.repository.DatasourceRepository;
 import com.xiongx9527.askdata.datasource.repository.FieldRepository;
@@ -438,6 +439,55 @@ public class DatasourceService {
     /** 在指定数据源上执行只读 SQL，返回 {fields, data}（验收 A2：dsId 路径的执行入口）。 */
     public Map<String, Object> execSql(long id, String sql) {
         Map<String, Object> row = requireAccessible(id);
+        DatasourceType type = typeOf(Rows.str(row, "type"));
+        return engine.execSql(type, confOf(Rows.str(row, "configuration")), sql, id);
+    }
+
+    // ------------------------------------------------------------------
+    // 动态（未入库）数据源（A8：高级应用按请求从宿主拉取数据源）
+    // ------------------------------------------------------------------
+
+    /**
+     * 在动态（未入库）数据源上执行只读 SQL：连接配置按请求传入，<b>不写入 core_datasource</b>。
+     *
+     * <p>交由 {@link JdbcEngine} 以 {@code datasourceId=null} 执行，连接池键按连接配置派生
+     * （{@code ConnectionPoolManager.poolKeyOfConfig}），因此与静态数据源走完全相同的
+     * 只读校验、执行与结果归一链路，行为保持一致。</p>
+     */
+    public Map<String, Object> execSqlTransient(DatasourceType type, DatasourceConf conf, String sql) {
+        return engine.execSql(type, conf, sql, null);
+    }
+
+    /** 动态数据源连接检查（A8；不落库，不生成数据源 id）。 */
+    public boolean checkConnectionTransient(DatasourceType type, DatasourceConf conf) {
+        return engine.checkConnection(type, conf, false, null);
+    }
+
+    /** 动态数据源表列表（A8；实时元数据，不落库）。 */
+    public List<TableSchema> tablesTransient(DatasourceType type, DatasourceConf conf) {
+        return engine.tables(type, conf, null);
+    }
+
+    /** 动态数据源字段列表（A8；实时元数据，不落库）。 */
+    public List<ColumnSchema> fieldsTransient(DatasourceType type, DatasourceConf conf, String tableName) {
+        return engine.fields(type, conf, tableName, null);
+    }
+
+    // ------------------------------------------------------------------
+    // 后台任务（A10 定时任务：无登录用户上下文）
+    // ------------------------------------------------------------------
+
+    /** 后台任务的数据源方言解析（不做用户归属校验；归属由任务创建时校验保证）。 */
+    public DatasourceType typeAsSystem(long id) {
+        Map<String, Object> row = datasourceRepository.findById(id)
+                .orElseThrow(() -> new BadRequestException("Datasource with id " + id + " not found"));
+        return typeOf(Rows.str(row, "type"));
+    }
+
+    /** 后台任务执行只读 SQL（不做用户归属校验；与静态数据源共用同一执行链路）。 */
+    public Map<String, Object> execSqlAsSystem(long id, String sql) {
+        Map<String, Object> row = datasourceRepository.findById(id)
+                .orElseThrow(() -> new BadRequestException("Datasource with id " + id + " not found"));
         DatasourceType type = typeOf(Rows.str(row, "type"));
         return engine.execSql(type, confOf(Rows.str(row, "configuration")), sql, id);
     }

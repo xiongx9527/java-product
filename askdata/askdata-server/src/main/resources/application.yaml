@@ -47,6 +47,12 @@ askdata:
   # 应用密钥（落库加密用；缺省与历史常量一致，可用环境变量 ASKDATA_SECRET_KEY 覆盖）
   secret:
     key: ${ASKDATA_SECRET_KEY:AskDataSecret001}
+  # 定时问数任务（A10）：调度轮询间隔、默认导出目录、webhook 推送超时。
+  scheduled:
+    enabled: ${ASKDATA_SCHEDULED_ENABLED:true}
+    poll-interval-ms: 30000
+    export-dir: ./data/exports
+    push-timeout-seconds: 10
 
 # MCP server：复用 fw-plus 封装（fw-plus-ai-mcp-server-spring-boot-starter），取代手写 JSON-RPC。
 # 前缀固定为 fw-plus.ai.mcp.*；缺省即开；传输 http-sse（GET /mcp/sse 建流 + POST /mcp/messages/{uuid}）。
