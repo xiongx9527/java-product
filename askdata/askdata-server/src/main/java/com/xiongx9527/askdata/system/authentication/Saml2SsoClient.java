@@ -14,6 +14,8 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
+import com.xiongx9527.askdata.system.sso.SamlSignatureVerifier;
+
 /**
  * SAML2 认证源客户端。
  *
@@ -34,6 +36,8 @@ import org.w3c.dom.NodeList;
  * </ul>
  */
 public class Saml2SsoClient implements SsoClient {
+
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(Saml2SsoClient.class);
 
     private final ObjectMapper objectMapper;
 
@@ -77,11 +81,22 @@ public class Saml2SsoClient implements SsoClient {
      *
      * @param base64Response base64 编码的 SAMLResponse XML
      */
-    public Map<String, Object> parseResponse(String base64Response) {
+    public Map<String, Object> parseResponse(String base64Response, Map<String, Object> config) {
         if (base64Response == null || base64Response.isEmpty()) {
             throw new IllegalStateException("Missing SAMLResponse");
         }
         String xml = new String(Base64.getMimeDecoder().decode(base64Response), StandardCharsets.UTF_8);
+        // SAML assertion signature verification (reuse A7 SamlSignatureVerifier, fail-closed)
+        String cert = str(config, "certificate");
+        boolean wantSigned = Boolean.parseBoolean(str(config, "wantAssertionsSigned"));
+        if (cert != null && !cert.trim().isEmpty()) {
+            SamlSignatureVerifier.verify(xml, cert, str(config, "spEntityId"));
+        } else if (wantSigned) {
+            throw new IllegalStateException(
+                    "SAML2 wantAssertionsSigned is true but no IdP certificate configured; refusing unverified assertion");
+        } else {
+            log.warn("SAML2 assertion signature is NOT verified (no certificate configured)");
+        }
         Map<String, Object> attributes = new LinkedHashMap<>();
         String nameId = null;
 

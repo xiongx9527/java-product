@@ -23,7 +23,7 @@ import java.util.Base64;
  * <p>未校验签名的 SAMLResponse 等于「谁都能伪造一条登录断言」，因此这里默认<b>失败关闭</b>：
  * 未配置 IdP 证书、响应未签名、签名不匹配、断言过期或 audience 不匹配时一律拒绝。</p>
  */
-final class SamlSignatureVerifier {
+public final class SamlSignatureVerifier {
 
     private SamlSignatureVerifier() {
     }
@@ -35,7 +35,7 @@ final class SamlSignatureVerifier {
      * @param certText   IdP 签名证书（PEM 或 base64 DER）
      * @param audience   期望的 Audience（为空时跳过该检查）
      */
-    static void verify(String xml, String certText, String audience) {
+    public static void verify(String xml, String certText, String audience) {
         if (certText == null || certText.trim().isEmpty()) {
             throw new IllegalStateException(
                     "saml idp certificate is not configured; refusing to accept an unverified assertion");

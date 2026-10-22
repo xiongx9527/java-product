@@ -296,7 +296,7 @@ public class AuthenticationService {
             String password = str(body, "password");
             platformUser = ldapSsoClient.loginWithPassword(config, username, password);
         } else if (type == SsoAuthenticator.TYPE_SAML2) {
-            platformUser = saml2SsoClient.parseResponse(str(body, "SAMLResponse"));
+            platformUser = saml2SsoClient.parseResponse(str(body, "SAMLResponse"), config);
         } else if (type == SsoAuthenticator.TYPE_CAS) {
             platformUser = casSsoClient.exchange(config,
                     new SsoClient.SsoCallback(str(body, "code"), str(body, "state"), str(body, "ticket")));
