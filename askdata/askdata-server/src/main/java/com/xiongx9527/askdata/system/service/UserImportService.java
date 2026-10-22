@@ -109,8 +109,8 @@ public class UserImportService {
     public byte[] importTemplate() {
         currentUserService.requireAdmin();
         List<ExcelUtils.MapStringArray> rows = Arrays.asList(
-                sampleRow("sqlbot1", "sqlbot_employee1", "SQLBot@123456", "employee1@sqlbot.com"),
-                sampleRow("sqlbot2", "sqlbot_employee2", "SQLBot@123456", "employee2@sqlbot.com"));
+                sampleRow("sqlbot1", "sqlbot_employee1", "TemplatePwd123", "employee1@sqlbot.com"),
+                sampleRow("sqlbot2", "sqlbot_employee2", "TemplatePwd123", "employee2@sqlbot.com"));
         try {
             return ExcelUtils.writeXlsx(TEMPLATE_COLUMNS, rows);
         } catch (IOException e) {

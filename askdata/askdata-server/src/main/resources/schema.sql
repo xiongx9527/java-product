@@ -161,7 +161,7 @@ CREATE TABLE IF NOT EXISTS ds_recommended_problem (
 
 -- ---------------------------------------------------------------------
 -- 种子数据（MERGE 语义：按主键 upsert）
--- admin 口令 SQLBot@123456 的 MD5 hex = 8f32d1e371702c1b1b7346f4b07a701d
+-- admin 默认口令的 MD5 hex = 8f32d1e371702c1b1b7346f4b07a701d
 -- ---------------------------------------------------------------------
 
 MERGE INTO sys_user (id, account, name, password, email, oid, status, create_time, language, origin)
@@ -240,7 +240,7 @@ KEY (id)
 VALUES (3, 'i18n_variable.email', 'text', 'system', '["email"]', NULL, NULL);
 
 -- ---------------------------------------------------------------------
--- 演示数据源（brief D8：192.168.1.100:3306 MySQL 5.7，root/Root57@123456，
+-- 演示数据源（brief D8：192.168.1.100:3306 MySQL 5.7；口令由 configuration 密文承载（不在此写入明文），
 -- 演示库 askdata_demo，订单/用户/商品样例表）。configuration 为应用 SECRET_KEY
 -- AES-ECB 密文（明文 JSON：host/port/username/password/database/extraJdbc/dbSchema/
 -- filename/sheets/mode/timeout/lowVersion/ssl/poolSize/engine），服务端解密后使用。

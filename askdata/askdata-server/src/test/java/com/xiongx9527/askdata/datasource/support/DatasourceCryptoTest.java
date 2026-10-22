@@ -45,7 +45,9 @@ class DatasourceCryptoTest {
     @Test
     void schemaSeedConfigurationDecrypts() {
         // schema.sql 演示数据源 configuration 种子（应用 SECRET_KEY AES），
-        // 由 openssl enc -aes-128-ecb -K <hex(AskDataSecret001)> 生成
+        // 由 openssl enc -aes-128-ecb -K <hex(AskDataSecret001)> 生成。
+        // A5 起应用密钥不再内置，纯单测需显式注入该演示密钥才能解密历史种子。
+        DatasourceCrypto.configure(new CryptoUtil("AskDataSecret001"));
         String seed = "hIpB9A0WThYnmHrUb8w1TCVGAgpvpsLG2uiGEK5f+Jl8xg3alPddR/AbO+Y7LPTAZ8P5cI3TTYxMvQXy+x72XQHj0rv"
                 + "/dao6K6Tvc3uZa5mamV/48NcQwWs1NapZGZSfLT18HJEAZtWeTdedRp9pzgGRXxSNscDxA26JKSMWcTelwa/od9mn4tKI"
                 + "VEd+zyGVL9TWup0K5EveL2BgZ6sRqGErSUNcn6sjWKAa34imG7EgsnxrXCMI9Zna4Aax1zeHhwhqW7gbIffhnRQF8eJhl"

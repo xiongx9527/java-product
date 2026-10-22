@@ -191,6 +191,10 @@ public class ChatService {
      * 对齐 SQLBot export_excel：空结果时抛 {@code 数据为空}。
      */
     public ChatExcel.ExportFile exportExcel(long recordId) {
+        return exportExcel(recordId, ChatExcel.Format.XLSX);
+    }
+
+    public ChatExcel.ExportFile exportExcel(long recordId, ChatExcel.Format format) {
         Map<String, Object> user = currentUserService.currentUser();
         Map<String, Object> record = requireOwnedRecord(recordId, user);
         Map<String, Object> result = parseResult(Rows.str(record, "data"));
@@ -211,8 +215,7 @@ public class ChatService {
         List<Map<String, Object>> rows = new ArrayList<>(data);
         rows.addAll(Rows.mapList(recordPredictDataRaw(record)));
         String title = chartTitle(chart);
-        return new ChatExcel.ExportFile(title + ".xlsx",
-                ChatExcel.buildResultWorkbook(fields, rows, title));
+        return ChatExcel.exportResult(format, fields, rows, title);
     }
 
     // ------------------------------------------------------------------

@@ -11,6 +11,7 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.UUID;
 import java.util.Base64;
 
 /**
@@ -39,8 +40,7 @@ public class CryptoUtil {
     /** AES key：与前端 CryptoJS 惯例一致（16 字节）。 */
     public static final String SQLBOT_AES_KEY = "SQLBot1234567890";
 
-    /** 应用 SECRET_KEY 的历史缺省值（保持老库数据可解密）。 */
-    public static final String DEFAULT_ASK_DATA_SECRET_KEY = "AskDataSecret001";
+    // 应用 SECRET_KEY 不再内置缺省值：通过 ASKDATA_SECRET_KEY / askdata.secret.key 配置；未配置时运行期回退（见 generateFallbackSecretKey）。
 
     /**
      * simple_aes 的固定 IV 文本（对齐 SQLBot {@code common/utils/aes_crypto.py} 的
@@ -53,14 +53,14 @@ public class CryptoUtil {
      *
      * <p>数据源 configuration（spec §3）：前端 CryptoJS AES-ECB（key {@link #SQLBOT_AES_KEY}）传输，
      * 服务端解密后以本密钥 AES 再次加密落库，DB 中不出现传输层可解的明文。
-     * 密钥由配置提供（{@code askdata.secret.key}），缺省值保证老库数据可解密。</p>
+     * 密钥由配置提供（{@code askdata.secret.key}，可用环境变量 {@code ASKDATA_SECRET_KEY} 覆盖）；未配置时运行期生成兜底密钥（见 {@code generateFallbackSecretKey}），运维应显式设定以便解密老库数据。</p>
      */
     private final String askDataSecretKey;
 
     @Autowired
-    public CryptoUtil(@Value("${askdata.secret.key:" + DEFAULT_ASK_DATA_SECRET_KEY + "}") String askDataSecretKey) {
-        this.askDataSecretKey = askDataSecretKey == null || askDataSecretKey.isEmpty()
-                ? DEFAULT_ASK_DATA_SECRET_KEY : askDataSecretKey;
+    public CryptoUtil(@Value("${askdata.secret.key:}") String askDataSecretKey) {
+        this.askDataSecretKey = (askDataSecretKey == null || askDataSecretKey.isEmpty())
+                ? generateFallbackSecretKey() : askDataSecretKey;
     }
 
     /**
@@ -77,9 +77,9 @@ public class CryptoUtil {
         return sha256HexPrefix(askDataSecretKey, 16);
     }
 
-    /** 无参构造（使用缺省密钥；供纯静态调用场景与单测使用）。 */
+    /** 无参构造（密钥未配置时回退到运行期兜底密钥；供纯静态调用场景与单测使用）。 */
     public CryptoUtil() {
-        this(DEFAULT_ASK_DATA_SECRET_KEY);
+        this("");
     }
 
     // ------------------------------------------------------------------
@@ -264,6 +264,13 @@ public class CryptoUtil {
     }
 
     /** SHA-256 十六进制文本的前 n 个字节（用于派生固定长度 AES 密钥）。 */
+    /**
+     * 密钥未配置时的运行期兜底密钥：不写入版本库，保证应用可启动。
+     * 运维应通过 ASKDATA_SECRET_KEY / askdata.secret.key 显式设定，以便解密历史落库数据。
+     */
+    private static String generateFallbackSecretKey() {
+        return java.util.UUID.randomUUID().toString();
+    }
     private static String sha256HexPrefix(String text, int bytes) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -279,7 +286,7 @@ public class CryptoUtil {
             return sb.toString();
         } catch (Exception e) {
             log.warn("SHA-256 unavailable，使用缺省密钥: {}", e.getMessage());
-            return DEFAULT_ASK_DATA_SECRET_KEY;
+            throw new IllegalStateException("SHA-256 unavailable, cannot derive AES key", e);
         }
     }
 }
