@@ -110,7 +110,7 @@ public class AskdataNl2Sql {
                 throw new IllegalArgumentException(tableError);
             }
         }
-        List<Map<String, Object>> rows = execute(sql, dsId);
+        List<Map<String, Object>> rows = execute(sql, dsId, dialectType);
         Map<String, Object> out = new LinkedHashMap<String, Object>();
         out.put("question", question);
         out.put("sql", sql);
@@ -119,8 +119,8 @@ public class AskdataNl2Sql {
         return out;
     }
 
-    private List<Map<String, Object>> execute(String sql, Long dsId) {
-        String limited = withRowLimit(sql);
+    private List<Map<String, Object>> execute(String sql, Long dsId, DatasourceType dialect) {
+        String limited = withRowLimit(sql, dialect);
         if (dsId != null) {
             Map<String, Object> result = datasourceService.execSql(dsId, limited);
             Object data = result.get("data");
@@ -133,16 +133,31 @@ public class AskdataNl2Sql {
         return jdbcTemplate.queryForList(limited);
     }
 
-    private static String withRowLimit(String sql) {
-        String s = sql.trim();
+    /**
+     * 追加行上限，<b>按方言</b>选择分页语法（A6：MySQL/PG/SQLite/H2/CK 等用 {@code LIMIT}；
+     * Oracle/达梦 用 {@code FETCH FIRST n ROWS ONLY}；SQL Server 用 {@code OFFSET 0 ROWS FETCH NEXT n ROWS ONLY}）。
+     * 已含分页（LIMIT/TOP/ROWNUM/FETCH/OFFSET）则原样返回。
+     */
+    static String withRowLimit(String sql, DatasourceType dialect) {
+        String s = sql == null ? "" : sql.trim();
         if (s.endsWith(";")) {
             s = s.substring(0, s.length() - 1);
         }
         String upper = s.toUpperCase(Locale.ROOT);
-        if (upper.contains(" LIMIT ") || upper.contains(" TOP ") || upper.contains(" ROWNUM ")) {
+        if (upper.contains(" LIMIT ") || upper.contains(" TOP ") || upper.contains(" ROWNUM ")
+                || upper.contains(" FETCH ") || upper.contains(" OFFSET ")) {
             return s;
         }
-        return s + " LIMIT " + ROW_LIMIT;
+        DatasourceType type = dialect == null ? DatasourceType.MYSQL : dialect;
+        switch (type) {
+            case ORACLE:
+            case DM:
+                return s + " FETCH FIRST " + ROW_LIMIT + " ROWS ONLY";
+            case SQLSERVER:
+                return s + " OFFSET 0 ROWS FETCH NEXT " + ROW_LIMIT + " ROWS ONLY";
+            default:
+                return s + " LIMIT " + ROW_LIMIT;
+        }
     }
 
     public static DatasourceType detectDialect(DataSource dataSource) {
