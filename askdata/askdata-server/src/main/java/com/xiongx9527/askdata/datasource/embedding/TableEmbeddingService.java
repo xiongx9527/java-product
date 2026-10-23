@@ -50,6 +50,11 @@ public class TableEmbeddingService {
 
     private static final double MENTION_WEIGHT = 0.6D;
 
+    /** 提及分级权重（对齐 SQLBot calc_keyword_score 多层权重）：表名完整命中 > 表注释子串命中。 */
+    private static final double NAME_MENTION_SCORE = 1.0D;
+
+    private static final double COMMENT_MENTION_SCORE = 0.6D;
+
     /**
      * 显式提及加成：问题中以引号/反引号/方括号/中文引号包裹的表名（对齐 SQLBot {@code _select_tables}
      * 的引号标识符提取）视为显式引用，优先进入候选。加成大到保证显式提及表排在其余（含向量高分）之前。
@@ -243,28 +248,52 @@ public class TableEmbeddingService {
      */
     double[] mentionScores(List<Map<String, Object>> tables, String question) {
         double[] scores = new double[tables.size()];
+        if (question == null || question.isEmpty()) {
+            return scores;
+        }
+        // 命中项 {表序, 起, 止}；tier 0=表名(NAME_MENTION_SCORE)、1=表注释 custom/table(COMMENT_MENTION_SCORE)
         List<int[]> hits = new ArrayList<>();
+        List<Integer> tiers = new ArrayList<>();
         for (int i = 0; i < tables.size(); i++) {
-            for (String target : mentionTargets(tables.get(i))) {
-                for (int[] span : occurrences(question, target)) {
+            Map<String, Object> table = tables.get(i);
+            String name = Rows.str(table, "table_name");
+            if (name != null && !name.trim().isEmpty()) {
+                for (int[] span : occurrences(question, name.trim())) {
                     hits.add(new int[] {i, span[0], span[1]});
+                    tiers.add(0);
+                }
+            }
+            for (String comment : new String[] {Rows.str(table, "custom_comment"), Rows.str(table, "table_comment")}) {
+                if (comment != null && !comment.trim().isEmpty()) {
+                    for (int[] span : occurrences(question, comment.trim())) {
+                        hits.add(new int[] {i, span[0], span[1]});
+                        tiers.add(1);
+                    }
                 }
             }
         }
         if (hits.isEmpty()) {
             return scores;
         }
-        // 取最长：长度降序，同长按出现位置、表序升序（保证确定性）
-        hits.sort(Comparator.comparingInt((int[] hit) -> hit[1] - hit[2])
-                .thenComparingInt(hit -> hit[1])
-                .thenComparingInt(hit -> hit[0]));
+        // 最长重叠消歧：长度降序；同长优先表名(tier 0)再注释；再按出现位置、表序升序（保证确定性）
+        List<Integer> order = new ArrayList<>();
+        for (int k = 0; k < hits.size(); k++) {
+            order.add(k);
+        }
+        order.sort(Comparator
+                .<Integer>comparingInt(k -> hits.get(k)[1] - hits.get(k)[2])
+                .thenComparingInt(tiers::get)
+                .thenComparingInt(k -> hits.get(k)[1])
+                .thenComparingInt(k -> hits.get(k)[0]));
         List<int[]> taken = new ArrayList<>();
-        for (int[] hit : hits) {
+        for (Integer k : order) {
+            int[] hit = hits.get(k);
             if (overlaps(taken, hit)) {
                 continue;
             }
             taken.add(hit);
-            scores[hit[0]] = 1D;
+            double tierScore = tiers.get(k) == 0 ? NAME_MENTION_SCORE : COMMENT_MENTION_SCORE;
+            scores[hit[0]] = Math.max(scores[hit[0]], tierScore);
         }
         return scores;
     }
@@ -302,17 +331,6 @@ public class TableEmbeddingService {
             }
         }
         return false;
-    }
-
-    private static List<String> mentionTargets(Map<String, Object> table) {
-        List<String> targets = new ArrayList<>();
-        for (String candidate : new String[] {Rows.str(table, "table_name"),
-                Rows.str(table, "custom_comment"), Rows.str(table, "table_comment")}) {
-            if (candidate != null && !candidate.trim().isEmpty()) {
-                targets.add(candidate.trim());
-            }
-        }
-        return targets;
     }
 
     /** 目标串在问题中的全部有效出现片段 {@code [start, end)}。 */

@@ -204,6 +204,21 @@ class TableEmbeddingServiceTest {
     }
 
     // ------------------------------------------------------------------
+    // ④-c 提及分级：表名命中(1.0) > 表注释子串命中(0.6)（对齐 SQLBot calc_keyword_score）
+    // ------------------------------------------------------------------
+
+    @Test
+    void nameMatchOutranksCommentMatch() {
+        table(701, "t_sales", "销售", null);
+        table(702, "t_report", "营收汇总", null);
+        // 701 表名命中 t_sales；702 仅注释命中 营收汇总（两者不重叠）
+        double[] scores = mentionScores("统计 t_sales 的营收汇总");
+        assertEquals(1D, scoreOf(701, scores));
+        assertEquals(0.6D, scoreOf(702, scores));
+        assertEquals(701L, service.rankTables(DS, "统计 t_sales 的营收汇总").get(0).longValue());
+    }
+
+    // ------------------------------------------------------------------
     // ⑤ 无 embedding 模型 / 端点不可达：降级不抛错
     // ------------------------------------------------------------------
 
