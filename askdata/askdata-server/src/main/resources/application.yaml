@@ -18,6 +18,15 @@ spring:
       max-file-size: 50MB
       max-request-size: 60MB
 
+# 框架 UidGenerator 开关：启用后由 UIDAutoConfiguration 创建 UidGenerator（CachedUidGenerator），
+# 底层 DisposableWorkerIdAssigner 写 WORKER_NODE 表分配 worker id（见 schema.sql）。
+# epochStr 留空 → 框架默认取当日（CachedUidGenerator 默认 28 位时间戳，需贴近当前日期，
+# 与旧雪花 epoch=0/1970 的 41/5/5/12 布局不同；生成的仍是全局唯一 long，对调用方透明）。
+fw:
+  plus:
+    uid:
+      enabled: true
+
 # 数据源 Excel 上传文件目录（对齐 SQLBot settings.EXCEL_PATH）
 askdata:
   excel:

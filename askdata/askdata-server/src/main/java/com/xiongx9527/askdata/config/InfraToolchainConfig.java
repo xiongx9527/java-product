@@ -2,6 +2,8 @@ package com.xiongx9527.askdata.config;
 
 import com.xiongx9527.askdata.common.util.SnowflakeIdGenerator;
 import com.xiongx9527.askdata.datasource.engine.ConnectionPoolManager;
+import com.xiongx9527.fw.plus.common.uid.UidGenerator;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,14 +30,24 @@ public class InfraToolchainConfig {
         return new ConnectionPoolManager(maxPools);
     }
 
-    /** 雪花 ID 生成器（工作节点/数据中心/纪元可配）。 */
+    /**
+     * 对外暴露的 ID 生成器 bean（保持 {@link SnowflakeIdGenerator} 类型与 {@code nextId()} 签名，
+     * 使 30+ 处既有调用点、{@code IdGenerator} 包装类零改动）。
+     * 优先委托框架 {@code UidGenerator}（由 {@code UIDAutoConfiguration} 创建，底层
+     * {@code CachedUidGenerator} + 框架 {@code DisposableWorkerIdAssigner} 写 {@code WORKER_NODE} 表）；
+     * 若未启用（{@code fw.plus.uid.enabled} 关闭或上下文无 UidGenerator），回退本地雪花。
+     */
     @Bean
-    public SnowflakeIdGenerator snowflakeIdGenerator(
+    public SnowflakeIdGenerator snowflakeIdGenerator(ObjectProvider<UidGenerator> uidGeneratorProvider,
             @Value("${askdata.id.worker-id:-1}") long workerId,
             @Value("${askdata.id.datacenter-id:0}") long datacenterId,
             @Value("${askdata.id.epoch:0}") long epoch) {
-        return new SnowflakeIdGenerator(workerId < 0 ? SnowflakeIdGenerator.deriveWorkerId() : workerId,
-                datacenterId, epoch);
+        UidGenerator uid = uidGeneratorProvider.getIfAvailable();
+        if (uid != null) {
+            return new SnowflakeIdGenerator(uid);
+        }
+        long resolvedWorkerId = workerId < 0 ? SnowflakeIdGenerator.deriveWorkerId() : workerId;
+        return new SnowflakeIdGenerator(resolvedWorkerId, datacenterId, epoch);
     }
 
     /**

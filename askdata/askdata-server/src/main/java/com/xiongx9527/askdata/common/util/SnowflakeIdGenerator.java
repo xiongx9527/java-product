@@ -1,6 +1,9 @@
 package com.xiongx9527.askdata.common.util;
 
 
+import com.xiongx9527.fw.plus.common.uid.UidGenerator;
+import com.xiongx9527.fw.plus.common.uid.exception.UidGenerateException;
+
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -63,6 +66,9 @@ public class SnowflakeIdGenerator {
 
     private final long epoch;
 
+    /** 委托目标：非空时 {@link #nextId()} 直接转发给框架 {@code UidGenerator}（统一 ID 来源）。 */
+    private final UidGenerator delegate;
+
     private final AtomicLong lastTimestamp = new AtomicLong(-1L);
 
     private long sequence = 0L;
@@ -99,13 +105,33 @@ public class SnowflakeIdGenerator {
             throw new IllegalArgumentException(
                     "datacenter ID can't be greater than " + MAX_DATACENTER_ID + " or less than 0");
         }
+        this.delegate = null;
         this.workerId = resolvedWorkerId;
         this.datacenterId = datacenterId;
         this.epoch = epoch;
     }
 
+    /**
+     * 委托构造：内部由框架 {@code UidGenerator}（{@code CachedUidGenerator}）产出全局唯一 long。
+     * 保留 {@link SnowflakeIdGenerator} 类型与 {@code nextId()} 签名，使 30+ 处既有调用点、
+     * {@code IdGenerator} 包装类零改动；{@code delegate==null} 时退化为本地雪花（非 Spring 上下文/测试）。
+     */
+    public SnowflakeIdGenerator(UidGenerator delegate) {
+        this.delegate = delegate;
+        this.workerId = 0L;
+        this.datacenterId = 0L;
+        this.epoch = 0L;
+    }
+
     /** 生成下一个 ID（线程安全）。 */
     public synchronized long nextId() {
+        if (delegate != null) {
+            try {
+                return delegate.getUID();
+            } catch (UidGenerateException e) {
+                throw new IllegalStateException("UidGenerator 生成 ID 失败", e);
+            }
+        }
         long timestamp = currentTimeMillis();
         long last = lastTimestamp.get();
         if (timestamp < last) {

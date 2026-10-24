@@ -727,3 +727,18 @@ CREATE TABLE IF NOT EXISTS ds_grant (
     create_time BIGINT   NOT NULL,
     CONSTRAINT uk_ds_grant UNIQUE (oid, ds_id, user_id)
 );
+
+-- ---------------------------------------------------------------------
+-- 框架 UidGenerator 的 DB 化 worker id 分配（与 baomidou DisposableWorkerIdAssigner
+-- 字段对齐；askdata-server 为单数据源、未引入动态数据源，由 JdbcWorkerIdAssigner 复用主库写入）。
+-- 启动时插入一行，以自增主键作为 worker id，保证集群各实例拿到不同 worker id。
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS WORKER_NODE (
+    id           BIGINT AUTO_INCREMENT PRIMARY KEY,
+    host_name    VARCHAR(255),
+    port         VARCHAR(64),
+    type         INT,
+    launch_date  VARCHAR(64),
+    created      TIMESTAMP,
+    modified     TIMESTAMP
+);
