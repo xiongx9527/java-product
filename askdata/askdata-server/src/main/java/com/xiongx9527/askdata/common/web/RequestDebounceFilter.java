@@ -1,6 +1,5 @@
 package com.xiongx9527.askdata.common.web;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.debounce.DebounceProperties;
 import com.xiongx9527.askdata.common.debounce.RequestDebouncer;
 import org.springframework.core.Ordered;
@@ -45,18 +44,14 @@ public class RequestDebounceFilter extends OncePerRequestFilter {
     private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
     private final com.xiongx9527.askdata.common.i18n.AskdataLocaleResolver localeResolver;
 
-    private final ObjectMapper objectMapper;
-
     public RequestDebounceFilter(RequestDebouncer debouncer,
                                  DebounceProperties properties,
                                  com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver,
-                                 com.xiongx9527.askdata.common.i18n.AskdataLocaleResolver localeResolver,
-                                 ObjectMapper objectMapper) {
+                                 com.xiongx9527.askdata.common.i18n.AskdataLocaleResolver localeResolver) {
         this.debouncer = debouncer;
         this.properties = properties;
         this.messageResolver = messageResolver;
         this.localeResolver = localeResolver;
-        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -117,20 +112,18 @@ public class RequestDebounceFilter extends OncePerRequestFilter {
         String detail = messageResolver.get("i18n_debounce.too_frequent",
                 java.util.Map.of("seconds", String.valueOf(retryAfter)),
                 localeResolver.resolveLocale(request));
-        // 响应体复用统一包装 Result（继承框架 JsonResult），与控制器返回的信封结构一致
-        Result<Void> result = new Result<>();
-        result.code(429);
-        result.data(null);
-        result.setMsg(detail);
-        byte[] bytes;
-        try {
-            bytes = objectMapper.writeValueAsBytes(result);
-        } catch (Exception e) {
-            bytes = ("{\"code\":429,\"data\":null,\"msg\":\"" + detail + "\"}")
-                    .getBytes(StandardCharsets.UTF_8);
-        }
+        String body = "{\"code\":429,\"data\":null,\"msg\":\"" + escapeJson(detail) + "\"}";
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         response.setContentLength(bytes.length);
         response.getOutputStream().write(bytes);
         response.getOutputStream().flush();
+    }
+
+    private static String escapeJson(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", " ").replace("\r", " ");
     }
 }
