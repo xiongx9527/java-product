@@ -1,6 +1,8 @@
 package com.xiongx9527.askdata.config;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.xiongx9527.askdata.common.cache.CacheNames;
+import com.xiongx9527.askdata.common.debounce.DebounceProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -43,8 +45,11 @@ public class CacheConfig {
 
     private final CacheProperties properties;
 
-    public CacheConfig(CacheProperties properties) {
+    private final DebounceProperties debounceProperties;
+
+    public CacheConfig(CacheProperties properties, DebounceProperties debounceProperties) {
         this.properties = properties;
+        this.debounceProperties = debounceProperties;
     }
 
     @Bean
@@ -73,7 +78,17 @@ public class CacheConfig {
         manager.setCaffeine(Caffeine.newBuilder()
                 .expireAfterWrite(Duration.ofSeconds(Math.max(1L, properties.getTtlSeconds())))
                 .maximumSize(Math.max(1L, properties.getMaxSize())));
+        // 防抖缓存的 TTL 取防抖窗口（与其它缓存的默认 TTL 不同）
+        manager.registerCustomCache(CacheNames.REQUEST_DEBOUNCE, Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofMillis(debounceWindowMs()))
+                .maximumSize(Math.max(1L, properties.getMaxSize()))
+                .build());
         return manager;
+    }
+
+    /** 防抖窗口（毫秒，至少 1ms）。 */
+    private long debounceWindowMs() {
+        return Math.max(1L, debounceProperties.getWindowMs());
     }
 
     private CacheManager redisCacheManager(RedisConnectionFactory factory) {
@@ -85,8 +100,17 @@ public class CacheConfig {
                 .serializeKeysWith(RedisSerializationContext.SerializationPair
                         .fromSerializer(new StringRedisSerializer()))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(valueSerializer));
+        RedisCacheConfiguration debounceConfig = RedisCacheConfiguration.defaultCacheConfig()
+                .entryTtl(Duration.ofMillis(debounceWindowMs()))
+                .prefixCacheNameWith(REDIS_KEY_PREFIX)
+                .disableCachingNullValues()
+                .serializeKeysWith(RedisSerializationContext.SerializationPair
+                        .fromSerializer(new StringRedisSerializer()))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(valueSerializer));
         return RedisCacheManager.builder(factory)
                 .cacheDefaults(config)
+                // 防抖缓存的 TTL 取防抖窗口（与其它缓存的默认 TTL 不同）
+                .withInitialCacheConfigurations(java.util.Map.of(CacheNames.REQUEST_DEBOUNCE, debounceConfig))
                 .transactionAware()
                 .build();
     }

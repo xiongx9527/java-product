@@ -101,6 +101,34 @@ askdata:
       database: ${ASKDATA_VECTOR_REDIS_DATABASE:0}
 ```
 
+## 单 worker 启动守卫（锁后端可配置 + 防抖）
+
+启动期的一次性任务（如向量回填）由 `SingleWorkerGuard` 保证「集群内只跑一次」，
+锁后端与防抖窗口均可配置：
+
+| askdata.lock.type | 后端 | 作用域 |
+| --- | --- | --- |
+| `db`（缺省） | 元数据库表行独占锁 | 与被保护数据一致：多实例共享同一元库时集群内一次；各实例独立库时各跑各的 |
+| `redis` | Redis `SET NX PX` | 全局；仅在「共享 Redis + 各实例独立元数据库」的部署下有意义 |
+
+- `askdata.lock.debounce-seconds`（缺省 300）：一次成功执行后，该窗口内的后续启动不再重复执行同一任务，
+  防「应用反复重启 → 一次性任务被反复触发」；0 表示不防抖。
+
+## 接口防抖
+
+同一「调用方 + 接口」在窗口内只放行一次，重复请求直接返回 429（带 `Retry-After`）：
+
+```yaml
+askdata:
+  debounce:
+    enabled: ${ASKDATA_DEBOUNCE_ENABLED:false}   # 缺省关闭
+    window-ms: ${ASKDATA_DEBOUNCE_WINDOW_MS:1000}  # 防抖窗口
+    paths: ${ASKDATA_DEBOUNCE_PATHS:}              # Ant 风格路径；为空表示全部
+```
+
+- 调用方识别：优先取鉴权头（`X-SQLBOT-TOKEN` / `X-SQLBOT-ASK-TOKEN` / `X-SQLBOT-ASSISTANT-TOKEN`）的摘要，无则用来源 IP。
+- 后端复用缓存层：`memory` 为单实例防抖，`redis` 为多实例全局防抖。
+
 ## 缓存（后端可配置）
 
 鉴权热点数据（用户信息 / API Key 信息 / 助手信息）走 Spring Cache，**后端可配置**：

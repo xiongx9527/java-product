@@ -18,7 +18,7 @@ import java.time.Duration;
 
 /**
  * Redis 客户端装配：<b>仅在启用 Redis 时</b>（{@code askdata.cache.type=redis}
- * 或 {@code askdata.cache.sa-token-store=redis}）。
+ * 或 {@code askdata.cache.sa-token-store=redis} 或 {@code askdata.lock.type=redis}）。
  *
  * <p>为什么不用 Spring Boot 自带的 {@code RedisAutoConfiguration}：该自动配置在
  * spring-data-redis 位于 classpath 时<b>无条件</b>创建 {@code StringRedisTemplate}，
@@ -33,7 +33,8 @@ import java.time.Duration;
  */
 @Configuration
 @ConditionalOnExpression("'${askdata.cache.type:memory}' == 'redis'"
-        + " || '${askdata.cache.sa-token-store:}' == 'redis'")
+        + " || '${askdata.cache.sa-token-store:}' == 'redis'"
+        + " || '${askdata.lock.type:db}' == 'redis'")
 @EnableConfigurationProperties(RedisProperties.class)
 public class RedisClientConfig {
 

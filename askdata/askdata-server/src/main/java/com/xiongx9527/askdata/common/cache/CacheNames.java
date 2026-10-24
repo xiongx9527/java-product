@@ -20,6 +20,9 @@ public final class CacheNames {
     /** 助手信息（SQLBot {@code assistant:info}，key = 助手 id）。 */
     public static final String ASSISTANT_INFO = "askdata:assistant:info";
 
+    /** 接口防抖占位（TTL = 防抖窗口）。 */
+    public static final String REQUEST_DEBOUNCE = "askdata:debounce";
+
     private CacheNames() {
     }
 }

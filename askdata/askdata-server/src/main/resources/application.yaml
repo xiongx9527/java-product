@@ -80,6 +80,22 @@ askdata:
     ttl-seconds: ${ASKDATA_CACHE_TTL_SECONDS:300}
     # Sa-Token 会话存储：memory（缺省，进程内）/ redis；留空则跟随上面的 type。
     sa-token-store: "${ASKDATA_SA_TOKEN_STORE:}"
+  debounce:
+    # 接口防抖：同一「调用方 + 接口」在窗口内只放行一次，重复请求返回 429。
+    # 缺省关闭；启用后由 paths 限定生效范围（为空表示全部）。
+    # 后端复用缓存层（askdata.cache.type）：memory 单实例、redis 多实例全局。
+    enabled: ${ASKDATA_DEBOUNCE_ENABLED:false}
+    # 防抖窗口（毫秒）。
+    window-ms: ${ASKDATA_DEBOUNCE_WINDOW_MS:1000}
+    # 生效路径（Ant 风格）；为空表示全部。
+    paths: ${ASKDATA_DEBOUNCE_PATHS:}
+  lock:
+    # 单 worker 启动守卫的锁后端：db（缺省，元数据库表行锁，作用域=各元数据库）
+    # / redis（全局 SET NX PX 锁，仅在「共享 Redis + 各实例独立库」部署下有意义）。
+    type: "${ASKDATA_LOCK_TYPE:db}"
+    # 防抖窗口（秒，缺省 300）：一次成功执行后，窗口内的后续启动不再重复执行同一任务
+    # （防「应用反复重启 → 一次性启动任务被反复触发」）；0 表示不防抖。
+    debounce-seconds: ${ASKDATA_LOCK_DEBOUNCE_SECONDS:300}
   # 本地 embedding 模型（D8/A6）：shibing624/text2vec-base-chinese（ONNX，768 维归一化）。
   # 模型权重随构建产物交付到 model-path（不进 git，793MB）；
   # 目录缺失或加载失败时向量召回降级为词法，问数主链路不报错。
