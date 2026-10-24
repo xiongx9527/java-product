@@ -159,8 +159,11 @@ public class AskdataMcpTools {
         }
         try {
             StpUtil.login(toLong(user.get("id")));
-            out.put("token", StpUtil.getTokenValue());
+            String tokenValue = StpUtil.getTokenValue();
+            out.put("token", tokenValue);
             out.put("tokenName", StpUtil.getTokenName());
+            // SQLBot 兼容字段：预设客户端按 access_token 键读取令牌
+            out.put("access_token", tokenValue);
         } catch (Exception e) {
             out.put("error", "签发 token 失败: " + e.getMessage());
         }
@@ -342,5 +345,142 @@ public class AskdataMcpTools {
         if (Rows.lng(chat, "create_by", 0L) != Rows.lng(user, "id", 0L)) {
             throw new IllegalArgumentException("Chat with id " + id + " not owned by the current user");
         }
+    }
+
+    // ===== SQLBot 预设客户端兼容层：工具名别名（零改造接入）=====
+    //
+    // SQLBot MCP 的 7 个 operation_id（mcp.py）：access_token、mcp_start、mcp_ws_list、
+    // mcp_datasource_list（注意路由 /mcp_ds_list 的 operation_id 是 mcp_datasource_list）、
+    // mcp_model_list、mcp_question、mcp_assistant。以下别名委托既有实现，参数按 SQLBot
+    // snake_case 签名声明；token 参数经 Sa-Token 反查绑定当前调用身份（复用 access_token
+    // 签发的令牌，不签新 token、不做新鉴权机制）。
+
+    /**
+     * token 参数身份绑定：token 有效时把该令牌绑定为本次调用的登录身份，
+     * 后续 CurrentUserService（Sa-Token 主通道）即以该用户执行；无效或为空时
+     * 沿用现有会话身份，交由底层业务校验。
+     */
+    private void applyTokenIdentity(String token) {
+        if (token == null || token.trim().isEmpty()) {
+            return;
+        }
+        String trimmed = token.trim();
+        if (StpUtil.getLoginIdByToken(trimmed) != null) {
+            StpUtil.setTokenValue(trimmed);
+        }
+    }
+
+    /** SQLBot 侧 datasource_id/chat_id/custom_model 为 int|str 联合类型：Number/字符串统一转 Long。 */
+    static Long longArgOrNull(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        String s = String.valueOf(value).trim();
+        if (s.isEmpty()) {
+            return null;
+        }
+        return Long.parseLong(s);
+    }
+
+    /** mcp_start 响应组装：access_token + chat_id + 会话详情（对齐 SQLBot mcp_start 响应键）。 */
+    static Map<String, Object> mcpStartResponse(String resToken, Map<String, Object> chatInfo) {
+        Map<String, Object> out = new LinkedHashMap<String, Object>();
+        if (resToken != null) {
+            out.put("access_token", resToken);
+        }
+        if (chatInfo != null) {
+            out.put("chat_id", chatInfo.get("id"));
+            out.putAll(chatInfo);
+        }
+        return out;
+    }
+
+    /** 兼容 SQLBot mcp_start：可带 username/password（现场登录）、token（身份绑定）、oid、
+     *  datasource_id、question；响应含 access_token 与 chat_id。 */
+    @Tool(value = "mcp_start", description = "兼容 SQLBot mcp_start：开启问数会话，响应含 access_token 与 chat_id")
+    public String mcp_start(@ToolArg(value = "username", required = false) String username,
+                            @ToolArg(value = "password", required = false) String password,
+                            @ToolArg(value = "token", required = false) String token,
+                            @ToolArg(value = "oid", required = false) Long oid,
+                            @ToolArg(value = "datasource_id", required = false) Object datasourceId,
+                            @ToolArg(value = "question", required = false) String question) throws Exception {
+        ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
+        try {
+            applyTokenIdentity(token);
+            String resToken = token != null && !token.trim().isEmpty() && StpUtil.getLoginIdByToken(token.trim()) != null
+                    ? token.trim() : null;
+            if (resToken == null && username != null && password != null) {
+                // SQLBot mcp_start 支持现场账号口令登录并返回新令牌
+                String login = access_token(username, password);
+                Map<String, Object> parsed = mapper.readValue(login, Map.class);
+                Object issued = parsed.get("token");
+                if (issued == null) {
+                    return login; // 登录失败：透传可读错误
+                }
+                resToken = String.valueOf(issued);
+                StpUtil.setTokenValue(resToken);
+            }
+            if (resToken == null) {
+                try {
+                    resToken = StpUtil.getTokenValue();
+                } catch (Exception ignored) {
+                    // 无会话：保持 null（SQLBot 对应 res_token=None）
+                }
+            }
+            String started = chat_start(longArgOrNull(datasourceId), question);
+            Map<String, Object> info = mapper.readValue(started, Map.class);
+            if (info.containsKey("error")) {
+                return started;
+            }
+            return mapper.writeValueAsString(mcpStartResponse(resToken, info));
+        } catch (Exception e) {
+            return errorJson(mapper, "mcp_start", e);
+        }
+    }
+
+    /** 兼容 SQLBot mcp_ws_list → workspace_list。 */
+    @Tool(value = "mcp_ws_list", description = "兼容 SQLBot mcp_ws_list：列出当前用户可管理的工作空间")
+    public String mcp_ws_list(@ToolArg(value = "token", required = false) String token) throws Exception {
+        applyTokenIdentity(token);
+        return workspace_list();
+    }
+
+    /** 兼容 SQLBot mcp_datasource_list（路由 /mcp_ds_list 的 operation_id）→ datasource_list。 */
+    @Tool(value = "mcp_datasource_list", description = "兼容 SQLBot mcp_datasource_list：列出当前用户可用的数据源")
+    public String mcp_datasource_list(@ToolArg(value = "token", required = false) String token,
+                                      @ToolArg(value = "oid", required = false) Long oid) throws Exception {
+        applyTokenIdentity(token);
+        return datasource_list(oid);
+    }
+
+    /** 兼容 SQLBot mcp_model_list → model_list（oid 接受并忽略，按当前工作空间取模型）。 */
+    @Tool(value = "mcp_model_list", description = "兼容 SQLBot mcp_model_list：列出当前工作空间可用的对话模型")
+    public String mcp_model_list(@ToolArg(value = "oid", required = false) Long oid) throws Exception {
+        return model_list();
+    }
+
+    /** 兼容 SQLBot mcp_question → question_answer；lang/stream 接受并忽略（stream 沿用同步返回）。 */
+    @Tool(value = "mcp_question", description = "兼容 SQLBot mcp_question：自然语言转SQL并只读执行")
+    public String mcp_question(@ToolArg(value = "token", required = false) String token,
+                               @ToolArg(value = "chat_id", required = false) Object chatId,
+                               @ToolArg("question") String question,
+                               @ToolArg(value = "datasource_id", required = false) Object datasourceId,
+                               @ToolArg(value = "custom_model", required = false) Object customModel,
+                               @ToolArg(value = "lang", required = false) String lang,
+                               @ToolArg(value = "stream", required = false) Boolean stream,
+                               @ToolArg(value = "return_img", required = false) Boolean returnImg) throws Exception {
+        applyTokenIdentity(token);
+        return question_answer(question, longArgOrNull(datasourceId), longArgOrNull(chatId),
+                longArgOrNull(customModel), returnImg);
+    }
+
+    /** 兼容 SQLBot mcp_assistant → assistant（url 接受并忽略，按 askdata 默认对话模型执行）。 */
+    @Tool(value = "mcp_assistant", description = "兼容 SQLBot mcp_assistant：问数助手对话")
+    public String mcp_assistant(@ToolArg(value = "url", required = false) String url,
+                                @ToolArg(value = "message", required = false) String message) throws Exception {
+        return assistant(message);
     }
 }
