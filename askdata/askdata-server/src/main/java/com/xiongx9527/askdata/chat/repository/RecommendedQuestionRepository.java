@@ -43,11 +43,11 @@ public class RecommendedQuestionRepository {
      * 最近问题（对齐 SQLBot recent_questions）：返回该数据源下最近的若干条提问（去重、按时间倒序）。
      * 降级语义：未配置训练样例/历史为空时返回空列表，前端按空态处理。
      */
-    public List<String> recentByDatasource(long datasourceId, int limit) {
+    public List<String> recentByDatasource(long datasourceId, long oid, int limit) {
         List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT DISTINCT question FROM chat_record WHERE datasource = ? AND question IS NOT NULL "
+                "SELECT DISTINCT question FROM chat_record WHERE datasource = ? AND oid = ? AND question IS NOT NULL "
                         + "ORDER BY create_time DESC LIMIT ?",
-                datasourceId, limit);
+                datasourceId, oid, limit);
         List<String> result = new ArrayList<>();
         for (Map<String, Object> row : rows) {
             Object q = row.get("question");

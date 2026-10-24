@@ -113,6 +113,7 @@ public class ChatService {
     }
 
     /** POST /chat/rename：{@code brief} 为空时保留原名（对齐 SQLBot rename_chat）。 */
+    @AuditLog(module = AuditModule.CHAT, operation = AuditOperationType.UPDATE, resourceId = "#body['id']")
     public void rename(Map<String, Object> body) {
         Map<String, Object> user = currentUserService.currentUser();
         long chatId = Rows.lng(body, "id", 0L);
@@ -121,6 +122,7 @@ public class ChatService {
     }
 
     /** DELETE /chat/{id}：软删除（对齐 SQLBot delete_chat_with_user）。 */
+    @AuditLog(module = AuditModule.CHAT, operation = AuditOperationType.DELETE, resourceId = "#chatId")
     public void delete(long chatId, Map<String, Object> body) {
         Map<String, Object> user = currentUserService.currentUser();
         requireOwnedChat(chatId, user);
@@ -199,6 +201,7 @@ public class ChatService {
         return exportExcel(recordId, ChatExcel.Format.XLSX);
     }
 
+    @AuditLog(module = AuditModule.CHAT, operation = AuditOperationType.EXPORT, resourceId = "#recordId")
     public ChatExcel.ExportFile exportExcel(long recordId, ChatExcel.Format format) {
         Map<String, Object> user = currentUserService.currentUser();
         Map<String, Object> record = requireOwnedRecord(recordId, user);
@@ -227,10 +230,16 @@ public class ChatService {
     // 推荐 / 最近问题
     // ------------------------------------------------------------------
 
-    /** GET /chat/recent_questions/{ds}：该数据源下最近的提问（去重、倒序、限 20 条）。 */
+    /** GET /chat/recent_questions/{ds}：该数据源下最近的提问（去重、倒序、限 20 条）；
+     *  按当前用户工作空间过滤（对齐 SQLBot recent_questions 的可见范围，防跨工作空间读历史提问）。 */
     public List<String> recentQuestions(long datasourceId) {
-        currentUserService.currentUser();
-        return recommendedQuestionRepository.recentByDatasource(datasourceId, 20);
+        Map<String, Object> user = currentUserService.currentUser();
+        Map<String, Object> ds = datasourceRepository.findById(datasourceId)
+                .orElseThrow(() -> new BadRequestException("Datasource with id " + datasourceId + " not found"));
+        if (!currentUserService.isAdmin(user) && Rows.lng(ds, "oid", 0L) != currentUserService.oidOf(user)) {
+            throw new BadRequestException("Datasource with id " + datasourceId + " not found");
+        }
+        return recommendedQuestionRepository.recentByDatasource(datasourceId, currentUserService.oidOf(user), 20);
     }
 
     // ------------------------------------------------------------------

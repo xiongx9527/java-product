@@ -543,8 +543,15 @@ public class ChatQuestionService {
                 history.add(q);
             }
         }
-        List<String> questions = recommendQuestions(model.get(), Rows.str(record, "question"),
-                articlesNumber, chartHint.isEmpty() ? null : chartHint, history);
+        List<String> questions;
+        try {
+            questions = recommendQuestions(model.get(), Rows.str(record, "question"),
+                    articlesNumber, chartHint.isEmpty() ? null : chartHint, history);
+        } catch (Exception e) {
+            // 对齐 SQLBot：推荐问题异常时兜底空数组流（前端渲染不出「获取失败」）
+            log.warn("推荐问题生成失败（兜底空数组流）: {}", e.getMessage());
+            questions = new ArrayList<>();
+        }
         logOperation(recordId, oid, Rows.lng(user, "id", 0L), OPERATE_RECOMMEND_QUESTIONS, start, 0L, false, null);
             String json = chatRepository.writeJson(questions);
             if (!questions.isEmpty()) {
