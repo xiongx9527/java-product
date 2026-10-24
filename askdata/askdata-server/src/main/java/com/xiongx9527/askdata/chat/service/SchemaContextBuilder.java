@@ -390,14 +390,44 @@ public class SchemaContextBuilder {
         return messages;
     }
 
-    /** 构建推荐问题生成的 system + user 消息。 */
+    /** 构建推荐问题生成的 system + user 消息（基础版，不注入图表/历史上下文）。 */
     public List<ModelMessage> buildRecommendMessages(String question, int articlesNumber) {
+        return buildRecommendMessages(question, articlesNumber, null, null);
+    }
+
+    /**
+     * 构建推荐问题生成的 system + user 消息（增强版，对齐 SQLBot §2.10 推荐问题模板增强）。
+     * 当 {@code chartHint} 非空时，提示词携带当前图表/可视化类型，引导生成可用于深化分析的追问；
+     * 当 {@code history} 非空时，注入历史提问，使新提问能承接既有对话上下文。
+     */
+    public List<ModelMessage> buildRecommendMessages(String question, int articlesNumber,
+                                                     String chartHint, List<String> history) {
         List<ModelMessage> messages = new ArrayList<>();
         messages.add(new ModelMessage("system", recommendSystemPrompt()));
-        messages.add(new ModelMessage("user",
-                "【原问题】\n" + question + "\n\n请生成 " + articlesNumber + " 个相关的追问问题，"
-                        + "只输出一个 JSON 数组，例如 [\"问题1\",\"问题2\"]，不要编号、不要解释。"));
+        messages.add(new ModelMessage("user", buildRecommendUserPrompt(question, articlesNumber, chartHint, history)));
         return messages;
+    }
+
+    /** 组装推荐问题 user 提示词（包级可见，便于单测）。 */
+    static String buildRecommendUserPrompt(String question, int articlesNumber,
+                                           String chartHint, List<String> history) {
+        StringBuilder user = new StringBuilder();
+        user.append("【原问题】\n").append(question).append("\n");
+        if (chartHint != null && !chartHint.trim().isEmpty()) {
+            user.append("\n【当前图表/可视化类型】\n").append(chartHint.trim())
+                    .append("\n（请结合该可视化类型，生成可用于深化分析的自然语言追问。）");
+        }
+        if (history != null && !history.isEmpty()) {
+            user.append("\n【历史提问】\n");
+            for (String h : history) {
+                if (h != null && !h.trim().isEmpty()) {
+                    user.append("- ").append(h.trim()).append("\n");
+                }
+            }
+        }
+        user.append("\n请生成 ").append(articlesNumber).append(" 个相关的追问问题，")
+                .append("只输出一个 JSON 数组，例如 [\"问题1\",\"问题2\"]，不要编号、不要解释。");
+        return user.toString();
     }
 
     // ------------------------------------------------------------------
@@ -1055,7 +1085,8 @@ public class SchemaContextBuilder {
     }
 
     private static String recommendSystemPrompt() {
-        return "你是问答助手。基于用户原问题，生成若干相关的、可继续追问的自然语言问题，"
+        return "你是问答助手。基于用户原问题（及可选的图表类型与历史提问），生成若干相关的、"
+                + "可继续追问的自然语言问题，尽量结合可视化分析角度；"
                 + "只输出一个 JSON 数组，不要编号、不要解释。";
     }
 }

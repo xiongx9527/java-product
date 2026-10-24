@@ -531,7 +531,20 @@ public class ChatQuestionService {
                 return;
             }
             long start = System.currentTimeMillis();
-        List<String> questions = recommendQuestions(model.get(), Rows.str(record, "question"), articlesNumber);
+        long chatId = Rows.lng(record, "chat_id", 0L);
+        String chartHint = Rows.str(record, "chart");
+        List<String> history = new ArrayList<>();
+        for (Map<String, Object> prev : chatRepository.listRecordsByChat(chatId)) {
+            if (Rows.lng(prev, "id", 0L) == recordId) {
+                continue;
+            }
+            String q = Rows.str(prev, "question");
+            if (!q.isEmpty()) {
+                history.add(q);
+            }
+        }
+        List<String> questions = recommendQuestions(model.get(), Rows.str(record, "question"),
+                articlesNumber, chartHint.isEmpty() ? null : chartHint, history);
         logOperation(recordId, oid, Rows.lng(user, "id", 0L), OPERATE_RECOMMEND_QUESTIONS, start, 0L, false, null);
             String json = chatRepository.writeJson(questions);
             if (!questions.isEmpty()) {
@@ -944,10 +957,20 @@ public class ChatQuestionService {
         return chatRepository.writeJson(chart);
     }
 
-    /** 推荐问题（非流式；解析为字符串列表，失败返回空列表）。 */
+    /** 推荐问题（非流式；解析为字符串列表，失败返回空列表）。基础版不注入图表/历史上下文。 */
     private List<String> recommendQuestions(ModelRef aiModel, String question, int articlesNumber) {
+        return recommendQuestions(aiModel, question, articlesNumber, null, null);
+    }
+
+    /**
+     * 推荐问题（增强版，SQLBot 推荐问题模板增强）：注入图表类型提示与历史提问，
+     * 使生成的追问更贴合当前可视化与对话上下文。
+     */
+    private List<String> recommendQuestions(ModelRef aiModel, String question, int articlesNumber,
+                                            String chartHint, List<String> history) {
         String text = modelClient.generate(aiModel.apiDomain, aiModel.apiKey, aiModel.baseModel,
-                schemaContextBuilder.buildRecommendMessages(question, articlesNumber), aiModel.params);
+                schemaContextBuilder.buildRecommendMessages(question, articlesNumber, chartHint, history),
+                aiModel.params);
         return parseStringList(text, objectMapper);
     }
 
