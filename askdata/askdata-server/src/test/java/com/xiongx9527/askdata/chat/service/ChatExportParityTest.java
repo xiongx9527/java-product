@@ -14,6 +14,7 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import com.xiongx9527.askdata.permission.DsGrantService;
 import org.mockito.Mockito;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -62,7 +63,7 @@ class ChatExportParityTest {
         Mockito.when(currentUserService.oidOf(Mockito.any())).thenReturn(1L);
         chatService = new ChatService(chatRepository, new RecommendedQuestionRepository(appJdbc, ids),
                 Mockito.mock(DatasourceRepository.class), Mockito.mock(DatasourceService.class),
-                currentUserService, objectMapper);
+                currentUserService, objectMapper, Mockito.mock(DsGrantService.class));
     }
 
     /** 建会话 + 记录，写入 data / chart / predict_data 快照。 */

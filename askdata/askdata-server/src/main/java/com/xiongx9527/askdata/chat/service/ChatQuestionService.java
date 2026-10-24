@@ -693,17 +693,36 @@ public class ChatQuestionService {
         if (raw == null) {
             return null;
         }
-        Map<String, Object> hostConfig;
+        // 宿主 URL 形态（对齐 SQLBot AssistantOutDsFactory 主动拉取）：{"host_url": "...", "host_headers"?}
+        // ——askdata 实时 GET 宿主 API（10s 超时），宿主侧数据源动态变化无需随请求重复下发
+        String hostUrl = null;
+        Map<String, String> hostHeaders = null;
         if (raw instanceof Map) {
-            hostConfig = objectMapper.convertValue(raw, new TypeReference<Map<String, Object>>() {
-            });
-        } else {
-            try {
-                hostConfig = objectMapper.readValue(String.valueOf(raw),
-                        new TypeReference<Map<String, Object>>() {
-                        });
-            } catch (Exception e) {
-                throw new BadRequestException("Invalid dynamic datasource: " + e.getMessage());
+            Object url = ((Map<?, ?>) raw).get("host_url");
+            if (url != null && !String.valueOf(url).trim().isEmpty()) {
+                hostUrl = String.valueOf(url).trim();
+                Object hs = ((Map<?, ?>) raw).get("host_headers");
+                if (hs instanceof Map) {
+                    hostHeaders = new LinkedHashMap<>();
+                    for (Map.Entry<?, ?> h : ((Map<?, ?>) hs).entrySet()) {
+                        hostHeaders.put(String.valueOf(h.getKey()), String.valueOf(h.getValue()));
+                    }
+                }
+            }
+        }
+        Map<String, Object> hostConfig = null;
+        if (hostUrl == null) {
+            if (raw instanceof Map) {
+                hostConfig = objectMapper.convertValue(raw, new TypeReference<Map<String, Object>>() {
+                });
+            } else {
+                try {
+                    hostConfig = objectMapper.readValue(String.valueOf(raw),
+                            new TypeReference<Map<String, Object>>() {
+                            });
+                } catch (Exception e) {
+                    throw new BadRequestException("Invalid dynamic datasource: " + e.getMessage());
+                }
             }
         }
         // A8：动态数据源仅对已登记的高级应用（type 1/3）开放。类型以 sys_assistant 记录为准，
@@ -718,6 +737,9 @@ public class ChatQuestionService {
         long oid = currentUserService.oidOf(currentUserService.currentUser());
         if (Rows.lng(assistant, "oid", 0L) != oid) {
             throw new BadRequestException("Assistant with id " + assistantId + " not found");
+        }
+        if (hostUrl != null) {
+            return dynamicDatasourceResolver.resolveFromHost(Rows.intg(assistant, "type", 0), hostUrl, hostHeaders);
         }
         return dynamicDatasourceResolver.resolve(Rows.intg(assistant, "type", 0), hostConfig);
     }

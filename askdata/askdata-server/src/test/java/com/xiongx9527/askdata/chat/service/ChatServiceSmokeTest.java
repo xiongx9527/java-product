@@ -20,6 +20,7 @@ import com.xiongx9527.askdata.system.service.CurrentUserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import com.xiongx9527.askdata.permission.DsGrantService;
 import org.mockito.Mockito;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -96,7 +97,7 @@ class ChatServiceSmokeTest {
         chatRepository = new ChatRepository(appJdbc, idGenerator, objectMapper);
         recommendedQuestionRepository = new RecommendedQuestionRepository(appJdbc, idGenerator);
         chatService = new ChatService(chatRepository, recommendedQuestionRepository, datasourceRepository,
-                datasourceService, currentUserService, objectMapper);
+                datasourceService, currentUserService, objectMapper, Mockito.mock(DsGrantService.class));
     }
 
     @Test
@@ -218,7 +219,7 @@ class ChatServiceSmokeTest {
         Mockito.when(normal.oidOf(Mockito.any())).thenReturn(2L);
         ChatService normalService = new ChatService(chatRepository, recommendedQuestionRepository,
                 new DatasourceRepository(appJdbc, new IdGenerator()),
-                Mockito.mock(DatasourceService.class), normal, objectMapper);
+                Mockito.mock(DatasourceService.class), normal, objectMapper, Mockito.mock(DsGrantService.class));
         // 他人会话不可见（list 只返回自己 oid 的）
         assertEquals(0, normalService.list().size());
         assertThrows(BadRequestException.class, () -> normalService.get(chatId, false));

@@ -29,6 +29,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import com.xiongx9527.askdata.permission.DsGrantService;
 import org.mockito.Mockito;
 import org.springframework.context.support.StaticMessageSource;
 import org.springframework.core.io.ClassPathResource;
@@ -183,7 +184,7 @@ class ChatKnowledgeChainTest {
                 new TerminologyRecallService(embeddingService, appJdbc), schemaContextBuilder, appJdbc,
                 Mockito.mock(ChatModelRouter.class), modelClient);
         chatService = new ChatService(chatRepository, recommendedQuestionRepository, datasourceRepository,
-                datasourceService, currentUserService, objectMapper);
+                datasourceService, currentUserService, objectMapper, Mockito.mock(DsGrantService.class));
         chatQuestionService = new ChatQuestionService(chatRepository, recommendedQuestionRepository,
                 datasourceRepository, datasourceService, currentUserService, schemaContextBuilder, modelClient,
                 modelRouter, new ChatChartBuilder(objectMapper), objectMapper, null, chatKnowledgeService,

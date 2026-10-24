@@ -39,6 +39,8 @@ public class ChatService {
 
     private final DatasourceRepository datasourceRepository;
 
+    private final com.xiongx9527.askdata.permission.DsGrantService dsGrantService;
+
     private final DatasourceService datasourceService;
 
     private final CurrentUserService currentUserService;
@@ -47,13 +49,15 @@ public class ChatService {
 
     public ChatService(ChatRepository chatRepository, RecommendedQuestionRepository recommendedQuestionRepository,
                        DatasourceRepository datasourceRepository, DatasourceService datasourceService,
-                       CurrentUserService currentUserService, ObjectMapper objectMapper) {
+                       CurrentUserService currentUserService, ObjectMapper objectMapper,
+                       com.xiongx9527.askdata.permission.DsGrantService dsGrantService) {
         this.chatRepository = chatRepository;
         this.recommendedQuestionRepository = recommendedQuestionRepository;
         this.datasourceRepository = datasourceRepository;
         this.datasourceService = datasourceService;
         this.currentUserService = currentUserService;
         this.objectMapper = objectMapper;
+        this.dsGrantService = dsGrantService;
     }
 
     // ------------------------------------------------------------------
@@ -104,6 +108,9 @@ public class ChatService {
             if (!currentUserService.isAdmin(user) && Rows.lng(ds, "oid", 0L) != oid) {
                 throw new BadRequestException("Datasource with id " + datasource + " not found");
             }
+            // 资源级使用授权（对齐 SQLBot @require_permissions(type='ds')）：白名单覆盖语义，
+            // 该数据源存在授权记录时未授权成员拒绝建会话
+            dsGrantService.checkUsable(oid, uid, currentUserService.isAdmin(user), datasource);
             engineType = Rows.str(ds, "type_name");
             dsType = Rows.str(ds, "type");
         }

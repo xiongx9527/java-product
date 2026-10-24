@@ -32,6 +32,9 @@ public class DynamicDatasourceResolver {
     /** 错误文案统一走消息包（A4 / F-15）。 */
     private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
 
+    /** 宿主数据源拉取超时（对齐 SQLBot AssistantOutDsFactory requests.get 默认 10s）。 */
+    static final int HOST_FETCH_TIMEOUT_MS = 10_000;
+
     public DynamicDatasourceResolver(ObjectMapper objectMapper,
                                      com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver) {
         this.objectMapper = objectMapper;
@@ -41,6 +44,77 @@ public class DynamicDatasourceResolver {
     /** 高级应用判定（type 1/3）。 */
     public static boolean isAdvancedApplication(int assistantType) {
         return assistantType == TYPE_ADVANCED_APP || assistantType == TYPE_ADVANCED_APP_VARIANT;
+    }
+
+    /**
+     * 从宿主 URL 实时拉取数据源配置并解析（对齐 SQLBot {@code AssistantOutDsFactory}：
+     * 嵌入/高级应用场景 askdata 主动 GET 宿主 API，同步等待响应，10s 超时）。
+     *
+     * <p>与「宿主随请求下发」形态互补：宿主集成时既可以在请求体里带
+     * {@code dynamic_datasource}，也可以只给 {@code host_url} 让 askdata 每次实时拉取
+     * （宿主侧数据源动态变化无需改 askdata 配置）。拉取失败直接报错（宿主必须可达）。</p>
+     *
+     * @param assistantType 高级应用类型（必须为 1 或 3）
+     * @param hostUrl       宿主数据源 API 地址（返回 {@code {type, name?, configuration, dynamic_sql?}} JSON）
+     * @param headers       附加请求头（如宿主鉴权 token），可为 null
+     * @return 动态数据源（仅本次请求有效）
+     */
+    public DynamicDatasource resolveFromHost(int assistantType, String hostUrl,
+                                             Map<String, String> headers) {
+        if (!isAdvancedApplication(assistantType)) {
+            throw new BadRequestException(messageResolver.get("i18n_embedded.dynamic_ds_advanced_only",
+                    Map.of("type", assistantType)));
+        }
+        if (hostUrl == null || hostUrl.trim().isEmpty()) {
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", Map.of("key", "host_url")));
+        }
+        String body = fetchFromHost(hostUrl.trim(), headers);
+        Map<String, Object> hostConfig;
+        try {
+            hostConfig = objectMapper.readValue(body,
+                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() { });
+        } catch (Exception e) {
+            throw new BadRequestException(messageResolver.get("i18n_embedded.host_fetch_failed",
+                    "invalid JSON: " + e.getMessage()));
+        }
+        return resolve(assistantType, hostConfig);
+    }
+
+    /** GET 宿主 API（10s 连接/读取超时，对齐 SQLBot requests.get(..., timeout=10)）；非 2xx 或 IO 异常均报错。 */
+    private String fetchFromHost(String hostUrl, Map<String, String> headers) {
+        try {
+            java.net.HttpURLConnection conn =
+                    (java.net.HttpURLConnection) new java.net.URL(hostUrl).openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(HOST_FETCH_TIMEOUT_MS);
+            conn.setReadTimeout(HOST_FETCH_TIMEOUT_MS);
+            conn.setRequestProperty("Accept", "application/json");
+            if (headers != null) {
+                for (Map.Entry<String, String> h : headers.entrySet()) {
+                    if (h.getKey() != null && h.getValue() != null) {
+                        conn.setRequestProperty(h.getKey(), h.getValue());
+                    }
+                }
+            }
+            int code = conn.getResponseCode();
+            if (code < 200 || code >= 300) {
+                throw new IllegalStateException("HTTP " + code);
+            }
+            try (java.io.InputStream in = conn.getInputStream();
+                 java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+                byte[] buffer = new byte[8192];
+                int n;
+                while ((n = in.read(buffer)) > 0) {
+                    out.write(buffer, 0, n);
+                }
+                return out.toString("UTF-8");
+            } finally {
+                conn.disconnect();
+            }
+        } catch (Exception e) {
+            throw new BadRequestException(messageResolver.get("i18n_embedded.host_fetch_failed",
+                    e.getMessage() == null ? e.toString() : e.getMessage()));
+        }
     }
 
     /**

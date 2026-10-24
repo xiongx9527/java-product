@@ -711,3 +711,19 @@ CREATE TABLE IF NOT EXISTS file_storage (
     size              BIGINT,
     create_time       BIGINT        NOT NULL DEFAULT 0
 );
+
+-- =====================================================================
+-- 数据源使用授权（对齐 SQLBot @require_permissions(type='ds') 的资源级授权层）。
+-- 管理员把工作空间内数据源授权给成员；白名单覆盖语义：某数据源存在任一授权记录时，
+-- 未被授权的成员不可用该数据源建会话/问数（否则拒绝在 start 卡住）；该数据源
+-- 完全没有授权记录时维持工作空间内共享（向后兼容，管理员始终放行）。
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS ds_grant (
+    id          BIGINT PRIMARY KEY,
+    oid         BIGINT   NOT NULL,
+    ds_id       BIGINT   NOT NULL,
+    user_id     BIGINT   NOT NULL,
+    create_by   BIGINT,
+    create_time BIGINT   NOT NULL,
+    CONSTRAINT uk_ds_grant UNIQUE (oid, ds_id, user_id)
+);

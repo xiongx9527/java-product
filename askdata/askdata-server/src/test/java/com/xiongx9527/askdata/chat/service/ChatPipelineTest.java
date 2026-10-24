@@ -32,6 +32,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import com.xiongx9527.askdata.permission.DsGrantService;
 import org.mockito.Mockito;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -183,7 +184,7 @@ class ChatPipelineTest {
                 new TableEmbeddingService(tableRepository, fieldRepository, modelRouter, modelClient, appJdbc,
                         objectMapper));
         chatService = new ChatService(chatRepository, recommendedQuestionRepository, datasourceRepository,
-                datasourceService, currentUserService, objectMapper);
+                datasourceService, currentUserService, objectMapper, Mockito.mock(DsGrantService.class));
         chatKnowledgeService = new ChatKnowledgeService(
                 new TerminologyRecallService(new EmbeddingService(new LocalEmbeddingModel(excelDir.toString(), 128),
                         modelRouter, modelClient, appJdbc, objectMapper), appJdbc),
