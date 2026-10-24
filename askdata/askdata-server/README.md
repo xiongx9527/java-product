@@ -52,11 +52,12 @@ java -jar target/askdata-server.jar
 | `milvus` | `Langchain4jMilvusVectorStore` | 在线向量库；基于 langchain4j 的 `MilvusEmbeddingStore`，ANN 检索（集合首次写入自动创建） |
 | `weaviate` | `Langchain4jWeaviateVectorStore` | 在线向量库；基于 langchain4j 的 `WeaviateEmbeddingStore`（类需显式创建；search 忽略服务端 filter，由基类客户端兜底候选过滤） |
 | `pgvector` | `Langchain4jPgVectorVectorStore` | 在线向量库；基于 langchain4j 的 `PgVectorEmbeddingStore`（JDBC + Postgres 向量扩展，每张集合表首次写入自动建表） |
+| `elasticsearch` | `Langchain4jElasticsearchVectorStore` | 在线向量库；基于 langchain4j 的 `ElasticsearchEmbeddingStore`（kNN 检索 + metadata 过滤；索引需显式创建，`vector` 映射为 `dense_vector`） |
 
 ```yaml
 askdata:
   vector-store:
-    type: none                    # none | qdrant | milvus | weaviate | pgvector
+    type: none                    # none | qdrant | milvus | weaviate | pgvector | elasticsearch
     collection-prefix: askdata    # 集合名 = {prefix}-{object-type}
     qdrant:
       url: ${ASKDATA_QDRANT_URL:}         # REST 基址，如 http://qdrant:6333（仅用于健康检查）
@@ -84,6 +85,12 @@ askdata:
       user: ${ASKDATA_PGVECTOR_USER:}
       password: ${ASKDATA_PGVECTOR_PASSWORD:}
       use-index: ${ASKDATA_PGVECTOR_USE_INDEX:false}
+    elasticsearch:
+      server-url: ${ASKDATA_ELASTICSEARCH_URL:}          # ES 基址，如 http://es:9200
+      api-key: ${ASKDATA_ELASTICSEARCH_API_KEY:}         # 可选：ES8+ ApiKey
+      username: ${ASKDATA_ELASTICSEARCH_USERNAME:}       # 可选：Basic 用户名
+      password: ${ASKDATA_ELASTICSEARCH_PASSWORD:}       # 可选：Basic 口令
+      refresh: ${ASKDATA_ELASTICSEARCH_REFRESH:WaitFor}  # 写入可见性：WaitFor（写后即查）/ True / False
 ```
 
 > 新增后端成本极低：所有 langchain4j 向量存储都实现同一个 `EmbeddingStore<TextSegment>` 接口，

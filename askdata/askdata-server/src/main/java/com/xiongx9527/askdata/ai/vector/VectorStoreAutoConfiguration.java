@@ -26,6 +26,7 @@ import java.util.function.Supplier;
  *   <li>milvus：{@link Langchain4jMilvusVectorStore}（基于 langchain4j 的 Milvus 封装）；</li>
  *   <li>weaviate：{@link Langchain4jWeaviateVectorStore}（基于 langchain4j 的 Weaviate 封装）；</li>
  *   <li>pgvector：{@link Langchain4jPgVectorVectorStore}（基于 langchain4j 的 pgvector 封装，JDBC）；</li>
+ *   <li>elasticsearch：{@link Langchain4jElasticsearchVectorStore}（基于 langchain4j 的 ES 封装，kNN 检索）；</li>
  *   <li>none / 未配置 / 在线库不可达：{@link DbVectorStore}（DB JSON 列 + 应用内余弦回退）。</li>
  * </ul>
  *
@@ -99,6 +100,13 @@ public class VectorStoreAutoConfiguration {
                 env.getProperty("askdata.vector-store.pgvector.password", ""),
                 prefix,
                 env.getProperty("askdata.vector-store.pgvector.use-index", Boolean.class, false)));
+        stores.put("elasticsearch", () -> new Langchain4jElasticsearchVectorStore(
+                env.getProperty("askdata.vector-store.elasticsearch.server-url", ""),
+                env.getProperty("askdata.vector-store.elasticsearch.api-key", ""),
+                env.getProperty("askdata.vector-store.elasticsearch.username", ""),
+                env.getProperty("askdata.vector-store.elasticsearch.password", ""),
+                prefix,
+                env.getProperty("askdata.vector-store.elasticsearch.refresh", "WaitFor")));
         return stores;
     }
 

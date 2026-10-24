@@ -75,7 +75,8 @@ VectorStore 抽象面向 langchain4j 的 EmbeddingStore<TextSegment> 设计，�
 | Milvus | 已实现 | langchain4j-milvus | 有 builder()；集合首次写入自动创建（VarChar id + JSON metadata）；id 字段为 VarChar，数值串可用 |
 | Weaviate | 已实现 | langchain4j-weaviate | 有 builder()；ensureCollection 显式建类（vectorizer=none，声明 text/row_id）；id 强制 UUID（由记录 id 派生），row_id 存 metadata；search 忽略服务端 filter，由基类客户端兜底候选过滤；类名须大写开头故 collectionFor 做了清洗 |
 | pgvector | 已实现 | langchain4j-pgvector | JDBC + Postgres 向量扩展；每张集合表首次写入自动建表（createTable=true）；id 强制 UUID，row_id 存 JSON 列；服务端 filter 经 metadata handler 生效；注意需 Postgres 已装 vector 扩展 |
-| Elasticsearch / OpenSearch | 预留 | 对应模块 | 需先建索引与 mapping |
+| Elasticsearch | 已实现 | langchain4j-elasticsearch | 有 builder()；store 不自动建索引且 dimension 参数已废弃，故 ensureCollection/首次 upsert 用 REST 显式建索引（vector 映射为 dense_vector+cosine，metadata.row_id 建 text+keyword 子字段以命中元数据过滤器）；索引名须小写故 collectionFor 做了清洗；写入默认 refresh=WaitFor 保证写后即查 |
+| OpenSearch | 预留 | 对应模块 | 需先建索引与 mapping |
 | Chroma / Pinecone / Oracle / Azure AI Search | 预留 | 对应模块 | 云托管为主 |
 
 接入步骤（以新后端为例）：新增依赖 → 新增 Langchain4jXxxVectorStore extends AbstractLangchain4jVectorStore（仅客户端构造与建集合不同）→ 在 VectorStoreAutoConfiguration.onlineStores() 登记一行。EmbeddingService 与四类对象的召回调用点无需任何改动。

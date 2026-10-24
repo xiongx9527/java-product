@@ -103,6 +103,15 @@ askdata:
       password: ${ASKDATA_PGVECTOR_PASSWORD:}
       # 是否建 ivfflat 索引（缺省 false，避免建索引开销；大数据量可开启）。
       use-index: ${ASKDATA_PGVECTOR_USE_INDEX:false}
+    elasticsearch:
+      # Elasticsearch 基址（如 http://es:9200）。索引由应用按集合自动创建（vector 映射为 dense_vector）。
+      server-url: ${ASKDATA_ELASTICSEARCH_URL:}
+      # 可选鉴权：api-key（ES8+ ApiKey）或 username/password（Basic），二者择一，api-key 优先。
+      api-key: ${ASKDATA_ELASTICSEARCH_API_KEY:}
+      username: ${ASKDATA_ELASTICSEARCH_USERNAME:}
+      password: ${ASKDATA_ELASTICSEARCH_PASSWORD:}
+      # 写入可见性：WaitFor（写后即查，缺省）/ True / False。
+      refresh: ${ASKDATA_ELASTICSEARCH_REFRESH:WaitFor}
   # 应用密钥（落库加密用）。不内置缺省值：必须通过环境变量 ASKDATA_SECRET_KEY 或外部配置显式设定，
   # 否则启动期随机生成（当次进程内可用，重启后历史密文不可解，并在启动日志告警）。
   secret:
