@@ -139,7 +139,8 @@ public class LoginController {
             userRepository.updatePassword(toLong(userRow.get().get("id")), CryptoUtil.md5Hex(newPwd));
             auditRecorder.recordLogin(account, AuditOperationType.UPDATE_PWD, "success", null,
                     System.currentTimeMillis() - start);
-            return Result.ok(null);
+            // 显式类型见证：基类同名静态 ok(String) 对 null 更具体，缺省会解析到它
+            return Result.<Map<String, Object>>ok((Map<String, Object>) null);
         } catch (Throwable t) {
             auditRecorder.recordLogin(account, AuditOperationType.UPDATE_PWD, "failed", t.getMessage(),
                     System.currentTimeMillis() - start);
