@@ -168,12 +168,12 @@ class ChatProtocolTest {
     @Test
     void modelEndpointNormalization() {
         assertEquals("http://127.0.0.1:11434/v1/chat/completions",
-                ChatModelClient.chatCompletionsUrl("http://127.0.0.1:11434"));
+                ChatModelClient.chatCompletionsUrl("http://127.0.0.1:11434", null, null));
         assertEquals("http://127.0.0.1:11434/v1/chat/completions",
-                ChatModelClient.chatCompletionsUrl("http://127.0.0.1:11434/"));
-        assertEquals("http://x/v1/chat/completions", ChatModelClient.chatCompletionsUrl("http://x/v1"));
+                ChatModelClient.chatCompletionsUrl("http://127.0.0.1:11434/", null, null));
+        assertEquals("http://x/v1/chat/completions", ChatModelClient.chatCompletionsUrl("http://x/v1", null, null));
         assertEquals("http://x/v1/chat/completions",
-                ChatModelClient.chatCompletionsUrl("http://x/v1/chat/completions"));
+                ChatModelClient.chatCompletionsUrl("http://x/v1/chat/completions", null, null));
         assertEquals("http://127.0.0.1:11434/v1/embeddings",
                 ChatModelClient.embeddingsUrl("http://127.0.0.1:11434"));
         // 余弦

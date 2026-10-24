@@ -154,13 +154,47 @@ class McpFrameworkE2ETest {
         assertNotNull(tokenCall.get("result"), "access_token 无 result: " + tokenCall);
         assertTrue(tokenCall.get("result").get("content").toString().contains("error"),
                 "access_token 错误口令应返回 error: " + tokenCall);
+
+        // 6) access_token 正确口令 → 签发 token（独立 token 接入路径，对齐 SQLBot mcp_access_token）
+        post(msgUrl, "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{"
+                + "\"name\":\"access_token\",\"arguments\":{\"username\":\"admin\",\"password\":\"SQLBot@123456\"}}}");
+        JsonNode tokenOk = awaitId(messages, 6);
+        assertNotNull(tokenOk.get("result"), "access_token 正确口令无 result: " + tokenOk);
+        JsonNode tokenText = tokenOk.get("result").get("content").get(0).get("text");
+        assertNotNull(tokenText, "access_token 正确口令无 content text: " + tokenOk);
+        JsonNode tokenPayload = objectMapper.readTree(tokenText.asText());
+        assertTrue(tokenPayload.has("token") && !tokenPayload.get("token").asText().isEmpty(),
+                "access_token 未签发 token: " + tokenPayload);
+        String token = tokenPayload.get("token").asText();
+        String tokenName = tokenPayload.has("tokenName") ? tokenPayload.get("tokenName").asText() : "satoken";
+
+        // 7) 签发的 token 作为独立凭证调用业务工具（token 生命周期管理对齐 SQLBot MCP token 语义）
+        java.util.Map<String, String> auth = new java.util.HashMap<>();
+        auth.put(tokenName, token);
+        post(msgUrl, "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{"
+                + "\"name\":\"datasource_list\",\"arguments\":{}}}", auth);
+        JsonNode authedCall = awaitId(messages, 7);
+        assertNotNull(authedCall.get("result"), "带 token datasource_list 无 result: " + authedCall);
+        String authedText = authedCall.get("result").get("content").toString();
+        assertTrue(!authedText.contains("\"error\""),
+                "带 token 的 datasource_list 不应返回 error: " + authedCall);
     }
 
     private static void post(String url, String json) throws Exception {
+        post(url, json, java.util.Collections.emptyMap());
+    }
+
+    /** 带 header 的 JSON-RPC POST（token 等独立凭证经 header 携带）。 */
+    private static void post(String url, String json, java.util.Map<String, String> headers) throws Exception {
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         conn.setRequestMethod("POST");
         conn.setDoOutput(true);
         conn.setRequestProperty("Content-Type", "application/json");
+        if (headers != null) {
+            for (java.util.Map.Entry<String, String> h : headers.entrySet()) {
+                conn.setRequestProperty(h.getKey(), h.getValue());
+            }
+        }
         conn.setConnectTimeout(8000);
         conn.setReadTimeout(15000);
         try (OutputStream os = conn.getOutputStream()) {

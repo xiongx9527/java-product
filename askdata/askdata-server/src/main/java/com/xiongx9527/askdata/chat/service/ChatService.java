@@ -6,6 +6,9 @@ import com.xiongx9527.askdata.chat.repository.ChatRepository;
 import com.xiongx9527.askdata.chat.repository.RecommendedQuestionRepository;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.BadRequestException;
+import com.xiongx9527.askdata.common.audit.AuditLog;
+import com.xiongx9527.askdata.common.audit.AuditModule;
+import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.chat.support.ChatExcel;
 import com.xiongx9527.askdata.common.web.PageResult;
 import com.xiongx9527.askdata.datasource.repository.DatasourceRepository;
@@ -84,7 +87,9 @@ public class ChatService {
         return info;
     }
 
-    /** POST /chat/start（{@code origin=2} 时为嵌入通道 /assistant/start）。 */
+    /** POST /chat/start（{@code origin=2} 时为嵌入通道 /assistant/start）；
+     *  审计对齐 SQLBot mcp_start 的 {@code @system_log} CHAT（MCP chat_start 复用本方法，同样落审计）。 */
+    @AuditLog(module = AuditModule.CHAT, operation = AuditOperationType.CREATE, resourceId = "#result['id']")
     public Map<String, Object> start(Map<String, Object> body) {
         Map<String, Object> user = currentUserService.currentUser();
         long uid = currentUserService.uid();

@@ -980,8 +980,9 @@ public class ChatQuestionService {
         final StringBuilder content = new StringBuilder();
         final StringBuilder reasoning = new StringBuilder();
         final AtomicReference<String> error = new AtomicReference<>(null);
+        // §2.3: protocol（1=openai 兼容 / 2=vllm）随模型解析下发，端点形态（含 Azure）在 client 内分发
         modelClient.streamCompletion(aiModel.apiDomain, aiModel.apiKey, aiModel.baseModel, messages,
-                aiModel.params, new TokenHandler() {
+                aiModel.params, aiModel.protocol, new TokenHandler() {
                     @Override
                     public void onToken(String token, String reasoningToken) {
                         if (token != null) {

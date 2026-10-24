@@ -97,25 +97,38 @@ public class ChatModelClient {
     public void streamCompletion(String apiDomain, String apiKey, String baseModel,
                                  List<ModelMessage> messages, Map<String, Object> extraParams,
                                  TokenHandler handler) {
+        streamCompletion(apiDomain, apiKey, baseModel, messages, extraParams, 1, handler);
+    }
+
+    /**
+     * §2.3: 带协议分发的流式补全。{@code protocol} 取 {@code ai_model.protocol}：
+     * 1=openai 兼容、2=vllm（两者同构，URL 规范化一致）；请求形态由端点域名决定——
+     * Azure 专有域名（{@code *.openai.azure.com} / {@code *.openai.azure.cn}）走
+     * deployment URL + {@code api-key} 头（对齐 SQLBot LLMFactory 的 azure 分支）。
+     */
+    public void streamCompletion(String apiDomain, String apiKey, String baseModel,
+                                 List<ModelMessage> messages, Map<String, Object> extraParams,
+                                 int protocol, TokenHandler handler) {
         if (apiDomain == null || apiDomain.trim().isEmpty() || baseModel == null || baseModel.trim().isEmpty()) {
             handler.onError("模型未配置：缺少 api_domain 或 base_model（请先到系统-AI 模型配置并设置默认模型）");
             return;
         }
-        streamCompletionImpl(apiDomain, apiKey, baseModel, messages, extraParams, handler);
+        streamCompletionImpl(apiDomain, apiKey, baseModel, messages, extraParams, protocol, handler);
     }
 
     /** 兼容旧调用方（不传额外参数）。 */
     public void streamCompletion(String apiDomain, String apiKey, String baseModel,
                                  List<ModelMessage> messages, TokenHandler handler) {
-        streamCompletion(apiDomain, apiKey, baseModel, messages, null, handler);
+        streamCompletion(apiDomain, apiKey, baseModel, messages, null, 1, handler);
     }
 
     private void streamCompletionImpl(String apiDomain, String apiKey, String baseModel,
                                       List<ModelMessage> messages, Map<String, Object> extraParams,
-                                      TokenHandler handler) {
+                                      int protocol, TokenHandler handler) {
         HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection) new URL(chatCompletionsUrl(apiDomain)).openConnection();
+            boolean azure = isAzureEndpoint(apiDomain);
+            connection = (HttpURLConnection) new URL(chatCompletionsUrl(apiDomain, baseModel, extraParams)).openConnection();
             connection.setRequestMethod("POST");
             connection.setDoOutput(true);
             connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
@@ -123,7 +136,12 @@ public class ChatModelClient {
             connection.setRequestProperty("Content-Type", "application/json");
             connection.setRequestProperty("Accept", "text/event-stream");
             if (apiKey != null && !apiKey.isEmpty()) {
-                connection.setRequestProperty("Authorization", "Bearer " + apiKey);
+                if (azure) {
+                    // Azure 不用 Bearer，改用 api-key 头（对齐 SQLBot AzureOpenAI 分支）
+                    connection.setRequestProperty("api-key", apiKey);
+                } else {
+                    connection.setRequestProperty("Authorization", "Bearer " + apiKey);
+                }
             }
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("model", baseModel);
@@ -382,8 +400,44 @@ public class ChatModelClient {
         return sb.length() > 800 ? sb.substring(0, 800) : sb.toString();
     }
 
-    /** 端点规范化：{@code http://host:11434} → {@code .../v1/chat/completions}（与 AiModelService 同语义）。 */
-    static String chatCompletionsUrl(String apiDomain) {
+    /** Azure 专有端点判定：资源域名形如 {@code <res>.openai.azure.com} / {@code <res>.openai.azure.cn}。 */
+    static boolean isAzureEndpoint(String apiDomain) {
+        String host;
+        try {
+            host = new URL(trimBase(apiDomain)).getHost();
+        } catch (Exception e) {
+            return false;
+        }
+        return host != null && (host.equals("openai.azure.com") || host.endsWith(".openai.azure.com")
+                || host.equals("openai.azure.cn") || host.endsWith(".openai.azure.cn"));
+    }
+
+    /** 端点规范化：{@code http://host:11434} → {@code .../v1/chat/completions}（与 AiModelService 同语义）；
+     *  Azure 专有域名改走 deployment 形态：{@code {base}/openai/deployments/{deployment}/chat/completions?api-version={v}}
+     *  （deployment 取 additional_params 的 {@code deployment_name}，缺省模型名；api-version 取 {@code api_version}，
+     *  缺省 2024-02-15-preview——与前端 supplier.ts Azure 预设一致）。 */
+    static String chatCompletionsUrl(String apiDomain, String baseModel, Map<String, Object> extraParams) {
+        if (isAzureEndpoint(apiDomain)) {
+            String base = trimBase(apiDomain);
+            String deployment = baseModel;
+            String apiVersion = "2024-02-15-preview";
+            if (extraParams != null) {
+                Object dn = extraParams.get("deployment_name");
+                if (dn != null && !String.valueOf(dn).trim().isEmpty()) {
+                    deployment = String.valueOf(dn).trim();
+                }
+                Object av = extraParams.get("api_version");
+                if (av != null && !String.valueOf(av).trim().isEmpty()) {
+                    apiVersion = String.valueOf(av).trim();
+                }
+            }
+            return base + "/openai/deployments/" + deployment + "/chat/completions?api-version=" + apiVersion;
+        }
+        return openAiChatCompletionsUrl(apiDomain);
+    }
+
+    /** OpenAI 兼容端点规范化（openai / vllm 同构）。 */
+    static String openAiChatCompletionsUrl(String apiDomain) {
         String base = trimBase(apiDomain);
         if (base.endsWith("/chat/completions")) {
             return base;

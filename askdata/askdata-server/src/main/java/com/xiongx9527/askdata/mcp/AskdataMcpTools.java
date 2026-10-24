@@ -17,6 +17,9 @@ import com.xiongx9527.askdata.chat.service.ChatService;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
 import dev.langchain4j.model.chat.ChatModel;
+import com.xiongx9527.askdata.common.audit.AuditModule;
+import com.xiongx9527.askdata.common.audit.AuditOperationType;
+import com.xiongx9527.askdata.system.audit.AuditRecorder;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
 import com.xiongx9527.askdata.system.repository.UserRepository;
@@ -180,6 +183,10 @@ public class AskdataMcpTools {
     /**
      * 问数助手对话：走框架装配的 {@link SimpleAssistant}（多轮记忆 + thinking 透传能力）。
      * 未装配模型时返回可读错误（不抛异常），由调用方降级。
+     *
+     * <p>对齐 SQLBot {@code mcp_assistant}：多轮记忆按调用者身份隔离（原实现固定
+     * {@code memoryId="mcp"}，所有调用者共享同一份上下文，存在跨用户串话）；
+     * 对话以当前登录用户身份落 CHAT 审计（SQLBot 侧助手操作进入审计体系）。</p>
      */
     @Tool(value = "assistant", description = "问数助手对话（多轮记忆，基于默认对话模型）")
     public String assistant(@ToolArg("message") String message) throws Exception {
@@ -190,8 +197,25 @@ public class AskdataMcpTools {
             err.put("error", "assistant 未装配：需配置默认对话模型并设置 askdata.assistant.enabled=true");
             return mapper.writeValueAsString(err);
         }
+        // 记忆按调用者隔离：未登录（无 Sa-Token 会话）退回共享 id
+        String memoryId = "mcp";
+        try {
+            memoryId = "mcp-" + StpUtil.getLoginIdAsLong();
+        } catch (Exception ignored) {
+            // 未登录：保持共享 memoryId
+        }
         SimpleAssistant assistant = beans.values().iterator().next();
-        String answer = assistant.chat("mcp", null, message);
+        AuditRecorder auditor = SpringUtils.getBean(AuditRecorder.class);
+        String remark = "mcp-assistant: " + (message == null ? "" : message.substring(0, Math.min(message.length(), 80)));
+        String answer;
+        try {
+            answer = assistant.chat(memoryId, null, message);
+        } catch (Exception e) {
+            auditor.failure(AuditOperationType.ANALYSIS, AuditModule.CHAT, null,
+                    "mcp-assistant 失败: " + e.getMessage());
+            throw e;
+        }
+        auditor.success(AuditOperationType.ANALYSIS, AuditModule.CHAT, null, remark);
         Map<String, Object> out = new LinkedHashMap<String, Object>();
         out.put("answer", answer);
         return mapper.writeValueAsString(out);
