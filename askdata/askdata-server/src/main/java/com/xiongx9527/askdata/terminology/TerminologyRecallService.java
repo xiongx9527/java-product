@@ -55,10 +55,18 @@ public class TerminologyRecallService {
             return;
         }
         try {
+            // 两个 IN 各需 ids.size() 个参数：压平成单个数组。
+            // （历史 bug：queryForList(sql, ids.toArray(), ids.toArray()) 被 varargs 当成 2 个参数，
+            //  与 2N 个占位符不匹配，术语向量始终写不进去。）
+            Object[] args = new Object[ids.size() * 2];
+            for (int i = 0; i < ids.size(); i++) {
+                args[i] = ids.get(i);
+                args[ids.size() + i] = ids.get(i);
+            }
             List<Map<String, Object>> rows = jdbc.queryForList(
                     "SELECT id, pid, word FROM terminology WHERE id IN (" + placeholders(ids.size()) + ")"
                             + " OR pid IN (" + placeholders(ids.size()) + ")",
-                    ids.toArray(), ids.toArray());
+                    args);
             if (rows.isEmpty()) {
                 return;
             }
@@ -168,16 +176,19 @@ public class TerminologyRecallService {
         List<Long> result = new ArrayList<>();
         try {
             StringBuilder sql = new StringBuilder(
-                    "SELECT t.id, t.embedding FROM terminology t WHERE t.oid = ? AND t.enabled = TRUE "
-                            + "AND t.embedding IS NOT NULL");
+                    "SELECT t.id, t.embedding FROM terminology t WHERE t.oid = ? AND t.enabled = TRUE");
             List<Object> args = new ArrayList<>();
             args.add(oid);
+            // 在线库启用时向量不在 DB 列，不能再以 embedding IS NOT NULL 过滤候选
+            if (embeddingService.candidateRequiresEmbeddingColumn()) {
+                sql.append(" AND t.embedding IS NOT NULL");
+            }
             appendScope(sql, args, datasource, advancedApp);
             List<Map<String, Object>> candidates = jdbc.queryForList(sql.toString(), args.toArray());
             if (candidates.isEmpty()) {
                 return result;
             }
-            for (Map<String, Object> hit : embeddingService.recallByVector(candidates, sentence,
+            for (Map<String, Object> hit : embeddingService.recallByVector("terminology", candidates, sentence,
                     SIMILARITY_THRESHOLD, TOP_COUNT)) {
                 result.add(Rows.lng(hit, "id", 0L));
             }

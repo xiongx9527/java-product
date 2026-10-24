@@ -261,6 +261,13 @@
             <artifactId>fw-plus-ai-langchain4j-openai</artifactId>
             <version>${revision}</version>
         </dependency>
+        <!-- langchain4j 在线向量库后端：Qdrant（复用 langchain4j 的 QdrantEmbeddingStore gRPC 封装，
+             作为 askdata.vector-store.type=qdrant 时的向量存储与 ANN 检索后端；type=none 时经 DbVectorStore 回落）。 -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-qdrant</artifactId>
+            <version>1.22.0-beta32</version>
+        </dependency>
         <!-- MCP server（复用 fw-plus 封装 fw-plus-ai-mcp-server-spring-boot-starter，取代手写 JSON-RPC）。
              与 askdata 同在 Java8 / SpringBoot 2.7.18 / fw-plus ${revision} 线；
              经 fw-plus-ai-boot-starter 传递引入 fw-plus-ai-boot-autoconfigure（含 AssistantBuilder 与 McpAutoConfiguration）。 -->

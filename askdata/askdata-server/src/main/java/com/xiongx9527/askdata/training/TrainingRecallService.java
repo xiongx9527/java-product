@@ -97,10 +97,13 @@ public class TrainingRecallService {
         try {
             StringBuilder sql = new StringBuilder(
                     "SELECT id, datasource, advanced_application, question, description, embedding "
-                            + "FROM data_training WHERE oid = ? AND enabled = TRUE "
-                            + "AND embedding IS NOT NULL");
+                            + "FROM data_training WHERE oid = ? AND enabled = TRUE");
             List<Object> args = new ArrayList<>();
             args.add(oid);
+            // 在线库启用时向量不在 DB 列，不能再以 embedding IS NOT NULL 过滤候选
+            if (embeddingService.candidateRequiresEmbeddingColumn()) {
+                sql.append(" AND embedding IS NOT NULL");
+            }
             if (advancedApp != null) {
                 sql.append(" AND advanced_application = ?");
                 args.add(advancedApp);
@@ -112,7 +115,8 @@ public class TrainingRecallService {
             if (candidates.isEmpty()) {
                 return new ArrayList<>();
             }
-            return embeddingService.recallByVector(candidates, question, SIMILARITY_THRESHOLD, TOP_COUNT);
+            return embeddingService.recallByVector("data_training", candidates, question,
+                    SIMILARITY_THRESHOLD, TOP_COUNT);
         } catch (Exception e) {
             log.info("SQL 示例向量召回失败（降级为词法）: {}", e.getMessage());
             return new ArrayList<>();
@@ -146,10 +150,13 @@ public class TrainingRecallService {
         try {
             StringBuilder sql = new StringBuilder(
                     "SELECT id, datasource, advanced_application, question, description, embedding "
-                            + "FROM data_training WHERE datasource = ? AND enabled = TRUE "
-                            + "AND embedding IS NOT NULL");
+                            + "FROM data_training WHERE datasource = ? AND enabled = TRUE");
             List<Object> args = new ArrayList<>();
             args.add(datasource);
+            // 在线库启用时向量不在 DB 列，不能再以 embedding IS NOT NULL 过滤候选
+            if (embeddingService.candidateRequiresEmbeddingColumn()) {
+                sql.append(" AND embedding IS NOT NULL");
+            }
             if (advancedApp != null) {
                 sql.append(" AND advanced_application = ?");
                 args.add(advancedApp);
@@ -158,7 +165,8 @@ public class TrainingRecallService {
             if (candidates.isEmpty()) {
                 return new ArrayList<>();
             }
-            return embeddingService.recallByVector(candidates, question, SIMILARITY_THRESHOLD, TOP_COUNT);
+            return embeddingService.recallByVector("data_training", candidates, question,
+                    SIMILARITY_THRESHOLD, TOP_COUNT);
         } catch (Exception e) {
             log.info("SQL 示例向量召回失败（降级为词法）: {}", e.getMessage());
             return new ArrayList<>();

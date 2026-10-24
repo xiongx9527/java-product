@@ -320,7 +320,7 @@ public class ChatModelClient {
                 log.info("embedding 调用失败 HTTP {}（降级为词法召回）", code);
                 return null;
             }
-            String body = readAll(connection.getInputStream());
+            String body = readAllFully(connection.getInputStream());
             JsonNode node = objectMapper.readTree(body);
             JsonNode data = node.get("data");
             if (data == null || !data.isArray()) {
@@ -451,6 +451,12 @@ public class ChatModelClient {
         }
     }
 
+    /**
+     * 读取响应体并截断到 800 字符——仅用于错误详情日志（避免把大段错误体刷进日志）。
+     *
+     * <p><b>不要用于业务响应体</b>：embedding 响应（1024 维约 13KB）远超该上限，
+     * 截断会导致 JSON 解析失败；业务读取请用 {@link #readAllFully(InputStream)}。</p>
+     */
     private static String readAll(InputStream inputStream) throws IOException {
         if (inputStream == null) {
             return "";
@@ -467,6 +473,22 @@ public class ChatModelClient {
             }
         }
         return sb.length() > 800 ? sb.substring(0, 800) : sb.toString();
+    }
+
+    /** 完整读取响应体（不截断）：embedding 等大 JSON 业务响应必须全量读取。 */
+    private static String readAllFully(InputStream inputStream) throws IOException {
+        if (inputStream == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+            char[] buf = new char[8192];
+            int n;
+            while ((n = reader.read(buf)) != -1) {
+                sb.append(buf, 0, n);
+            }
+        }
+        return sb.toString();
     }
 
     /** Azure 专有端点判定：资源域名形如 {@code <res>.openai.azure.com} / {@code <res>.openai.azure.cn}。 */

@@ -136,7 +136,11 @@ public class DatasourceEmbeddingService {
         }
         try {
             StringBuilder sql = new StringBuilder(
-                    "SELECT id, embedding FROM core_datasource WHERE embedding IS NOT NULL AND id IN (");
+                    "SELECT id, embedding FROM core_datasource WHERE ");
+            if (embeddingService.candidateRequiresEmbeddingColumn()) {
+                sql.append("embedding IS NOT NULL AND ");
+            }
+            sql.append("id IN (");
             List<Object> args = new ArrayList<>();
             for (int i = 0; i < dsIds.size(); i++) {
                 sql.append(i > 0 ? ",?" : "?");
@@ -148,7 +152,8 @@ public class DatasourceEmbeddingService {
                 return new ArrayList<>();
             }
             List<Long> result = new ArrayList<>();
-            for (Map<String, Object> hit : embeddingService.recallByVector(candidates, question, 0D, TOP_COUNT)) {
+            for (Map<String, Object> hit : embeddingService.recallByVector("core_datasource", candidates, question,
+                    0D, TOP_COUNT)) {
                 result.add(Rows.lng(hit, "id", 0L));
             }
             return result;

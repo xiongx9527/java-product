@@ -44,6 +44,23 @@ askdata:
     model-path: /opt/askdata/models
     # 启动期向量回填开关（关闭则不做回填；开启时由单 worker 守卫保证集群内只跑一次）。
     backfill-enabled: true
+  # 向量存储后端（可插拔）：none（缺省，DB embedding JSON 列 + 应用内余弦）或 qdrant（在线向量库）。
+  # 向量仍由上方 embedding 模型（远程 API / 本地 ONNX）产出；此处只决定向量的持久化与 ANN 检索后端。
+  # type=qdrant 时四类对象（术语 / SQL 示例 / 表 / 数据源）的向量读写统一走在线库；
+  # Qdrant 不可达时自动回落 DB 路径，问数主链路不报错。
+  vector-store:
+    type: none
+    # 集合名前缀：集合名为 "{collection-prefix}-{object-type}"，object-type ∈
+    # {terminology, data_training, core_table, core_datasource}。
+    collection-prefix: askdata
+    qdrant:
+      # Qdrant REST 基址，如 http://qdrant:6333（https 前缀走 TLS）。仅用于健康检查。
+      url: ${ASKDATA_QDRANT_URL:}
+      # 可选 API Key（Qdrant 开启鉴权时必填；REST 与 gRPC 共用同一把钥匙）。
+      api-key: ${ASKDATA_QDRANT_API_KEY:}
+      # gRPC 端口：langchain4j/Qdrant Java 客户端走 gRPC，与 REST 端口相互独立，Qdrant 缺省 6334。
+      # 若部署把 gRPC 与 REST 合并到同一端口，则改为与 url 中的端口一致。
+      grpc-port: ${ASKDATA_QDRANT_GRPC_PORT:6334}
   # 应用密钥（落库加密用）。不内置缺省值：必须通过环境变量 ASKDATA_SECRET_KEY 或外部配置显式设定，
   # 否则启动期随机生成（当次进程内可用，重启后历史密文不可解，并在启动日志告警）。
   secret:

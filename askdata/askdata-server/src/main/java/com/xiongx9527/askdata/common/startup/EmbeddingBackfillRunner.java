@@ -88,6 +88,9 @@ public class EmbeddingBackfillRunner {
             log.info("本次启动未获得单 worker 守卫，跳过向量回填（不重试）");
             return;
         }
+        log.info("启动期向量回填开始：存储后端={}（集合前缀 '{}'）",
+                embeddingService.isVectorStoreOnline() ? "在线向量库" : "DB JSON 列",
+                embeddingService.vectorStoreCollectionPrefix());
         try {
             backfillTerminology();
             backfillTraining();
@@ -112,11 +115,11 @@ public class EmbeddingBackfillRunner {
     public int backfillTerminology() {
         try {
             List<Map<String, Object>> parents = jdbc.queryForList(
-                    "SELECT id FROM terminology WHERE embedding IS NULL AND pid IS NULL");
+                    "SELECT id FROM terminology" + pendingFilter("pid IS NULL"));
             List<Long> ids = idsOf(parents);
             terminologyRecallService.saveEmbeddings(ids);
             List<Map<String, Object>> children = jdbc.queryForList(
-                    "SELECT DISTINCT pid AS id FROM terminology WHERE embedding IS NULL AND pid IS NOT NULL");
+                    "SELECT DISTINCT pid AS id FROM terminology" + pendingFilter("pid IS NOT NULL"));
             List<Long> childParents = idsOf(children);
             terminologyRecallService.saveEmbeddings(childParents);
             int total = ids.size() + childParents.size();
@@ -134,7 +137,7 @@ public class EmbeddingBackfillRunner {
     public int backfillTraining() {
         try {
             List<Map<String, Object>> rows = jdbc.queryForList(
-                    "SELECT id FROM data_training WHERE embedding IS NULL");
+                    "SELECT id FROM data_training" + pendingFilter(null));
             List<Long> ids = idsOf(rows);
             trainingRecallService.saveEmbeddings(ids);
             if (!ids.isEmpty()) {
@@ -147,11 +150,11 @@ public class EmbeddingBackfillRunner {
         }
     }
 
-    /** 表向量回填（{@code core_table.embedding}）。 */
+    /** 表向量回填（{@code core_table.table_embedding}）。 */
     public int backfillTables() {
         try {
             List<Map<String, Object>> rows = jdbc.queryForList(
-                    "SELECT id FROM core_table WHERE embedding IS NULL");
+                    "SELECT id FROM core_table" + pendingFilter(null));
             int count = 0;
             for (Map<String, Object> row : rows) {
                 long id = Rows.lng(row, "id", 0L);
@@ -174,7 +177,7 @@ public class EmbeddingBackfillRunner {
     public int backfillDatasources() {
         try {
             List<Map<String, Object>> rows = jdbc.queryForList(
-                    "SELECT id FROM core_datasource WHERE embedding IS NULL");
+                    "SELECT id FROM core_datasource" + pendingFilter(null));
             int count = 0;
             for (Map<String, Object> row : rows) {
                 long id = Rows.lng(row, "id", 0L);
@@ -232,6 +235,23 @@ public class EmbeddingBackfillRunner {
         } catch (Exception e) {
             return "";
         }
+    }
+
+    /**
+     * 待回填记录的 WHERE 子句（直接拼在 SELECT 之后）。
+     *
+     * <p>{@code type=none} 时按 DB 向量列为空筛选（既有行为，写库后自然收敛）；
+     * 在线库启用时不再写 DB 向量列，无法据此判断是否已回填，故全量选取——
+     * upsert 以记录 id 为 point id，重复写入即覆盖，保证幂等。</p>
+     *
+     * @param extra 附加条件（如 {@code "pid IS NULL"}），可为 {@code null}
+     */
+    private String pendingFilter(String extra) {
+        if (embeddingService.isVectorStoreOnline()) {
+            return extra == null ? "" : " WHERE " + extra;
+        }
+        String base = extra == null ? "embedding IS NULL" : "embedding IS NULL AND " + extra;
+        return " WHERE " + base;
     }
 
     private static List<Long> idsOf(List<Map<String, Object>> rows) {

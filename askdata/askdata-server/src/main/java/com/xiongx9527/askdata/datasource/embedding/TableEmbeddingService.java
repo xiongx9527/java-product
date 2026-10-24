@@ -1,6 +1,5 @@
 package com.xiongx9527.askdata.datasource.embedding;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.chat.service.ChatModelClient;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter;
@@ -77,6 +76,12 @@ public class TableEmbeddingService {
 
     private final ObjectMapper objectMapper;
 
+    /**
+     * 向量存储后端（可插拔）。构造期默认 {@link com.xiongx9527.askdata.ai.vector.DbVectorStore}
+     * 保留既有行为；Spring 装配时由 {@link #setVectorStore} 覆盖为配置指定的后端（none=DB / qdrant=在线）。
+     */
+    private com.xiongx9527.askdata.ai.vector.VectorStore vectorStore;
+
     public TableEmbeddingService(TableRepository tableRepository, FieldRepository fieldRepository,
                                  ChatModelRouter modelRouter, ChatModelClient modelClient,
                                  JdbcTemplate jdbc, ObjectMapper objectMapper) {
@@ -86,6 +91,13 @@ public class TableEmbeddingService {
         this.modelClient = modelClient;
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
+        this.vectorStore = new com.xiongx9527.askdata.ai.vector.DbVectorStore(jdbc, objectMapper, "askdata");
+    }
+
+    /** Spring 装配：注入配置指定的向量存储后端（覆盖构造期默认）。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setVectorStore(com.xiongx9527.askdata.ai.vector.VectorStore vectorStore) {
+        this.vectorStore = vectorStore;
     }
 
     // ------------------------------------------------------------------
@@ -179,7 +191,14 @@ public class TableEmbeddingService {
         String q = (matchText == null || matchText.trim().isEmpty())
                 ? (question == null ? "" : question) : matchText;
         double[] questionVector = embed(q);
-        Map<Long, String> stored = storedEmbeddings(dsId);
+        // 向量相似度经统一向量存储后端获取（在线库走 ANN，type=none 走 DB 列 + 应用内余弦）：
+        // 表级排序要把向量分与显式提及分混合，故取「不截断、不设阈值」的逐表相似度。
+        List<Long> candidateIds = new ArrayList<>(tables.size());
+        for (Map<String, Object> table : tables) {
+            candidateIds.add(Rows.lng(table, "id", 0L));
+        }
+        Map<Long, Double> vectorScores = questionVector != null
+                ? vectorStoreScores(questionVector, candidateIds) : new HashMap<>();
         double[] mention = mentionScores(tables, q);
         Set<String> quoted = quotedTokens(q);
         List<Long> ids = new ArrayList<>();
@@ -187,9 +206,8 @@ public class TableEmbeddingService {
         for (int i = 0; i < tables.size(); i++) {
             long tableId = Rows.lng(tables.get(i), "id", 0L);
             ids.add(tableId);
-            double[] tableVector = parseVector(stored.get(tableId));
-            double vector = questionVector != null && tableVector != null
-                    ? ChatModelClient.cosine(questionVector, tableVector) : -1D;
+            Double scored = vectorScores.get(tableId);
+            double vector = scored != null ? scored : -1D;
             double score = hybrid(mention[i], vector);
             // A1 显式提及：引号包裹的表名/注释优先进入候选（对齐 SQLBot _select_tables）
             if (!quoted.isEmpty() && explicitMention(tables.get(i), quoted)) {
@@ -222,6 +240,12 @@ public class TableEmbeddingService {
                     double[] vector = embed(tableDoc(tableId));
                     if (vector == null) {
                         continue;
+                    }
+                    // 在线库启用时写入向量库；随后镜像 DB 列（保持回落与既有回填写入点可用）
+                    try {
+                        vectorStore.upsert(vectorStore.collectionFor("core_table"), tableId, vector);
+                    } catch (Exception e) {
+                        log.warn("表级向量写入在线库失败 ds={} tbl={}: {}", dsId, tableId, e.getMessage());
                     }
                     tableRepository.updateEmbedding(tableId, objectMapper.writeValueAsString(vector));
                 }
@@ -400,38 +424,25 @@ public class TableEmbeddingService {
         return vector < 0D ? mention : VECTOR_WEIGHT * vector + MENTION_WEIGHT * mention;
     }
 
-    /** 批量读取勾选表的 {@code table_embedding} JSON 文本（一次查询，失败视为全部缺失）。 */
-    private Map<Long, String> storedEmbeddings(long dsId) {
-        Map<Long, String> result = new HashMap<>();
+    /**
+     * 经向量存储后端取各勾选表的相似度（不截断、不设阈值）。
+     *
+     * <p>在线库走 ANN；{@code type=none} 回落 DB {@code table_embedding} 列 + 应用内余弦
+     * （{@link com.xiongx9527.askdata.ai.vector.DbVectorStore} 自持读取与余弦，语义不变）。
+     * 后端不可用/查询失败时返回空表，调用方降级为纯提及排序，<b>不抛错</b>。</p>
+     */
+    private Map<Long, Double> vectorStoreScores(double[] questionVector, List<Long> candidateIds) {
+        Map<Long, Double> result = new HashMap<>();
         try {
-            for (Map<String, Object> row : jdbc.queryForList(
-                    "SELECT id, table_embedding FROM core_table WHERE ds_id = ? AND checked = TRUE", dsId)) {
-                result.put(Rows.lng(row, "id", 0L), Rows.str(row, "table_embedding"));
+            int topK = Math.min(candidateIds.size(), 1000);
+            for (com.xiongx9527.askdata.ai.vector.VectorStore.IdScore hit : vectorStore.query(
+                    vectorStore.collectionFor("core_table"), questionVector, topK, candidateIds)) {
+                result.put(hit.id(), hit.score());
             }
         } catch (Exception e) {
-            log.info("表级向量读取失败（降级为提及召回）: {}", e.getMessage());
+            log.info("表级向量查询失败（降级为提及召回）: {}", e.getMessage());
         }
         return result;
-    }
-
-    /** 解析 {@code table_embedding} JSON 数组；缺失/非法返回 {@code null}（降级，不抛错）。 */
-    private double[] parseVector(String json) {
-        if (json == null || json.trim().isEmpty()) {
-            return null;
-        }
-        try {
-            JsonNode node = objectMapper.readTree(json);
-            if (node == null || !node.isArray() || node.isEmpty()) {
-                return null;
-            }
-            double[] vector = new double[node.size()];
-            for (int i = 0; i < vector.length; i++) {
-                vector[i] = node.get(i).asDouble();
-            }
-            return vector;
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     private static String nullToEmpty(String value) {
