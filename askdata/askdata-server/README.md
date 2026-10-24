@@ -53,11 +53,12 @@ java -jar target/askdata-server.jar
 | `weaviate` | `Langchain4jWeaviateVectorStore` | 在线向量库；基于 langchain4j 的 `WeaviateEmbeddingStore`（类需显式创建；search 忽略服务端 filter，由基类客户端兜底候选过滤） |
 | `pgvector` | `Langchain4jPgVectorVectorStore` | 在线向量库；基于 langchain4j 的 `PgVectorEmbeddingStore`（JDBC + Postgres 向量扩展，每张集合表首次写入自动建表） |
 | `elasticsearch` | `Langchain4jElasticsearchVectorStore` | 在线向量库；基于 langchain4j 的 `ElasticsearchEmbeddingStore`（kNN 检索 + metadata 过滤；索引需显式创建，`vector` 映射为 `dense_vector`） |
+| `redis` | `Langchain4jRedisVectorStore` | 在线向量库；基于 langchain4j 社区版 `langchain4j-community-redis` 的 `RedisEmbeddingStore`（Jedis；**需 Redis Stack**：RediSearch 向量字段 + RedisJSON） |
 
 ```yaml
 askdata:
   vector-store:
-    type: none                    # none | qdrant | milvus | weaviate | pgvector | elasticsearch
+    type: none                    # none | qdrant | milvus | weaviate | pgvector | elasticsearch | redis
     collection-prefix: askdata    # 集合名 = {prefix}-{object-type}
     qdrant:
       url: ${ASKDATA_QDRANT_URL:}         # REST 基址，如 http://qdrant:6333（仅用于健康检查）
@@ -91,7 +92,44 @@ askdata:
       username: ${ASKDATA_ELASTICSEARCH_USERNAME:}       # 可选：Basic 用户名
       password: ${ASKDATA_ELASTICSEARCH_PASSWORD:}       # 可选：Basic 口令
       refresh: ${ASKDATA_ELASTICSEARCH_REFRESH:WaitFor}  # 写入可见性：WaitFor（写后即查）/ True / False
+    redis:
+      host: ${ASKDATA_VECTOR_REDIS_HOST:}        # Redis 向量库主机（需 Redis Stack）
+      port: ${ASKDATA_VECTOR_REDIS_PORT:6379}
+      username: ${ASKDATA_VECTOR_REDIS_USERNAME:}
+      password: ${ASKDATA_VECTOR_REDIS_PASSWORD:}
+      ssl: ${ASKDATA_VECTOR_REDIS_SSL:false}
+      database: ${ASKDATA_VECTOR_REDIS_DATABASE:0}
 ```
+
+## 缓存（后端可配置）
+
+鉴权热点数据（用户信息 / API Key 信息 / 助手信息）走 Spring Cache，**后端可配置**：
+
+| askdata.cache.type | 后端 | 说明 |
+| --- | --- | --- |
+| `memory`（缺省） | Caffeine | 进程内缓存，单机有效，零外部依赖 |
+| `redis` | Redis | 多实例共享；连接参数用 Spring Boot 标准位置 `spring.data.redis.*` |
+| `none` | 不缓存 | 等价关闭缓存，便于排障与对比 |
+
+```yaml
+askdata:
+  cache:
+    type: "${ASKDATA_CACHE_TYPE:memory}"          # memory | redis | none
+    max-size: ${ASKDATA_CACHE_MAX_SIZE:10000}      # 内存后端：单缓存条目上限
+    ttl-seconds: ${ASKDATA_CACHE_TTL_SECONDS:300}  # 存活时间
+    sa-token-store: "${ASKDATA_SA_TOKEN_STORE:}"   # Sa-Token 会话存储：memory | redis；留空跟随 type
+spring:
+  data:
+    redis:                                        # 仅 type=redis / sa-token-store=redis 时生效
+      host: ${ASKDATA_REDIS_HOST:127.0.0.1}
+      port: ${ASKDATA_REDIS_PORT:6379}
+      password: ${ASKDATA_REDIS_PASSWORD:}
+      database: ${ASKDATA_REDIS_DATABASE:0}
+```
+
+- **Sa-Token 会话存储**：`sa-token-store=redis` 时登录态（token / session）存 Redis，多实例共享；缺省为进程内。
+- **Redis 可选**：未启用 Redis 时容器内不存在任何 Redis bean，框架的 MCP Redis 集群模式不会激活，**应用无需部署 Redis 也能启动**。
+- **API 文档元数据**：`askdata.openapi.{title,version,description}` 可配置；`version` 缺省取构建版本（随构建自动更新），token 头名取自 `sa-token.token-name`。
 
 > 新增后端成本极低：所有 langchain4j 向量存储都实现同一个 `EmbeddingStore<TextSegment>` 接口，
 > 共用逻辑已抽到 `AbstractLangchain4jVectorStore`（upsert / query / delete / 命中 id 解析 / 候选过滤），

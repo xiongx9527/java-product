@@ -1,9 +1,8 @@
 package com.xiongx9527.askdata.common.web;
 
+import com.xiongx9527.askdata.common.cache.HotCacheService;
 import com.xiongx9527.askdata.common.util.Rows;
-import com.xiongx9527.askdata.embedded.AssistantRepository;
 import com.xiongx9527.askdata.system.auth.JwtCodec;
-import com.xiongx9527.askdata.system.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -47,21 +46,18 @@ public class EmbeddedTokenAuthenticator {
     /** SQLBot {@code xor_decrypt} 的默认密钥。 */
     private static final long XOR_KEY = 0xABCD1234L;
 
-    private final AssistantRepository assistantRepository;
-
-    private final UserRepository userRepository;
+    /** 热点数据缓存（助手信息 / 用户信息，走 askdata.cache.type 指定的后端）。 */
+    private final HotCacheService hotCacheService;
 
     private final String secretKey;
 
     /** 错误文案统一走消息包（A4 / F-15）。 */
     private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
 
-    public EmbeddedTokenAuthenticator(AssistantRepository assistantRepository,
-                                      UserRepository userRepository,
+    public EmbeddedTokenAuthenticator(HotCacheService hotCacheService,
                                       @Value("${askdata.secret.key:}") String secretKey,
                                       com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver) {
-        this.assistantRepository = assistantRepository;
-        this.userRepository = userRepository;
+        this.hotCacheService = hotCacheService;
         this.messageResolver = messageResolver;
         // 验收 A5：优先使用 askdata.secret.key（与主密钥配置一致）；未配置时才回退到运行期随机密钥
         this.secretKey = (secretKey == null || secretKey.isEmpty())
@@ -106,8 +102,10 @@ public class EmbeddedTokenAuthenticator {
             throw new AuthFailureException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", "assistant_id")));
         }
         long assistantId = toLong(assistantIdValue, -1L);
-        Map<String, Object> assistant = assistantRepository.findById(assistantId)
-                .orElseThrow(() -> new AuthFailureException(messageResolver.get("assistant.embedded.not.found.simple")));
+        Map<String, Object> assistant = hotCacheService.assistantById(assistantId);
+        if (assistant == null) {
+            throw new AuthFailureException(messageResolver.get("assistant.embedded.not.found.simple"));
+        }
         // SQLBot 的 assistant 通道用内部助手身份（sqlbot-inner-assistant）作为当前用户
         // （对齐 SQLBot apps/system/crud/assistant.py 的 get_assistant_user）。
         Map<String, Object> user = new LinkedHashMap<>();
@@ -141,8 +139,10 @@ public class EmbeddedTokenAuthenticator {
         if (embeddedId <= 0) {
             throw new AuthFailureException(messageResolver.get("assistant.embedded.not.found.simple"));
         }
-        Map<String, Object> assistant = assistantRepository.findById(embeddedId)
-                .orElseThrow(() -> new AuthFailureException(messageResolver.get("assistant.embedded.not.found.simple")));
+        Map<String, Object> assistant = hotCacheService.assistantById(embeddedId);
+        if (assistant == null) {
+            throw new AuthFailureException(messageResolver.get("assistant.embedded.not.found.simple"));
+        }
 
         // embedded 协议（app_secret + account）仅适用于页面嵌入（type=4）应用。
         if (Rows.intg(assistant, "type", 0) != EMBEDDED_TYPE) {
@@ -156,12 +156,14 @@ public class EmbeddedTokenAuthenticator {
             throw new AuthFailureException(e.getMessage());
         }
 
-        Optional<Map<String, Object>> userRow = userRepository.findByAccount(account);
-        if (!userRow.isPresent()) {
+        Map<String, Object> userByAccount = hotCacheService.userByAccount(account);
+        if (userByAccount == null) {
             throw new AuthFailureException(messageResolver.get("i18n_login.no_platform_user"));
         }
-        Map<String, Object> user = userRepository.findById(Rows.lng(userRow.get(), "id", 0L))
-                .orElseThrow(() -> new AuthFailureException(messageResolver.get("i18n_login.no_platform_user")));
+        Map<String, Object> user = hotCacheService.userById(Rows.lng(userByAccount, "id", 0L));
+        if (user == null) {
+            throw new AuthFailureException(messageResolver.get("i18n_login.no_platform_user"));
+        }
         if (Rows.intg(user, "status", 0) != 1) {
             throw new AuthFailureException(messageResolver.get("i18n_login.user_disable",
                     java.util.Map.of("msg", account)));

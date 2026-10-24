@@ -34,7 +34,9 @@ class ApiKeyTokenAuthenticatorTest {
     void setUp() {
         apiKeyRepository = Mockito.mock(ApiKeyRepository.class);
         userRepository = Mockito.mock(UserRepository.class);
-        authenticator = new ApiKeyTokenAuthenticator(apiKeyRepository, userRepository,
+        authenticator = new ApiKeyTokenAuthenticator(
+                new com.xiongx9527.askdata.common.cache.HotCacheService(userRepository, apiKeyRepository,
+                        Mockito.mock(com.xiongx9527.askdata.embedded.AssistantRepository.class)),
                 com.xiongx9527.askdata.common.i18n.TestMessageResolver.create());
     }
 

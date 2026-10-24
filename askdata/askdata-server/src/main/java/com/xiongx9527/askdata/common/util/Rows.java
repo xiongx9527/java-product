@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -15,6 +16,28 @@ import java.util.Map;
 public final class Rows {
 
     private Rows() {
+    }
+
+    /**
+     * 复制一份行数据并把 key 统一小写（缓存边界归一化）。
+     *
+     * <p>JDBC 的 {@code queryForList} 返回 {@code LinkedCaseInsensitiveMap}（key 大写、忽略大小写），
+     * 直查时取值不受影响；但经缓存（尤其 Redis 的 JSON 往返）后会退化为普通
+     * {@code LinkedHashMap}，此时 {@code get("password")} 之类的小写直取会静默返回 null。
+     * 故缓存读写统一归一为小写 key，使缓存命中与直查两条路径的取值语义一致。</p>
+     */
+    public static Map<String, Object> lowerCaseKeys(Map<String, Object> row) {
+        if (row == null || row.isEmpty()) {
+            return row;
+        }
+        Map<String, Object> out = new LinkedHashMap<>(row.size() * 2);
+        for (Map.Entry<String, Object> e : row.entrySet()) {
+            if (e.getKey() == null) {
+                continue;
+            }
+            out.put(e.getKey().toLowerCase(Locale.ROOT), e.getValue());
+        }
+        return out;
     }
 
     public static Object get(Map<?, ?> row, String key) {

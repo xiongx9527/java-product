@@ -1,6 +1,9 @@
 package com.xiongx9527.askdata.system.repository;
 
+import com.xiongx9527.askdata.common.cache.CacheNames;
+
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -42,15 +45,18 @@ public class ApiKeyRepository {
         return count == null ? 0L : count;
     }
 
+    @CacheEvict(cacheNames = CacheNames.API_KEY_INFO, allEntries = true)
     public void insert(long id, String accessKey, String secretKey, long createTime, long uid) {
         jdbc.update("INSERT INTO sys_apikey (id, access_key, secret_key, create_time, uid, status) "
                 + "VALUES (?, ?, ?, ?, ?, TRUE)", id, accessKey, secretKey, createTime, uid);
     }
 
+    @CacheEvict(cacheNames = CacheNames.API_KEY_INFO, allEntries = true)
     public void updateStatus(long id, boolean status) {
         jdbc.update("UPDATE sys_apikey SET status = ? WHERE id = ?", status, id);
     }
 
+    @CacheEvict(cacheNames = CacheNames.API_KEY_INFO, allEntries = true)
     public void delete(long id) {
         jdbc.update("DELETE FROM sys_apikey WHERE id = ?", id);
     }

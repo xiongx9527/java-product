@@ -289,6 +289,38 @@
             <artifactId>langchain4j-pgvector</artifactId>
             <version>1.22.0-beta32</version>
         </dependency>
+        <!-- langchain4j 在线向量库后端：Redis（社区版 langchain4j-community-redis 的 RedisEmbeddingStore，
+             Jedis 客户端；需 Redis Stack：RediSearch 向量字段 + RedisJSON）。
+             作为 askdata.vector-store.type=redis 时的向量存储与 ANN 检索后端；不可达时经 DbVectorStore 回落。 -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-community-redis</artifactId>
+            <version>1.22.0-beta32</version>
+        </dependency>
+
+        <!-- 缓存层：Spring Cache 抽象（后端由 askdata.cache.type 决定：memory / redis / none） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
+        <!-- 缓存后端：进程内 Caffeine（askdata.cache.type=memory） -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+        <!-- 缓存后端：Redis（askdata.cache.type=redis / sa-token-store=redis 时使用；连接参数走 spring.data.redis.*） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <!-- Sa-Token 会话存储：Redis 实现（askdata.cache.sa-token-store=redis 时启用；
+             其自动配置只装配实例，需由 SaTokenStoreInitializer 显式注册给 SaManager） -->
+        <dependency>
+            <groupId>cn.dev33</groupId>
+            <artifactId>sa-token-redis-template</artifactId>
+            <version>1.46.0</version>
+        </dependency>
+
         <!-- langchain4j 在线向量库后端：Elasticsearch（复用 langchain4j 的 ElasticsearchEmbeddingStore，
              kNN 检索 + metadata 过滤；作为 askdata.vector-store.type=elasticsearch 时的向量存储与 ANN
              检索后端；不可达时经 DbVectorStore 回落）。 -->
@@ -513,6 +545,18 @@
             <resource>
                 <directory>src/main/resources</directory>
                 <filtering>false</filtering>
+                <excludes>
+                    <!-- 构建版本文件需参与过滤（注入 @project.version@），故在此排除、由下方条目单独处理 -->
+                    <exclude>askdata-build.properties</exclude>
+                </excludes>
+            </resource>
+            <!-- 仅构建版本文件参与资源过滤：application.yaml 里大量 ${...} 占位符不能被 Maven 解析 -->
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>askdata-build.properties</include>
+                </includes>
             </resource>
             <!-- 前端构建产物挂入静态资源（A2 托管约定：web/dist → BOOT-INF/classes/static） -->
             <resource>

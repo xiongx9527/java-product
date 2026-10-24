@@ -1,15 +1,13 @@
 package com.xiongx9527.askdata.common.web;
 
+import com.xiongx9527.askdata.common.cache.HotCacheService;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.system.auth.JwtCodec;
-import com.xiongx9527.askdata.system.repository.ApiKeyRepository;
-import com.xiongx9527.askdata.system.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * API Key（sk）鉴权通道（对齐 SQLBot {@code apps/system/middleware/auth.py} 的 {@code validateAskToken}）。
@@ -32,17 +30,15 @@ public class ApiKeyTokenAuthenticator {
     /** 授权方案名（SQLBot 要求 scheme.lower() == "sk"）。 */
     public static final String SCHEME = "sk";
 
-    private final ApiKeyRepository apiKeyRepository;
-
-    private final UserRepository userRepository;
+    /** 热点数据缓存（用户信息 / API Key 信息，走 askdata.cache.type 指定的后端）。 */
+    private final HotCacheService hotCacheService;
 
     /** 错误文案统一走消息包（A4 / F-15）。 */
     private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
 
-    public ApiKeyTokenAuthenticator(ApiKeyRepository apiKeyRepository, UserRepository userRepository,
+    public ApiKeyTokenAuthenticator(HotCacheService hotCacheService,
                                     com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver) {
-        this.apiKeyRepository = apiKeyRepository;
-        this.userRepository = userRepository;
+        this.hotCacheService = hotCacheService;
         this.messageResolver = messageResolver;
     }
 
@@ -74,11 +70,10 @@ public class ApiKeyTokenAuthenticator {
             throw new AuthFailureException(messageResolver.get("i18n_apikey.miss_access_key"));
         }
 
-        Optional<Map<String, Object>> keyRow = apiKeyRepository.findByAccessKey(accessKey);
-        if (!keyRow.isPresent()) {
+        Map<String, Object> key = hotCacheService.apiKeyByAccessKey(accessKey);
+        if (key == null) {
             throw new AuthFailureException(messageResolver.get("i18n_apikey.invalid_access_key"));
         }
-        Map<String, Object> key = keyRow.get();
         if (!Rows.bool(key, "status", true)) {
             throw new AuthFailureException(messageResolver.get("i18n_apikey.disabled_access_key"));
         }
@@ -91,8 +86,10 @@ public class ApiKeyTokenAuthenticator {
         }
 
         long uid = Rows.lng(key, "uid", 0L);
-        Map<String, Object> user = userRepository.findById(uid)
-                .orElseThrow(() -> new AuthFailureException(messageResolver.get("i18n_login.no_platform_user")));
+        Map<String, Object> user = hotCacheService.userById(uid);
+        if (user == null) {
+            throw new AuthFailureException(messageResolver.get("i18n_login.no_platform_user"));
+        }
         if (Rows.intg(user, "status", 0) != 1) {
             throw new AuthFailureException(messageResolver.get("i18n_login.user_disable",
                     java.util.Map.of("msg", Rows.str(user, "account") == null ? "" : Rows.str(user, "account"))));

@@ -27,6 +27,7 @@ import java.util.function.Supplier;
  *   <li>weaviate：{@link Langchain4jWeaviateVectorStore}（基于 langchain4j 的 Weaviate 封装）；</li>
  *   <li>pgvector：{@link Langchain4jPgVectorVectorStore}（基于 langchain4j 的 pgvector 封装，JDBC）；</li>
  *   <li>elasticsearch：{@link Langchain4jElasticsearchVectorStore}（基于 langchain4j 的 ES 封装，kNN 检索）；</li>
+ *   <li>redis：{@link Langchain4jRedisVectorStore}（基于 langchain4j 社区版 Redis 封装，需 Redis Stack）；</li>
  *   <li>none / 未配置 / 在线库不可达：{@link DbVectorStore}（DB JSON 列 + 应用内余弦回退）。</li>
  * </ul>
  *
@@ -107,6 +108,14 @@ public class VectorStoreAutoConfiguration {
                 env.getProperty("askdata.vector-store.elasticsearch.password", ""),
                 prefix,
                 env.getProperty("askdata.vector-store.elasticsearch.refresh", "WaitFor")));
+        stores.put("redis", () -> new Langchain4jRedisVectorStore(
+                env.getProperty("askdata.vector-store.redis.host", ""),
+                env.getProperty("askdata.vector-store.redis.port", Integer.class, 6379),
+                env.getProperty("askdata.vector-store.redis.username", ""),
+                env.getProperty("askdata.vector-store.redis.password", ""),
+                env.getProperty("askdata.vector-store.redis.ssl", Boolean.class, false),
+                env.getProperty("askdata.vector-store.redis.database", Integer.class, 0),
+                prefix));
         return stores;
     }
 

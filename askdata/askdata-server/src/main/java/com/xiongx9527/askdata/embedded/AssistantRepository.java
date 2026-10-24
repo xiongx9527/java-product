@@ -1,6 +1,9 @@
 package com.xiongx9527.askdata.embedded;
 
+import com.xiongx9527.askdata.common.cache.CacheNames;
+
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -90,6 +93,7 @@ public class AssistantRepository {
                 .stream().findFirst();
     }
 
+    @CacheEvict(cacheNames = CacheNames.ASSISTANT_INFO, key = "#result", beforeInvocation = false)
     public long insert(String name, int type, String domain, String description, String configuration,
                        String appId, String appSecret, Long oid, boolean enableCustomModel, String customModel,
                        long createTime) {
@@ -102,6 +106,7 @@ public class AssistantRepository {
         return id;
     }
 
+    @CacheEvict(cacheNames = CacheNames.ASSISTANT_INFO, key = "#id")
     public void update(long id, String name, int type, String domain, String description, String configuration,
                        Long oid, boolean enableCustomModel, String customModel) {
         jdbc.update("UPDATE sys_assistant SET name = ?, type = ?, domain = ?, description = ?, "
@@ -109,18 +114,22 @@ public class AssistantRepository {
                 name, type, domain, description, configuration, oid, enableCustomModel, customModel, id);
     }
 
+    @CacheEvict(cacheNames = CacheNames.ASSISTANT_INFO, key = "#id")
     public void updateConfiguration(long id, String configuration) {
         jdbc.update("UPDATE sys_assistant SET configuration = ? WHERE id = ?", configuration, id);
     }
 
+    @CacheEvict(cacheNames = CacheNames.ASSISTANT_INFO, key = "#id")
     public void updateAppSecret(long id, String appSecret) {
         jdbc.update("UPDATE sys_assistant SET app_secret = ? WHERE id = ?", appSecret, id);
     }
 
+    @CacheEvict(cacheNames = CacheNames.ASSISTANT_INFO, key = "#id")
     public void delete(long id) {
         jdbc.update("DELETE FROM sys_assistant WHERE id = ?", id);
     }
 
+    @CacheEvict(cacheNames = CacheNames.ASSISTANT_INFO, allEntries = true)
     public void deleteByIds(List<Long> ids) {
         if (ids == null || ids.isEmpty()) {
             return;

@@ -1,6 +1,10 @@
 package com.xiongx9527.askdata.system.repository;
 
+import com.xiongx9527.askdata.common.cache.CacheNames;
+
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -138,6 +142,10 @@ public class UserRepository {
         return jdbc.queryForList(sql.toString(), uids.toArray());
     }
 
+    @Caching(evict = {
+            @CacheEvict(cacheNames = CacheNames.USER_INFO, key = "#id"),
+            @CacheEvict(cacheNames = CacheNames.USER_INFO_BY_ACCOUNT, allEntries = true)
+    })
     public void insert(long id, String account, String name, String password, String email, long oid,
                        int status, long createTime, String language, int origin, String systemVariables) {
         jdbc.update("INSERT INTO sys_user (id, account, name, password, email, oid, status, create_time, "
@@ -145,27 +153,51 @@ public class UserRepository {
                 id, account, name, password, email, oid, status, createTime, language, origin, systemVariables);
     }
 
+    @Caching(evict = {
+            @CacheEvict(cacheNames = CacheNames.USER_INFO, key = "#id"),
+            @CacheEvict(cacheNames = CacheNames.USER_INFO_BY_ACCOUNT, allEntries = true)
+    })
     public void updateProfile(long id, String name, String email, int status, int origin, String systemVariables) {
         jdbc.update("UPDATE sys_user SET name = ?, email = ?, status = ?, origin = ?, system_variables = ? WHERE id = ?",
                 name, email, status, origin, systemVariables, id);
     }
 
+    @Caching(evict = {
+            @CacheEvict(cacheNames = CacheNames.USER_INFO, key = "#id"),
+            @CacheEvict(cacheNames = CacheNames.USER_INFO_BY_ACCOUNT, allEntries = true)
+    })
     public void updateOid(long id, long oid) {
         jdbc.update("UPDATE sys_user SET oid = ? WHERE id = ?", oid, id);
     }
 
+    @Caching(evict = {
+            @CacheEvict(cacheNames = CacheNames.USER_INFO, key = "#id"),
+            @CacheEvict(cacheNames = CacheNames.USER_INFO_BY_ACCOUNT, allEntries = true)
+    })
     public void updateStatus(long id, int status) {
         jdbc.update("UPDATE sys_user SET status = ? WHERE id = ?", status, id);
     }
 
+    @Caching(evict = {
+            @CacheEvict(cacheNames = CacheNames.USER_INFO, key = "#id"),
+            @CacheEvict(cacheNames = CacheNames.USER_INFO_BY_ACCOUNT, allEntries = true)
+    })
     public void updateLanguage(long id, String language) {
         jdbc.update("UPDATE sys_user SET language = ? WHERE id = ?", language, id);
     }
 
+    @Caching(evict = {
+            @CacheEvict(cacheNames = CacheNames.USER_INFO, key = "#id"),
+            @CacheEvict(cacheNames = CacheNames.USER_INFO_BY_ACCOUNT, allEntries = true)
+    })
     public void updatePassword(long id, String md5Password) {
         jdbc.update("UPDATE sys_user SET password = ? WHERE id = ?", md5Password, id);
     }
 
+    @Caching(evict = {
+            @CacheEvict(cacheNames = CacheNames.USER_INFO, key = "#id"),
+            @CacheEvict(cacheNames = CacheNames.USER_INFO_BY_ACCOUNT, allEntries = true)
+    })
     public void deleteById(long id) {
         jdbc.update("DELETE FROM sys_user WHERE id = ?", id);
     }

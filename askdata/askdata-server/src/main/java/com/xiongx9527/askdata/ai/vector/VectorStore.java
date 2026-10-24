@@ -20,6 +20,8 @@ import java.util.List;
  *       （JDBC + Postgres 向量扩展），作为 {@code type=pgvector} 时的存储后端；</li>
  *   <li>{@link Langchain4jElasticsearchVectorStore} — 在线向量库，基于 langchain4j 的 {@code ElasticsearchEmbeddingStore}
  *       （kNN 检索 + metadata 过滤），作为 {@code type=elasticsearch} 时的存储后端；</li>
+ *   <li>{@link Langchain4jRedisVectorStore} — 在线向量库，基于 langchain4j 社区版 {@code RedisEmbeddingStore}
+ *       （Jedis，需 Redis Stack），作为 {@code type=redis} 时的存储后端；</li>
  *   <li>{@link DbVectorStore} — 兼容回退，沿用现有「DB embedding 列 + 应用内余弦」，
  *       在 {@code type=none} 或在线库不可达时启用，保留既有行为。</li>
  * </ul>

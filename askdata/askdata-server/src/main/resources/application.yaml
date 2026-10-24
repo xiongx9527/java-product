@@ -4,6 +4,17 @@ server:
 spring:
   application:
     name: askdata-server
+  # 排除 Spring Boot 自带的 Redis 自动配置：它在 spring-data-redis 位于 classpath 时会无条件创建
+  # StringRedisTemplate，而框架 McpAutoConfiguration.RedisClusterConfiguration 以
+  # @ConditionalOnBean(StringRedisTemplate) 为条件，会注册启动期即连接 Redis 的
+  # mcpRedisMessageListenerContainer —— 导致未部署 Redis 时应用无法启动。
+  # 改由 RedisClientConfig 在确实启用 Redis（askdata.cache.type=redis）时按需装配。
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      # 同理：Sa-Token 的 Redis DAO 自动配置只要 spring-data-redis 在 classpath 就会装配并要求
+      # RedisConnectionFactory bean；改由 RedisClientConfig 在启用 Redis 时自行创建。
+      - cn.dev33.satoken.dao.SaTokenDaoForRedisTemplate
   datasource:
     url: jdbc:h2:file:./data/askdata;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE
     driver-class-name: org.h2.Driver
@@ -12,6 +23,15 @@ spring:
   sql:
     init:
       mode: always
+  data:
+    redis:
+      # Redis 连接（askdata.cache.type=redis 或 sa-token-store=redis 时生效）；
+      # 走 Spring Boot 标准配置，未配置时保持本地默认。
+      host: ${ASKDATA_REDIS_HOST:127.0.0.1}
+      port: ${ASKDATA_REDIS_PORT:6379}
+      password: ${ASKDATA_REDIS_PASSWORD:}
+      database: ${ASKDATA_REDIS_DATABASE:0}
+      timeout: ${ASKDATA_REDIS_TIMEOUT:3s}
   servlet:
     multipart:
       # 数据源 Excel 上传上限（对齐前端 50MB 校验）
@@ -46,6 +66,20 @@ askdata:
     worker-id: -1
     datacenter-id: 0
     epoch: 0
+  openapi:
+    # OpenAPI 文档元数据（/doc.html 与 /v3/api-docs）。title/description 可按部署改名，
+    # version 留空则取构建版本（askdata-build.properties，由 Maven 过滤生成），随构建自动更新。
+    title: "${ASKDATA_OPENAPI_TITLE:askdata API}"
+    version: "${ASKDATA_OPENAPI_VERSION:}"
+    description: "${ASKDATA_OPENAPI_DESCRIPTION:}"
+  cache:
+    # 缓存后端类型：memory（Caffeine 进程内，缺省）/ redis（Redis）/ none（不缓存）。
+    type: "${ASKDATA_CACHE_TYPE:memory}"
+    # 内存后端：单缓存条目上限与存活秒数。
+    max-size: ${ASKDATA_CACHE_MAX_SIZE:10000}
+    ttl-seconds: ${ASKDATA_CACHE_TTL_SECONDS:300}
+    # Sa-Token 会话存储：memory（缺省，进程内）/ redis；留空则跟随上面的 type。
+    sa-token-store: "${ASKDATA_SA_TOKEN_STORE:}"
   # 本地 embedding 模型（D8/A6）：shibing624/text2vec-base-chinese（ONNX，768 维归一化）。
   # 模型权重随构建产物交付到 model-path（不进 git，793MB）；
   # 目录缺失或加载失败时向量召回降级为词法，问数主链路不报错。
@@ -112,6 +146,16 @@ askdata:
       password: ${ASKDATA_ELASTICSEARCH_PASSWORD:}
       # 写入可见性：WaitFor（写后即查，缺省）/ True / False。
       refresh: ${ASKDATA_ELASTICSEARCH_REFRESH:WaitFor}
+    redis:
+      # Redis 向量库连接（需 Redis Stack：RediSearch 向量字段 + RedisJSON；社区版 Redis 不支持向量检索）。
+      host: ${ASKDATA_VECTOR_REDIS_HOST:}
+      port: ${ASKDATA_VECTOR_REDIS_PORT:6379}
+      username: ${ASKDATA_VECTOR_REDIS_USERNAME:}
+      password: ${ASKDATA_VECTOR_REDIS_PASSWORD:}
+      # 是否走 TLS。
+      ssl: ${ASKDATA_VECTOR_REDIS_SSL:false}
+      # 库序号。
+      database: ${ASKDATA_VECTOR_REDIS_DATABASE:0}
   # 应用密钥（落库加密用）。不内置缺省值：必须通过环境变量 ASKDATA_SECRET_KEY 或外部配置显式设定，
   # 否则启动期随机生成（当次进程内可用，重启后历史密文不可解，并在启动日志告警）。
   secret:

@@ -44,7 +44,10 @@ class EmbeddedTokenAuthenticatorTest {
     void setUp() {
         assistantRepository = Mockito.mock(AssistantRepository.class);
         userRepository = Mockito.mock(UserRepository.class);
-        authenticator = new EmbeddedTokenAuthenticator(assistantRepository, userRepository, SECRET,
+        authenticator = new EmbeddedTokenAuthenticator(
+                new com.xiongx9527.askdata.common.cache.HotCacheService(userRepository,
+                        Mockito.mock(com.xiongx9527.askdata.system.repository.ApiKeyRepository.class),
+                        assistantRepository), SECRET,
                 com.xiongx9527.askdata.common.i18n.TestMessageResolver.create());
         org.springframework.context.i18n.LocaleContextHolder.setLocale(java.util.Locale.ENGLISH);
     }
