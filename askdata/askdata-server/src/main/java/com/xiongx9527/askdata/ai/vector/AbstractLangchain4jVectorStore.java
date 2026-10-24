@@ -19,17 +19,20 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * langchain4j 在线向量库后端的共用逻辑。
  *
- * <p>各类后端（Qdrant / Milvus / ...）都实现 langchain4j 的
+ * <p>各类后端（Qdrant / Milvus / Weaviate / pgvector / ...）都实现 langchain4j 的
  * {@link EmbeddingStore}{@code <TextSegment>}，因此 upsert / query / delete / 命中 id 解析等
  * 与后端无关的逻辑在本抽象类统一实现，子类只需提供：</p>
  * <ul>
  *   <li>{@link #createStore(String, int)}：按集合名与维度构造底层存储（各后端客户端不同）；</li>
  *   <li>{@link #health()}：连通性探测（各后端端口/协议不同）；</li>
- *   <li>可选 {@link #ensureCollection}：需要显式建集合的后端（如 Qdrant）覆写，其余依赖首次写入自动创建。</li>
+ *   <li>可选 {@link #ensureCollection}：需要显式建集合的后端（Qdrant / Weaviate）覆写，其余依赖首次写入自动创建。</li>
  * </ul>
  *
  * <p>向量读写、候选 id 过滤（metadata {@code row_id in [...]}）、命中 id 解析（优先 embeddingId，
  * 回退 metadata row_id）均在此处理，新增后端时子类不需要重复这些代码。</p>
+ *
+ * <p>约定：写向量时在 TextSegment 的 metadata 中携带 {@code row_id=记录id}，用于（1）命中后解析回记录 id，
+ * （2）候选 id 过滤。部分后端（Weaviate）的 search 会忽略服务端 filter，因此候选过滤在客户端兜底执行。</p>
  */
 public abstract class AbstractLangchain4jVectorStore implements VectorStore {
 
@@ -56,12 +59,23 @@ public abstract class AbstractLangchain4jVectorStore implements VectorStore {
         return true;
     }
 
-    /** 子类构造底层存储：按集合名 + 向量维度创建（各后端客户端不同）。 */
+    /**
+     * 子类构造底层存储：按集合名 + 向量维度创建（各后端客户端不同）。
+     * 返回的存储必须以 {@link #toPointId(long)} 的返回值作为写入 id，并在 metadata 中保留 row_id。
+     */
     protected abstract EmbeddingStore<TextSegment> createStore(String collection, int dimension);
 
     /** 连通性探测：各后端端口/协议不同，由子类实现。 */
     @Override
     public abstract boolean health();
+
+    /**
+     * 在线库存储所用的 point id。缺省为记录 id 的数值串（Qdrant / Milvus 可用）。
+     * 强制 UUID 的后端（Weaviate / pgvector）应覆写为由记录 id 派生的稳定 UUID。
+     */
+    protected String toPointId(long id) {
+        return String.valueOf(id);
+    }
 
     /** 返回（并缓存）集合对应的底层存储；首次按维度创建。 */
     protected EmbeddingStore<TextSegment> storeFor(String collection, int dimension) {
@@ -74,7 +88,7 @@ public abstract class AbstractLangchain4jVectorStore implements VectorStore {
 
     @Override
     public void ensureCollection(String collection, int dimension) {
-        // 默认：确保存储实例可用即可；需要显式建集合的后端（Qdrant）应覆写此方法。
+        // 默认：确保存储实例可用即可；需要显式建集合的后端（Qdrant / Weaviate）应覆写此方法。
         storeFor(collection, dimension);
     }
 
@@ -85,9 +99,9 @@ public abstract class AbstractLangchain4jVectorStore implements VectorStore {
         }
         try {
             EmbeddingStore<TextSegment> store = storeFor(collection, vector.length);
-            String idStr = String.valueOf(id);
+            String idStr = toPointId(id);
             // TextSegment 文本不能为空；用 id 字符串占位，真实语义信息存于向量与 metadata。
-            TextSegment segment = TextSegment.from(idStr, Metadata.from(Map.of("row_id", idStr)));
+            TextSegment segment = TextSegment.from(idStr, Metadata.from(Map.of("row_id", String.valueOf(id))));
             store.addAll(java.util.List.of(idStr), java.util.List.of(toEmbedding(vector)), java.util.List.of(segment));
         } catch (Exception e) {
             log.info("在线向量 upsert 失败 {}/{}（回落主链路）: {}", collection, id, e.getMessage());
@@ -98,7 +112,7 @@ public abstract class AbstractLangchain4jVectorStore implements VectorStore {
     public void delete(String collection, long id) {
         try {
             EmbeddingStore<TextSegment> store = storeFor(collection, 0);
-            store.remove(String.valueOf(id));
+            store.remove(toPointId(id));
         } catch (Exception e) {
             log.info("在线向量 delete 失败 {}/{}（回落主链路）: {}", collection, id, e.getMessage());
         }
@@ -112,17 +126,24 @@ public abstract class AbstractLangchain4jVectorStore implements VectorStore {
         }
         try {
             EmbeddingStore<TextSegment> store = storeFor(collection, vector.length);
+            int limit = topK > 0 ? topK : 10;
+            boolean hasCandidates = candidateIds != null && !candidateIds.isEmpty();
+            if (hasCandidates) {
+                // 部分后端（如 Weaviate）search 会忽略服务端 filter，且需足够召回量以便客户端按候选裁剪；
+                // 故请求上限至少取 topK 与候选数之较大者。
+                limit = Math.max(limit, candidateIds.size());
+            }
             EmbeddingSearchRequest.EmbeddingSearchRequestBuilder builder = EmbeddingSearchRequest.builder()
                     .queryEmbedding(toEmbedding(vector))
-                    .maxResults(topK > 0 ? topK : 10)
+                    .maxResults(limit)
                     // 显式 0.0：EmbeddingSearchRequest 缺省 minScore=-1.0 会被 Qdrant 拒绝。
                     .minScore(0.0);
-            if (candidateIds != null && !candidateIds.isEmpty()) {
+            if (hasCandidates) {
                 List<String> strs = new ArrayList<>();
                 for (Long c : candidateIds) {
                     strs.add(String.valueOf(c));
                 }
-                // 服务端按 metadata.row_id 过滤候选，避免跨工作空间/跨对象类型泄漏。
+                // 服务端过滤（支持的后端：Qdrant / Milvus / pgvector）；不支持的后端由下方客户端兜底。
                 builder.filter(new IsIn("row_id", strs));
             }
             EmbeddingSearchResult<TextSegment> result = store.search(builder.build());
@@ -131,8 +152,14 @@ public abstract class AbstractLangchain4jVectorStore implements VectorStore {
                 if (id == null) {
                     continue;
                 }
+                if (hasCandidates && !candidateIds.contains(id)) {
+                    continue;
+                }
                 Double score = m.score();
                 hits.add(new IdScore(id, score == null ? 0d : score));
+            }
+            if (topK > 0 && hits.size() > topK) {
+                hits = new ArrayList<>(hits.subList(0, topK));
             }
         } catch (Exception e) {
             log.info("在线向量 query 失败 {}/{}（回落主链路）: {}", collection, vector.length, e.getMessage());
@@ -147,7 +174,7 @@ public abstract class AbstractLangchain4jVectorStore implements VectorStore {
             try {
                 return Long.parseLong(idStr);
             } catch (NumberFormatException ignore) {
-                // 部分后端可能返回非数值 id，继续尝试 metadata
+                // 部分后端可能返回非数值 id（如 UUID），继续尝试 metadata
             }
         }
         TextSegment seg = m.embedded();

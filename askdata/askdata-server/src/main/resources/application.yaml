@@ -76,6 +76,24 @@ askdata:
       metric-type: ${ASKDATA_MILVUS_METRIC_TYPE:COSINE}
       index-type: ${ASKDATA_MILVUS_INDEX_TYPE:AUTO_INDEX}
       consistency-level: ${ASKDATA_MILVUS_CONSISTENCY:STRONG}
+    weaviate:
+      # Weaviate scheme/host/port（REST/gRPC 同进程，缺省 http / 8080）。
+      scheme: ${ASKDATA_WEAVIATE_SCHEME:http}
+      host: ${ASKDATA_WEAVIATE_HOST:}
+      port: ${ASKDATA_WEAVIATE_PORT:8080}
+      # 可选 API Key（开启鉴权时必填）。
+      api-key: ${ASKDATA_WEAVIATE_API_KEY:}
+      # 一致性级别（缺省 QUORUM）。
+      consistency-level: ${ASKDATA_WEAVIATE_CONSISTENCY:QUORUM}
+    pgvector:
+      # Postgres 连接信息（需已安装 pgvector 扩展）。可复用问数元数据库或独立库。
+      host: ${ASKDATA_PGVECTOR_HOST:}
+      port: ${ASKDATA_PGVECTOR_PORT:5432}
+      database: ${ASKDATA_PGVECTOR_DATABASE:}
+      user: ${ASKDATA_PGVECTOR_USER:}
+      password: ${ASKDATA_PGVECTOR_PASSWORD:}
+      # 是否建 ivfflat 索引（缺省 false，避免建索引开销；大数据量可开启）。
+      use-index: ${ASKDATA_PGVECTOR_USE_INDEX:false}
   # 应用密钥（落库加密用）。不内置缺省值：必须通过环境变量 ASKDATA_SECRET_KEY 或外部配置显式设定，
   # 否则启动期随机生成（当次进程内可用，重启后历史密文不可解，并在启动日志告警）。
   secret:

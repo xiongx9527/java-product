@@ -14,6 +14,10 @@ import java.util.List;
  *       （复用其 Qdrant gRPC 封装），作为 {@code type=qdrant} 时的存储后端；</li>
  *   <li>{@link Langchain4jMilvusVectorStore} — 在线向量库，基于 langchain4j 的 {@code MilvusEmbeddingStore}，
  *       作为 {@code type=milvus} 时的存储后端；</li>
+ *   <li>{@link Langchain4jWeaviateVectorStore} — 在线向量库，基于 langchain4j 的 {@code WeaviateEmbeddingStore}，
+ *       作为 {@code type=weaviate} 时的存储后端；</li>
+ *   <li>{@link Langchain4jPgVectorVectorStore} — 在线向量库，基于 langchain4j 的 {@code PgVectorEmbeddingStore}
+ *       （JDBC + Postgres 向量扩展），作为 {@code type=pgvector} 时的存储后端；</li>
  *   <li>{@link DbVectorStore} — 兼容回退，沿用现有「DB embedding 列 + 应用内余弦」，
  *       在 {@code type=none} 或在线库不可达时启用，保留既有行为。</li>
  * </ul>

@@ -22,8 +22,10 @@ import java.util.function.Supplier;
  * 按 askdata.vector-store.type 装配向量存储后端：
  *
  * <ul>
- *   <li>qdrant：{@link Langchain4jQdrantVectorStore}（基于 langchain4j 的 Qdrant 封装，在线唯一存储后端）；</li>
+ *   <li>qdrant：{@link Langchain4jQdrantVectorStore}（基于 langchain4j 的 Qdrant 封装，gRPC）；</li>
  *   <li>milvus：{@link Langchain4jMilvusVectorStore}（基于 langchain4j 的 Milvus 封装）；</li>
+ *   <li>weaviate：{@link Langchain4jWeaviateVectorStore}（基于 langchain4j 的 Weaviate 封装）；</li>
+ *   <li>pgvector：{@link Langchain4jPgVectorVectorStore}（基于 langchain4j 的 pgvector 封装，JDBC）；</li>
  *   <li>none / 未配置 / 在线库不可达：{@link DbVectorStore}（DB JSON 列 + 应用内余弦回退）。</li>
  * </ul>
  *
@@ -82,6 +84,21 @@ public class VectorStoreAutoConfiguration {
                 indexType(),
                 consistencyLevel(),
                 env.getProperty("askdata.vector-store.milvus.health-url", "")));
+        stores.put("weaviate", () -> new Langchain4jWeaviateVectorStore(
+                env.getProperty("askdata.vector-store.weaviate.scheme", "http"),
+                env.getProperty("askdata.vector-store.weaviate.host", ""),
+                env.getProperty("askdata.vector-store.weaviate.port", Integer.class, 8080),
+                env.getProperty("askdata.vector-store.weaviate.api-key", ""),
+                prefix,
+                env.getProperty("askdata.vector-store.weaviate.consistency-level", "QUORUM")));
+        stores.put("pgvector", () -> new Langchain4jPgVectorVectorStore(
+                env.getProperty("askdata.vector-store.pgvector.host", ""),
+                env.getProperty("askdata.vector-store.pgvector.port", Integer.class, 5432),
+                env.getProperty("askdata.vector-store.pgvector.database", ""),
+                env.getProperty("askdata.vector-store.pgvector.user", ""),
+                env.getProperty("askdata.vector-store.pgvector.password", ""),
+                prefix,
+                env.getProperty("askdata.vector-store.pgvector.use-index", Boolean.class, false)));
         return stores;
     }
 

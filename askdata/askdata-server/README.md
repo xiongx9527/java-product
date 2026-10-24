@@ -50,11 +50,13 @@ java -jar target/askdata-server.jar
 | `none`（缺省） | `DbVectorStore` | DB `embedding` JSON 列 + 应用内余弦；与既有行为完全一致 |
 | `qdrant` | `Langchain4jQdrantVectorStore` | 在线向量库；基于 langchain4j 的 `QdrantEmbeddingStore`（gRPC），ANN 检索 |
 | `milvus` | `Langchain4jMilvusVectorStore` | 在线向量库；基于 langchain4j 的 `MilvusEmbeddingStore`，ANN 检索（集合首次写入自动创建） |
+| `weaviate` | `Langchain4jWeaviateVectorStore` | 在线向量库；基于 langchain4j 的 `WeaviateEmbeddingStore`（类需显式创建；search 忽略服务端 filter，由基类客户端兜底候选过滤） |
+| `pgvector` | `Langchain4jPgVectorVectorStore` | 在线向量库；基于 langchain4j 的 `PgVectorEmbeddingStore`（JDBC + Postgres 向量扩展，每张集合表首次写入自动建表） |
 
 ```yaml
 askdata:
   vector-store:
-    type: none                    # none | qdrant | milvus
+    type: none                    # none | qdrant | milvus | weaviate | pgvector
     collection-prefix: askdata    # 集合名 = {prefix}-{object-type}
     qdrant:
       url: ${ASKDATA_QDRANT_URL:}         # REST 基址，如 http://qdrant:6333（仅用于健康检查）
@@ -69,6 +71,19 @@ askdata:
       metric-type: ${ASKDATA_MILVUS_METRIC_TYPE:COSINE}
       index-type: ${ASKDATA_MILVUS_INDEX_TYPE:AUTOINDEX}
       consistency-level: ${ASKDATA_MILVUS_CONSISTENCY:STRONG}
+    weaviate:
+      scheme: ${ASKDATA_WEAVIATE_SCHEME:http}   # http / https
+      host: ${ASKDATA_WEAVIATE_HOST:}           # Weaviate 主机
+      port: ${ASKDATA_WEAVIATE_PORT:8080}       # REST/gRPC 端口
+      api-key: ${ASKDATA_WEAVIATE_API_KEY:}     # 开启鉴权时必填
+      consistency-level: ${ASKDATA_WEAVIATE_CONSISTENCY:QUORUM}
+    pgvector:
+      host: ${ASKDATA_PGVECTOR_HOST:}         # Postgres 主机（需已装 vector 扩展）
+      port: ${ASKDATA_PGVECTOR_PORT:5432}
+      database: ${ASKDATA_PGVECTOR_DATABASE:}
+      user: ${ASKDATA_PGVECTOR_USER:}
+      password: ${ASKDATA_PGVECTOR_PASSWORD:}
+      use-index: ${ASKDATA_PGVECTOR_USE_INDEX:false}
 ```
 
 > 新增后端成本极低：所有 langchain4j 向量存储都实现同一个 `EmbeddingStore<TextSegment>` 接口，

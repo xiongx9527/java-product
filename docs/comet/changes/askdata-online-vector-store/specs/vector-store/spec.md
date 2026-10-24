@@ -73,8 +73,8 @@ VectorStore 抽象面向 langchain4j 的 EmbeddingStore<TextSegment> 设计，�
 | --- | --- | --- | --- |
 | Qdrant | 已实现 | langchain4j-qdrant | REST 6333 / gRPC 6334 分离；point id 接受数值串 |
 | Milvus | 已实现 | langchain4j-milvus | 有 builder()；集合首次写入自动创建（VarChar id + JSON metadata）；id 字段为 VarChar，数值串可用 |
-| Weaviate | 预留 | langchain4j-weaviate | 有 builder()；需先建 schema 类与属性 |
-| pgvector | 不接 | langchain4j-pgvector | 与 Non-goal「不引入关系型向量算子」冲突 |
+| Weaviate | 已实现 | langchain4j-weaviate | 有 builder()；ensureCollection 显式建类（vectorizer=none，声明 text/row_id）；id 强制 UUID（由记录 id 派生），row_id 存 metadata；search 忽略服务端 filter，由基类客户端兜底候选过滤；类名须大写开头故 collectionFor 做了清洗 |
+| pgvector | 已实现 | langchain4j-pgvector | JDBC + Postgres 向量扩展；每张集合表首次写入自动建表（createTable=true）；id 强制 UUID，row_id 存 JSON 列；服务端 filter 经 metadata handler 生效；注意需 Postgres 已装 vector 扩展 |
 | Elasticsearch / OpenSearch | 预留 | 对应模块 | 需先建索引与 mapping |
 | Chroma / Pinecone / Oracle / Azure AI Search | 预留 | 对应模块 | 云托管为主 |
 
