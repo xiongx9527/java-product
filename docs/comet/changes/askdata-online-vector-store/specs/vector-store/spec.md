@@ -6,11 +6,10 @@ askdata 通过统一的 VectorStore 抽象管理术语、SQL 示例、表、数�
 
 ## 配置
 
-- askdata.vector-store.type：none（默认）| qdrant | milvus
+- askdata.vector-store.type：none（默认）或者 qdrant
 - askdata.vector-store.qdrant.url：Qdrant REST 基址，如 http://qdrant:6333（仅用于健康检查）
 - askdata.vector-store.qdrant.api-key：可选
 - askdata.vector-store.qdrant.grpc-port：gRPC 端口，缺省 6334（与 REST 相互独立；向量读写走此端口）
-- askdata.vector-store.milvus.host / port：Milvus gRPC 地址（缺省 19530）；token / database / health-url / metric-type / index-type / consistency-level 可选
 - askdata.vector-store.collection-prefix：集合名前缀，缺省 askdata
 - 保留 askdata.embedding.model-path 与 askdata.embedding.backfill-enabled
 
@@ -59,27 +58,4 @@ Qdrant 连接失败或集合缺失时，EmbeddingService 仅记日志并回落�
 
 ### 场景：新增后端只需实现抽象
 Acceptance: A6
-新增向量库后端（如 Weaviate / Milvus）只需实现 VectorStore 并在 VectorStoreAutoConfiguration 注册，不改动 EmbeddingService 与召回调用点。
-
-## 后端扩展点（A6 落点，2026-10-24 补充）
-
-VectorStore 抽象面向 langchain4j 的 EmbeddingStore<TextSegment> 设计，所有 langchain4j 官方向量存储后端都可按同一模式接入。共用逻辑已抽到 AbstractLangchain4jVectorStore（upsert / query / delete / 命中 id 解析 / 候选 row_id 过滤），子类只需提供：
-
-- createStore(collection, dimension)：构造底层存储（各后端客户端不同）；
-- health()：连通性探测（各后端端口/协议不同）；
-- 可选 ensureCollection：需要显式建集合的后端（Qdrant）覆写，其余依赖首次写入自动创建。
-
-| 后端 | 状态 | langchain4j 模块 | 接入注意 |
-| --- | --- | --- | --- |
-| Qdrant | 已实现 | langchain4j-qdrant | REST 6333 / gRPC 6334 分离；point id 接受数值串 |
-| Milvus | 已实现 | langchain4j-milvus | 有 builder()；集合首次写入自动创建（VarChar id + JSON metadata）；id 字段为 VarChar，数值串可用 |
-| Weaviate | 已实现 | langchain4j-weaviate | 有 builder()；ensureCollection 显式建类（vectorizer=none，声明 text/row_id）；id 强制 UUID（由记录 id 派生），row_id 存 metadata；search 忽略服务端 filter，由基类客户端兜底候选过滤；类名须大写开头故 collectionFor 做了清洗 |
-| pgvector | 已实现 | langchain4j-pgvector | JDBC + Postgres 向量扩展；每张集合表首次写入自动建表（createTable=true）；id 强制 UUID，row_id 存 JSON 列；服务端 filter 经 metadata handler 生效；注意需 Postgres 已装 vector 扩展 |
-| Elasticsearch | 已实现 | langchain4j-elasticsearch | 有 builder()；store 不自动建索引且 dimension 参数已废弃，故 ensureCollection/首次 upsert 用 REST 显式建索引（vector 映射为 dense_vector+cosine，metadata.row_id 建 text+keyword 子字段以命中元数据过滤器）；索引名须小写故 collectionFor 做了清洗；写入默认 refresh=WaitFor 保证写后即查 |
-| Redis | 已实现 | langchain4j-community-redis | 社区版 artifact（langchain4j-redis 在 1.22.x 无对应版本）；用 Jedis，索引由 store 构造时 FT.CREATE 自动创建（前缀须以 : 结尾）；row_id 声明为 TAG（JSON 路径 $.row_id，别名 row_id）以支持服务端过滤；需 Redis Stack（RediSearch + RedisJSON），社区版 Redis 不支持向量检索 |
-| OpenSearch | 预留 | 对应模块 | 需先建索引与 mapping |
-| Chroma / Pinecone / Oracle / Azure AI Search | 预留 | 对应模块 | 云托管为主 |
-
-接入步骤（以新后端为例）：新增依赖 → 新增 Langchain4jXxxVectorStore extends AbstractLangchain4jVectorStore（仅客户端构造与建集合不同）→ 在 VectorStoreAutoConfiguration.onlineStores() 登记一行。EmbeddingService 与四类对象的召回调用点无需任何改动。
-
-注：redis 已改用社区版 artifact langchain4j-community-redis（1.22.0-beta32 在本地仓库可用）；neo4j / infinispan / cassandra / couchbase / vearch 本地仓库缺 1.22.0 版本，离线构建暂不可用。
+新增向量库后端（如 Weaviate）只需实现 VectorStore 并在 VectorStoreAutoConfiguration 注册，不改动 EmbeddingService 与召回调用点。
