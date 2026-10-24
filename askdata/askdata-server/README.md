@@ -1,6 +1,6 @@
 # askdata-server（问数 · 单体后端）
 
-Java 8 + Spring Boot 2.7.18 单体工程；前端（SQLBot frontend 拷贝）作为嵌套 npm 工程
+Java 17 + Spring Boot 3.5.8 单体工程；前端（SQLBot frontend 拷贝）作为嵌套 npm 工程
 放在 `web/`，其构建产物 `web/dist` 经 Maven 资源目录挂入 `BOOT-INF/classes/static`，
 实现单 jar 前后端同进程托管（端口 8000）。
 
