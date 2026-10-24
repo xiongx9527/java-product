@@ -30,7 +30,11 @@ public class AuditResourceNameResolver {
             Map.entry(AuditModule.USER, new String[]{"sys_user", "id", "name"}),
             Map.entry(AuditModule.WORKSPACE, new String[]{"sys_workspace", "id", "name"}),
             Map.entry(AuditModule.AI_MODEL, new String[]{"ai_model", "id", "name"}),
-            Map.entry(AuditModule.API_KEY, new String[]{"sys_apikey", "id", "name"}),
+            // sys_apikey 无 name 列，用 access_key 做展示名（先前映射到不存在的 name 列导致恒空）
+            Map.entry(AuditModule.API_KEY, new String[]{"sys_apikey", "id", "access_key"}),
+            // 会话标题落在 chat.brief（rename 的写入列）；F-07 补齐此前缺失的 CHAT 映射
+            Map.entry(AuditModule.CHAT, new String[]{"chat", "id", "brief"}),
+
             Map.entry(AuditModule.MEMBER, new String[]{"sys_user", "id", "name"})
     );
 

@@ -8,7 +8,9 @@ import com.xiongx9527.askdata.common.web.Result;
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
 import com.xiongx9527.askdata.system.controller.LoginController;
 import com.xiongx9527.askdata.system.controller.UserController;
+import com.xiongx9527.askdata.system.platform.PlatformRepository;
 import com.xiongx9527.askdata.system.repository.UserRepository;
+import com.xiongx9527.askdata.system.repository.WorkspaceRepository;
 import com.xiongx9527.askdata.system.repository.UserWsRepository;
 import com.xiongx9527.askdata.system.service.UserImportService;
 import com.xiongx9527.askdata.system.web.TokenVO;
@@ -54,7 +56,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.datasource.username=sa",
         "spring.datasource.password=",
-        "askdata.excel.path=target/user-import-test-excel"
+        "askdata.excel.path=target/user-import-test-excel",
+        "askdata.user.default-password=InitPassw0rd123"
 })
 class UserBatchImportTest {
 
@@ -77,6 +80,12 @@ class UserBatchImportTest {
     private UserWsRepository userWsRepository;
 
     @Autowired
+    private WorkspaceRepository workspaceRepository;
+
+    @Autowired
+    private PlatformRepository platformRepository;
+
+    @Autowired
     private LoginController loginController;
 
     @BeforeEach
@@ -84,6 +93,8 @@ class UserBatchImportTest {
         // 非 Web 测试环境初始化 Sa-Token 上下文，并以种子管理员（id=1, account=admin, oid=1）登录
         SaTokenContextMockUtil.setMockContext();
         StpUtil.login(1L);
+        // 失败原因文案走消息包（A4）：固定英文 locale，断言与 Accept-Language 解耦于运行环境
+        org.springframework.context.i18n.LocaleContextHolder.setLocale(java.util.Locale.ENGLISH);
         if (Files.isDirectory(IMPORT_DIR)) {
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(IMPORT_DIR)) {
                 for (Path path : stream) {
@@ -97,6 +108,7 @@ class UserBatchImportTest {
     void tearDown() {
         StpUtil.logout();
         SaTokenContextMockUtil.clearContext();
+        org.springframework.context.i18n.LocaleContextHolder.resetLocaleContext();
     }
 
     // ① 模板非空且含正确表头
@@ -109,20 +121,21 @@ class UserBatchImportTest {
 
         List<String[]> rows = readAll(content);
         assertFalse(rows.isEmpty());
-        assertTrue(Arrays.asList("account", "name", "password", "email")
-                .equals(Arrays.asList(rows.get(0))), Arrays.toString(rows.get(0)));
+        // F-17：模板列集与 SQLBot get_i18n_head_list() 一致（8 列）
+        assertTrue(Arrays.asList("account", "name", "email", "workspace", "role", "status", "origin",
+                "platform_user_id").equals(Arrays.asList(rows.get(0))), Arrays.toString(rows.get(0)));
         // 示例行（对齐 SQLBot downTemplate 的两行样例）
         assertTrue(rows.size() >= 3, "template should contain sample rows");
         assertEquals("sqlbot1", rows.get(1)[0]);
-        assertEquals("employee1@sqlbot.com", rows.get(1)[3]);
+        assertEquals("employee1@sqlbot.com", rows.get(1)[2]);
     }
 
     // ② 合法 Excel 导入后用户存在/可登录
     @Test
     void importValidExcelCreatesLoginableUsers() throws Exception {
         MockMultipartFile file = importFile(
-                row("batchuser1", "Batch User 1", "Passw0rd123", "batchuser1@askdata.com"),
-                row("batchuser2", "Batch User 2", "Passw0rd123", "batchuser2@askdata.com"));
+                row("batchuser1", "Batch User 1", "batchuser1@askdata.com"),
+                row("batchuser2", "Batch User 2", "batchuser2@askdata.com"));
 
         Map<String, Object> result = userImportService.batchImport(file);
         assertEquals(2, result.get("total"));
@@ -132,8 +145,8 @@ class UserBatchImportTest {
 
         Optional<Map<String, Object>> user = userRepository.findByAccount("batchuser1");
         assertTrue(user.isPresent(), "imported user should exist");
-        // MD5 口令（与 LoginController 登录校验一致）
-        assertEquals(CryptoUtil.md5Hex("Passw0rd123"), String.valueOf(user.get().get("password")));
+        // MD5 口令：SQLBot 列集不含 password，建号用 askdata.user.default-password
+        assertEquals(CryptoUtil.md5Hex("InitPassw0rd123"), String.valueOf(user.get().get("password")));
         // oid 归属当前管理员工作空间，登录要求 oid≠0
         assertEquals(1L, ((Number) user.get().get("oid")).longValue());
         assertEquals(1, ((Number) user.get().get("status")).intValue());
@@ -142,7 +155,7 @@ class UserBatchImportTest {
 
         // 真实登录链路：加密账号/口令走 LoginController.accessToken
         Result<TokenVO> token = loginController.accessToken(
-                CryptoUtil.encryptSqlbot("batchuser1"), CryptoUtil.encryptSqlbot("Passw0rd123"));
+                CryptoUtil.encryptSqlbot("batchuser1"), CryptoUtil.encryptSqlbot("InitPassw0rd123"));
         assertNotNull(token.getData());
         assertNotNull(token.getData().getAccess_token());
     }
@@ -152,14 +165,14 @@ class UserBatchImportTest {
     void importWithErrorRowsProducesDownloadableErrorRecord() throws Exception {
         // 先建一个账号，用于制造“重复账号”失败行
         Map<String, Object> first = userImportService.batchImport(importFile(
-                row("dupuser", "Dup User", "Passw0rd123", "dupuser@askdata.com")));
+                row("dupuser", "Dup User", "dupuser@askdata.com")));
         assertEquals(1, first.get("success"));
 
         Map<String, Object> result = userImportService.batchImport(importFile(
-                row("dupuser", "Dup User", "Passw0rd123", "dupuser@askdata.com"),   // 重复账号
-                row("bademail", "Bad Email", "Passw0rd123", "not-an-email"),        // 邮箱格式错误
-                row("noname", "", "Passw0rd123", "noname@askdata.com"),             // 必填缺失
-                row("gooduser", "Good User", "Passw0rd123", "gooduser@askdata.com")));
+                row("dupuser", "Dup User", "dupuser@askdata.com"),   // 重复账号
+                row("bademail", "Bad Email", "not-an-email"),        // 邮箱格式错误
+                row("noname", "", "noname@askdata.com"),             // 必填缺失
+                row("gooduser", "Good User", "gooduser@askdata.com")));
         assertEquals(4, result.get("total"));
         assertEquals(1, result.get("success"));
         assertEquals(3, result.get("failed"));
@@ -170,15 +183,49 @@ class UserBatchImportTest {
         byte[] errorBytes = userImportService.errorRecord(fileId);
         assertTrue(errorBytes.length > 0);
         List<String[]> errorRows = readAll(errorBytes);
-        // 表头：行号 + 原文四列 + 失败原因
+        // 表头：行号 + 原文八列 + 失败原因
         assertEquals("row", errorRows.get(0)[0]);
         assertEquals("account", errorRows.get(0)[1]);
-        assertEquals("reason", errorRows.get(0)[5]);
+        assertEquals("platform_user_id", errorRows.get(0)[8]);
+        assertEquals("reason", errorRows.get(0)[9]);
         assertTrue(hasError(errorRows, "dupuser", "already exists"));
-        assertTrue(hasError(errorRows, "bademail", "Email format is invalid"));
-        assertTrue(hasError(errorRows, "noname", "name is required"));
+        assertTrue(hasError(errorRows, "bademail", "Invalid email format"));
+        assertTrue(hasError(errorRows, "noname", "Missing name parameter"));
         // 成功行不出现在失败记录中
         assertTrue(errorRows.stream().skip(1).noneMatch(r -> "gooduser".equals(r[1])));
+    }
+
+    // ③b F-17：workspace/role/status/origin/platform_user_id 列生效
+    @Test
+    void importAppliesWorkspaceRoleStatusOriginAndPlatformBinding() throws Exception {
+        long wsId = 9001L;
+        workspaceRepository.insert(wsId, "分析空间", System.currentTimeMillis());
+
+        Map<String, Object> result = userImportService.batchImport(importFile(new String[] {
+                "wsuser2", "Ws User 2", "wsuser2@askdata.com", "分析空间", "ws_admin", "0", "3", "p-42"}));
+        assertEquals(1, result.get("success"), String.valueOf(result));
+
+        Map<String, Object> user = userRepository.findByAccount("wsuser2").orElseThrow();
+        long uid = ((Number) user.get("id")).longValue();
+        assertEquals(wsId, ((Number) user.get("oid")).longValue());
+        assertEquals(0, ((Number) user.get("status")).intValue());
+        assertEquals(3, ((Number) user.get("origin")).intValue());
+        assertEquals(1, userWsRepository.weightOf(uid, wsId));
+        assertTrue(platformRepository.findBinding(3, "p-42").isPresent(), "platform binding should be written");
+    }
+
+    // ③c F-17：workspace 不存在 / role 非法 逐行报错
+    @Test
+    void importRejectsUnknownWorkspaceAndInvalidRole() throws IOException {
+        Map<String, Object> result = userImportService.batchImport(importFile(
+                new String[] {"badws", "Bad Ws", "badws@askdata.com", "不存在的空间", "user", "1", "0", ""},
+                new String[] {"badrole", "Bad Role", "badrole@askdata.com", "", "root", "1", "0", ""}));
+        assertEquals(0, result.get("success"));
+        assertEquals(2, result.get("failed"));
+
+        List<String[]> rows = readAll(userImportService.errorRecord(String.valueOf(result.get("fileId"))));
+        assertTrue(hasError(rows, "badws", "Workspace does not exist"));
+        assertTrue(hasError(rows, "badrole", "Invalid role"));
     }
 
     // ④ fileId 不存在抛 BadRequest
@@ -199,11 +246,11 @@ class UserBatchImportTest {
         assertTrue(template.getBody().getByteArray().length > 0);
 
         Map<String, Object> imported = assertDoesNotThrow(() -> userController.batchImport(importFile(
-                row("wsuser", "Ws User", "Passw0rd123", "wsuser@askdata.com")))).getData();
+                row("wsuser", "Ws User", "wsuser@askdata.com")))).getData();
         assertEquals(1, imported.get("success"));
 
         Map<String, Object> failed = userController.batchImport(importFile(
-                row("badmail2", "Bad Mail", "Passw0rd123", "nope"))).getData();
+                row("badmail2", "Bad Mail", "nope"))).getData();
         String fileId = String.valueOf(failed.get("fileId"));
         assertNotNull(fileId);
 
@@ -216,32 +263,37 @@ class UserBatchImportTest {
     // 测试工具
     // ------------------------------------------------------------------
 
+    private static final List<String> HEADERS = Arrays.asList(
+            "account", "name", "email", "workspace", "role", "status", "origin", "platform_user_id");
+
     private static MockMultipartFile importFile(String[]... dataRows) throws IOException {
-        List<ExcelUtils.Column> columns = Arrays.asList(
-                new ExcelUtils.Column("account", "account"),
-                new ExcelUtils.Column("name", "name"),
-                new ExcelUtils.Column("password", "password"),
-                new ExcelUtils.Column("email", "email"));
+        boolean withPassword = dataRows.length > 0 && dataRows[0].length > HEADERS.size();
+        List<ExcelUtils.Column> columns = new java.util.ArrayList<>();
+        for (String header : HEADERS) {
+            columns.add(new ExcelUtils.Column(header, header));
+        }
+        if (withPassword) {
+            columns.add(new ExcelUtils.Column("password", "password"));
+        }
         List<ExcelUtils.MapStringArray> rows = Arrays.stream(dataRows)
                 .map(values -> (ExcelUtils.MapStringArray) key -> {
-                    if ("account".equals(key)) {
-                        return values[0];
-                    }
-                    if ("name".equals(key)) {
-                        return values[1];
+                    int index = HEADERS.indexOf(key);
+                    if (index >= 0) {
+                        return index < values.length ? values[index] : "";
                     }
                     if ("password".equals(key)) {
-                        return values[2];
+                        return values.length > HEADERS.size() ? values[HEADERS.size()] : "";
                     }
-                    return values[3];
+                    return "";
                 })
                 .collect(Collectors.toList());
         byte[] content = ExcelUtils.writeXlsx(columns, rows);
         return new MockMultipartFile("file", "users.xlsx", XLSX_MEDIA_TYPE, content);
     }
 
-    private static String[] row(String account, String name, String password, String email) {
-        return new String[] {account, name, password, email};
+    /** 8 列行（account/name/email/workspace/role/status/origin/platform_user_id）。 */
+    private static String[] row(String account, String name, String email) {
+        return new String[] {account, name, email, "", "user", "1", "0", ""};
     }
 
     private static List<String[]> readAll(byte[] content) {
@@ -254,6 +306,6 @@ class UserBatchImportTest {
 
     private static boolean hasError(List<String[]> errorRows, String account, String reasonPart) {
         return errorRows.stream().skip(1)
-                .anyMatch(r -> account.equals(r[1]) && r.length > 5 && r[5].contains(reasonPart));
+                .anyMatch(r -> account.equals(r[1]) && r.length > 9 && r[9].contains(reasonPart));
     }
 }

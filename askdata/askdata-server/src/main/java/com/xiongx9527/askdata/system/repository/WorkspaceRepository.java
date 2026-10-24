@@ -37,6 +37,15 @@ public class WorkspaceRepository {
                         + "WHERE w.uid = ? ORDER BY s.name, s.create_time", uid);
     }
 
+    /** 按名称精确匹配工作空间（用户导入的 workspace 列解析用）。 */
+    public Optional<Map<String, Object>> findByName(String name) {
+        if (name == null || name.isEmpty()) {
+            return Optional.empty();
+        }
+        return jdbc.queryForList("SELECT id, name, create_time FROM sys_workspace WHERE name = ? LIMIT 1", name)
+                .stream().findFirst();
+    }
+
     public Optional<Map<String, Object>> findById(long id) {
         return jdbc.queryForList("SELECT " + COLUMNS + " FROM sys_workspace WHERE id = ?", id).stream().findFirst();
     }

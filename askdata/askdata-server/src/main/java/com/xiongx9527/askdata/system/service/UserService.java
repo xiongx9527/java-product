@@ -36,9 +36,12 @@ public class UserService {
     private MessageResolver messageResolver;
 
     /**
-     * 默认口令：可配置（askdata.user.default-password），缺省不写入源码。
-     * 未配置时回退到运行期生成的随机口令，避免版本库中出现硬编码口令字面量；
-     * 实际部署应通过配置显式设定（保证老库/新用户口令可预期）。
+     * 默认口令：可配置（askdata.user.default-password）。F-04：不写入可预测的缺省值——
+     * 未配置时回退运行期随机口令（每次进程不同），保证新用户口令不可预测；
+     * F-03 改密判定因此在「未配置默认口令」的部署里自然失效：
+     * 无可预测默认口令 ⇒ 需要在部署配置显式设定 askdata.user.default-password 才启用
+     * 「默认口令登录 → need_change_pwd 引导 + changePwd 拒绝默认口令」。
+     * 这里通过 package-private 读取提供给 LoginController 做默认口令判定对比。
      */
     @org.springframework.beans.factory.annotation.Value("${askdata.user.default-password:}")
     private String defaultPasswordConfig;
@@ -51,6 +54,39 @@ public class UserService {
                     ? java.util.UUID.randomUUID().toString() : defaultPasswordConfig;
         }
         return resolvedDefaultPassword;
+    }
+
+    /**
+     * F-03：登录改密判定与 changePwd 拒绝都用这一基准。
+     * 未显式配置 {@code askdata.user.default-password} 时返回 null（无可预测基准 → 判定不命中）。
+     */
+    /** 导入建号复用同一口令来源（F-17：SQLBot 列集不含 password 列）。 */
+    String defaultPasswordForCreate() {
+        return resolveDefaultPassword();
+    }
+
+    public String defaultPasswordForCheck() {
+        return (defaultPasswordConfig == null || defaultPasswordConfig.isEmpty())
+                ? null : defaultPasswordConfig;
+    }
+
+    /** F-03：默认口令判定（对口令明文做 MD5 后与库中哈希比对）。defaultPasswordForCheck() 为 null 时恒 false。 */
+    public boolean isDefaultPassword(String plainPwdMd5) {
+        String baseline = defaultPasswordForCheck();
+        return baseline != null && CryptoUtil.md5Hex(baseline).equals(plainPwdMd5);
+    }
+
+    /**
+     * F-03：SQLBot {@code login.initial_pwd_disabled} 参数读取（sys_arg）。
+     * 缺省 false：默认口令登录直接发主 token（不启用强制改密）。
+     */
+    public boolean initialPwdDisabled() {
+        try {
+            Optional<Map<String, Object>> row = sysArgRepository.findByPkey("login.initial_pwd_disabled");
+            return row.isPresent() && "true".equalsIgnoreCase(Rows.str(row.get(), "pval").trim());
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public static final List<String> SUPPORTED_LANGUAGES =
@@ -177,7 +213,7 @@ public class UserService {
      */
     public long provisionExternalUser(String account, String name, String email) {
         if (account == null || account.trim().isEmpty()) {
-            throw new BadRequestException("account is required for external identity");
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", "account")));
         }
         String safeAccount = account.trim();
         java.util.Optional<Map<String, Object>> existing = userRepository.findByAccount(safeAccount);
@@ -327,10 +363,10 @@ public class UserService {
         if (!allowed) {
             Optional<Map<String, Object>> ws = workspaceRepository.findById(oid);
             if (ws.isPresent()) {
-                throw new BadRequestException(
-                        "Workspace [" + Rows.str(ws.get(), "name") + "] is not available for the current user");
+                throw new BadRequestException(messageResolver.get("i18n_user.ws_not_available",
+                        java.util.Map.of("ws", String.valueOf(Rows.str(ws.get(), "name")))));
             }
-            throw new BadRequestException("Workspace [" + oid + "] does not exist");
+            throw new BadRequestException(messageResolver.get("workspace.not.found", oid));
         }
         userRepository.updateOid(uid, oid);
     }
@@ -392,10 +428,10 @@ public class UserService {
         return value == null ? Rows.str(existing, key) : String.valueOf(value);
     }
 
-    private static String required(Map<String, Object> body, String key) {
+    private String required(Map<String, Object> body, String key) {
         Object value = Rows.get(body, key);
         if (value == null || String.valueOf(value).isEmpty()) {
-            throw new BadRequestException("Missing required argument: [" + key + "]");
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", key)));
         }
         return String.valueOf(value);
     }
@@ -408,7 +444,7 @@ public class UserService {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (Exception e) {
-            throw new BadRequestException("Invalid system_variables");
+            throw new BadRequestException(messageResolver.get("i18n_format_invalid", java.util.Map.of("key", "system_variables")));
         }
     }
 

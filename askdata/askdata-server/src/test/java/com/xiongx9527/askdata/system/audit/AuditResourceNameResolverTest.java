@@ -28,8 +28,10 @@ class AuditResourceNameResolverTest {
         jdbc = new JdbcTemplate(ds);
         jdbc.execute("CREATE TABLE core_dashboard (id BIGINT, name VARCHAR(100))");
         jdbc.execute("CREATE TABLE terminology (id BIGINT, word VARCHAR(100))");
+        jdbc.execute("CREATE TABLE chat (id BIGINT, brief VARCHAR(100))");
         jdbc.update("INSERT INTO core_dashboard VALUES (1, 'Board A')");
         jdbc.update("INSERT INTO terminology VALUES (9, 'term-x')");
+        jdbc.update("INSERT INTO chat VALUES (7, '月度销售分析')");
         resolver = new AuditResourceNameResolver(jdbc);
     }
 
@@ -54,8 +56,14 @@ class AuditResourceNameResolverTest {
     }
 
     @Test
+    void resolvesChatBrief() {
+        // F-07：CHAT 资源名取 chat.brief（rename 写入的会话标题）
+        assertEquals("月度销售分析", resolver.resolve(AuditModule.CHAT, "7"));
+    }
+
+    @Test
     void unknownModuleReturnsNull() {
-        assertNull(resolver.resolve(AuditModule.CHAT, "1"));
+        assertNull(resolver.resolve(AuditModule.THEME, "1"));
     }
 
     @Test
