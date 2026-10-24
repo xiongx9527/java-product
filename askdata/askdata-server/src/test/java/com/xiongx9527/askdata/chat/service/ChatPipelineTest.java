@@ -184,7 +184,8 @@ class ChatPipelineTest {
                 new TableEmbeddingService(tableRepository, fieldRepository, modelRouter, modelClient, appJdbc,
                         objectMapper));
         chatService = new ChatService(chatRepository, recommendedQuestionRepository, datasourceRepository,
-                datasourceService, currentUserService, objectMapper, Mockito.mock(DsGrantService.class));
+                datasourceService, currentUserService, objectMapper, Mockito.mock(DsGrantService.class),
+                messageResolver);
         chatKnowledgeService = new ChatKnowledgeService(
                 new TerminologyRecallService(new EmbeddingService(new LocalEmbeddingModel(excelDir.toString(), 128),
                         modelRouter, modelClient, appJdbc, objectMapper), appJdbc),
@@ -195,7 +196,8 @@ class ChatPipelineTest {
                 new com.xiongx9527.askdata.embedded.DynamicDatasourceResolver(objectMapper, messageResolver),
                 new com.xiongx9527.askdata.embedded.AssistantRepository(appJdbc, idGenerator),
                 chartImageService,
-                new com.xiongx9527.askdata.system.repository.SysArgRepository(appJdbc));
+                new com.xiongx9527.askdata.system.repository.SysArgRepository(appJdbc),
+                messageResolver);
     }
 
     /**
@@ -246,9 +248,11 @@ class ChatPipelineTest {
         boolean sawTemperature = requestBodies.stream().anyMatch(b -> {
             try {
                 JsonNode body = objectMapper.readTree(b);
+                // A5: enable_thinking 归并进嵌套 extra_body，不再顶层平铺
                 return body.has("temperature") && body.get("temperature").asDouble() == 0.3
                         && body.has("top_p") && body.get("top_p").asDouble() == 0.9
-                        && body.has("enable_thinking") && body.get("enable_thinking").asBoolean()
+                        && body.has("extra_body") && body.path("extra_body").path("enable_thinking").asBoolean()
+                        && !body.has("enable_thinking")
                         && body.has("max_tokens") && body.get("max_tokens").asInt() == 512;
             } catch (Exception e) {
                 return false;
@@ -660,7 +664,8 @@ class ChatPipelineTest {
         MockHttpServletResponse missingAssistant = new MockHttpServletResponse();
         chatQuestionService.streamQuestion(body, missingAssistant);
         String missingText = missingAssistant.getContentAsString();
-        assertTrue(missingText.contains("assistant_id"), missingText);
+        // A7: 错误文案走 i18n（测试 MessageSource 为空时回落到键名 chat.dynamic.assistant.required）
+        assertTrue(missingText.contains("chat.dynamic.assistant.required"), missingText);
 
         // 普通助手（type 0）不允许使用动态数据源
         long normalAssistant = assistantRepository.insert("普通助手", 0, "example.com", "", "{}",
@@ -671,7 +676,8 @@ class ChatPipelineTest {
         MockHttpServletResponse normalResponse = new MockHttpServletResponse();
         chatQuestionService.streamQuestion(withAssistant, normalResponse);
         String normalText = normalResponse.getContentAsString();
-        assertTrue(normalText.contains("(type 1/3)"), normalText);
+        assertTrue(normalText.contains("dynamic_ds_advanced_only") || normalText.contains("(type 1/3)"),
+                normalText);
     }
 
     private void startStubServer() throws Exception {

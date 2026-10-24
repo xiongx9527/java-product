@@ -143,26 +143,7 @@ public class ChatModelClient {
                     connection.setRequestProperty("Authorization", "Bearer " + apiKey);
                 }
             }
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("model", baseModel);
-            List<Map<String, String>> msgs = new ArrayList<>();
-            for (ModelMessage message : messages) {
-                Map<String, String> item = new LinkedHashMap<>();
-                item.put("role", message.role);
-                item.put("content", message.content);
-                msgs.add(item);
-            }
-            payload.put("messages", msgs);
-            // §2.3: 透传模型推理参数（temperature / top_p / max_tokens / enable_thinking 及厂商自定义
-            // additional_params）；跳过 null 值，避免冲掉模型端点默认行为。
-            if (extraParams != null) {
-                for (Map.Entry<String, Object> entry : extraParams.entrySet()) {
-                    if (entry.getValue() != null) {
-                        payload.put(entry.getKey(), entry.getValue());
-                    }
-                }
-            }
-            payload.put("stream", true);
+            Map<String, Object> payload = buildPayload(baseModel, messages, extraParams, azure);
             connection.getOutputStream().write(objectMapper.writeValueAsBytes(payload));
             connection.getOutputStream().flush();
 
@@ -182,6 +163,94 @@ public class ChatModelClient {
                 connection.disconnect();
             }
         }
+    }
+
+    /**
+     * 构造 chat/completions 请求体（§2.3 / A5）：
+     * <ul>
+     *   <li>模型推理参数整包平铺进顶层、跳过 null（temperature/top_p/max_tokens 等保持既有语义）；</li>
+     *   <li>{@code extra_body} 键的值（Map 或 JSON 字符串）与单独出现的 {@code enable_thinking}
+     *       归并进嵌套 {@code extra_body} 对象——严格 OpenAI 兼容端点不认顶层平铺键（对齐 SQLBot
+     *       langchain 的 extra_body kwarg + llm.py:194-201 删 enable_thinking 语义）；</li>
+     *   <li>Azure 端点：{@code api_version}/{@code deployment_name} 只参与 URL 构造（见
+     *       {@link #chatCompletionsUrl}），从请求体剔除（对齐 SQLBot model_factory 的 pop 行为）；
+     *       非 Azure 端点仍按普通参数透传。</li>
+     * </ul>
+     */
+    static Map<String, Object> buildPayload(String baseModel, List<ModelMessage> messages,
+                                            Map<String, Object> extraParams, boolean azure) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("model", baseModel);
+        List<Map<String, String>> msgs = new ArrayList<>();
+        for (ModelMessage message : messages) {
+            Map<String, String> item = new LinkedHashMap<>();
+            item.put("role", message.role);
+            item.put("content", message.content);
+            msgs.add(item);
+        }
+        payload.put("messages", msgs);
+        Map<String, Object> extraBody = null;
+        if (extraParams != null) {
+            for (Map.Entry<String, Object> entry : extraParams.entrySet()) {
+                String key = entry.getKey();
+                Object value = entry.getValue();
+                if (value == null || key == null) {
+                    continue;
+                }
+                if ("api_version".equals(key) || "deployment_name".equals(key)) {
+                    if (!azure) {
+                        payload.put(key, value);
+                    }
+                    continue;
+                }
+                if ("extra_body".equals(key)) {
+                    extraBody = mergeExtraBody(extraBody, value);
+                    continue;
+                }
+                if ("enable_thinking".equals(key)) {
+                    if (extraBody == null) {
+                        extraBody = new LinkedHashMap<>();
+                    }
+                    extraBody.put("enable_thinking", value);
+                    continue;
+                }
+                payload.put(key, value);
+            }
+        }
+        if (extraBody != null) {
+            payload.put("extra_body", extraBody);
+        }
+        payload.put("stream", true);
+        return payload;
+    }
+
+    /** 把 extra_body 配置值（Map / JSON 字符串）归并进已有的嵌套对象；非法 JSON 按原样字符串保留。 */
+    private static Map<String, Object> mergeExtraBody(Map<String, Object> current, Object value) {
+        Map<String, Object> merged = current == null ? new LinkedHashMap<>() : current;
+        if (value instanceof Map) {
+            for (Map.Entry<?, ?> entry : ((Map<?, ?>) value).entrySet()) {
+                merged.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        } else if (value instanceof String) {
+            String text = ((String) value).trim();
+            if (text.startsWith("{")) {
+                try {
+                    com.fasterxml.jackson.databind.ObjectMapper mapper =
+                            new com.fasterxml.jackson.databind.ObjectMapper();
+                    com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(text);
+                    if (node.isObject()) {
+                        merged.putAll(mapper.convertValue(node, Map.class));
+                        return merged;
+                    }
+                } catch (Exception ignored) {
+                    // 非 JSON 字符串按原样保留
+                }
+            }
+            merged.put("extra_body", value);
+        } else {
+            merged.put("extra_body", value);
+        }
+        return merged;
     }
 
     /** 非流式一次性补全（用于少量补充推理，如图表类型判定）。失败时返回 null。

@@ -50,7 +50,8 @@ public class ChatService {
     public ChatService(ChatRepository chatRepository, RecommendedQuestionRepository recommendedQuestionRepository,
                        DatasourceRepository datasourceRepository, DatasourceService datasourceService,
                        CurrentUserService currentUserService, ObjectMapper objectMapper,
-                       com.xiongx9527.askdata.permission.DsGrantService dsGrantService) {
+                       com.xiongx9527.askdata.permission.DsGrantService dsGrantService,
+                       com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver) {
         this.chatRepository = chatRepository;
         this.recommendedQuestionRepository = recommendedQuestionRepository;
         this.datasourceRepository = datasourceRepository;
@@ -58,7 +59,11 @@ public class ChatService {
         this.currentUserService = currentUserService;
         this.objectMapper = objectMapper;
         this.dsGrantService = dsGrantService;
+        this.messageResolver = messageResolver;
     }
+
+    /** A7: i18n 消息解析（错误文案统一走 messageResolver）。 */
+    private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
 
     // ------------------------------------------------------------------
     // 会话
@@ -104,9 +109,9 @@ public class ChatService {
         String dsType = null;
         if (datasource != null) {
             Map<String, Object> ds = datasourceRepository.findById(datasource)
-                    .orElseThrow(() -> new BadRequestException("Datasource with id " + datasource + " not found"));
+                    .orElseThrow(() -> new BadRequestException(messageResolver.get("ds.not.found", datasource)));
             if (!currentUserService.isAdmin(user) && Rows.lng(ds, "oid", 0L) != oid) {
-                throw new BadRequestException("Datasource with id " + datasource + " not found");
+                throw new BadRequestException(messageResolver.get("ds.not.found", datasource));
             }
             // 资源级使用授权（对齐 SQLBot @require_permissions(type='ds')）：白名单覆盖语义，
             // 该数据源存在授权记录时未授权成员拒绝建会话
@@ -242,9 +247,9 @@ public class ChatService {
     public List<String> recentQuestions(long datasourceId) {
         Map<String, Object> user = currentUserService.currentUser();
         Map<String, Object> ds = datasourceRepository.findById(datasourceId)
-                .orElseThrow(() -> new BadRequestException("Datasource with id " + datasourceId + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("ds.not.found", datasourceId)));
         if (!currentUserService.isAdmin(user) && Rows.lng(ds, "oid", 0L) != currentUserService.oidOf(user)) {
-            throw new BadRequestException("Datasource with id " + datasourceId + " not found");
+            throw new BadRequestException(messageResolver.get("ds.not.found", datasourceId));
         }
         return recommendedQuestionRepository.recentByDatasource(datasourceId, currentUserService.oidOf(user), 20);
     }
@@ -263,16 +268,16 @@ public class ChatService {
 
     private Map<String, Object> requireOwnedChat(long chatId, Map<String, Object> user) {
         Map<String, Object> chat = chatRepository.findChat(chatId)
-                .orElseThrow(() -> new BadRequestException("Chat with id " + chatId + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("chat.not.found", chatId)));
         requireOwner(chat, user, "Chat");
         return chat;
     }
 
     private Map<String, Object> requireOwnedRecord(long recordId, Map<String, Object> user) {
         Map<String, Object> record = chatRepository.findRecord(recordId)
-                .orElseThrow(() -> new BadRequestException("ChatRecord with id " + recordId + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("chat.record.not.found", recordId)));
         Map<String, Object> chat = chatRepository.findChat(Rows.lng(record, "chat_id", 0L))
-                .orElseThrow(() -> new BadRequestException("ChatRecord with id " + recordId + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("chat.record.not.found", recordId)));
         requireOwner(chat, user, "ChatRecord");
         return record;
     }
@@ -283,10 +288,10 @@ public class ChatService {
         }
         long id = Rows.lng(chat, "id", 0L);
         if (Rows.lng(chat, "oid", 0L) != currentUserService.oidOf(user)) {
-            throw new BadRequestException(label + " with id " + id + " does not belong to current workspace");
+            throw new BadRequestException(messageResolver.get("chat.not.belong.workspace", label, id));
         }
         if (Rows.lng(chat, "create_by", 0L) != Rows.lng(user, "id", 0L)) {
-            throw new BadRequestException(label + " with id " + id + " not Owned by the current user");
+            throw new BadRequestException(messageResolver.get("chat.not.owned.by.user", label, id));
         }
     }
 

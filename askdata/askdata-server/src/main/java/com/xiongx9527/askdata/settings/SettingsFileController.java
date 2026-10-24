@@ -30,6 +30,12 @@ public class SettingsFileController {
     @Value("${askdata.excel.path:./data/excel}")
     private String excelPath;
 
+    private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
+
+    public SettingsFileController(com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver) {
+        this.messageResolver = messageResolver;
+    }
+
     /**
      * 按文件名下载失败明细（body {@code {"file": "<name>"}}；对齐 SQLBot download_excel）：
      * 仅允许 {@code _error.xlsx} 后缀，防路径穿越（与 SQLBot 的白名单校验一致）。
@@ -38,14 +44,14 @@ public class SettingsFileController {
     public ResponseEntity<Resource> downloadFailInfo(@RequestBody Map<String, Object> body) {
         String filename = body == null ? null : (body.get("file") == null ? null : String.valueOf(body.get("file")));
         if (filename == null || filename.isEmpty()) {
-            throw new BadRequestException("file is required");
+            throw new BadRequestException(messageResolver.get("settings.file.required"));
         }
         if (!filename.endsWith("_error.xlsx")) {
-            throw new BadRequestException("Only support _error.xlsx");
+            throw new BadRequestException(messageResolver.get("settings.file.only.error.xlsx"));
         }
         File target = new File(excelPath, new File(filename).getName());
         if (!target.exists() || !target.isFile()) {
-            throw new BadRequestException("File Not Exists");
+            throw new BadRequestException(messageResolver.get("settings.file.not.exists"));
         }
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + target.getName() + "\"")

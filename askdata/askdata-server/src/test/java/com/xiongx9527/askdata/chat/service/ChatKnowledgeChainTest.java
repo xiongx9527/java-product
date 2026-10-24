@@ -184,14 +184,16 @@ class ChatKnowledgeChainTest {
                 new TerminologyRecallService(embeddingService, appJdbc), schemaContextBuilder, appJdbc,
                 Mockito.mock(ChatModelRouter.class), modelClient);
         chatService = new ChatService(chatRepository, recommendedQuestionRepository, datasourceRepository,
-                datasourceService, currentUserService, objectMapper, Mockito.mock(DsGrantService.class));
+                datasourceService, currentUserService, objectMapper, Mockito.mock(DsGrantService.class),
+                messageResolver);
         chatQuestionService = new ChatQuestionService(chatRepository, recommendedQuestionRepository,
                 datasourceRepository, datasourceService, currentUserService, schemaContextBuilder, modelClient,
                 modelRouter, new ChatChartBuilder(objectMapper), objectMapper, null, chatKnowledgeService,
                 new com.xiongx9527.askdata.embedded.DynamicDatasourceResolver(objectMapper, messageResolver),
                 new com.xiongx9527.askdata.embedded.AssistantRepository(appJdbc, idGenerator),
                 Mockito.mock(ChartImageService.class),
-                new com.xiongx9527.askdata.system.repository.SysArgRepository(appJdbc));
+                new com.xiongx9527.askdata.system.repository.SysArgRepository(appJdbc),
+                messageResolver);
     }
 
     @AfterEach

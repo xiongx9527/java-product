@@ -235,29 +235,31 @@ public class TrainingService {
         long oid = currentUserService.oidOf(currentUserService.currentUser());
         List<Map<String, Object>> rows = trainingRepository.all(oid, question, dsList, advList);
         List<Map<String, Object>> results = toResults(rows);
-        List<ExcelUtils.Column> columns = new ArrayList<>();
-        columns.add(new ExcelUtils.Column("问题描述", "question"));
-        columns.add(new ExcelUtils.Column("示例 SQL", "description"));
-        columns.add(new ExcelUtils.Column("生效数据源", "datasource_name"));
-        columns.add(new ExcelUtils.Column("高级应用", "advanced_application_name"));
+        List<ExcelUtils.Column> columns = trainingExportColumns();
         writeExcel(response, "data_training.xlsx", columns, results);
     }
 
     /** GET /system/data-training/template（含示例行的导入模板）。 */
     public void template(HttpServletResponse response) throws IOException {
-        List<ExcelUtils.Column> columns = new ArrayList<>();
-        columns.add(new ExcelUtils.Column("问题描述", "question"));
-        columns.add(new ExcelUtils.Column("示例 SQL", "description"));
-        columns.add(new ExcelUtils.Column("生效数据源", "datasource_name"));
-        columns.add(new ExcelUtils.Column("高级应用", "advanced_application_name"));
+        List<ExcelUtils.Column> columns = trainingExportColumns();
         List<Map<String, Object>> example = new ArrayList<>();
         Map<String, Object> row = new LinkedHashMap<>();
-        row.put("question", "查询TEST表内所有ID");
+        row.put("question", messageResolver.get("export.training.question.example"));
         row.put("description", "SELECT id FROM TEST");
-        row.put("datasource_name", "生效数据源1");
-        row.put("advanced_application_name", "生效高级应用名称");
+        row.put("datasource_name", messageResolver.get("export.datasource.example"));
+        row.put("advanced_application_name", messageResolver.get("export.advanced.application.example"));
         example.add(row);
         writeExcel(response, "data_training_template.xlsx", columns, example);
+    }
+
+    /** A6: 导出/模板列头走 i18n（此前硬编码中文）。 */
+    private List<ExcelUtils.Column> trainingExportColumns() {
+        List<ExcelUtils.Column> columns = new ArrayList<>();
+        columns.add(new ExcelUtils.Column(messageResolver.get("export.training.question"), "question"));
+        columns.add(new ExcelUtils.Column(messageResolver.get("export.training.sql"), "description"));
+        columns.add(new ExcelUtils.Column(messageResolver.get("export.datasource.names"), "datasource_name"));
+        columns.add(new ExcelUtils.Column(messageResolver.get("export.advanced.application"), "advanced_application_name"));
+        return columns;
     }
 
     /**

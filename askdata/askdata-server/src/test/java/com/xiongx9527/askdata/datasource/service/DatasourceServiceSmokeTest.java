@@ -121,7 +121,7 @@ class DatasourceServiceSmokeTest {
                         new ChatModelRouter(new AiModelRepository(appJdbc, new com.xiongx9527.askdata.common.util.IdGenerator()),
                                 objectMapper),
                         new ChatModelClient(objectMapper), appJdbc, objectMapper));
-        tableRelationService = new TableRelationService(datasourceRepository, objectMapper);
+        tableRelationService = new TableRelationService(datasourceRepository, objectMapper, messageResolver);
         recommendedProblemService = new RecommendedProblemService(problemRepository, datasourceRepository,
                 currentUserService, objectMapper);
     }

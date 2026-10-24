@@ -24,10 +24,14 @@ public class TableRelationService {
 
     private final ObjectMapper objectMapper;
 
-    public TableRelationService(DatasourceRepository datasourceRepository, ObjectMapper objectMapper) {
+    public TableRelationService(DatasourceRepository datasourceRepository, ObjectMapper objectMapper,
+                                com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver) {
         this.datasourceRepository = datasourceRepository;
         this.objectMapper = objectMapper;
+        this.messageResolver = messageResolver;
     }
+
+    private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
 
     /** POST /table_relation/save/{ds_id}。 */
     public void save(long dsId, List<Map<String, Object>> relation) {
@@ -59,7 +63,7 @@ public class TableRelationService {
     /** ds 存在性校验（controller 层 400 语义）。 */
     public void requireExists(long dsId) {
         if (!datasourceRepository.exists(dsId)) {
-            throw new BadRequestException("Datasource with id " + dsId + " not found");
+            throw new BadRequestException(messageResolver.get("ds.not.found", dsId));
         }
     }
 }

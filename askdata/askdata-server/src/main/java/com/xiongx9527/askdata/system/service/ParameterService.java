@@ -30,12 +30,16 @@ public class ParameterService {
     private final ObjectMapper objectMapper;
 
     public ParameterService(SysArgRepository sysArgRepository, CurrentUserService currentUserService,
-                            IdGenerator idGenerator, ObjectMapper objectMapper) {
+                            IdGenerator idGenerator, ObjectMapper objectMapper,
+                            com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver) {
         this.sysArgRepository = sysArgRepository;
         this.currentUserService = currentUserService;
         this.idGenerator = idGenerator;
         this.objectMapper = objectMapper;
+        this.messageResolver = messageResolver;
     }
+
+    private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
 
     /** GET /system/parameter：全量参数（排除 appearance.*），仅管理员。 */
     public List<Map<String, Object>> list() {
@@ -60,7 +64,7 @@ public class ParameterService {
             args = objectMapper.readValue(jsonData, new TypeReference<List<Map<String, Object>>>() {
             });
         } catch (Exception e) {
-            throw new BadRequestException("Invalid parameter data");
+            throw new BadRequestException(messageResolver.get("parameter.invalid"));
         }
         for (Map<String, Object> arg : args) {
             String pkey = Rows.str(arg, "pkey");
@@ -76,7 +80,7 @@ public class ParameterService {
     /** SQLBot 侧仅允许已知文件位；askdata 无外观文件位，任何上传都拒绝。 */
     public void rejectUploads(List<String> fileNames) {
         if (fileNames != null && !fileNames.isEmpty()) {
-            throw new BadRequestException("The file [" + fileNames.get(0) + "] is not allowed to be uploaded!");
+            throw new BadRequestException(messageResolver.get("parameter.file.not.allowed", fileNames.get(0)));
         }
     }
 

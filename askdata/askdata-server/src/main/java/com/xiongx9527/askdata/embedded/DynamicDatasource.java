@@ -3,8 +3,15 @@ package com.xiongx9527.askdata.embedded;
 import com.xiongx9527.askdata.datasource.engine.DatasourceConf;
 import com.xiongx9527.askdata.datasource.engine.DatasourceType;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 动态数据源（A8）：高级应用（assistant type 1/3）按请求从宿主拉取的数据源连接配置。
@@ -15,6 +22,98 @@ import java.util.Map;
  * 查询/元数据链路，因此问数行为保持一致。</p>
  */
 public class DynamicDatasource {
+
+    /** §2.4: 表级子查询占位符表名前缀（对齐 SQLBot dynamic_subsql_prefix + sqlbot_dynamic_temp_table_ 形态）。
+     * 提示词引导模型引用 {@code <前缀><表名>} 占位符表，执行前由
+     * {@link #replaceSubSqlPlaceholders} 确定性替换为宿主下发的真实子查询。 */
+    public static final String DYNAMIC_SUB_SQL_PREFIX = "askdata_dynamic_temp_table_";
+
+    /** 占位符表名：{@code askdata_dynamic_temp_table_<表名>}。 */
+    public static String placeholderTable(String table) {
+        return DYNAMIC_SUB_SQL_PREFIX + table;
+    }
+
+    /**
+     * 执行前确定性替换：把 SQL 中引用的占位符表名替换为 {@code (宿主子查询)}。
+     * 按词边界匹配、大小写不敏感；宿主子查询文本原样内联，不做重写（brief D2）。
+     */
+    public static String replaceSubSqlPlaceholders(String sql, Map<String, String> tableSqlTemplates) {
+        if (sql == null || sql.trim().isEmpty() || tableSqlTemplates == null || tableSqlTemplates.isEmpty()) {
+            return sql;
+        }
+        String result = sql;
+        for (Map.Entry<String, String> entry : tableSqlTemplates.entrySet()) {
+            String placeholder = placeholderTable(entry.getKey());
+            Pattern p = Pattern.compile(Pattern.quote(placeholder), Pattern.CASE_INSENSITIVE);
+            Matcher m = p.matcher(result);
+            if (m.find()) {
+                result = m.replaceAll(Matcher.quoteReplacement("(" + entry.getValue() + ")"));
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 直接物理表引用检查（替换前调用）：受限表必须通过占位符引用。
+     * SQL 直接写宿主受限表名会绕过宿主子查询的数据边界（brief D1），按校验错误处理。
+     *
+     * @return 错误信息；通过返回 null
+     */
+    public static String directTableReferenceError(String sql, Map<String, String> tableSqlTemplates,
+                                                   java.util.function.Function<String, List<String>> tablesOf) {
+        if (sql == null || sql.trim().isEmpty() || tableSqlTemplates == null || tableSqlTemplates.isEmpty()) {
+            return null;
+        }
+        Set<String> lowerKeys = new LinkedHashSet<>();
+        for (String key : tableSqlTemplates.keySet()) {
+            lowerKeys.add(key.toLowerCase(Locale.ROOT));
+        }
+        for (String table : tablesOf.apply(sql)) {
+            if (lowerKeys.contains(table)) {
+                return "受限表 " + table + " 必须通过占位符表 "
+                        + placeholderTable(table) + " 引用（宿主已下发该表的子查询模板）";
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 残留占位符检查（替换后调用）：SQL 仍引用 {@code <前缀><表名>} 且该表没有宿主模板时，
+     * 不能执行（会打到不存在的占位符表）。
+     *
+     * @return 错误信息；通过返回 null
+     */
+    public static String leftoverPlaceholderError(String sql, Map<String, String> tableSqlTemplates,
+                                                  java.util.function.Function<String, List<String>> tablesOf) {
+        if (sql == null || !sql.contains(DYNAMIC_SUB_SQL_PREFIX)) {
+            return null;
+        }
+        for (String table : tablesOf.apply(sql)) {
+            if (table.startsWith(DYNAMIC_SUB_SQL_PREFIX)
+                    && (tableSqlTemplates == null
+                        || !tableSqlTemplates.containsKey(table.substring(DYNAMIC_SUB_SQL_PREFIX.length())))) {
+                return "SQL 引用了未知的动态表占位符: " + table;
+            }
+        }
+        return null;
+    }
+
+    /** 宿主子查询模板内部引用的物理表（用于扩展表名白名单允许集）。 */
+    public static List<String> templateInnerTables(Map<String, String> tableSqlTemplates,
+                                                   java.util.function.Function<String, List<String>> tablesOf) {
+        List<String> names = new ArrayList<>();
+        if (tableSqlTemplates == null) {
+            return names;
+        }
+        for (String sub : tableSqlTemplates.values()) {
+            for (String t : tablesOf.apply(sub)) {
+                if (!names.contains(t)) {
+                    names.add(t);
+                }
+            }
+        }
+        return names;
+    }
 
     private final DatasourceType type;
 

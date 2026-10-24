@@ -692,10 +692,7 @@ public class SchemaContextBuilder {
             user.append("\n\n【自定义提示词】\n").append(customPromptText);
         }
         if (tableSqlTemplates != null && !tableSqlTemplates.isEmpty()) {
-            user.append("\n\n【宿主下发的表级 SQL 模板（请优先以 WITH 表名 AS (...) 形式复用，不要重写其逻辑）】\n");
-            for (Map.Entry<String, String> entry : tableSqlTemplates.entrySet()) {
-                user.append("- ").append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
-            }
+            appendDynamicTemplateSection(user, tableSqlTemplates, "查询这些受限表时");
         }
         if (historyText != null && !historyText.isEmpty()) {
             user.append("\n\n【前文问答（追问请优先引用其中已出现的表名、列名与实体）】\n").append(historyText);
@@ -728,10 +725,7 @@ public class SchemaContextBuilder {
         StringBuilder user = new StringBuilder();
         user.append("【数据库表结构】\n").append(buildSchemaTextForConf(type, conf, question));
         if (tableSqlTemplates != null && !tableSqlTemplates.isEmpty()) {
-            user.append("\n\n【宿主下发的表级 SQL 模板（修正时请继续以 WITH 表名 AS (...) 形式复用，不要重写其逻辑）】\n");
-            for (Map.Entry<String, String> entry : tableSqlTemplates.entrySet()) {
-                user.append("- ").append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
-            }
+            appendDynamicTemplateSection(user, tableSqlTemplates, "修正后的 SQL 仍引用这些受限表时");
         }
         user.append("\n\n【用户问题】\n").append(question)
                 .append("\n\n【上次生成的 SQL】\n").append(brokenSql)
@@ -745,6 +739,23 @@ public class SchemaContextBuilder {
                                                          String brokenSql, String error) {
         return buildSqlFixMessagesForConf(question, type, conf, brokenSql, error,
                 Collections.<String, String>emptyMap());
+    }
+
+    /**
+     * §2.4: 动态数据源宿主受限表段（对齐 SQLBot dynamic_subsql_prefix 形态）：
+     * 每表声明一个占位符表名 {@code askdata_dynamic_temp_table_<表名>}，宿主子查询仅用于了解列结构；
+     * 模型在最终 SQL 中只引用占位符表，执行前由 ChatQuestionService 确定性替换为宿主子查询，
+     * 保证宿主下发的数据边界有程序性保证（brief D2）。
+     */
+    private void appendDynamicTemplateSection(StringBuilder user, Map<String, String> tableSqlTemplates,
+                                              String whenClause) {
+        user.append("\n\n【宿主下发的受限表（").append(whenClause)
+                .append("，必须通过占位符表名引用，禁止直接访问同名物理表，也不要把定义子查询原样写进最终 SQL）】\n");
+        for (Map.Entry<String, String> entry : tableSqlTemplates.entrySet()) {
+            user.append("- 占位符表名: ").append(com.xiongx9527.askdata.embedded.DynamicDatasource.placeholderTable(entry.getKey()))
+                    .append("\n  定义子查询（仅用于了解该表的列结构）: ").append(entry.getValue()).append("\n");
+        }
+        user.append("系统会在执行前把占位符表名替换为对应定义子查询；请像使用普通表一样引用占位符表名（可 JOIN/子查询/WITH）。\n");
     }
 
     /** TOP-N 表 id：有问题时走表级向量召回排序（已按 MAX_TABLES 截断），否则保持既有次序。 */

@@ -144,7 +144,8 @@ public class ChatQuestionService {
                                DynamicDatasourceResolver dynamicDatasourceResolver,
                                AssistantRepository assistantRepository,
                                ChartImageService chartImageService,
-                               SysArgRepository sysArgRepository) {
+                               SysArgRepository sysArgRepository,
+                               com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver) {
         this.chatRepository = chatRepository;
         this.recommendedQuestionRepository = recommendedQuestionRepository;
         this.datasourceRepository = datasourceRepository;
@@ -161,7 +162,11 @@ public class ChatQuestionService {
         this.assistantRepository = assistantRepository;
         this.chartImageService = chartImageService;
         this.sysArgRepository = sysArgRepository;
+        this.messageResolver = messageResolver;
     }
+
+    /** A7: i18n 消息解析（错误文案统一走 messageResolver）。 */
+    private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
 
     // ==================================================================
     // POST /chat/question
@@ -182,7 +187,7 @@ public class ChatQuestionService {
         long started = System.currentTimeMillis();
 
         Map<String, Object> chat = chatRepository.findChat(chatId)
-                .orElseThrow(() -> new BadRequestException("Chat with id " + chatId + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("chat.not.found", chatId)));
         requireOwner(chat, user, "Chat");
 
         // 快捷命令解析（对齐 SQLBot common/utils/command_utils.py + views/chat/index.vue 的
@@ -195,7 +200,7 @@ public class ChatQuestionService {
                 target = chatRepository.lastUsableRecordId(chatId).orElse(null);
             }
             if (target == null) {
-                throw new BadRequestException("You have not ask any question");
+                throw new BadRequestException(messageResolver.get("chat.no.question"));
             }
             regenerateRecordId = target;
             question = findBaseQuestion(target);
@@ -300,10 +305,34 @@ public class ChatQuestionService {
                     sqlText = regenerateSql(aiModel, question, dsId, dynamic, sqlText, "模型未输出可执行的 SQL", writer);
                     sql = sqlText == null ? null : extractSql(sqlText);
                 }
+                // §2.4: 动态数据源表级 SQL 占位符闭环（brief D2）：先查直接物理表引用，再确定性替换占位符；
+                // 替换/引用违规都走既有的错误回喂修复轮，不执行未替换 SQL
+                if (sql != null && dynamic != null && !dynamic.getTableSqlTemplates().isEmpty()) {
+                    String directErr = DynamicDatasource.directTableReferenceError(sql, dynamic.getTableSqlTemplates(),
+                            ChatQuestionService::usedTables);
+                    if (directErr == null) {
+                        sql = DynamicDatasource.replaceSubSqlPlaceholders(sql, dynamic.getTableSqlTemplates());
+                    } else {
+                        sqlText = regenerateSql(aiModel, question, dsId, dynamic, sql, directErr, writer);
+                        String fixedSql = sqlText == null ? null : extractSql(sqlText);
+                        if (fixedSql != null
+                                && DynamicDatasource.directTableReferenceError(fixedSql, dynamic.getTableSqlTemplates(),
+                                        ChatQuestionService::usedTables) == null) {
+                            sql = DynamicDatasource.replaceSubSqlPlaceholders(fixedSql, dynamic.getTableSqlTemplates());
+                        } else {
+                            sql = fixedSql;
+                        }
+                    }
+                }
                 String validation = sql == null ? "模型未输出可执行的 SQL" : validateSql(sql, dsType, dsId, dynamic);
                 if (validation != null) {
                     String fixed = regenerateSql(aiModel, question, dsId, dynamic, sql == null ? "" : sql, validation, writer);
                     String fixedSql = fixed == null ? null : extractSql(fixed);
+                    if (fixedSql != null && dynamic != null && !dynamic.getTableSqlTemplates().isEmpty()
+                            && DynamicDatasource.directTableReferenceError(fixedSql, dynamic.getTableSqlTemplates(),
+                                    ChatQuestionService::usedTables) == null) {
+                        fixedSql = DynamicDatasource.replaceSubSqlPlaceholders(fixedSql, dynamic.getTableSqlTemplates());
+                    }
                     if (fixedSql != null && validateSql(fixedSql, dsType, dsId, dynamic) == null) {
                         sqlText = fixed;
                         sql = fixedSql;
@@ -420,15 +449,15 @@ public class ChatQuestionService {
     public void streamAnalysisOrPredict(long baseRecordId, String actionType, HttpServletResponse response)
             throws IOException {
         if (!"analysis".equals(actionType) && !"predict".equals(actionType)) {
-            throw new BadRequestException("Type " + actionType + " Not Found");
+            throw new BadRequestException(messageResolver.get("chat.type.not.found", actionType));
         }
         Map<String, Object> user = currentUserService.currentUser();
         long uid = Rows.lng(user, "id", 0L);
         long oid = currentUserService.oidOf(user);
         Map<String, Object> base = chatRepository.findRecord(baseRecordId)
-                .orElseThrow(() -> new BadRequestException("Chat record with id " + baseRecordId + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("chat.record.not.found", baseRecordId)));
         Map<String, Object> chat = chatRepository.findChat(Rows.lng(base, "chat_id", 0L))
-                .orElseThrow(() -> new BadRequestException("Chat record with id " + baseRecordId + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("chat.record.not.found", baseRecordId)));
         requireOwner(chat, user, "ChatRecord");
         long started = System.currentTimeMillis();
 
@@ -441,8 +470,7 @@ public class ChatQuestionService {
                 }
                 ModelRef aiModel = model.get();
                 if (Rows.str(base, "chart") == null || Rows.str(base, "chart").isEmpty()) {
-                    emitError(writer, "Chat record with id " + baseRecordId
-                            + " has not generated chart, do not support to analyze it");
+                    emitError(writer, messageResolver.get("chat.no.chart", baseRecordId));
                     return;
                 }
                 Long dsId = Rows.lngOrNull(base, "datasource");
@@ -638,9 +666,10 @@ public class ChatQuestionService {
             }
             blocks.add(b.toString());
         }
-        // §2.1: 追问上下文的轮数由 chat.context_record_count 控制（缺省 5），不再硬编码。
+        // §2.1: 追问上下文的轮数由 chat.context_record_count 控制（缺省 3，对齐 SQLBot
+        // GENERATE_SQL_QUERY_HISTORY_ROUND_COUNT=3），不再硬编码。
         // 语义对齐 SQLBot get_last_conversation_rounds：<= 0 表示不注入任何历史（返回空）。
-        int maxRecords = chatInt("chat.context_record_count", 5);
+        int maxRecords = chatInt("chat.context_record_count", 3);
         if (maxRecords <= 0) {
             return "";
         }
@@ -721,7 +750,7 @@ public class ChatQuestionService {
                             new TypeReference<Map<String, Object>>() {
                             });
                 } catch (Exception e) {
-                    throw new BadRequestException("Invalid dynamic datasource: " + e.getMessage());
+                    throw new BadRequestException(messageResolver.get("chat.invalid.dynamic.ds", e.getMessage()));
                 }
             }
         }
@@ -729,14 +758,13 @@ public class ChatQuestionService {
         // 不信任请求体自报的 assistant_type——否则任意账号都能让服务端连接任意 JDBC 地址。
         Long assistantId = Rows.lngOrNull(body, "assistant_id");
         if (assistantId == null) {
-            throw new BadRequestException(
-                    "Dynamic datasource requires assistant_id of an advanced application");
+            throw new BadRequestException(messageResolver.get("chat.dynamic.assistant.required"));
         }
         Map<String, Object> assistant = assistantRepository.findById(assistantId)
-                .orElseThrow(() -> new BadRequestException("Assistant with id " + assistantId + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("assistant.not.found", assistantId)));
         long oid = currentUserService.oidOf(currentUserService.currentUser());
         if (Rows.lng(assistant, "oid", 0L) != oid) {
-            throw new BadRequestException("Assistant with id " + assistantId + " not found");
+            throw new BadRequestException(messageResolver.get("assistant.not.found", assistantId));
         }
         if (hostUrl != null) {
             return dynamicDatasourceResolver.resolveFromHost(Rows.intg(assistant, "type", 0), hostUrl, hostHeaders);
@@ -790,7 +818,23 @@ public class ChatQuestionService {
             return safety;
         }
         if (dynamic != null) {
-            return validateTables(sql, dynamicTableNames(dynamic));
+            // §2.4: 残留占位符不得执行（宿主未下发对应表模板）
+            String leftover = DynamicDatasource.leftoverPlaceholderError(sql, dynamic.getTableSqlTemplates(),
+                    ChatQuestionService::usedTables);
+            if (leftover != null) {
+                return leftover;
+            }
+            // 白名单允许集 = 动态连接实时表 + 宿主子查询模板内部引用的物理表
+            List<String> allowed = dynamicTableNames(dynamic);
+            if (allowed != null) {
+                for (String inner : DynamicDatasource.templateInnerTables(dynamic.getTableSqlTemplates(),
+                        ChatQuestionService::usedTables)) {
+                    if (!allowed.contains(inner)) {
+                        allowed.add(inner);
+                    }
+                }
+            }
+            return validateTables(sql, allowed);
         }
         if (dsId == null) {
             return null;

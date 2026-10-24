@@ -63,7 +63,8 @@ class ChatExportParityTest {
         Mockito.when(currentUserService.oidOf(Mockito.any())).thenReturn(1L);
         chatService = new ChatService(chatRepository, new RecommendedQuestionRepository(appJdbc, ids),
                 Mockito.mock(DatasourceRepository.class), Mockito.mock(DatasourceService.class),
-                currentUserService, objectMapper, Mockito.mock(DsGrantService.class));
+                currentUserService, objectMapper, Mockito.mock(DsGrantService.class),
+                new com.xiongx9527.askdata.common.i18n.MessageResolver(new org.springframework.context.support.StaticMessageSource()));
     }
 
     /** 建会话 + 记录，写入 data / chart / predict_data 快照。 */

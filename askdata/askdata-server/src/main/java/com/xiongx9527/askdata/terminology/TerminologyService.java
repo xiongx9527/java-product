@@ -269,43 +269,43 @@ public class TerminologyService {
         long oid = currentUserService.oidOf(currentUserService.currentUser());
         List<Map<String, Object>> results = toResults(
                 terminologyRepository.allParents(oid, word, dsList, advList));
-        List<ExcelUtils.Column> columns = new ArrayList<>();
-        columns.add(new ExcelUtils.Column("术语名称", "word"));
-        columns.add(new ExcelUtils.Column("同义词", "other_words"));
-        columns.add(new ExcelUtils.Column("术语描述", "description"));
-        columns.add(new ExcelUtils.Column("生效数据源", "datasource_names"));
-        columns.add(new ExcelUtils.Column("全部数据源", "all_data_sources"));
-        columns.add(new ExcelUtils.Column("高级应用", "advanced_application_name"));
+        List<ExcelUtils.Column> columns = terminologyExportColumns();
         writeExcel(response, "terminology.xlsx", columns, results);
     }
 
     /** GET /system/terminology/template（含示例行的导入模板）。 */
     public void template(HttpServletResponse response) throws IOException {
-        List<ExcelUtils.Column> columns = new ArrayList<>();
-        columns.add(new ExcelUtils.Column("术语名称", "word"));
-        columns.add(new ExcelUtils.Column("同义词", "other_words"));
-        columns.add(new ExcelUtils.Column("术语描述", "description"));
-        columns.add(new ExcelUtils.Column("生效数据源", "datasource_names"));
-        columns.add(new ExcelUtils.Column("全部数据源", "all_data_sources"));
-        columns.add(new ExcelUtils.Column("高级应用", "advanced_application_name"));
+        List<ExcelUtils.Column> columns = terminologyExportColumns();
         List<Map<String, Object>> example = new ArrayList<>();
         Map<String, Object> row1 = new LinkedHashMap<>();
-        row1.put("word", "示例术语1");
-        row1.put("other_words", "同义词1,同义词2");
-        row1.put("description", "术语描述示例");
-        row1.put("datasource_names", "生效数据源1");
+        row1.put("word", messageResolver.get("export.terminology.word.example"));
+        row1.put("other_words", messageResolver.get("export.terminology.synonyms.example"));
+        row1.put("description", messageResolver.get("export.terminology.description.example"));
+        row1.put("datasource_names", messageResolver.get("export.datasource.example"));
         row1.put("all_data_sources", "N");
         row1.put("advanced_application_name", "");
         example.add(row1);
         Map<String, Object> row2 = new LinkedHashMap<>();
-        row2.put("word", "示例术语2");
+        row2.put("word", messageResolver.get("export.terminology.word.example2"));
         row2.put("other_words", "");
-        row2.put("description", "术语描述示例");
+        row2.put("description", messageResolver.get("export.terminology.description.example"));
         row2.put("datasource_names", "");
         row2.put("all_data_sources", "Y");
         row2.put("advanced_application_name", "");
         example.add(row2);
         writeExcel(response, "terminology_template.xlsx", columns, example);
+    }
+
+    /** A6: 导出/模板列头走 i18n（此前硬编码中文）。 */
+    private List<ExcelUtils.Column> terminologyExportColumns() {
+        List<ExcelUtils.Column> columns = new ArrayList<>();
+        columns.add(new ExcelUtils.Column(messageResolver.get("export.terminology.word"), "word"));
+        columns.add(new ExcelUtils.Column(messageResolver.get("export.terminology.synonyms"), "other_words"));
+        columns.add(new ExcelUtils.Column(messageResolver.get("export.terminology.description"), "description"));
+        columns.add(new ExcelUtils.Column(messageResolver.get("export.datasource.names"), "datasource_names"));
+        columns.add(new ExcelUtils.Column(messageResolver.get("export.all.data.sources"), "all_data_sources"));
+        columns.add(new ExcelUtils.Column(messageResolver.get("export.advanced.application"), "advanced_application_name"));
+        return columns;
     }
 
     /**

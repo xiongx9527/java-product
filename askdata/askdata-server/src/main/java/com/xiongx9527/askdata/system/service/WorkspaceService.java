@@ -53,11 +53,24 @@ public class WorkspaceService {
     // 工作空间 CRUD
     // ------------------------------------------------------------------
 
+    /**
+     * A8（对齐 SQLBot mcp_ws_list/user_ws_options）：管理员列全部工作空间；
+     * 非管理员仅列自己所属的工作空间，不再强制 requireAdmin——MCP workspace_list
+     * 与普通 API 共用同一实现。
+     */
     public List<Map<String, Object>> list() {
-        currentUserService.requireAdmin();
+        Map<String, Object> user = currentUserService.currentUser();
         String language = userLanguage();
+        List<Map<String, Object>> rows = new ArrayList<>();
+        if (currentUserService.isAdmin(user)) {
+            rows.addAll(workspaceRepository.list());
+        } else {
+            for (Long oid : userWsRepository.oidsOf(com.xiongx9527.askdata.common.util.Rows.lng(user, "id", 0L))) {
+                workspaceRepository.findById(oid).ifPresent(rows::add);
+            }
+        }
         List<Map<String, Object>> result = new ArrayList<>();
-        for (Map<String, Object> row : workspaceRepository.list()) {
+        for (Map<String, Object> row : rows) {
             result.add(toWorkspace(row, language));
         }
         return result;

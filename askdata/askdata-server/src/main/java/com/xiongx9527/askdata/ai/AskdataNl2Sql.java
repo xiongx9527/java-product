@@ -62,13 +62,21 @@ public class AskdataNl2Sql {
 
     private final DatasourceService datasourceService;
 
+    private final com.xiongx9527.askdata.permission.PermissionEnforcer permissionEnforcer;
+
+    private final com.xiongx9527.askdata.system.service.CurrentUserService currentUserService;
+
     public AskdataNl2Sql(DataSource dataSource, ChatModel chatModel, JdbcTemplate jdbcTemplate,
-                         SchemaContextBuilder schemaContextBuilder, DatasourceService datasourceService) {
+                         SchemaContextBuilder schemaContextBuilder, DatasourceService datasourceService,
+                         com.xiongx9527.askdata.permission.PermissionEnforcer permissionEnforcer,
+                         com.xiongx9527.askdata.system.service.CurrentUserService currentUserService) {
         this.dataSource = dataSource;
         this.chatModel = chatModel;
         this.jdbcTemplate = jdbcTemplate;
         this.schemaContextBuilder = schemaContextBuilder;
         this.datasourceService = datasourceService;
+        this.permissionEnforcer = permissionEnforcer;
+        this.currentUserService = currentUserService;
     }
 
     /** 问数（应用库 fallback，无选定数据源）。 */
@@ -112,6 +120,10 @@ public class AskdataNl2Sql {
             throw new IllegalStateException("模型未能生成合法 SQL，请调整问题表述或重试");
         }
         AskdataSqlRetriever.checkSql(sql);
+        // A1/A2: 与主聊天路径一致的权限链——先表白名单，再行/列权限强制（MCP 问数此前只查表白名单，
+        // 行/列权限完全旁路）。普通数据源（dsId != null）必须走 PermissionEnforcer；
+        // 应用库 fallback（dsId == null）与 SQLBot 行为一致，不做数据源级权限。
+        com.xiongx9527.askdata.permission.PermissionEnforcer.EnforcedQuery enforced = null;
         if (dsId != null) {
             // 与主聊天路径一致：只允许查询已勾选的表（防模型幻觉到未授权表）
             String tableError = ChatQuestionService.validateTables(sql,
@@ -119,14 +131,42 @@ public class AskdataNl2Sql {
             if (tableError != null) {
                 throw new IllegalArgumentException(tableError);
             }
+            if (permissionEnforcer != null) {
+                enforced = enforceForMcp(permissionEnforcer, currentUserService, dsId, sql);
+                if (enforced != null) {
+                    sql = enforced.getSql();
+                }
+            }
         }
         List<Map<String, Object>> rows = execute(sql, dsId, dialectType);
+        if (enforced != null) {
+            Map<String, Object> result = new LinkedHashMap<String, Object>();
+            result.put("data", rows);
+            result = permissionEnforcer.applyHiddenColumns(result, enforced.getHiddenColumns());
+            rows = (List<Map<String, Object>>) result.get("data");
+            if (rows == null) {
+                rows = new ArrayList<Map<String, Object>>();
+            }
+        }
         Map<String, Object> out = new LinkedHashMap<String, Object>();
         out.put("question", question);
         out.put("sql", sql);
         out.put("dialect", dialectType.getTemplateName());
         out.put("rows", rows);
         return out;
+    }
+
+    /**
+     * A1/A2: MCP 问数权限入口（可测 seam）：以当前登录用户身份对生成 SQL 施加行/列权限，
+     * 与 Chat 主链路共用 {@link com.xiongx9527.askdata.permission.PermissionEnforcer}。
+     */
+    public static com.xiongx9527.askdata.permission.PermissionEnforcer.EnforcedQuery enforceForMcp(
+            com.xiongx9527.askdata.permission.PermissionEnforcer enforcer,
+            com.xiongx9527.askdata.system.service.CurrentUserService currentUserService,
+            long dsId, String sql) {
+        Map<String, Object> user = currentUserService.currentUser();
+        return enforcer.enforce(currentUserService.oidOf(user),
+                com.xiongx9527.askdata.common.util.Rows.lng(user, "id", 0L), dsId, sql);
     }
 
     private List<Map<String, Object>> execute(String sql, Long dsId, DatasourceType dialect) {

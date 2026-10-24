@@ -97,7 +97,8 @@ class ChatServiceSmokeTest {
         chatRepository = new ChatRepository(appJdbc, idGenerator, objectMapper);
         recommendedQuestionRepository = new RecommendedQuestionRepository(appJdbc, idGenerator);
         chatService = new ChatService(chatRepository, recommendedQuestionRepository, datasourceRepository,
-                datasourceService, currentUserService, objectMapper, Mockito.mock(DsGrantService.class));
+                datasourceService, currentUserService, objectMapper, Mockito.mock(DsGrantService.class),
+                messageResolver);
     }
 
     @Test
@@ -219,7 +220,8 @@ class ChatServiceSmokeTest {
         Mockito.when(normal.oidOf(Mockito.any())).thenReturn(2L);
         ChatService normalService = new ChatService(chatRepository, recommendedQuestionRepository,
                 new DatasourceRepository(appJdbc, new IdGenerator()),
-                Mockito.mock(DatasourceService.class), normal, objectMapper, Mockito.mock(DsGrantService.class));
+                Mockito.mock(DatasourceService.class), normal, objectMapper, Mockito.mock(DsGrantService.class),
+                messageResolver);
         // 他人会话不可见（list 只返回自己 oid 的）
         assertEquals(0, normalService.list().size());
         assertThrows(BadRequestException.class, () -> normalService.get(chatId, false));

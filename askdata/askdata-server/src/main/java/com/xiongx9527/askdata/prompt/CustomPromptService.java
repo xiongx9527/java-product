@@ -210,11 +210,7 @@ public class CustomPromptService {
         List<Long> advList = Rows.longList(Rows.get(filter, "adv_list"));
         List<Map<String, Object>> results = toResults(
                 customPromptRepository.all(oid, type, name, dsList, advList));
-        List<ExcelUtils.Column> columns = new ArrayList<>();
-        columns.add(new ExcelUtils.Column("提示词名称", "name"));
-        columns.add(new ExcelUtils.Column("提示词内容", "prompt"));
-        columns.add(new ExcelUtils.Column("生效数据源", "datasource_names"));
-        columns.add(new ExcelUtils.Column("高级应用", "advanced_application_name"));
+        List<ExcelUtils.Column> columns = promptExportColumns();
         byte[] bytes = excelBytes(columns, results);
         response.setStatus(HttpServletResponse.SC_OK);
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
@@ -228,16 +224,12 @@ public class CustomPromptService {
 
     /** GET /system/custom_prompt/template（含示例行的导入模板）。 */
     public void template(HttpServletResponse response) throws IOException {
-        List<ExcelUtils.Column> columns = new ArrayList<>();
-        columns.add(new ExcelUtils.Column("提示词名称", "name"));
-        columns.add(new ExcelUtils.Column("提示词内容", "prompt"));
-        columns.add(new ExcelUtils.Column("生效数据源", "datasource_names"));
-        columns.add(new ExcelUtils.Column("高级应用", "advanced_application_name"));
+        List<ExcelUtils.Column> columns = promptExportColumns();
         List<Map<String, Object>> example = new ArrayList<>();
         Map<String, Object> row = new LinkedHashMap<>();
-        row.put("name", "示例提示词");
-        row.put("prompt", "请根据以下问题生成 SQL：{question}");
-        row.put("datasource_names", "生效数据源1");
+        row.put("name", messageResolver.get("export.custom_prompt.name.example"));
+        row.put("prompt", messageResolver.get("export.custom_prompt.prompt.example"));
+        row.put("datasource_names", messageResolver.get("export.datasource.example"));
         row.put("advanced_application_name", "");
         example.add(row);
         byte[] bytes = excelBytes(columns, example);
@@ -249,6 +241,16 @@ public class CustomPromptService {
             out.write(bytes);
             out.flush();
         }
+    }
+
+    /** A6: 导出/模板列头走 i18n（此前硬编码中文）。 */
+    private List<ExcelUtils.Column> promptExportColumns() {
+        List<ExcelUtils.Column> columns = new ArrayList<>();
+        columns.add(new ExcelUtils.Column(messageResolver.get("export.custom_prompt.name"), "name"));
+        columns.add(new ExcelUtils.Column(messageResolver.get("export.custom_prompt.prompt"), "prompt"));
+        columns.add(new ExcelUtils.Column(messageResolver.get("export.datasource.names"), "datasource_names"));
+        columns.add(new ExcelUtils.Column(messageResolver.get("export.advanced.application"), "advanced_application_name"));
+        return columns;
     }
 
     private byte[] excelBytes(List<ExcelUtils.Column> columns, List<Map<String, Object>> rows) throws IOException {

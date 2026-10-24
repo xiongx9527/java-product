@@ -31,12 +31,16 @@ public class ExternalIdpController {
     public ExternalIdpController(ExternalIdpService idpService,
                                  ExternalIdpConfigProvider configProvider,
                                  LocalAccountLinker linker,
-                                 IdpStateStore stateStore) {
+                                 IdpStateStore stateStore,
+                                 com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver) {
         this.idpService = idpService;
         this.configProvider = configProvider;
         this.linker = linker;
         this.stateStore = stateStore;
+        this.messageResolver = messageResolver;
     }
+
+    private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
 
     /**
      * 跳转 IdP 授权页：state 由服务端签发（一次性、限时），不再由调用方传入，
@@ -47,7 +51,7 @@ public class ExternalIdpController {
         IdpType idpType = parse(type);
         ExternalIdpConfig cfg = configProvider.get(idpType);
         if (cfg == null || !cfg.isEnabled()) {
-            throw new BadRequestException("idp not configured or disabled: " + type);
+            throw new BadRequestException(messageResolver.get("idp.not.configured", type));
         }
         String state = stateStore.issue(idpType);
         String url = idpService.authorizationUrl(idpType, cfg, state);
@@ -60,7 +64,7 @@ public class ExternalIdpController {
         IdpType idpType = parse(type);
         ExternalIdpConfig cfg = configProvider.get(idpType);
         if (cfg == null || !cfg.isEnabled()) {
-            throw new BadRequestException("idp not configured or disabled: " + type);
+            throw new BadRequestException(messageResolver.get("idp.not.configured", type));
         }
         // 先校验 state：未知/已使用/过期/协议不匹配一律拒绝
         try {
@@ -80,7 +84,7 @@ public class ExternalIdpController {
         try {
             return IdpType.valueOf(type.toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new BadRequestException("unsupported idp type: " + type);
+            throw new BadRequestException(messageResolver.get("idp.type.unsupported", type));
         }
     }
 }

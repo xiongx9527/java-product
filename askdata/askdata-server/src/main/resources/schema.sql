@@ -220,7 +220,7 @@ VALUES (10, 'chat.show_log', 'false', 'str', 10);
 
 MERGE INTO sys_arg (id, pkey, pval, ptype, sort_no)
 KEY (id)
-VALUES (11, 'chat.context_record_count', '5', 'str', 11);
+VALUES (11, 'chat.context_record_count', '3', 'str', 11);
 
 MERGE INTO sys_arg (id, pkey, pval, ptype, sort_no)
 KEY (id)
