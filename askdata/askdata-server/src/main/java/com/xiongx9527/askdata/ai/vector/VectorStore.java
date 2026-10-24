@@ -11,7 +11,9 @@ import java.util.List;
  * <p>当前实现：
  * <ul>
  *   <li>{@link Langchain4jQdrantVectorStore} — 在线向量库，基于 langchain4j 的 {@code QdrantEmbeddingStore}
- *       （复用其 Qdrant gRPC 封装），作为启用时的唯一存储后端；</li>
+ *       （复用其 Qdrant gRPC 封装），作为 {@code type=qdrant} 时的存储后端；</li>
+ *   <li>{@link Langchain4jMilvusVectorStore} — 在线向量库，基于 langchain4j 的 {@code MilvusEmbeddingStore}，
+ *       作为 {@code type=milvus} 时的存储后端；</li>
  *   <li>{@link DbVectorStore} — 兼容回退，沿用现有「DB embedding 列 + 应用内余弦」，
  *       在 {@code type=none} 或在线库不可达时启用，保留既有行为。</li>
  * </ul>

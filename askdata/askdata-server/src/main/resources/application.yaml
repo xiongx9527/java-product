@@ -59,8 +59,23 @@ askdata:
       # 可选 API Key（Qdrant 开启鉴权时必填；REST 与 gRPC 共用同一把钥匙）。
       api-key: ${ASKDATA_QDRANT_API_KEY:}
       # gRPC 端口：langchain4j/Qdrant Java 客户端走 gRPC，与 REST 端口相互独立，Qdrant 缺省 6334。
-      # 若部署把 gRPC 与 REST 合并到同一端口，则改为与 url 中的端口一致。
       grpc-port: ${ASKDATA_QDRANT_GRPC_PORT:6334}
+    milvus:
+      # Milvus gRPC 主机与端口（缺省 19530）。health-url 留空则乐观视为可用（失败由各读写回落）。
+      host: ${ASKDATA_MILVUS_HOST:}
+      port: ${ASKDATA_MILVUS_PORT:19530}
+      # 是否走 TLS。
+      tls: ${ASKDATA_MILVUS_TLS:false}
+      # 鉴权 token（API Key 或 user:password），开启鉴权时必填。
+      token: ${ASKDATA_MILVUS_TOKEN:}
+      # 数据库名（缺省 default）。
+      database: ${ASKDATA_MILVUS_DATABASE:default}
+      # RESTful 健康检查基址（如 http://milvus:9091），用于启动期连通性探测；留空则不探测。
+      health-url: ${ASKDATA_MILVUS_HEALTH_URL:}
+      # 相似度度量 / 索引类型 / 一致性级别（缺省 COSINE / AUTO_INDEX / STRONG）。
+      metric-type: ${ASKDATA_MILVUS_METRIC_TYPE:COSINE}
+      index-type: ${ASKDATA_MILVUS_INDEX_TYPE:AUTO_INDEX}
+      consistency-level: ${ASKDATA_MILVUS_CONSISTENCY:STRONG}
   # 应用密钥（落库加密用）。不内置缺省值：必须通过环境变量 ASKDATA_SECRET_KEY 或外部配置显式设定，
   # 否则启动期随机生成（当次进程内可用，重启后历史密文不可解，并在启动日志告警）。
   secret:

@@ -49,17 +49,31 @@ java -jar target/askdata-server.jar
 | --- | --- | --- |
 | `none`（缺省） | `DbVectorStore` | DB `embedding` JSON 列 + 应用内余弦；与既有行为完全一致 |
 | `qdrant` | `Langchain4jQdrantVectorStore` | 在线向量库；基于 langchain4j 的 `QdrantEmbeddingStore`（gRPC），ANN 检索 |
+| `milvus` | `Langchain4jMilvusVectorStore` | 在线向量库；基于 langchain4j 的 `MilvusEmbeddingStore`，ANN 检索（集合首次写入自动创建） |
 
 ```yaml
 askdata:
   vector-store:
-    type: none                    # none | qdrant
+    type: none                    # none | qdrant | milvus
     collection-prefix: askdata    # 集合名 = {prefix}-{object-type}
     qdrant:
       url: ${ASKDATA_QDRANT_URL:}         # REST 基址，如 http://qdrant:6333（仅用于健康检查）
       api-key: ${ASKDATA_QDRANT_API_KEY:} # 开启鉴权时必填
       grpc-port: ${ASKDATA_QDRANT_GRPC_PORT:6334}  # gRPC 端口，与 REST 相互独立
+    milvus:
+      host: ${ASKDATA_MILVUS_HOST:}       # Milvus gRPC 主机
+      port: ${ASKDATA_MILVUS_PORT:19530}  # gRPC 端口
+      token: ${ASKDATA_MILVUS_TOKEN:}     # 鉴权 token（API Key 或 user:password），开启鉴权时必填
+      database: ${ASKDATA_MILVUS_DATABASE:default}
+      health-url: ${ASKDATA_MILVUS_HEALTH_URL:}  # RESTful 健康检查基址，如 http://milvus:9091；留空则不探测
+      metric-type: ${ASKDATA_MILVUS_METRIC_TYPE:COSINE}
+      index-type: ${ASKDATA_MILVUS_INDEX_TYPE:AUTOINDEX}
+      consistency-level: ${ASKDATA_MILVUS_CONSISTENCY:STRONG}
 ```
+
+> 新增后端成本极低：所有 langchain4j 向量存储都实现同一个 `EmbeddingStore<TextSegment>` 接口，
+> 共用逻辑已抽到 `AbstractLangchain4jVectorStore`（upsert / query / delete / 命中 id 解析 / 候选过滤），
+> 子类只需提供客户端构造（`createStore`）、连通性探测（`health`）与可选的集合创建（`ensureCollection`）。
 
 要点：
 
