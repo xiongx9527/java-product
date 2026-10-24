@@ -12,6 +12,8 @@ import java.util.Arrays;
 import java.util.Locale;
 import java.util.Set;
 
+import com.xiongx9527.askdata.common.i18n.I18n;
+
 /**
  * askdata 通用文件存储入口（对齐 SQLBot 文件存储）：对 x-file-storage {@link FileStorageService}
  * 做薄封装，统一 save / read / exists / delete / 取元信息，并内置扩展名与大小校验。
@@ -47,7 +49,7 @@ public class AskdataFileStorage {
 
     private FileStorageService svc() {
         if (fileStorageService == null) {
-            throw new StorageException("文件存储未启用（FileStorageService 未装配）");
+            throw new StorageException(I18n.msg("storage.not.enabled"));
         }
         return fileStorageService;
     }
@@ -66,7 +68,7 @@ public class AskdataFileStorage {
                     .upload();
             return toStored(info);
         } catch (Exception e) {
-            throw new StorageException("文件保存失败: " + e.getMessage(), e);
+            throw new StorageException(I18n.msg("storage.save.failed") + ": " + e.getMessage(), e);
         }
     }
 
@@ -79,7 +81,7 @@ public class AskdataFileStorage {
                     .upload();
             return toStored(info);
         } catch (Exception e) {
-            throw new StorageException("文件保存失败: " + e.getMessage(), e);
+            throw new StorageException(I18n.msg("storage.save.failed") + ": " + e.getMessage(), e);
         }
     }
 
@@ -92,7 +94,7 @@ public class AskdataFileStorage {
                     .upload();
             return toStored(info);
         } catch (Exception e) {
-            throw new StorageException("文件保存失败: " + e.getMessage(), e);
+            throw new StorageException(I18n.msg("storage.save.failed") + ": " + e.getMessage(), e);
         }
     }
 
@@ -101,7 +103,7 @@ public class AskdataFileStorage {
         try {
             return svc().download(url).bytes();
         } catch (Exception e) {
-            throw new StorageException("文件读取失败: " + e.getMessage(), e);
+            throw new StorageException(I18n.msg("storage.read.failed") + ": " + e.getMessage(), e);
         }
     }
 
@@ -176,7 +178,7 @@ public class AskdataFileStorage {
     public static void requireExtension(String filename, Set<String> allowed) {
         String ext = extensionOf(filename);
         if (ext.isEmpty() || !allowed.contains(ext)) {
-            throw new StorageException("不支持的文件类型: " + filename
+            throw new StorageException(I18n.msg("storage.unsupported.type") + ": " + filename
                     + "，仅允许 " + Arrays.toString(allowed.toArray()));
         }
     }
@@ -184,7 +186,7 @@ public class AskdataFileStorage {
     /** 校验大小不超过 max，否则抛 {@link StorageException}。 */
     public static void requireSize(long size, long max) {
         if (size > max) {
-            throw new StorageException("文件过大: " + size + " 字节，上限 " + max + " 字节");
+            throw new StorageException(I18n.msg("storage.file.too.large", Long.toString(size), Long.toString(max)));
         }
     }
 

@@ -212,7 +212,7 @@ public class ChatQuestionService {
             try {
                 Optional<ModelRef> model = modelRouter.defaultChatModel();
                 if (!model.isPresent() || !model.get().usable()) {
-                    emitError(writer, "默认大模型尚未配置（请到系统-AI 模型设置默认模型）");
+                    emitError(writer, messageResolver.get("scheduled.no.default.model"));
                     return;
                 }
                 ModelRef aiModel = model.get();
@@ -226,7 +226,7 @@ public class ChatQuestionService {
                 } else {
                     dsId = resolveDatasource(chat, oid, question, writer);
                     if (dsId == null) {
-                        emitError(writer, "当前工作空间没有可用的数据源");
+                        emitError(writer, messageResolver.get("chat.no.datasource"));
                         return;
                     }
                     ds = datasourceRepository.findById(dsId).orElse(null);
@@ -302,7 +302,7 @@ public class ChatQuestionService {
                 String sql = sqlText == null ? null : extractSql(sqlText);
                 if (sql == null) {
                     // 一次修复：把「未输出 SQL」的语义错误回喂
-                    sqlText = regenerateSql(aiModel, question, dsId, dynamic, sqlText, "模型未输出可执行的 SQL", writer);
+                    sqlText = regenerateSql(aiModel, question, dsId, dynamic, sqlText, messageResolver.get("scheduled.no.sql"), writer);
                     sql = sqlText == null ? null : extractSql(sqlText);
                 }
                 // §2.4: 动态数据源表级 SQL 占位符闭环（brief D2）：先查直接物理表引用，再确定性替换占位符；
@@ -465,7 +465,7 @@ public class ChatQuestionService {
             try {
                 Optional<ModelRef> model = modelRouter.defaultChatModel();
                 if (!model.isPresent() || !model.get().usable()) {
-                    emitError(writer, "默认大模型尚未配置（请到系统-AI 模型设置默认模型）");
+                    emitError(writer, messageResolver.get("scheduled.no.default.model"));
                     return;
                 }
                 ModelRef aiModel = model.get();

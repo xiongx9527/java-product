@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import com.xiongx9527.askdata.common.i18n.I18n;
+
 /**
  * askdata NL2SQL 检索器：覆写 langchain4j {@link SqlDatabaseContentRetriever} 扩展点——
  * clean() 记录最终 SQL（供上层把 SQL+结果一并返回）；validate() 追加只读/单语句/危险片段拦截；
@@ -97,15 +99,15 @@ public class AskdataSqlRetriever extends SqlDatabaseContentRetriever {
             t = t.substring(0, t.length() - 1);
         }
         if (t.contains(";")) {
-            throw new IllegalArgumentException("仅允许单条 SELECT 语句，禁止多语句拼接");
+            throw new IllegalArgumentException(I18n.msg("sql.retriever.only.single.select"));
         }
         String upper = t.toUpperCase(Locale.ROOT);
         if (!upper.startsWith("SELECT") && !upper.startsWith("WITH")) {
-            throw new IllegalArgumentException("仅允许 SELECT 查询");
+            throw new IllegalArgumentException(I18n.msg("sql.retriever.only.select"));
         }
         for (String fragment : FORBIDDEN) {
             if (upper.contains(fragment)) {
-                throw new IllegalArgumentException("检测到危险语句片段: " + fragment.trim());
+                throw new IllegalArgumentException(I18n.msg("sql.retriever.dangerous.fragment", fragment.trim()));
             }
         }
     }

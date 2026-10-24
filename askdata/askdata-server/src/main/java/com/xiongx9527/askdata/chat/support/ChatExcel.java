@@ -14,6 +14,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.xiongx9527.askdata.common.i18n.I18n;
+
 /**
  * 对话结果导出（对齐 SQLBot {@code apps/chat/api/chat.py::export_excel}）：
  * <b>按完整图表配置还原字段</b>（columns -> axis.x -> axis.y 多指标 -> axis.series），
@@ -109,7 +111,7 @@ public final class ChatExcel {
             workbook.write(buffer);
             return buffer.toByteArray();
         } catch (IOException e) {
-            throw new IllegalStateException("导出 Excel 失败: " + e.getMessage(), e);
+            throw new IllegalStateException(I18n.msg("excel.export.failed") + ": " + e.getMessage(), e);
         }
     }
 

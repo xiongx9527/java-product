@@ -14,6 +14,7 @@ import com.xiongx9527.askdata.chat.repository.ChatRepository;
 import com.xiongx9527.askdata.chat.service.ChatChartBuilder;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter;
 import com.xiongx9527.askdata.chat.service.ChatService;
+import com.xiongx9527.askdata.common.i18n.I18n;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
 import dev.langchain4j.model.chat.ChatModel;
@@ -138,7 +139,7 @@ public class AskdataMcpTools {
         Optional<Map<String, Object>> userRow = username == null ? Optional.empty() : repository.findByAccount(username);
         if (!userRow.isPresent()
                 || !CryptoUtil.md5Hex(password == null ? "" : password).equals(String.valueOf(userRow.get().get("password")))) {
-            out.put("error", "账号或密码错误");
+            out.put("error", I18n.msg("login.account.pwd.error"));
             return mapper.writeValueAsString(out);
         }
         Map<String, Object> user = userRow.get();
@@ -146,15 +147,15 @@ public class AskdataMcpTools {
         long status = toLong(user.get("status"));
         long origin = toLong(user.get("origin"));
         if (oid == 0) {
-            out.put("error", "用户未绑定工作空间");
+            out.put("error", I18n.msg("mcp.error.user.no.workspace"));
             return mapper.writeValueAsString(out);
         }
         if (status != 1) {
-            out.put("error", "用户已禁用");
+            out.put("error", I18n.msg("mcp.error.user.disabled"));
             return mapper.writeValueAsString(out);
         }
         if (origin != 0) {
-            out.put("error", "第三方用户不支持口令登录");
+            out.put("error", I18n.msg("mcp.error.third.party.pwd"));
             return mapper.writeValueAsString(out);
         }
         try {
@@ -165,14 +166,14 @@ public class AskdataMcpTools {
             // SQLBot 兼容字段：预设客户端按 access_token 键读取令牌
             out.put("access_token", tokenValue);
         } catch (Exception e) {
-            out.put("error", "签发 token 失败: " + e.getMessage());
+            out.put("error", I18n.msg("mcp.error.token.sign.failed", e.getMessage()));
         }
         return mapper.writeValueAsString(out);
     }
 
     private String errorJson(ObjectMapper mapper, String tool, Exception e) throws Exception {
         Map<String, Object> err = new LinkedHashMap<String, Object>();
-        err.put("error", tool + " 失败: " + e.getMessage());
+        err.put("error", I18n.msg("mcp.error.tool.failed", tool, e.getMessage()));
         return mapper.writeValueAsString(err);
     }
 
@@ -197,7 +198,7 @@ public class AskdataMcpTools {
         Map<String, SimpleAssistant> beans = SpringUtils.getBeansOfType(SimpleAssistant.class);
         if (beans.isEmpty()) {
             Map<String, Object> err = new LinkedHashMap<String, Object>();
-            err.put("error", "assistant 未装配：需配置默认对话模型并设置 askdata.assistant.enabled=true");
+            err.put("error", I18n.msg("mcp.error.assistant.not.assembled"));
             return mapper.writeValueAsString(err);
         }
         // 记忆按调用者隔离：未登录（无 Sa-Token 会话）退回共享 id
@@ -215,7 +216,7 @@ public class AskdataMcpTools {
             answer = assistant.chat(memoryId, null, message);
         } catch (Exception e) {
             auditor.failure(AuditOperationType.ANALYSIS, AuditModule.CHAT, null,
-                    "mcp-assistant 失败: " + e.getMessage());
+                    I18n.msg("mcp.error.assistant.failed", e.getMessage()));
             throw e;
         }
         auditor.success(AuditOperationType.ANALYSIS, AuditModule.CHAT, null, remark);
@@ -239,7 +240,7 @@ public class AskdataMcpTools {
         Map<String, AskdataNl2Sql> beans = SpringUtils.getBeansOfType(AskdataNl2Sql.class);
         if (beans.isEmpty()) {
             Map<String, Object> err = new LinkedHashMap<String, Object>();
-            err.put("error", "question_answer 未装配：需配置默认对话模型并设置 askdata.assistant.enabled=true");
+            err.put("error", I18n.msg("mcp.error.question.answer.not.assembled"));
             return mapper.writeValueAsString(err);
         }
         AskdataNl2Sql nl2sql = beans.values().iterator().next();
@@ -252,7 +253,7 @@ public class AskdataMcpTools {
                     .filter(ChatModelRouter.ModelRef::usable);
             if (!ref.isPresent()) {
                 Map<String, Object> err = new LinkedHashMap<String, Object>();
-                err.put("error", "customModel 不存在或不可用: " + customModel);
+                err.put("error", I18n.msg("mcp.error.custom.model.unavailable", customModel));
                 return mapper.writeValueAsString(err);
             }
             modelOverride = AiModelConfig.buildChatModel(ref.get());
@@ -270,7 +271,7 @@ public class AskdataMcpTools {
             Optional<Map<String, Object>> chatOpt = chatRepository.findChat(chatId);
             if (!chatOpt.isPresent()) {
                 Map<String, Object> err = new LinkedHashMap<String, Object>();
-                err.put("error", "chatId 不存在: " + chatId);
+                err.put("error", I18n.msg("mcp.error.chat.id.not.found", chatId));
                 return mapper.writeValueAsString(err);
             }
             Map<String, Object> chat = chatOpt.get();

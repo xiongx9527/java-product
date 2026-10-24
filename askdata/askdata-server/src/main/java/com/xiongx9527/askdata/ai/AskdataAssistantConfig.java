@@ -26,10 +26,6 @@ import javax.sql.DataSource;
 @ConditionalOnProperty(name = "askdata.assistant.enabled", havingValue = "true")
 public class AskdataAssistantConfig {
 
-    static final String SYSTEM_PROMPT =
-            "你是 askdata 问数助手，基于结构化数据回答问题。回答需准确、简洁；涉及数据时说明口径；"
-                    + "不确定时直说，不要编造数值。";
-
     private static final int MAX_RETRIES = 3;
 
     /**
@@ -53,7 +49,7 @@ public class AskdataAssistantConfig {
                                             ObjectProvider<ChatMemoryStore> memoryStore) {
         AssistantBuilder builder = new AssistantBuilder()
                 .chatModel(chatModel)
-                .systemMessage(SYSTEM_PROMPT)
+                .systemMessage(com.xiongx9527.askdata.common.i18n.I18n.msg("prompt.assistant.system"))
                 .memory(20)
                 .contentRetriever(sqlRetriever);
         streamingChatModel.ifAvailable(builder::streamingModel);

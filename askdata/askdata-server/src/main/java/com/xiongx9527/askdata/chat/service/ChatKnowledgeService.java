@@ -46,10 +46,6 @@ public class ChatKnowledgeService {
     private static final int MAX_LLM_ENTITIES = 30;
 
     /** LLM 业务实体抽取系统提示词（对齐 SQLBot extract_keywords：只抽实体、忽略时间/动作/修饰词）。 */
-    private static final String ENTITY_EXTRACTION_SYSTEM_PROMPT =
-            "你是一个面向数据分析的实体抽取器。给定对话历史与当前问题，抽取用于检索数据表/字段与业务术语的核心业务实体"
-            + "（如指标名、维度、表名、列名、业务对象），忽略时间词、动词、修饰词与疑问词。"
-            + "只输出逗号分隔的实体词列表，不要解释，不要 Markdown 代码块。";
 
     private final TerminologyRecallService terminologyRecallService;
 
@@ -325,7 +321,7 @@ public class ChatKnowledgeService {
         }
         ChatModelRouter.ModelRef model = chat.get();
         List<ChatModelClient.ModelMessage> messages = new ArrayList<>();
-        messages.add(new ChatModelClient.ModelMessage("system", ENTITY_EXTRACTION_SYSTEM_PROMPT));
+        messages.add(new ChatModelClient.ModelMessage("system", com.xiongx9527.askdata.common.i18n.I18n.msg("prompt.entity.extraction")));
         StringBuilder user = new StringBuilder();
         if (historyText != null && !historyText.trim().isEmpty()) {
             user.append("【前文问答（解析实体时请优先引用其中已出现的表名、列名与业务实体）】\n")

@@ -220,7 +220,7 @@ public class ChatService {
         Map<String, Object> result = parseResult(Rows.str(record, "data"));
         List<Map<String, Object>> data = Rows.mapList(result.get("data"));
         if (data.isEmpty()) {
-            throw new BadRequestException("数据为空");
+            throw new BadRequestException(com.xiongx9527.askdata.common.i18n.I18n.msg("chat.data.empty"));
         }
         Map<String, Object> chart = parseChart(Rows.str(record, "chart"));
         // 按完整图表配置还原导出字段（对齐 SQLBot export_excel：columns → axis.x/y/series，

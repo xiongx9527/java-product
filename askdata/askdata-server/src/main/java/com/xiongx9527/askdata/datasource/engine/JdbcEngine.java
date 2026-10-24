@@ -28,6 +28,8 @@ import java.sql.SQLException;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.sql.Time;
+
+import com.xiongx9527.askdata.common.i18n.I18n;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -107,7 +109,7 @@ public class JdbcEngine {
         } catch (Exception e) {
             log.info("Datasource connection failed [{}]: {}", type.getType(), e.getMessage());
             if (isRaise) {
-                throw new DatasourceException("数据源连接失败: " + errorText(e), e);
+                throw new DatasourceException(I18n.msg("ds.connect.failed") + ": " + errorText(e), e);
             }
             return false;
         }
@@ -130,13 +132,13 @@ public class JdbcEngine {
         String url = buildJdbcUrl(type, conf);
         String driver = type.getDriverClass();
         if (driver == null) {
-            throw new DatasourceException("数据源连接失败: datasource type [" + type.getType()
+            throw new DatasourceException(I18n.msg("ds.connect.failed") + ": datasource type [" + type.getType()
                     + "] does not support jdbc connection");
         }
         try {
             Class.forName(driver);
         } catch (ClassNotFoundException e) {
-            throw new DatasourceException("数据源连接失败: jdbc driver [" + driver + "] not found, "
+            throw new DatasourceException(I18n.msg("ds.connect.failed") + ": jdbc driver [" + driver + "] not found, "
                     + "please put the driver jar into the extension directory (see README)", e);
         }
         int timeout = conf.getTimeout() > 0 ? conf.getTimeout() : 30;
@@ -608,14 +610,14 @@ public class JdbcEngine {
                 return true;
             }
             if (isRaise) {
-                throw new DatasourceException("数据源连接失败: es ping http " + code);
+                throw new DatasourceException(I18n.msg("ds.connect.failed") + ": es ping http " + code);
             }
             return false;
         } catch (DatasourceException e) {
             throw e;
         } catch (Exception e) {
             if (isRaise) {
-                throw new DatasourceException("数据源连接失败: " + errorText(e), e);
+                throw new DatasourceException(I18n.msg("ds.connect.failed") + ": " + errorText(e), e);
             }
             return false;
         }

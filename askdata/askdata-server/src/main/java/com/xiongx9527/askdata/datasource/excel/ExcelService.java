@@ -64,7 +64,7 @@ public class ExcelService {
     /** 文本列的 VARCHAR 长度（string 类型的导入列上限）。 */
     private static final int STRING_COLUMN_LENGTH = 65535;
 
-    private static final String TABLE_SHEET_NAME = "数据表列表";
+    private static final String TABLE_SHEET_NAME = com.xiongx9527.askdata.common.i18n.I18n.msg("excel.sheet.data.tables");
 
     private final JdbcTemplate appJdbc;
 
@@ -126,7 +126,7 @@ public class ExcelService {
             String sheetName = Rows.str(sheet, "sheetName");
             SheetTable table = tablesByName.get(sheetName);
             if (table == null) {
-                throw new DatasourceException("上传文件解析失败: Sheet [" + sheetName + "] not found");
+                throw new DatasourceException(messageResolver.get("excel.upload.parse.failed") + ": Sheet [" + sheetName + "] not found");
             }
             Map<String, String> fieldTypes = new LinkedHashMap<>();
             for (Map<String, Object> field : Rows.mapList(Rows.get(sheet, "fields"))) {
@@ -140,7 +140,7 @@ public class ExcelService {
             for (String column : table.headers) {
                 byte[] bytes = column.getBytes(StandardCharsets.UTF_8);
                 if (bytes.length > MAX_IDENTIFIER_BYTES) {
-                    throw new DatasourceException("上传文件解析失败: Sheet [" + sheetName + "] column name '" + column
+                    throw new DatasourceException(messageResolver.get("excel.upload.parse.failed") + ": Sheet [" + sheetName + "] column name '" + column
                             + "' exceeds " + MAX_IDENTIFIER_BYTES + " bytes (actual: " + bytes.length + " bytes)");
                 }
             }
@@ -667,7 +667,7 @@ public class ExcelService {
                     return String.valueOf(value);
             }
         } catch (DatasourceException e) {
-            throw new DatasourceException("上传文件解析失败: Column '" + columnName + "': " + e.getMessage());
+            throw new DatasourceException(messageResolver.get("excel.upload.parse.failed") + ": Column '" + columnName + "': " + e.getMessage());
         }
     }
 

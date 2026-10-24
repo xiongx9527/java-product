@@ -99,7 +99,7 @@ public class ChatController {
     @DeleteMapping({"/chat/{id}"})
     public Result<String> delete(@PathVariable long id, @RequestBody(required = false) Map<String, Object> body) {
         chatService.delete(id, body == null ? new java.util.HashMap<>() : body);
-        return Result.ok("删除成功");
+        return Result.ok(com.xiongx9527.askdata.common.i18n.I18n.msg("op.delete.success"));
     }
 
     // ------------------------------------------------------------------

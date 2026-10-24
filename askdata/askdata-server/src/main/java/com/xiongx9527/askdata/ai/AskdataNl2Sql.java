@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import com.xiongx9527.askdata.common.i18n.I18n;
+
 /**
  * 问数 NL2SQL：自然语言 -> SQL -> 只读执行 -> 返回 SQL 与结果行。
  *
@@ -117,7 +119,7 @@ public class AskdataNl2Sql {
         retriever.retrieve(Query.from(question));
         String sql = retriever.lastSql();
         if (sql == null || sql.trim().isEmpty()) {
-            throw new IllegalStateException("模型未能生成合法 SQL，请调整问题表述或重试");
+            throw new IllegalStateException(I18n.msg("nl2sql.no.valid.sql"));
         }
         AskdataSqlRetriever.checkSql(sql);
         // A1/A2: 与主聊天路径一致的权限链——先表白名单，再行/列权限强制（MCP 问数此前只查表白名单，

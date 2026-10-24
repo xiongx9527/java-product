@@ -18,6 +18,8 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.xiongx9527.askdata.common.i18n.I18n;
+
 /**
  * 本地 embedding 模型（对齐 SQLBot {@code apps/ai_model/embedding.py} 的 EmbeddingModelCache）。
  *
@@ -181,7 +183,7 @@ public class LocalEmbeddingModel {
                 modelFile = alt;
                 onnxDir = base;
             } else {
-                throw new IOException("本地 embedding 模型不存在: " + modelFile);
+                throw new IOException(I18n.msg("embedding.model.not.found", modelFile.toString()));
             }
         }
         Path vocabFile = onnxDir.resolve("vocab.txt");
@@ -189,7 +191,7 @@ public class LocalEmbeddingModel {
             vocabFile = base.resolve("vocab.txt");
         }
         if (!Files.isRegularFile(vocabFile)) {
-            throw new IOException("本地 embedding 词表不存在: " + vocabFile);
+            throw new IOException(I18n.msg("embedding.vocab.not.found", vocabFile.toString()));
         }
         boolean doLowerCase = readBoolean(base.resolve("tokenizer_config.json"), "do_lower_case", true);
         boolean stripAccents = readBoolean(base.resolve("tokenizer_config.json"), "strip_accents", true);
