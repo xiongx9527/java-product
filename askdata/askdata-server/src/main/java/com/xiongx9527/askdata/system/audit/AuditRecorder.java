@@ -6,6 +6,7 @@ import com.xiongx9527.askdata.common.audit.AuditModule;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.util.Rows;
+import com.xiongx9527.askdata.common.web.AuthContext;
 import com.xiongx9527.askdata.system.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,6 +69,14 @@ public class AuditRecorder {
     }
 
     /**
+     * 供切面在删除类操作<b>执行前</b>解析资源名：删除成功后业务行已不存在，
+     * 事后查表会拿到 null（对齐 SQLBot 在业务操作前取资源名的语义）。
+     */
+    public String resolveResourceName(AuditModule module, String resourceId) {
+        return resourceNameResolver.resolve(module, resourceId);
+    }
+
+    /**
      * 带真实执行耗时的完整记录入口（由审计切面调用）。
      *
      * @param resourceName    资源名称（为空则按 module + resourceId 查表解析）
@@ -89,6 +98,21 @@ public class AuditRecorder {
             long logId = idGenerator.nextId();
             String resolvedName = (resourceName == null || resourceName.isEmpty())
                     ? resourceNameResolver.resolve(module, resourceId) : resourceName;
+            // 逗号分隔的多资源（如工作空间成员批量移除）：逐个解析展示名并以逗号拼接，
+            // 否则按整串查表恒为 null（对齐 SQLBot 对 resource_id_info 逐项取名的语义）。
+            if ((resolvedName == null || resolvedName.isEmpty())
+                    && resourceId != null && String.valueOf(resourceId).contains(",")) {
+                java.util.List<String> names = new java.util.ArrayList<>();
+                for (String ridValue : String.valueOf(resourceId).split(",")) {
+                    String name = resourceNameResolver.resolve(module, ridValue.trim());
+                    if (name != null && !name.isEmpty()) {
+                        names.add(name);
+                    }
+                }
+                if (!names.isEmpty()) {
+                    resolvedName = String.join(",", names);
+                }
+            }
             jdbc.update("INSERT INTO sys_logs (id, operation_type, operation_detail, user_id, user_name, "
                             + "operation_status, oid, ip_address, user_agent, execution_time, error_message, "
                             + "create_time, module, remark, resource_id, resource_name, request_method, request_path) "
@@ -97,11 +121,30 @@ public class AuditRecorder {
                     executionTimeMs, errorMessage, System.currentTimeMillis(), module.code(), remark,
                     resourceId == null ? null : String.valueOf(resourceId), resolvedName,
                     requestMethod(), requestPath());
-            if (resourceId != null && !resourceId.isEmpty()) {
+            // F-19：SQLBot 语义——sys_logs_resource 按「归一化后的 resource_id」写关联行：
+            // 支持逗号分隔多值（SQLBot resource_id_info 为 list 时逐行写入的语义）；
+            // resource_id 为空串时也保底写一条关联行（保留 module 维度），
+            // 仅当确实无 resourceId 语义（resourceId 为 null）时跳过。
+            if (resourceId != null) {
+                java.util.List<String> resourceIdValues = new java.util.ArrayList<>();
+                for (String ridValue : String.valueOf(resourceId).split(",")) {
+                    if (!ridValue.trim().isEmpty()) {
+                        resourceIdValues.add(ridValue.trim());
+                    }
+                }
+                if (resourceIdValues.isEmpty()) {
+                    resourceIdValues.add("");
+                }
                 try {
-                    jdbc.update("INSERT INTO sys_logs_resource (id, log_id, resource_id, resource_name, module) "
-                                    + "VALUES (?, ?, ?, ?, ?)",
-                            idGenerator.nextId(), logId, String.valueOf(resourceId), resolvedName, module.code());
+                    for (String ridValue : resourceIdValues) {
+                        String rowName = resolvedName;
+                        if (resourceIdValues.size() > 1 && (resourceName == null || resourceName.isEmpty())) {
+                            rowName = resourceNameResolver.resolve(module, ridValue);
+                        }
+                        jdbc.update("INSERT INTO sys_logs_resource (id, log_id, resource_id, resource_name, module) "
+                                        + "VALUES (?, ?, ?, ?, ?)",
+                                idGenerator.nextId(), logId, ridValue, rowName, module.code());
+                    }
                 } catch (Exception e) {
                     // 资源关联行写入失败不影响主审计记录
                     log.warn("audit resource row failed: {}", e.getMessage());
@@ -143,6 +186,16 @@ public class AuditRecorder {
         try {
             return StpUtil.getLoginIdAsLong();
         } catch (Exception e) {
+            // F-06：Sa-Token 会话外的支线通道（API Key / 嵌入助手 token / 平台 SSO 回调）
+            // 由 AuthChannelFilter 写入 AuthContext；这些请求的审计此前 uid 恒 NULL。
+            Map<String, Object> user = AuthContext.currentUser();
+            if (user != null) {
+                try {
+                    return Rows.lng(user, "id", 0L) > 0 ? Rows.lng(user, "id", 0L) : null;
+                } catch (RuntimeException ignored) {
+                    return null;
+                }
+            }
             return null;
         }
     }

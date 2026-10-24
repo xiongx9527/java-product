@@ -342,6 +342,21 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- 真实环境方言验证驱动（test 范围，仅集成测试使用；不打进产物）。
+             Oracle XE 21c / SQL Server 2022 真实连通与元数据/预览 SQL 验收所需。 -->
+        <dependency>
+            <groupId>com.oracle.database.jdbc</groupId>
+            <artifactId>ojdbc11</artifactId>
+            <version>21.9.0.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.microsoft.sqlserver</groupId>
+            <artifactId>mssql-jdbc</artifactId>
+            <version>12.10.2.jre11</version>
+            <scope>test</scope>
+        </dependency>
+
         <!-- Excel 上传/解析/建表/导出（对齐 SQLBot apps/datasource/utils/excel.py）
              + 训练/术语/提示词/审计的导入导出；
              Apache POI 版本不受 Spring Boot BOM 管理（BOM 的 poi 4.1.2 与 poi-ooxml 5.2.3 不兼容），
@@ -396,6 +411,23 @@
                     <artifactId>JustAuth</artifactId>
                 </exclusion>
             </exclusions>
+        </dependency>
+
+        <!-- API 文档：Knife4j UI（/doc.html）+ springdoc（/v3/api-docs 规范）。
+             只取 knife4j 的静态 UI 构件：starter 4.5.0 的 Knife4jOpenApiCustomizer 按 springdoc 2.3.0
+             的 SpringDocConfigProperties.getGroupConfigs():List 编译，在 2.5+ 改成 Set 后会抛
+             NoSuchMethodError，而 springdoc 2.3.0 又不兼容 Spring Boot 3.5.x，两者不可兼得。
+             UI 本身是纯前端静态资源（META-INF/resources/doc.html + /webjars/**），直接读
+             /v3/api-docs/swagger-config 分组，不需要 starter 的自动配置。 -->
+        <dependency>
+            <groupId>com.github.xiaoymin</groupId>
+            <artifactId>knife4j-openapi3-ui</artifactId>
+            <version>4.5.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>2.8.17</version>
         </dependency>
 
     </dependencies>

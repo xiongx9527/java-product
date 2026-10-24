@@ -1,6 +1,9 @@
 package com.xiongx9527.askdata.system.authentication;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.xiongx9527.askdata.common.audit.AuditLog;
+import com.xiongx9527.askdata.common.audit.AuditModule;
+import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.common.web.Result;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -62,16 +65,19 @@ public class AuthenticationController {
         return Result.ok(authenticationService.getById(id));
     }
 
+    @AuditLog(module = AuditModule.SETTING, operation = AuditOperationType.CREATE)
     @PostMapping({"/system/authentication"})
     public Result<Map<String, Object>> add(@RequestBody Map<String, Object> body) {
         return Result.ok(authenticationService.add(body));
     }
 
+    @AuditLog(module = AuditModule.SETTING, operation = AuditOperationType.UPDATE)
     @PutMapping({"/system/authentication"})
     public Result<Map<String, Object>> update(@RequestBody Map<String, Object> body) {
         return Result.ok(authenticationService.update(body));
     }
 
+    @AuditLog(module = AuditModule.SETTING, operation = AuditOperationType.UPDATE_STATUS)
     @PatchMapping({"/system/authentication/enable"})
     public Result<Void> enable(@RequestBody Map<String, Object> body) {
         long id = longOf(body.get("id"), 0L);

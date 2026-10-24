@@ -105,7 +105,8 @@ public class ScheduledTaskExecutor {
             ModelRef aiModel = model.get();
             List<ModelMessage> messages =
                     schemaContextBuilder.buildSqlMessages(task.getQuestion(), task.getDatasourceId());
-            String text = modelClient.generate(aiModel.apiDomain, aiModel.apiKey, aiModel.baseModel, messages);
+            String text = modelClient.generate(aiModel.apiDomain, aiModel.apiKey, aiModel.baseModel, messages,
+                    aiModel.params);
             sql = ChatQuestionService.extractSql(text);
             if (sql == null) {
                 throw new IllegalStateException(messageResolver.get("scheduled.no.sql"));

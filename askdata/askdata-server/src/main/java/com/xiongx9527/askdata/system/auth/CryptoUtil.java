@@ -59,8 +59,14 @@ public class CryptoUtil {
 
     @Autowired
     public CryptoUtil(@Value("${askdata.secret.key:}") String askDataSecretKey) {
-        this.askDataSecretKey = (askDataSecretKey == null || askDataSecretKey.isEmpty())
-                ? generateFallbackSecretKey() : askDataSecretKey;
+        if (askDataSecretKey == null || askDataSecretKey.isEmpty()) {
+            // 不内置缺省密钥：未配置时用运行期随机密钥保证可启动，但历史落库密文将不可解
+            log.warn("未配置 askdata.secret.key / ASKDATA_SECRET_KEY，使用运行期随机密钥；"
+                    + "重启后历史落库密文不可解密，请在部署环境显式配置密钥");
+            this.askDataSecretKey = generateFallbackSecretKey();
+        } else {
+            this.askDataSecretKey = askDataSecretKey;
+        }
     }
 
     /**

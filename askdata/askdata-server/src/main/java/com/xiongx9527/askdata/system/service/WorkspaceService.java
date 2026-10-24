@@ -150,7 +150,7 @@ public class WorkspaceService {
 
     public PageResult<Map<String, Object>> optionPager(int pageNum, int pageSize, String keyword, long oid) {
         if (oid <= 0) {
-            throw new BadRequestException("Missing required argument: [oid]");
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", "oid")));
         }
         currentUserService.requireAdmin();
         int page = Math.max(pageNum, 1);
@@ -166,7 +166,7 @@ public class WorkspaceService {
 
     public Map<String, Object> optionUser(String keyword) {
         if (keyword == null || keyword.isEmpty()) {
-            throw new BadRequestException("Missing required argument: [keyword]");
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", "keyword")));
         }
         currentUserService.requireWsAdmin();
         Map<String, Object> current = currentUserService.currentUser();
@@ -187,7 +187,7 @@ public class WorkspaceService {
 
         List<Long> uidList = Rows.longList(Rows.get(body, "uid_list"));
         if (uidList.isEmpty()) {
-            throw new BadRequestException("Missing required argument: [uid_list]");
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", "uid_list")));
         }
         if (!workspaceRepository.findById(oid).isPresent()) {
             throw new BadRequestException(messageResolver.get("workspace.not.found", oid));
@@ -205,10 +205,10 @@ public class WorkspaceService {
         long oid = Rows.lng(body, "oid", 0L);
         int weight = Rows.intg(body, "weight", 0);
         if (uid <= 0 || oid <= 0) {
-            throw new BadRequestException("Missing required argument: [oid, uid]");
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", "oid, uid")));
         }
         Map<String, Object> binding = userWsRepository.find(uid, oid)
-                .orElseThrow(() -> new BadRequestException("uws not exist"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("i18n_not_exist", java.util.Map.of("msg", "user workspace"))));
         if (Rows.intg(binding, "weight", 0) == weight) {
             return;
         }

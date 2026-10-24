@@ -43,12 +43,16 @@ public class CustomPromptService {
 
     private final AuditRecorder auditRecorder;
 
+    private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
+
     public CustomPromptService(CustomPromptRepository customPromptRepository, CurrentUserService currentUserService,
-                               DatasourceNameLookup datasourceNameLookup, AuditRecorder auditRecorder) {
+                               DatasourceNameLookup datasourceNameLookup, AuditRecorder auditRecorder,
+                               com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver) {
         this.customPromptRepository = customPromptRepository;
         this.currentUserService = currentUserService;
         this.datasourceNameLookup = datasourceNameLookup;
         this.auditRecorder = auditRecorder;
+        this.messageResolver = messageResolver;
     }
 
     // ------------------------------------------------------------------
@@ -75,9 +79,9 @@ public class CustomPromptService {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
         Map<String, Object> row = customPromptRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("CustomPrompt with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("i18n_custom_prompt.not_exists")));
         if (Rows.lng(row, "oid", 0L) != oid) {
-            throw new BadRequestException("CustomPrompt with id " + id + " not found");
+            throw new BadRequestException(messageResolver.get("i18n_custom_prompt.not_exists"));
         }
         List<Long> ids = customPromptRepository.parseDatasourceIds(Rows.str(row, "datasource_ids"));
         Map<Long, String> dsNames = datasourceNameLookup.namesOf(ids);
@@ -154,22 +158,22 @@ public class CustomPromptService {
         List<Long> datasourceIds = Rows.longList(Rows.get(body, "datasource_ids"));
         Long advancedApplication = Rows.lngOrNull(body, "advanced_application");
         if (specificDs && datasourceIds.isEmpty() && advancedApplication == null) {
-            throw new BadRequestException("Datasource and assistant cannot both be empty");
+            throw new BadRequestException(messageResolver.get("i18n_custom_prompt.datasource_assistant_cannot_be_none"));
         }
         Long id = Rows.lngOrNull(body, "id");
         if (id != null) {
             if (!customPromptRepository.exists(oid, id)) {
-                throw new BadRequestException("CustomPrompt does not exist");
+                throw new BadRequestException(messageResolver.get("i18n_custom_prompt.not_exists"));
             }
             if (customPromptRepository.nameExists(oid, type, name, id)) {
-                throw new BadRequestException("Custom prompt name already exists");
+                throw new BadRequestException(messageResolver.get("i18n_custom_prompt.exists_in_db"));
             }
             customPromptRepository.update(id, name, prompt, specificDs,
                     customPromptRepository.datasourceIdsJson(datasourceIds), advancedApplication);
             return id;
         }
         if (customPromptRepository.nameExists(oid, type, name, null)) {
-            throw new BadRequestException("Custom prompt name already exists");
+            throw new BadRequestException(messageResolver.get("i18n_custom_prompt.exists_in_db"));
         }
         long newId = customPromptRepository.insert(oid, type, name, prompt, specificDs,
                 customPromptRepository.datasourceIdsJson(datasourceIds), advancedApplication,
@@ -283,7 +287,7 @@ public class CustomPromptService {
         String lower = filename == null ? "" : filename.toLowerCase();
         boolean allowed = lower.endsWith(".xlsx") || lower.endsWith(".xls");
         if (!allowed) {
-            throw new BadRequestException("Only support .xlsx/.xls");
+            throw new BadRequestException(messageResolver.get("ds.only.xlsx"));
         }
         List<String[]> rows = com.xiongx9527.askdata.common.util.ExcelUtils.readRows(
                 new java.io.ByteArrayInputStream(content));
@@ -299,33 +303,35 @@ public class CustomPromptService {
             String datasourceName = cell(values, 2);
             String advancedApplicationName = cell(values, 3);
             if (name.isEmpty()) {
-                errors.add("Name cannot be empty");
+                errors.add(messageResolver.get("i18n_custom_prompt.name_cannot_be_empty"));
             }
             if (prompt.isEmpty()) {
-                errors.add("Prompt cannot be empty");
+                errors.add(messageResolver.get("i18n_custom_prompt.prompt_cannot_be_empty"));
             }
             Long datasource = null;
             Long advancedApplication = null;
             if (!datasourceName.isEmpty()) {
                 datasource = datasourceNameLookup.idByName(datasourceName);
                 if (datasource == null) {
-                    errors.add("Datasource [" + datasourceName + "] not found");
+                    errors.add(messageResolver.get("i18n_custom_prompt.datasource_name_not_found",
+                            java.util.Map.of("name", datasourceName)));
                 }
             }
             if (!advancedApplicationName.isEmpty()) {
                 List<Map<String, Object>> assistants = customPromptRepository.findAssistantsByName(oid,
                         advancedApplicationName);
                 if (assistants.isEmpty()) {
-                    errors.add("Advanced application [" + advancedApplicationName + "] not found");
+                    errors.add(messageResolver.get("i18n_custom_prompt.advanced_application_name_not_found",
+                            java.util.Map.of("name", advancedApplicationName)));
                 } else {
                     advancedApplication = Rows.lngOrNull(assistants.get(0), "id");
                 }
             }
             if (datasource == null && advancedApplication == null) {
-                errors.add("Datasource and assistant cannot both be empty");
+                errors.add(messageResolver.get("i18n_custom_prompt.datasource_assistant_cannot_be_none"));
             }
             if (errors.isEmpty() && customPromptRepository.nameExists(oid, type, name, null)) {
-                errors.add("Custom prompt name already exists");
+                errors.add(messageResolver.get("i18n_custom_prompt.exists_in_db"));
             }
             if (!errors.isEmpty()) {
                 failed.add(importFailed(name, prompt, datasourceName, advancedApplicationName, errors));
@@ -371,21 +377,22 @@ public class CustomPromptService {
     // 内部工具
     // ------------------------------------------------------------------
 
-    private static String requiredType(Map<String, Object> body) {
+    private String requiredType(Map<String, Object> body) {
         String type = Rows.str(body, "type");
         if (type == null || type.isEmpty()) {
             type = TYPE_GENERATE_SQL;
         }
         if (!TYPE_GENERATE_SQL.equals(type) && !TYPE_ANALYSIS.equals(type) && !TYPE_PREDICT_DATA.equals(type)) {
-            throw new BadRequestException("Invalid custom prompt type: [" + type + "]");
+            throw new BadRequestException(messageResolver.get("i18n_custom_prompt.invalid_type",
+                    java.util.Map.of("type", type)));
         }
         return type;
     }
 
-    private static String requiredText(Map<String, Object> body, String key) {
+    private String requiredText(Map<String, Object> body, String key) {
         String value = Rows.str(body, key);
         if (value == null || value.trim().isEmpty()) {
-            throw new BadRequestException("Missing required argument: [" + key + "]");
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", key)));
         }
         return value.trim();
     }

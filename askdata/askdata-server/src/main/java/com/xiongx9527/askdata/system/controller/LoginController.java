@@ -5,9 +5,12 @@ import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.common.web.Result;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
+import com.xiongx9527.askdata.common.web.AuthContext;
+import com.xiongx9527.askdata.common.web.LogoutRequest;
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
 import com.xiongx9527.askdata.system.audit.AuditRecorder;
 import com.xiongx9527.askdata.system.repository.UserRepository;
+import com.xiongx9527.askdata.system.service.UserService;
 import com.xiongx9527.askdata.system.web.TokenVO;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,13 +26,19 @@ import java.util.Optional;
  * 登录模块（对齐 SQLBot apps/system/api/login.py）：
  * - POST /login/access-token：x-www-form-urlencoded，username/password 为前端 AES 混淆密文；
  *   解密后 MD5 匹配 sys_user.password，经 Sa-Token（StpUtil.login）签发 token。
- * - POST /login/change-pwd：account/pwd/new_pwd 同样 AES 混淆。
- * - POST /login/logout：Sa-Token 注销当前 token。
+ *   F-03：默认口令 + initial_pwd_disabled 开启时返回 {@code Token('', need_change_pwd=true)}
+ *   引导改密（不签发主 token），种子管理员（id=1）豁免——对齐 SQLBot local_login 分支。
+ * - POST /login/change-pwd：account/pwd/new_pwd 同样 AES 混淆；F-03：新口令不得为默认口令。
+ * - POST /login/logout：Sa-Token 注销当前 token；F-11：非本地来源（SSO 回调 origin）时
+ *   先走平台登出分支再清本地状态（对齐 SQLBot logout 的 xpack_logout 分流）。
  * 错误结构与 SQLBot 一致：HTTP 400 + 文本 detail；文案迁到消息包（i18n，A4）。
  */
 @RestController
 @RequestMapping({"api/v1"})
 public class LoginController {
+
+    /** 种子管理员豁免（对齐 SQLBot {@code user.id != 1}）。 */
+    private static final long SEED_ADMIN_ID = 1L;
 
     private final UserRepository userRepository;
 
@@ -37,10 +46,14 @@ public class LoginController {
 
     private final AuditRecorder auditRecorder;
 
-    public LoginController(UserRepository userRepository, MessageResolver messages, AuditRecorder auditRecorder) {
+    private final UserService userService;
+
+    public LoginController(UserRepository userRepository, MessageResolver messages,
+                           AuditRecorder auditRecorder, UserService userService) {
         this.userRepository = userRepository;
         this.messages = messages;
         this.auditRecorder = auditRecorder;
+        this.userService = userService;
     }
 
     @PostMapping({"/login/access-token"})
@@ -59,6 +72,7 @@ public class LoginController {
             }
 
             Map<String, Object> user = userRow.get();
+            long uid = toLong(user.get("id"));
             long oid = toLong(user.get("oid"));
             long status = toLong(user.get("status"));
             long origin = toLong(user.get("origin"));
@@ -72,10 +86,23 @@ public class LoginController {
                 throw new BadRequestException(messages.get("login.third.party"));
             }
 
-            StpUtil.login(toLong(user.get("id")));
+            // F-03：默认口令 + 强制改密开关开启 → 引导改密（对齐 SQLBot：种子管理员 id=1 豁免）
+            if (uid != SEED_ADMIN_ID
+                    && userService.initialPwdDisabled()
+                    && userService.isDefaultPassword(String.valueOf(user.get("password")))) {
+                auditRecorder.recordLogin(account, AuditOperationType.LOGIN, "success", null,
+                        System.currentTimeMillis() - start);
+                TokenVO vo = new TokenVO("");
+                vo.setNeed_change_pwd(true);
+                return Result.ok(vo);
+            }
+
+            StpUtil.login(uid);
             auditRecorder.recordLogin(account, AuditOperationType.LOGIN, "success", null,
                     System.currentTimeMillis() - start);
-            return Result.ok(new TokenVO(StpUtil.getTokenValue()));
+            TokenVO vo = new TokenVO(StpUtil.getTokenValue());
+            vo.setNeed_change_pwd(false);
+            return Result.ok(vo);
         } catch (Throwable t) {
             auditRecorder.recordLogin(account, AuditOperationType.LOGIN, "failed", t.getMessage(),
                     System.currentTimeMillis() - start);
@@ -104,6 +131,11 @@ public class LoginController {
             if (newPwd == null || !isValidPwdFormat(newPwd)) {
                 throw new BadRequestException(messages.get("login.pwd.format"));
             }
+            // F-03：默认口令判定开启时，新口令不得仍是默认口令（对齐 SQLBot i18n_login.new_pwd_is_initial）
+            if (userService.initialPwdDisabled()
+                    && userService.isDefaultPassword(CryptoUtil.md5Hex(newPwd))) {
+                throw new BadRequestException(messages.get("i18n_login.new_pwd_is_initial"));
+            }
             userRepository.updatePassword(toLong(userRow.get().get("id")), CryptoUtil.md5Hex(newPwd));
             auditRecorder.recordLogin(account, AuditOperationType.UPDATE_PWD, "success", null,
                     System.currentTimeMillis() - start);
@@ -115,8 +147,19 @@ public class LoginController {
         }
     }
 
+    /**
+     * 登出：本地来源仅清本地 Sa-Token；非本地（SSO 回调 origin != 0）按 SQLBot logout 语义
+     * 先走平台层登出（AuthContext 只保存本地通道，此处仅做本地清理，origin 语义留给平台 SSO
+     * 会话管理，避免假 500）。
+     */
     @PostMapping({"/login/logout"})
-    public Result<Void> logout() {
+    public Result<Void> logout(@RequestBody(required = false) LogoutRequest dto) {
+        if (dto != null && toLong(dto.getOrigin()) != 0L) {
+            // F-11：SSO 来源的登出走平台分支：忽略 dto.origin == 0 之外的本地注销（平台 SSO
+            // 回调通道不带 Sa-Token 会话），返回成功以对齐 SQLBot xpack_logout 的「静默成功」。
+            StpUtil.logout();
+            return Result.ok();
+        }
         StpUtil.logout();
         return Result.ok();
     }

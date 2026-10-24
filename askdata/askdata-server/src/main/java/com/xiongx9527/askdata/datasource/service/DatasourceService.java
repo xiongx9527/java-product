@@ -193,7 +193,7 @@ public class DatasourceService {
         long oid = currentUserService.oidOf(user);
         String name = Rows.str(body, "name");
         if (name == null || name.isEmpty()) {
-            throw new BadRequestException("Missing required argument: [name]");
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", "name")));
         }
         DatasourceType type = typeOf(Rows.str(body, "type"));
         String plainConf = DatasourceCrypto.decodeConfiguration(Rows.str(body, "configuration"));
@@ -283,7 +283,7 @@ public class DatasourceService {
         long dsId = Rows.lng(body, "ds_id", 0L);
         Map<String, Object> record = tableRepository.findById(id)
                 .filter(item -> Rows.lng(item, "ds_id", 0L) == dsId)
-                .orElseThrow(() -> new DatasourceException("The data source ID does not match the table ID"));
+                .orElseThrow(() -> new DatasourceException(messageResolver.get("ds.data.source.id.mismatch")));
         tableRepository.updateCheckedAndComment(id, Rows.bool(body, "checked", Rows.bool(record, "checked", true)),
                 Rows.str(body, "custom_comment"));
     }
@@ -298,7 +298,7 @@ public class DatasourceService {
         fieldRepository.listByTableId(tableId).stream()
                 .filter(item -> Rows.lng(item, "id", 0L) == id && Rows.lng(item, "ds_id", 0L) == dsId)
                 .findFirst()
-                .orElseThrow(() -> new DatasourceException("Resource ID does not matched"));
+                .orElseThrow(() -> new DatasourceException(messageResolver.get("ds.resource.id.mismatch")));
         fieldRepository.updateCheckedAndComment(id, Rows.bool(body, "checked", true),
                 Rows.str(body, "custom_comment"));
     }
@@ -309,9 +309,9 @@ public class DatasourceService {
         currentUserService.requireWsAdmin();
         Map<String, Object> table = tableRepository.findById(tableId)
                 .filter(item -> Rows.lng(item, "ds_id", 0L) == dsId)
-                .orElseThrow(() -> new DatasourceException("The data source ID does not match the table ID"));
+                .orElseThrow(() -> new DatasourceException(messageResolver.get("ds.data.source.id.mismatch")));
         Map<String, Object> row = datasourceRepository.findById(dsId)
-                .orElseThrow(() -> new BadRequestException("Datasource with id " + dsId + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("ds.not.found", dsId)));
         DatasourceType type = typeOf(Rows.str(row, "type"));
         DatasourceConf conf = confOf(Rows.str(row, "configuration"));
         String tableName = Rows.str(table, "table_name");
@@ -377,7 +377,7 @@ public class DatasourceService {
         requireAccessible(dsId);
         tableRepository.findById(tableId)
                 .filter(item -> Rows.lng(item, "ds_id", 0L) == dsId)
-                .orElseThrow(() -> new DatasourceException("The data source ID does not match the table ID"));
+                .orElseThrow(() -> new DatasourceException(messageResolver.get("ds.data.source.id.mismatch")));
         String fieldName = Rows.str(body, "fieldName");
         List<Map<String, Object>> rows = fieldName == null || fieldName.isEmpty()
                 ? fieldRepository.listByTableId(tableId)
@@ -480,14 +480,14 @@ public class DatasourceService {
     /** 后台任务的数据源方言解析（不做用户归属校验；归属由任务创建时校验保证）。 */
     public DatasourceType typeAsSystem(long id) {
         Map<String, Object> row = datasourceRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Datasource with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("ds.not.found", id)));
         return typeOf(Rows.str(row, "type"));
     }
 
     /** 后台任务执行只读 SQL（不做用户归属校验；与静态数据源共用同一执行链路）。 */
     public Map<String, Object> execSqlAsSystem(long id, String sql) {
         Map<String, Object> row = datasourceRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Datasource with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("ds.not.found", id)));
         DatasourceType type = typeOf(Rows.str(row, "type"));
         return engine.execSql(type, confOf(Rows.str(row, "configuration")), sql, id);
     }
@@ -557,7 +557,7 @@ public class DatasourceService {
         requireAccessible(id);
         List<Map<String, Object>> tables = tableRepository.listByDsId(id);
         if (tables.isEmpty()) {
-            throw new BadRequestException("No tables");
+            throw new BadRequestException(messageResolver.get("ds.no.tables"));
         }
         String dsName = datasourceRepository.findById(id).map(row -> Rows.str(row, "name")).orElse("datasource");
         List<ExcelService.SchemaTable> schemaTables = new ArrayList<>();
@@ -730,7 +730,7 @@ public class DatasourceService {
         try {
             return objectMapper.readValue(plainJson, DatasourceConf.class);
         } catch (Exception e) {
-            throw new DatasourceException("Invalid datasource configuration: " + e.getMessage());
+            throw new DatasourceException(messageResolver.get("ds.invalid.config", e.getMessage()));
         }
     }
 

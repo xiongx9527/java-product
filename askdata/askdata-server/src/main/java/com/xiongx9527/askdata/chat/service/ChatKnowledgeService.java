@@ -215,14 +215,17 @@ public class ChatKnowledgeService {
         if (sqlExampleDegraded) {
             log.warn("SQL 示例降级：data_training 表不可用，few-shot 示例缺失（oid={}, dsId={}）", oid, dsId);
         }
-        List<Map<String, Object>> groups = recallTerms(question, oid, dsId, advancedAppId);
-        // 2.1：LLM 业务实体抽取（带历史上下文）作为术语命中的补充种子；模型不可用/失败则退化为词法命中
-        List<String> matched = matchedWords(groups, question);
-        boolean keywordLlmUsed = false;
+        // §2.5：对齐 SQLBot 的顺序——先抽取关键词（带历史），再用「抽取词 or 原问题」做术语匹配
+        // （llm.py:384 match_text = extracted_keywords or question）。此前是先按原始整句召回术语，
+        // 抽取结果只进关键词落库，导致召回精度低于 SQLBot。
         List<String> llmEntities = extractEntitiesWithLlm(question, historyText);
+        boolean keywordLlmUsed = llmEntities != null;
+        String matchText = keywordLlmUsed && !llmEntities.isEmpty()
+                ? String.join(",", llmEntities) : question;
+        List<Map<String, Object>> groups = recallTerms(matchText, oid, dsId, advancedAppId);
+        List<String> matched = matchedWords(groups, matchText);
         Set<String> extractedSet = new LinkedHashSet<>(matched);
         if (llmEntities != null) {
-            keywordLlmUsed = true;
             for (String entity : llmEntities) {
                 if (entity != null && !entity.trim().isEmpty()) {
                     extractedSet.add(entity.trim());
@@ -234,7 +237,7 @@ public class ChatKnowledgeService {
         String expanded = String.join(",", expandKeywords(extractedList, groups));
         String terminologyText = terminologyTemplate(groups);
         List<String> sqlExamples = trainingSamples(dsId, question, advancedAppId);
-        List<String> customPrompts = customPrompts(oid, dsId, advancedAppId);
+        List<String> customPrompts = customPrompts(oid, dsId, advancedAppId, "GENERATE_SQL");
         return new KnowledgeContext(extracted, expanded, terminologyText, groups, sqlExamples, customPrompts,
                 terminologyDegraded, sqlExampleDegraded, keywordLlmUsed);
     }
@@ -271,12 +274,13 @@ public class ChatKnowledgeService {
      * {@code type = 'GENERATE_SQL'} + oid 匹配 + 数据源作用域
      * （{@code specific_ds=false} 或 {@code datasource_ids} 含该数据源）。
      */
-    private List<String> customPrompts(long oid, Long dsId, Long advancedAppId) {
+    private List<String> customPrompts(long oid, Long dsId, Long advancedAppId, String type) {
         try {
             StringBuilder sql = new StringBuilder(
-                    "SELECT prompt FROM custom_prompt WHERE oid = ? AND type = 'GENERATE_SQL' ");
+                    "SELECT prompt FROM custom_prompt WHERE oid = ? AND type = ? ");
             List<Object> args = new ArrayList<>();
             args.add(oid);
+            args.add(type == null || type.isEmpty() ? "GENERATE_SQL" : type);
             if (advancedAppId != null) {
                 // A9：高级应用知识范围隔离——仅该应用的自定义提示词
                 sql.append(" AND advanced_application = ?");
@@ -296,6 +300,14 @@ public class ChatKnowledgeService {
             log.info("自定义提示词召回失败（降级为空）: {}", e.getMessage());
             return new ArrayList<>();
         }
+    }
+
+    /**
+     * §2.2: 按提示词类型召回自定义提示词（SQLBot custom_prompt.type：GENERATE_SQL / ANALYSIS / PREDICT_DATA），
+     * 供分析/预测链路取对应类型提示词；数据源范围隔离与主链路一致。
+     */
+    public List<String> customPromptsForType(long oid, Long dsId, String type) {
+        return customPrompts(oid, dsId, null, type);
     }
 
     // ------------------------------------------------------------------
@@ -322,7 +334,8 @@ public class ChatKnowledgeService {
         user.append("【当前问题】\n").append(question == null ? "" : question);
         messages.add(new ChatModelClient.ModelMessage("user", user.toString()));
         try {
-            String raw = modelClient.generate(model.apiDomain, model.apiKey, model.baseModel, messages);
+            String raw = modelClient.generate(model.apiDomain, model.apiKey, model.baseModel, messages,
+                    model.params);
             return parseEntities(raw);
         } catch (Exception e) {
             log.info("LLM 关键词抽取失败（退化为词法命中）: {}", e.getMessage());

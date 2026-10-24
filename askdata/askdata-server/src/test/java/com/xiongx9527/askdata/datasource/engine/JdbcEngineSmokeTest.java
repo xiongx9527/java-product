@@ -242,7 +242,8 @@ class JdbcEngineSmokeTest {
 
     @Test
     void missingDriverFollowsSqlbotConvention() {
-        // 驱动不在 classpath（未放扩展目录）：连接检查报驱动缺失（A12 其余类型的离线行为）
+        // 驱动不在 classpath（达梦未随包；仅 Oracle/SQLServer 作为 test 范围驱动随真实方言验收引入）：
+        // 连接检查报驱动缺失（A12 其余类型的离线行为）。
         JdbcEngine engine = engine(null);
         DatasourceConf conf = conf("db1");
         conf.setHost("h");
@@ -250,9 +251,9 @@ class JdbcEngineSmokeTest {
         conf.setUsername("u");
         conf.setPassword("p");
         DatasourceException ex = assertThrows(DatasourceException.class,
-                () -> engine.checkConnection(DatasourceType.ORACLE, conf, true));
-        assertTrue(ex.getMessage().contains("jdbc driver [oracle.jdbc.OracleDriver] not found"), ex.getMessage());
-        // 连接串仍可按方言生成（元数据策略存在）
+                () -> engine.checkConnection(DatasourceType.DM, conf, true));
+        assertTrue(ex.getMessage().contains("jdbc driver [dm.jdbc.driver.DmDriver] not found"), ex.getMessage());
+        // 连接串仍可按方言生成（元数据策略存在；与驱动是否随包无关）
         assertTrue(engine.buildJdbcUrl(DatasourceType.ORACLE, conf).startsWith("jdbc:oracle:thin:@//h:1/db1"));
     }
 

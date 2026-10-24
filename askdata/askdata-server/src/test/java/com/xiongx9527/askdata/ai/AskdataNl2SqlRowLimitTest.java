@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.ai;
 
+import com.xiongx9527.askdata.datasource.engine.DatasourceConf;
 import com.xiongx9527.askdata.datasource.engine.DatasourceType;
 import org.junit.jupiter.api.Test;
 
@@ -7,6 +8,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -97,6 +99,51 @@ class AskdataNl2SqlRowLimitTest {
                 n++;
             }
             return n;
+        }
+    }
+
+    // ---- A6：PG 方言形态正确性（离线，确定性）----
+
+    @Test
+    void pgQuoteProducesDoubleQuotedIdentifiers() {
+        assertEquals("\"x\"", DatasourceType.quote(DatasourceType.PG, "x"));
+        assertEquals("\"id\", \"name\"", DatasourceType.quoteAll(DatasourceType.PG, List.of("id", "name")));
+    }
+
+    @Test
+    void pgSqlDialectHintUsesLimitNotRownum() {
+        String hint = DatasourceType.PG.sqlDialectHint();
+        assertTrue(hint.contains("LIMIT"), hint);
+        assertFalse(hint.contains("ROWNUM"), hint);
+    }
+
+    @Test
+    void pgPreviewSqlUsesDoubleQuotesSchemaPrefixAndLimit() {
+        DatasourceConf conf = new DatasourceConf();
+        conf.setDatabase("pg");
+        conf.setDbSchema("public");
+        String preview = DatasourceType.PG.previewSql(List.of("id", "name"), "orders", conf, null);
+        assertTrue(preview.contains("\"public\".\"orders\""), preview);
+        assertTrue(preview.endsWith(" LIMIT 100"), preview);
+    }
+
+    /**
+     * PG 形态 SQL（双引号标识符 + LIMIT 分页）在 H2 PostgreSQL 兼容模式下确为合法可执行，
+     * 离体验证「模型在 PG 下产出的 SQL 形状」能跑通。
+     */
+    @Test
+    void pgDialectSqlExecutesOnH2PostgresqlMode() throws Exception {
+        String url = "jdbc:h2:mem:pgmode;MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
+        try (Connection c = DriverManager.getConnection(url, "sa", "")) {
+            try (Statement s = c.createStatement()) {
+                s.execute("CREATE TABLE \"t\" (\"id\" INT, \"name\" VARCHAR(20))");
+                s.execute("INSERT INTO \"t\" VALUES (1, 'a'), (2, 'b'), (3, 'c')");
+            }
+            String base = "SELECT " + DatasourceType.quote(DatasourceType.PG, "id")
+                    + " FROM " + DatasourceType.quote(DatasourceType.PG, "t");
+            String sql = AskdataNl2Sql.withRowLimit(base, DatasourceType.PG);
+            assertTrue(sql.endsWith(" LIMIT 200"), sql);
+            assertEquals(3, count(c, sql));
         }
     }
 }

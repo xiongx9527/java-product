@@ -83,6 +83,16 @@ public class AskdataNl2Sql {
      * @param dsId     选定数据源 id；为 null 时使用应用库连接（fallback）
      */
     public Map<String, Object> ask(String question, Long dsId) throws Exception {
+        return ask(question, dsId, null);
+    }
+
+    /**
+     * 问数（可指定模型覆盖，对齐 SQLBot MCP {@code custom_model}）。
+     *
+     * @param modelOverride 非空时用该模型替代默认 ChatModel；为空沿用注入的默认模型
+     */
+    public Map<String, Object> ask(String question, Long dsId, ChatModel modelOverride) throws Exception {
+        ChatModel model = modelOverride != null ? modelOverride : chatModel;
         DatasourceType dialectType;
         String structure;
         if (dsId != null) {
@@ -95,7 +105,7 @@ public class AskdataNl2Sql {
         }
         AskdataSqlRetriever retriever = new AskdataSqlRetriever(
                 dataSource, dialectType.getTemplateName(), structure,
-                PromptTemplate.from(SQL_PROMPT), chatModel, MAX_RETRIES);
+                PromptTemplate.from(SQL_PROMPT), model, MAX_RETRIES);
         retriever.retrieve(Query.from(question));
         String sql = retriever.lastSql();
         if (sql == null || sql.trim().isEmpty()) {

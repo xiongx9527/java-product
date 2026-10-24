@@ -57,14 +57,23 @@ public class AuthChannelFilter implements Filter {
 
     private final AssistantRepository assistantRepository;
 
+    /** 错误文案统一走消息包（A4 / F-15）；过滤器早于 DispatcherServlet，需自行解析 locale。 */
+    private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
+
+    private final com.xiongx9527.askdata.common.i18n.AskdataLocaleResolver localeResolver;
+
     public AuthChannelFilter(AuthWhitelist authWhitelist,
                              ApiKeyTokenAuthenticator apiKeyTokenAuthenticator,
                              EmbeddedTokenAuthenticator embeddedTokenAuthenticator,
-                             AssistantRepository assistantRepository) {
+                             AssistantRepository assistantRepository,
+                             com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver,
+                             com.xiongx9527.askdata.common.i18n.AskdataLocaleResolver localeResolver) {
         this.authWhitelist = authWhitelist;
         this.apiKeyTokenAuthenticator = apiKeyTokenAuthenticator;
         this.embeddedTokenAuthenticator = embeddedTokenAuthenticator;
         this.assistantRepository = assistantRepository;
+        this.messageResolver = messageResolver;
+        this.localeResolver = localeResolver;
     }
 
     @Override
@@ -119,7 +128,7 @@ public class AuthChannelFilter implements Filter {
             // 主通道（Sa-Token）不在此判定：交给 SaTokenConfigure 的 Sa-Token 拦截器。
             chain.doFilter(request, response);
         } catch (AuthFailureException e) {
-            writeUnauthorized(httpResponse, e.getMessage());
+            writeUnauthorized(httpRequest, httpResponse, e.getMessage());
         } finally {
             AuthContext.clear();
         }
@@ -176,12 +185,14 @@ public class AuthChannelFilter implements Filter {
      * {@code JSONResponse(message, status_code=401, headers={"Access-Control-Allow-Origin": "*"})} 一致：
      * {@code {"code":401,"data":null,"msg":"Authentication invalid【<原因>】"}}。</p>
      */
-    private void writeUnauthorized(HttpServletResponse response, String message) throws IOException {
+    private void writeUnauthorized(HttpServletRequest request, HttpServletResponse response, String message)
+            throws IOException {
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setHeader("Access-Control-Allow-Origin", "*");
         response.setContentType("application/json;charset=UTF-8");
-        String body = "{\"code\":401,\"data\":null,\"msg\":\"Authentication invalid【"
-                + escapeJson(message) + "】\"}";
+        String detail = messageResolver.get("i18n_permission.authenticate_invalid",
+                java.util.Map.of("msg", message == null ? "" : message), localeResolver.resolveLocale(request));
+        String body = "{\"code\":401,\"data\":null,\"msg\":\"" + escapeJson(detail) + "\"}";
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         response.setContentLength(bytes.length);
         response.getOutputStream().write(bytes);

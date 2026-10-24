@@ -1,5 +1,8 @@
 package com.xiongx9527.askdata.embedded;
 
+import com.xiongx9527.askdata.common.audit.AuditLog;
+import com.xiongx9527.askdata.common.audit.AuditModule;
+import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.common.web.Result;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -68,17 +71,20 @@ public class AssistantController {
         return Result.ok(assistantService.checkDynamicDatasource(assistantId, hostConfig));
     }
 
+    @AuditLog(module = AuditModule.APPLICATION, operation = AuditOperationType.CREATE)
     @PostMapping({"/system/assistant"})
     public Result<Map<String, Object>> create(@RequestBody Map<String, Object> creator) {
         return Result.ok(assistantService.create(creator));
     }
 
+    @AuditLog(module = AuditModule.APPLICATION, operation = AuditOperationType.UPDATE)
     @PutMapping({"/system/assistant"})
     public Result<Void> update(@RequestBody Map<String, Object> editor) {
         assistantService.update(editor);
         return Result.ok();
     }
 
+    @AuditLog(module = AuditModule.APPLICATION, operation = AuditOperationType.DELETE)
     @DeleteMapping({"/system/assistant/{id}"})
     public Result<Void> delete(@PathVariable long id) {
         assistantService.delete(id);
@@ -86,6 +92,7 @@ public class AssistantController {
     }
 
     /** 外观配置（对齐 SQLBot PATCH /system/assistant/ui；data JSON + files）。 */
+    @AuditLog(module = AuditModule.APPLICATION, operation = AuditOperationType.UPDATE)
     @PatchMapping({"/system/assistant/ui"})
     public Result<Void> ui(@RequestParam("data") String data,
                            @RequestParam(value = "files", required = false) List<MultipartFile> files)

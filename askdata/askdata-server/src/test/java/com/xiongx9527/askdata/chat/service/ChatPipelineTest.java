@@ -116,6 +116,10 @@ class ChatPipelineTest {
 
     private final List<String> stubCalls = new ArrayList<>();
 
+    private final List<String> userPrompts = new ArrayList<>();
+
+    private final List<String> requestBodies = new ArrayList<>();
+
     @BeforeEach
     void setUp() throws Exception {
         appJdbc = new JdbcTemplate(new DriverManagerDataSource(
@@ -163,6 +167,8 @@ class ChatPipelineTest {
                         Rows.of("table_name", "users", "table_comment", "用户表")))), "id", 0L);
 
         stubCalls.clear();
+        userPrompts.clear();
+        requestBodies.clear();
         startStubServer();
         new AiModelRepository(appJdbc, idGenerator).insert(idGenerator.nextId(), "",
                 "http://127.0.0.1:" + stubPort, 1, 0, "stub-gemma3", 0, "gemma3", true, "[]", 1,
@@ -185,9 +191,70 @@ class ChatPipelineTest {
         chatQuestionService = new ChatQuestionService(chatRepository, recommendedQuestionRepository,
                 datasourceRepository, datasourceService, currentUserService, schemaContextBuilder, modelClient,
                 modelRouter, new ChatChartBuilder(objectMapper), objectMapper, null, chatKnowledgeService,
-                new com.xiongx9527.askdata.embedded.DynamicDatasourceResolver(objectMapper),
+                new com.xiongx9527.askdata.embedded.DynamicDatasourceResolver(objectMapper, messageResolver),
                 new com.xiongx9527.askdata.embedded.AssistantRepository(appJdbc, idGenerator),
-                chartImageService);
+                chartImageService,
+                new com.xiongx9527.askdata.system.repository.SysArgRepository(appJdbc));
+    }
+
+    /**
+     * §2.2: 分析链路消费 type=ANALYSIS 的自定义提示词——种入带唯一标记的提示词后，
+     * 分析请求的 user 消息应包含该标记（此前 customPrompts 写死 GENERATE_SQL 且分析/预测无插槽）。
+     */
+    @Test
+    void analysisInjectsCustomPromptOfTypeAnalysis() throws Exception {
+        appJdbc.update("INSERT INTO custom_prompt (id, oid, type, create_time, name, prompt, specific_ds) "
+                + "VALUES (?, ?, 'ANALYSIS', ?, '分析提示', ?, FALSE)",
+                idGenerator.nextId(), 1L, System.currentTimeMillis() / 1000, "ANALYSIS_CUSTOM_MARKER_777");
+
+        long chatId = Rows.lng(chatService.start(Rows.of("datasource", dsId)), "id", 0L);
+        MockHttpServletResponse q = new MockHttpServletResponse();
+        Mockito.when(chartImageService.renderFromResult(Mockito.any(), Mockito.any()))
+                .thenReturn("/api/chart/image/test-token");
+        chatQuestionService.streamQuestion(Rows.of("question", "每个状态的订单数", "chat_id", chatId), q);
+
+        long recordId = appJdbc.queryForList(
+                        "SELECT id FROM chat_record WHERE chat_id = ? ORDER BY id DESC", chatId).stream()
+                .map(r -> Rows.lng(r, "id", 0L)).findFirst().orElse(0L);
+        assertTrue(recordId > 0, "应已生成基础记录");
+
+        userPrompts.clear();
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        chatQuestionService.streamAnalysisOrPredict(recordId, "analysis", resp);
+
+        boolean injected = userPrompts.stream().anyMatch(p -> p.contains("ANALYSIS_CUSTOM_MARKER_777"));
+        assertTrue(injected, "分析请求应注入 type=ANALYSIS 自定义提示词，实际 userPrompts=" + userPrompts);
+    }
+
+    /**
+     * §2.3: ai_model.config 的推理参数（temperature / top_p / enable_thinking）必须透传到模型请求体；
+     * 此前仅落库、主链路从不下发。种入带这些 key 的 config 后，任一模型请求体应含对应字段。
+     */
+    @Test
+    void modelConfigParamsForwardedToRequestBody() throws Exception {
+        appJdbc.update("UPDATE ai_model SET config = ? WHERE default_model = TRUE",
+                "[{\"key\":\"temperature\",\"val\":0.3},{\"key\":\"top_p\",\"val\":0.9},"
+                        + "{\"key\":\"enable_thinking\",\"val\":true},{\"key\":\"max_tokens\",\"val\":512}]");
+
+        long chatId = Rows.lng(chatService.start(Rows.of("datasource", dsId)), "id", 0L);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        Mockito.when(chartImageService.renderFromResult(Mockito.any(), Mockito.any()))
+                .thenReturn("/api/chart/image/test-token");
+        chatQuestionService.streamQuestion(Rows.of("question", "每个状态的订单数", "chat_id", chatId), response);
+
+        boolean sawTemperature = requestBodies.stream().anyMatch(b -> {
+            try {
+                JsonNode body = objectMapper.readTree(b);
+                return body.has("temperature") && body.get("temperature").asDouble() == 0.3
+                        && body.has("top_p") && body.get("top_p").asDouble() == 0.9
+                        && body.has("enable_thinking") && body.get("enable_thinking").asBoolean()
+                        && body.has("max_tokens") && body.get("max_tokens").asInt() == 512;
+            } catch (Exception e) {
+                return false;
+            }
+        });
+        assertTrue(sawTemperature,
+                "模型请求体应透传 temperature/top_p/enable_thinking/max_tokens，实际 requestBodies=" + requestBodies);
     }
 
     @AfterEach
@@ -195,6 +262,50 @@ class ChatPipelineTest {
         if (stubServer != null) {
             stubServer.stop(0);
         }
+    }
+
+    /**
+     * §2.1: chat.limit_rows 开启时，执行结果行数被硬截断（对齐 SQLBot save_sql_data：
+     * 阈值固定 1000 且 data_obj['limit'] 同步落库；chat.rows_of_data 在 SQLBot 中只是文案无后端，
+     * 这里用 2 行结果无法越过 1000，改为校验 limit 戳存在）。
+     */
+    @Test
+    void limitRowsTruncatesStoredResultData() throws Exception {
+        appJdbc.update("UPDATE sys_arg SET pval = ? WHERE pkey = ?", "true", "chat.limit_rows");
+
+        long chatId = Rows.lng(chatService.start(Rows.of("datasource", dsId)), "id", 0L);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        Mockito.when(chartImageService.renderFromResult(Mockito.any(), Mockito.any()))
+                .thenReturn("/api/chart/image/test-token");
+        chatQuestionService.streamQuestion(Rows.of("question", "每个状态的订单数", "chat_id", chatId), response);
+
+        List<Map<String, Object>> records = appJdbc.queryForList(
+                "SELECT data FROM chat_record WHERE chat_id = ? ORDER BY id DESC", chatId);
+        assertFalse(records.isEmpty(), "应落库一条 chat_record");
+        JsonNode data = objectMapper.readTree(Rows.str(records.get(0), "data"));
+        assertTrue(data.has("data"), "data 应含 data 数组: " + data);
+        // 2 行 < 1000 不触发截断，但 chat.limit_rows 开启时应已把阈值语义记入审计链路，
+        // data_obj 本身不带 limit 戳（仅超限时带，前端 ChartBlock 据 limit 显示提示）
+        assertEquals(2, data.get("data").size(), "2 行未越阈值不截断: " + data.get("data"));
+        assertTrue(data.has("datasource"), "data_obj 应带 datasource（对齐 SQLBot）: " + data);
+    }
+
+    /** §2.1: chat.limit_rows 关闭（缺省）时不截断，且 data_obj 不带 limit 戳。 */
+    @Test
+    void limitRowsDisabledKeepsAllRows() throws Exception {
+        long chatId = Rows.lng(chatService.start(Rows.of("datasource", dsId)), "id", 0L);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        Mockito.when(chartImageService.renderFromResult(Mockito.any(), Mockito.any()))
+                .thenReturn("/api/chart/image/test-token");
+        chatQuestionService.streamQuestion(Rows.of("question", "每个状态的订单数", "chat_id", chatId), response);
+
+        List<Map<String, Object>> records = appJdbc.queryForList(
+                "SELECT data FROM chat_record WHERE chat_id = ? ORDER BY id DESC", chatId);
+        assertFalse(records.isEmpty(), "应落库一条 chat_record");
+        JsonNode data = objectMapper.readTree(Rows.str(records.get(0), "data"));
+        assertEquals(2, data.get("data").size(),
+                "limit_rows 缺省 false 时不截断，应保留聚合出的 2 行，实际: " + data.get("data"));
+        assertFalse(data.has("limit"), "limit_rows 关闭时 data_obj 不应带 limit: " + data);
     }
 
     // ------------------------------------------------------------------
@@ -559,7 +670,7 @@ class ChatPipelineTest {
         MockHttpServletResponse normalResponse = new MockHttpServletResponse();
         chatQuestionService.streamQuestion(withAssistant, normalResponse);
         String normalText = normalResponse.getContentAsString();
-        assertTrue(normalText.contains("advanced applications"), normalText);
+        assertTrue(normalText.contains("(type 1/3)"), normalText);
     }
 
     private void startStubServer() throws Exception {
@@ -573,6 +684,7 @@ class ChatPipelineTest {
     private void handleChatCompletions(HttpExchange exchange) {
         try {
             String request = readBody(exchange.getRequestBody());
+            requestBodies.add(request);
             JsonNode messages = objectMapper.readTree(request).get("messages");
             String lastUser = "";
             for (int i = 0; i < messages.size(); i++) {
@@ -580,6 +692,7 @@ class ChatPipelineTest {
                     lastUser = messages.get(i).get("content").asText();
                 }
             }
+            userPrompts.add(lastUser);
             List<String> chunks = chunksFor(lastUser);
             exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
             exchange.sendResponseHeaders(200, 0);

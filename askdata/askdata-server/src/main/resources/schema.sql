@@ -623,24 +623,11 @@ CREATE TABLE IF NOT EXISTS sys_assistant (
 );
 
 -- ---------------------------------------------------------------------
+-- askdata-sqlbot-full-parity / infra-toolchain：会话表缺失列
+-- （审计资源关联表 sys_logs_resource 已在上方统一定义，此处不再重复建表；
+--   会话列取自 192.168.1.100 上运行中的 SQLBot 实例 PG 库 sqlbot 的 information_schema）
+-- 全部为幂等语句：ADD COLUMN IF NOT EXISTS
 -- =====================================================================
--- askdata-sqlbot-full-parity / infra-toolchain：审计资源关联表 + 会话表缺失列
--- （对应 SQLBot sys_logs_resource / chat / chat_record / chat_log 实际 DDL，
---   取自 192.168.1.100 上运行中的 SQLBot 实例 PG 库 sqlbot 的 information_schema）
--- 全部为幂等语句：CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS
--- =====================================================================
-
--- ---------------------------------------------------------------------
--- 审计资源关联表（SQLBot common/audit/models/log_model.py 的 SystemLogsResource：
--- 审计日志与资源的多对多关联；id 为 identity，log_id 关联 sys_logs.id）
--- ---------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS sys_logs_resource (
-    id            BIGINT PRIMARY KEY,
-    resource_id   VARCHAR(255),
-    module        VARCHAR(255),
-    resource_name VARCHAR(255),
-    log_id        BIGINT
-);
 
 -- ---------------------------------------------------------------------
 -- 单 worker 启动守卫（对齐 SQLBot common/utils/distributed_lock.py 的

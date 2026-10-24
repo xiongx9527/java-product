@@ -50,7 +50,7 @@ public final class DatasourceCrypto {
             return "{}";
         }
         String plain = cryptoUtil.decryptWithAppSecret(value);
-        if (plain != null) {
+        if (plain != null && looksLikeJson(plain)) {
             return plain;
         }
         plain = CryptoUtil.decryptSqlbot(value);
@@ -58,6 +58,18 @@ public final class DatasourceCrypto {
             return plain;
         }
         return value;
+    }
+
+    /**
+     * 明文 JSON 粗判。
+     *
+     * <p>应用密钥可配置后，用错密钥解密仍有极小概率通过 PKCS#7 填充校验并产出乱码；
+     * 若直接采信会把乱码当明文交给 Jackson，导致本可回退到前端密钥的密文解析失败。
+     * 只有解密结果呈 JSON 对象/数组形态时才认定命中。</p>
+     */
+    private static boolean looksLikeJson(String value) {
+        String trimmed = value.trim();
+        return trimmed.startsWith("{") || trimmed.startsWith("[");
     }
 
     /** 明文 JSON → 落库形态（应用 SECRET_KEY AES）。 */

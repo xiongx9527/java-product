@@ -96,15 +96,30 @@ public class TerminologyRecallService {
         if (sentence == null || sentence.trim().isEmpty()) {
             return new ArrayList<>();
         }
-        List<Long> result = new ArrayList<>();
-        for (Long id : lexicalRecall(sentence, oid, datasource, advancedApp)) {
-            if (!result.contains(id)) {
-                result.add(id);
+        // §2.5：对齐 SQLBot get_terminology_template——含逗号时视为关键词列表，逐词匹配
+        // （精度更高，避免整句 INSTR 被短词噪声命中）；否则整句作为一个 part。
+        List<String> parts = new ArrayList<>();
+        if (sentence.indexOf(',') >= 0) {
+            for (String part : sentence.split(",")) {
+                if (part != null && !part.trim().isEmpty()) {
+                    parts.add(part.trim());
+                }
             }
         }
-        for (Long id : vectorRecall(sentence, oid, datasource, advancedApp)) {
-            if (!result.contains(id)) {
-                result.add(id);
+        if (parts.isEmpty()) {
+            parts.add(sentence);
+        }
+        List<Long> result = new ArrayList<>();
+        for (String part : parts) {
+            for (Long id : lexicalRecall(part, oid, datasource, advancedApp)) {
+                if (!result.contains(id)) {
+                    result.add(id);
+                }
+            }
+            for (Long id : vectorRecall(part, oid, datasource, advancedApp)) {
+                if (!result.contains(id)) {
+                    result.add(id);
+                }
             }
         }
         return result;

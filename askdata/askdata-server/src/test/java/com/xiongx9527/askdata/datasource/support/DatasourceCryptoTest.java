@@ -1,6 +1,7 @@
 package com.xiongx9527.askdata.datasource.support;
 
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -15,6 +16,12 @@ class DatasourceCryptoTest {
     private static final String PLAIN =
             "{\"host\":\"192.168.1.100\",\"port\":3306,\"username\":\"root\",\"password\":\"Root57@123456\","
                     + "\"database\":\"askdata_demo\"}";
+
+    /** 静态注入是全局状态，用例结束必须复位，避免污染同 JVM 的其他用例。 */
+    @AfterEach
+    void resetCrypto() {
+        DatasourceCrypto.configure(new CryptoUtil());
+    }
 
     @Test
     void storeRoundTrip() {
@@ -39,6 +46,13 @@ class DatasourceCryptoTest {
         String frontendForm = DatasourceCrypto.encodeForFrontend(stored);
         assertEquals(PLAIN, CryptoUtil.decryptSqlbot(frontendForm));
         // 前端再次加密提交后，服务端仍可解码（单层往返不叠加）
+        assertEquals(PLAIN, DatasourceCrypto.decodeConfiguration(CryptoUtil.encryptSqlbot(PLAIN)));
+    }
+
+    @Test
+    void frontendCipherStillDecodesWithDifferentAppSecret() {
+        // 应用密钥与前端密钥不同时，入站前端密文必须仍能解码（不能被错密钥的乱码截胡）
+        DatasourceCrypto.configure(new CryptoUtil("another-app-secret"));
         assertEquals(PLAIN, DatasourceCrypto.decodeConfiguration(CryptoUtil.encryptSqlbot(PLAIN)));
     }
 

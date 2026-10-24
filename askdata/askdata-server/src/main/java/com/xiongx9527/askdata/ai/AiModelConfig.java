@@ -33,6 +33,11 @@ public class AiModelConfig {
                 .orElseThrow(() -> new IllegalStateException(
                         "askdata.assistant.enabled=true 但未配置可用的默认对话模型（请到 系统-AI模型 设置默认模型）"));
         log.info("装配 langchain4j ChatModel: domain={}, model={}", ref.apiDomain, ref.baseModel);
+        return buildChatModel(ref);
+    }
+
+    /** 由模型引用构建 OpenAI 兼容 ChatModel（MCP {@code custom_model} 按次选模型复用）。 */
+    public static ChatModel buildChatModel(ChatModelRouter.ModelRef ref) {
         OpenAiChatModel.OpenAiChatModelBuilder builder = OpenAiChatModel.builder()
                 .baseUrl(openAiBase(ref.apiDomain))
                 .modelName(ref.baseModel);

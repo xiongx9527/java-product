@@ -2,6 +2,7 @@ package com.xiongx9527.askdata.system.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.BadRequestException;
@@ -31,12 +32,15 @@ public class VariableService {
 
     private final ObjectMapper objectMapper;
 
+    private final MessageResolver messageResolver;
+
     public VariableService(VariableRepository variableRepository, CurrentUserService currentUserService,
-                           IdGenerator idGenerator, ObjectMapper objectMapper) {
+                           IdGenerator idGenerator, ObjectMapper objectMapper, MessageResolver messageResolver) {
         this.variableRepository = variableRepository;
         this.currentUserService = currentUserService;
         this.idGenerator = idGenerator;
         this.objectMapper = objectMapper;
+        this.messageResolver = messageResolver;
     }
 
     public List<Map<String, Object>> listAll(Map<String, Object> body) {
@@ -59,11 +63,11 @@ public class VariableService {
         currentUserService.requireAdmin();
         String name = Rows.str(body, "name");
         if (name == null || name.isEmpty()) {
-            throw new BadRequestException("Missing required argument: [name]");
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", "name")));
         }
         Long id = Rows.lngOrNull(body, "id");
         if (variableRepository.existsName(name, id)) {
-            throw new BadRequestException("Variable name [" + name + "] already exists");
+            throw new BadRequestException(messageResolver.get("i18n_variable.name_exist"));
         }
         String varType = Rows.str(body, "var_type") == null ? "text" : Rows.str(body, "var_type");
         String value = valueJson(body);
@@ -162,7 +166,7 @@ public class VariableService {
         try {
             return value == null ? "[]" : objectMapper.writeValueAsString(value);
         } catch (Exception e) {
-            throw new BadRequestException("Invalid variable value");
+            throw new BadRequestException(messageResolver.get("i18n_format_invalid", java.util.Map.of("key", "value")));
         }
     }
 

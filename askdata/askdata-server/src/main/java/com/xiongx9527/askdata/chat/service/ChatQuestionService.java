@@ -18,6 +18,7 @@ import com.xiongx9527.askdata.embedded.AssistantRepository;
 import com.xiongx9527.askdata.embedded.DynamicDatasource;
 import com.xiongx9527.askdata.embedded.DynamicDatasourceResolver;
 import com.xiongx9527.askdata.permission.PermissionEnforcer;
+import com.xiongx9527.askdata.system.repository.SysArgRepository;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +29,7 @@ import java.io.IOException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -56,6 +58,9 @@ import java.util.concurrent.atomic.AtomicReference;
 public class ChatQuestionService {
 
     private static final Logger log = LoggerFactory.getLogger(ChatQuestionService.class);
+
+    /** SQLBot {@code apps/chat/task/llm.py} 默认数据量阈值。 */
+    private static final int SQL_ROW_LIMIT = 1000;
 
     /** 模型单次生成的最大字符数（防止异常模型刷爆记录）。 */
     private static final int MAX_GENERATED_TEXT = 32000;
@@ -127,6 +132,8 @@ public class ChatQuestionService {
 
     private final ChartImageService chartImageService;
 
+    private final SysArgRepository sysArgRepository;
+
     public ChatQuestionService(ChatRepository chatRepository,
                                RecommendedQuestionRepository recommendedQuestionRepository,
                                DatasourceRepository datasourceRepository, DatasourceService datasourceService,
@@ -136,7 +143,8 @@ public class ChatQuestionService {
                                PermissionEnforcer permissionEnforcer, ChatKnowledgeService chatKnowledgeService,
                                DynamicDatasourceResolver dynamicDatasourceResolver,
                                AssistantRepository assistantRepository,
-                               ChartImageService chartImageService) {
+                               ChartImageService chartImageService,
+                               SysArgRepository sysArgRepository) {
         this.chatRepository = chatRepository;
         this.recommendedQuestionRepository = recommendedQuestionRepository;
         this.datasourceRepository = datasourceRepository;
@@ -152,6 +160,7 @@ public class ChatQuestionService {
         this.dynamicDatasourceResolver = dynamicDatasourceResolver;
         this.assistantRepository = assistantRepository;
         this.chartImageService = chartImageService;
+        this.sysArgRepository = sysArgRepository;
     }
 
     // ==================================================================
@@ -281,7 +290,7 @@ public class ChatQuestionService {
                         dynamic != null
                                 ? schemaContextBuilder.buildSqlMessagesForConf(question, dynamic.getType(),
                                         dynamic.getConf(), knowledge.getTerminologyText(), customPromptText,
-                                        historyText, matchText)
+                                        historyText, matchText, dynamic.getTableSqlTemplates())
                                 : schemaContextBuilder.buildSqlMessages(question, dsId, knowledge.getTerminologyText(),
                                         customPromptText, knowledge.getSqlExamples(), historyText, matchText),
                         "sql-result", totalTokens);
@@ -332,8 +341,23 @@ public class ChatQuestionService {
                 if (enforced != null) {
                     result = permissionEnforcer.applyHiddenColumns(result, enforced.getHiddenColumns());
                 }
-                chatRepository.saveSqlData(recordId, chatRepository.writeJson(
-                        Rows.of("fields", result.get("fields"), "data", result.get("data"))));
+                // §2.1: chat.limit_rows 开启时对结果行数硬截断（对齐 SQLBot save_sql_data：
+                // 阈值固定 1000，超限时截断并写 data_obj['limit']，前端据 limit 显示「仅展示前 N 条」）。
+                // 此前 askdata 只有提示词一句「1000 行以内」，没有任何运行时兜底。
+                Map<String, Object> dataObj = new LinkedHashMap<String, Object>();
+                dataObj.put("fields", result.get("fields"));
+                List<Map<String, Object>> allRows = Rows.mapList(result.get("data"));
+                if (chatBool("chat.limit_rows", false) && allRows.size() > SQL_ROW_LIMIT) {
+                    result = new LinkedHashMap<String, Object>(result);
+                    result.put("data", new ArrayList<Object>(allRows.subList(0, SQL_ROW_LIMIT)));
+                    dataObj.put("limit", SQL_ROW_LIMIT);
+                }
+                dataObj.put("data", result.get("data"));
+                // SQLBot 同位置写入 data_obj['datasource']，供前端 /chat/record/{rid}/data_live 回源执行
+                if (dsId != null) {
+                    dataObj.put("datasource", dsId);
+                }
+                chatRepository.saveSqlData(recordId, chatRepository.writeJson(dataObj));
                 logOperation(recordId, oid, uid, OPERATE_EXECUTE_SQL, execStart, 0L, false,
                         Rows.of("sql", sql, "count", sizeOf(result.get("data"))));
                 emit(writer, Rows.of("type", "info", "msg", "sql executed"));
@@ -431,11 +455,16 @@ public class ChatQuestionService {
                         Rows.of("fields", fieldsOf(base), "data", dataOf(base)));
                 AtomicLong totalTokens = new AtomicLong(0L);
                 boolean analysis = "analysis".equals(actionType);
+                // §2.2: 分析/预测也消费自定义提示词（按 custom_prompt.type=ANALYSIS/PREDICT_DATA 召回并注入；
+                // 此前 customPrompts 写死 GENERATE_SQL 且两条消息无插槽，UI 配了运行时不生效）。
+                // 类型字面量对齐 SQLBot customprompttypeenum（GENERATE_SQL / ANALYSIS / PREDICT_DATA）。
+                String customPromptText = String.join("\n",
+                        chatKnowledgeService.customPromptsForType(oid, dsId, analysis ? "ANALYSIS" : "PREDICT_DATA"));
                 String full = generateText(writer, aiModel,
                         analysis ? schemaContextBuilder.buildAnalysisMessages(question, Rows.str(base, "chart"),
-                                dataJson)
+                                dataJson, customPromptText)
                                 : schemaContextBuilder.buildPredictMessages(question, Rows.str(base, "chart"),
-                                dataJson),
+                                dataJson, customPromptText),
                         analysis ? "analysis-result" : "predict-result", totalTokens);
 
                 if (analysis) {
@@ -589,10 +618,35 @@ public class ChatQuestionService {
             }
             blocks.add(b.toString());
         }
-        if (blocks.size() > 5) {
-            blocks = blocks.subList(blocks.size() - 5, blocks.size());
+        // §2.1: 追问上下文的轮数由 chat.context_record_count 控制（缺省 5），不再硬编码。
+        // 语义对齐 SQLBot get_last_conversation_rounds：<= 0 表示不注入任何历史（返回空）。
+        int maxRecords = chatInt("chat.context_record_count", 5);
+        if (maxRecords <= 0) {
+            return "";
+        }
+        if (blocks.size() > maxRecords) {
+            blocks = blocks.subList(blocks.size() - maxRecords, blocks.size());
         }
         return String.join("\n", blocks);
+    }
+
+    /** §2.1: 读取 chat.* 整型参数（sys_arg）；缺失或非法返回默认值。 */
+    private int chatInt(String pkey, int def) {
+        Optional<Map<String, Object>> row = sysArgRepository.findByPkey(pkey);
+        if (!row.isPresent()) {
+            return def;
+        }
+        try {
+            return Integer.parseInt(Rows.str(row.get(), "pval").trim());
+        } catch (RuntimeException e) {
+            return def;
+        }
+    }
+
+    /** §2.1: 读取 chat.* 布尔参数（sys_arg）；缺失返回默认值。 */
+    private boolean chatBool(String pkey, boolean def) {
+        Optional<Map<String, Object>> row = sysArgRepository.findByPkey(pkey);
+        return row.isPresent() ? Boolean.parseBoolean(Rows.str(row.get(), "pval")) : def;
     }
 
     /** 数据源解析：会话已绑定则直接用，否则 RAG 选库（并回写会话）。 */
@@ -654,11 +708,12 @@ public class ChatQuestionService {
         try {
             List<ModelMessage> fixMessages = dynamic != null
                     ? schemaContextBuilder.buildSqlFixMessagesForConf(question, dynamic.getType(),
-                            dynamic.getConf(), brokenSql == null ? "" : brokenSql, error)
+                            dynamic.getConf(), brokenSql == null ? "" : brokenSql, error,
+                            dynamic.getTableSqlTemplates())
                     : schemaContextBuilder.buildSqlFixMessages(question, dsId,
                             brokenSql == null ? "" : brokenSql, error);
             String text = modelClient.generate(aiModel.apiDomain, aiModel.apiKey, aiModel.baseModel,
-                    fixMessages);
+                    fixMessages, aiModel.params);
             if (text == null) {
                 return null;
             }
@@ -732,7 +787,7 @@ public class ChatQuestionService {
         }
         List<String> lowerAllowed = new ArrayList<>();
         for (String table : allowed) {
-            lowerAllowed.add(table.toLowerCase(Locale.ROOT));
+            lowerAllowed.add(unquoteIdentifier(table).toLowerCase(Locale.ROOT));
         }
         for (String table : usedTables(sql)) {
             if (!lowerAllowed.contains(table)) {
@@ -742,8 +797,63 @@ public class ChatQuestionService {
         return null;
     }
 
-    /** 从 SQL 中提取 FROM/JOIN 后的表名（小写）。 */
+    /**
+     * 从 SQL 中提取真实涉及的表名（小写、去引号、排除 CTE 别名）。
+     *
+     * <p>§2.7：对齐 SQLBot {@code extract_tables_from_sql}（sqlglot 解析后收集 {@code exp.Table}
+     * 并剔除 CTE 名）。此前用「按空格分词 + FROM/JOIN 取下一个 token」，会把
+     * {@code WITH cte AS (...) SELECT * FROM cte} 的 CTE 名当成表（误报未授权表），
+     * 也会把 {@code FROM (SELECT ...)} 的子查询括号解析错。</p>
+     *
+     * <p>方言语法导致 JSqlParser 解析失败时，退化为原分词实现（不阻断主链路）。</p>
+     */
     static List<String> usedTables(String sql) {
+        if (sql == null || sql.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+        try {
+            net.sf.jsqlparser.statement.Statement stmt =
+                    net.sf.jsqlparser.parser.CCJSqlParserUtil.parse(sql);
+            java.util.Set<String> names = new java.util.LinkedHashSet<>();
+            for (String raw : new net.sf.jsqlparser.util.TablesNamesFinder<>().getTables(stmt)) {
+                String name = unquoteIdentifier(raw);
+                if (!name.isEmpty()) {
+                    names.add(name.toLowerCase(Locale.ROOT));
+                }
+            }
+            return new ArrayList<>(names);
+        } catch (Exception e) {
+            log.info("SQL 表名解析失败，退化为分词提取（{}）: {}", e.getMessage(), sql);
+            return usedTablesByToken(sql);
+        }
+    }
+
+    /**
+     * 去掉标识符两侧的引号/反引号/方括号（{@code "user"} / {@code `user`} / {@code [user]}）。
+     *
+     * <p>与 SQLBot 一致：只取最后一段（{@code exp.Table.name} 不含 schema/database），
+     * 因此 {@code myschema.orders} 归一为 {@code orders}。</p>
+     */
+    static String unquoteIdentifier(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String name = raw.trim();
+        int dot = name.lastIndexOf('.');
+        String last = dot >= 0 ? name.substring(dot + 1) : name;
+        if (last.length() >= 2) {
+            char first = last.charAt(0);
+            char end = last.charAt(last.length() - 1);
+            if ((first == '"' && end == '"') || (first == '`' && end == '`')
+                    || (first == '[' && end == ']') || (first == '\'' && end == '\'')) {
+                last = last.substring(1, last.length() - 1);
+            }
+        }
+        return last.trim();
+    }
+
+    /** 分词兜底：FROM/JOIN 后的下一个 token（仅在 SQL 无法被 JSqlParser 解析时使用）。 */
+    static List<String> usedTablesByToken(String sql) {
         List<String> tables = new ArrayList<>();
         String text = sql.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
         String[] tokens = text.split(" ");
@@ -837,7 +947,7 @@ public class ChatQuestionService {
     /** 推荐问题（非流式；解析为字符串列表，失败返回空列表）。 */
     private List<String> recommendQuestions(ModelRef aiModel, String question, int articlesNumber) {
         String text = modelClient.generate(aiModel.apiDomain, aiModel.apiKey, aiModel.baseModel,
-                schemaContextBuilder.buildRecommendMessages(question, articlesNumber));
+                schemaContextBuilder.buildRecommendMessages(question, articlesNumber), aiModel.params);
         return parseStringList(text, objectMapper);
     }
 
@@ -848,7 +958,7 @@ public class ChatQuestionService {
         final StringBuilder reasoning = new StringBuilder();
         final AtomicReference<String> error = new AtomicReference<>(null);
         modelClient.streamCompletion(aiModel.apiDomain, aiModel.apiKey, aiModel.baseModel, messages,
-                new TokenHandler() {
+                aiModel.params, new TokenHandler() {
                     @Override
                     public void onToken(String token, String reasoningToken) {
                         if (token != null) {

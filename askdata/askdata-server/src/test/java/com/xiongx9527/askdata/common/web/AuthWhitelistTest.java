@@ -108,7 +108,7 @@ class AuthWhitelistTest {
             "/system/platform/client/6",
             "/system/parameter/login"
     })
-    @DisplayName("SQLBot 33 条白名单的关键条目均命中")
+    @DisplayName("SQLBot 35 条白名单的关键条目均命中")
     void sqlBotWhitelistEntriesMatch(String path) {
         assertTrue(whitelist.isWhitelistedPath(path), "should be whitelisted: " + path);
     }
@@ -152,5 +152,15 @@ class AuthWhitelistTest {
         AuthWhitelist withContext = AuthWhitelist.withContextPath("/sqlbot/api/v1", "/sqlbot");
         assertTrue(withContext.isWhitelistedPath("/sqlbot/api/v1/system/config/key"));
         assertFalse(withContext.isWhitelistedPath("/sqlbot/api/v1/user/info"));
+    }
+
+    /** F-13：多重尾斜杠归一化——通配条目的尾斜杠变体命中。 */
+    @Test
+    void multipleTrailingSlashesMatchWildcardEntries() {
+        assertTrue(whitelist.isWhitelistedPath("/mcp/"));
+        assertTrue(whitelist.isWhitelistedPath("/mcp//"));
+        assertTrue(whitelist.isWhitelistedPath("/login/access-token/"));
+        // 精确条目仍与 SQLBot 一致：不被尾斜杠放行（不改变既有语义）
+        assertFalse(whitelist.isWhitelistedPath("/system/license/"));
     }
 }

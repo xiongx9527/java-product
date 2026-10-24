@@ -44,9 +44,10 @@ askdata:
     model-path: /opt/askdata/models
     # 启动期向量回填开关（关闭则不做回填；开启时由单 worker 守卫保证集群内只跑一次）。
     backfill-enabled: true
-  # 应用密钥（落库加密用；缺省与历史常量一致，可用环境变量 ASKDATA_SECRET_KEY 覆盖）
+  # 应用密钥（落库加密用）。不内置缺省值：必须通过环境变量 ASKDATA_SECRET_KEY 或外部配置显式设定，
+  # 否则启动期随机生成（当次进程内可用，重启后历史密文不可解，并在启动日志告警）。
   secret:
-    key: ${ASKDATA_SECRET_KEY:AskDataSecret001}
+    key: ${ASKDATA_SECRET_KEY:}
   # 定时问数任务（A10）：调度轮询间隔、默认导出目录、webhook 推送超时。
   scheduled:
     enabled: ${ASKDATA_SCHEDULED_ENABLED:true}
@@ -102,3 +103,14 @@ dromara:
         base-path: ./data/files
         # domain 留空：文件经 /api/file/download 或各自业务端点访问，不直接暴露静态域名
         domain: ""
+
+# API 文档（Knife4j UI + OpenAPI 3，对齐 SQLBot /docs + /openapi.json 的对外能力）：
+#   UI:  /doc.html     Knife4j 页面（knife4j-openapi3-ui 静态资源，免登录）
+#   规范: /v3/api-docs  OpenAPI 3 JSON（springdoc 生成，可供第三方/前端 API KEY 页引用）
+# 两者都在 AuthWhitelist.API_DOCS_PATHS 放行；Swagger 原生 UI 保留在 /swagger-ui/index.html。
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true

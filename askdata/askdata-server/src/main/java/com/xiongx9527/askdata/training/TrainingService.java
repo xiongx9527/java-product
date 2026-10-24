@@ -5,6 +5,7 @@ import com.xiongx9527.askdata.common.audit.AuditModule;
 import com.xiongx9527.askdata.common.audit.AuditLog;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.common.datasource.DatasourceNameLookup;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.common.util.ExcelUtils;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.util.Rows;
@@ -27,6 +28,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /**
@@ -38,6 +41,8 @@ import org.springframework.beans.factory.annotation.Autowired;
  */
 @Service
 public class TrainingService {
+
+    private static final Logger log = LoggerFactory.getLogger(TrainingService.class);
 
     /** 导入允许的扩展名（对齐 SQLBot ALLOWED_EXTENSIONS）。 */
     private static final String[] ALLOWED_EXTENSIONS = {"xlsx", "xls"};
@@ -53,6 +58,10 @@ public class TrainingService {
     private final ObjectMapper objectMapper;
 
     private final TrainingRecallService trainingRecallService;
+
+    /** 错误文案统一走消息包（A4 / F-15）。 */
+    @Autowired
+    private MessageResolver messageResolver;
 
     /** Excel 文件目录（对齐 SQLBot settings.EXCEL_PATH，用于失败明细回执）。 */
     @Value("${askdata.excel.path:./data/excel}")
@@ -97,9 +106,9 @@ public class TrainingService {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
         Map<String, Object> row = trainingRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("DataTraining with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("i18n_data_training.data_training_not_exists")));
         if (Rows.lng(row, "oid", 0L) != oid) {
-            throw new BadRequestException("DataTraining with id " + id + " not found");
+            throw new BadRequestException(messageResolver.get("i18n_data_training.data_training_not_exists"));
         }
         Map<String, Object> editor = new LinkedHashMap<>();
         editor.put("id", Rows.lng(row, "id", 0L));
@@ -161,14 +170,14 @@ public class TrainingService {
         Long advancedApplication = Rows.lngOrNull(body, "advanced_application");
         boolean enabled = Rows.get(body, "enabled") == null ? true : Rows.bool(body, "enabled", true);
         if (datasource == null && advancedApplication == null) {
-            throw new BadRequestException("Datasource and assistant cannot both be empty");
+            throw new BadRequestException(messageResolver.get("i18n_data_training.datasource_cannot_be_none"));
         }
         Long id = Rows.lngOrNull(body, "id");
         if (id != null) {
             return update(oid, id, question, description, datasource, advancedApplication, enabled);
         }
         if (trainingRepository.duplicateExists(oid, question, datasource, advancedApplication, null)) {
-            throw new BadRequestException("Data training already exists in db");
+            throw new BadRequestException(messageResolver.get("i18n_data_training.exists_in_db"));
         }
         long newId = trainingRepository.insert(oid, datasource, question, description, enabled,
                 advancedApplication, System.currentTimeMillis());
@@ -181,10 +190,10 @@ public class TrainingService {
     private long update(long oid, long id, String question, String description, Long datasource,
                         Long advancedApplication, boolean enabled) {
         if (!trainingRepository.exists(oid, id)) {
-            throw new BadRequestException("Data training does not exist");
+            throw new BadRequestException(messageResolver.get("i18n_data_training.data_training_not_exists"));
         }
         if (trainingRepository.duplicateExists(oid, question, datasource, advancedApplication, id)) {
-            throw new BadRequestException("Data training already exists in db");
+            throw new BadRequestException(messageResolver.get("i18n_data_training.exists_in_db"));
         }
         trainingRepository.update(id, datasource, question, description, enabled, advancedApplication);
         if (trainingRecallService != null) {
@@ -209,7 +218,7 @@ public class TrainingService {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
         if (!trainingRepository.exists(oid, id)) {
-            throw new BadRequestException("Data training does not exist");
+            throw new BadRequestException(messageResolver.get("i18n_data_training.data_training_not_exists"));
         }
         trainingRepository.updateEnabled(id, enabled);
     }
@@ -270,7 +279,7 @@ public class TrainingService {
             }
         }
         if (!allowed) {
-            throw new BadRequestException("Only support .xlsx/.xls");
+            throw new BadRequestException(messageResolver.get("ds.only.xlsx"));
         }
         List<String[]> rows = ExcelUtils.readRows(new ByteArrayInputStream(content));
         // 首行为表头；数据行取 问题/描述/数据源名称/高级应用名称 四列（对齐 SQLBot use_cols = [0,1,2,3]）
@@ -279,6 +288,9 @@ public class TrainingService {
         int successCount = 0;
         int duplicateCount = 0;
         int originalCount = 0;
+        // §2.6：批量导入末尾统一补算向量（对齐 SQLBot data_training.py:407-409 的批量 embedding）。
+        // 此前逐行只 insert 不写向量，导入的示例在下次启动 backfill 前对向量召回不可见。
+        List<Long> importedIds = new ArrayList<>();
         for (int i = 1; i < rows.size(); i++) {
             String[] values = rows.get(i);
             originalCount++;
@@ -294,27 +306,29 @@ public class TrainingService {
             }
             seen.add(uniqueKey);
             if (question.isEmpty()) {
-                errors.add("Question cannot be empty");
+                errors.add(messageResolver.get("i18n_data_training.question_cannot_be_empty"));
             }
             if (description.isEmpty()) {
-                errors.add("Description cannot be empty");
+                errors.add(messageResolver.get("i18n_data_training.description_cannot_be_empty"));
             }
             Long datasource = null;
             Long advancedApplication = null;
             if (!datasourceName.isEmpty()) {
                 datasource = datasourceNameLookup.idByName(datasourceName);
                 if (datasource == null) {
-                    errors.add("Datasource [" + datasourceName + "] not found");
+                    errors.add(messageResolver.get("i18n_data_training.datasource_name_not_found",
+                            java.util.Map.of("name", datasourceName)));
                 }
             }
             if (!advancedApplicationName.isEmpty()) {
                 advancedApplication = resolveAssistantByName(oid, advancedApplicationName);
                 if (advancedApplication == null) {
-                    errors.add("Advanced application [" + advancedApplicationName + "] not found");
+                    errors.add(messageResolver.get("i18n_data_training.advanced_application_name_not_found",
+                            java.util.Map.of("name", advancedApplicationName)));
                 }
             }
             if (datasource == null && advancedApplication == null) {
-                errors.add("Datasource and assistant cannot both be empty");
+                errors.add(messageResolver.get("i18n_data_training.datasource_assistant_cannot_be_none"));
             }
             if (!errors.isEmpty()) {
                 failed.add(importFailed(question, description, datasourceName, advancedApplicationName, errors));
@@ -322,15 +336,24 @@ public class TrainingService {
             }
             try {
                 if (trainingRepository.duplicateExists(oid, question, datasource, advancedApplication, null)) {
-                    throw new BadRequestException("Data training already exists in db");
+                    throw new BadRequestException(messageResolver.get("i18n_data_training.exists_in_db"));
                 }
-                trainingRepository.insert(oid, datasource, question, description, true, advancedApplication,
-                        System.currentTimeMillis());
+                long newId = trainingRepository.insert(oid, datasource, question, description, true,
+                        advancedApplication, System.currentTimeMillis());
+                importedIds.add(newId);
                 successCount++;
             } catch (Exception e) {
                 List<String> single = new ArrayList<>();
                 single.add(e.getMessage() == null ? e.toString() : e.getMessage());
                 failed.add(importFailed(question, description, datasourceName, advancedApplicationName, single));
+            }
+        }
+        // §2.6：导入成功后统一补算向量，使导入的示例立刻可被向量召回（而非等下次启动 backfill）
+        if (trainingRecallService != null && !importedIds.isEmpty()) {
+            try {
+                trainingRecallService.saveEmbeddings(importedIds);
+            } catch (Exception e) {
+                log.warn("导入后向量补算失败（存量为空，可等待启动回填）: {}", e.getMessage());
             }
         }
         Map<String, Object> result = new LinkedHashMap<>();
@@ -390,10 +413,10 @@ public class TrainingService {
         return values[index].trim();
     }
 
-    private static String requiredText(Map<String, Object> body, String key) {
+    private String requiredText(Map<String, Object> body, String key) {
         String value = Rows.str(body, key);
         if (value == null || value.trim().isEmpty()) {
-            throw new BadRequestException("Missing required argument: [" + key + "]");
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", key)));
         }
         return value.trim();
     }

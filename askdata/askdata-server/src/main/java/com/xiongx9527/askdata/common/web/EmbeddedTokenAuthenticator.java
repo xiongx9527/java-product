@@ -53,12 +53,17 @@ public class EmbeddedTokenAuthenticator {
 
     private final String secretKey;
 
+    /** 错误文案统一走消息包（A4 / F-15）。 */
+    private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
+
     public EmbeddedTokenAuthenticator(AssistantRepository assistantRepository,
                                       UserRepository userRepository,
-                                      @Value("${askdata.secret-key:}") String secretKey) {
+                                      @Value("${askdata.secret.key:}") String secretKey,
+                                      com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver) {
         this.assistantRepository = assistantRepository;
         this.userRepository = userRepository;
-        // 验收 A5：签名密钥不再内置缺省值；未配置时用运行期随机密钥（重启后旧嵌入 token 失效，属预期）
+        this.messageResolver = messageResolver;
+        // 验收 A5：优先使用 askdata.secret.key（与主密钥配置一致）；未配置时才回退到运行期随机密钥
         this.secretKey = (secretKey == null || secretKey.isEmpty())
                 ? java.util.UUID.randomUUID().toString() : secretKey;
     }
@@ -71,11 +76,11 @@ public class EmbeddedTokenAuthenticator {
      */
     public AuthResult authenticate(String rawHeader) {
         if (rawHeader == null || rawHeader.trim().isEmpty()) {
-            throw new AuthFailureException("Miss Token[" + HEADER + "]!");
+            throw new AuthFailureException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", HEADER)));
         }
         String[] parts = rawHeader.trim().split("\\s+", 2);
         if (parts.length < 2) {
-            throw new AuthFailureException("Token schema error!");
+            throw new AuthFailureException(messageResolver.get("i18n_apikey.token_schema_error"));
         }
         String scheme = parts[0];
         String token = parts[1].trim();
@@ -83,7 +88,7 @@ public class EmbeddedTokenAuthenticator {
             return validateEmbedded(token);
         }
         if (!"assistant".equalsIgnoreCase(scheme)) {
-            throw new AuthFailureException("Token schema error!");
+            throw new AuthFailureException(messageResolver.get("i18n_apikey.token_schema_error"));
         }
         return validateAssistant(token);
     }
@@ -98,11 +103,11 @@ public class EmbeddedTokenAuthenticator {
         }
         Object assistantIdValue = claims.get("assistant_id");
         if (assistantIdValue == null || String.valueOf(assistantIdValue).isEmpty()) {
-            throw new AuthFailureException("Miss assistant payload error!");
+            throw new AuthFailureException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", "assistant_id")));
         }
         long assistantId = toLong(assistantIdValue, -1L);
         Map<String, Object> assistant = assistantRepository.findById(assistantId)
-                .orElseThrow(() -> new AuthFailureException("Assistant application not exist"));
+                .orElseThrow(() -> new AuthFailureException(messageResolver.get("assistant.embedded.not.found.simple")));
         // SQLBot 的 assistant 通道用内部助手身份（sqlbot-inner-assistant）作为当前用户
         // （对齐 SQLBot apps/system/crud/assistant.py 的 get_assistant_user）。
         Map<String, Object> user = new LinkedHashMap<>();
@@ -128,20 +133,20 @@ public class EmbeddedTokenAuthenticator {
         }
         Object accountValue = claims.get("account");
         if (accountValue == null || String.valueOf(accountValue).isEmpty()) {
-            throw new AuthFailureException("Miss account payload error!");
+            throw new AuthFailureException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", "account")));
         }
         String account = String.valueOf(accountValue);
 
         long embeddedId = resolveEmbeddedId(claims);
         if (embeddedId <= 0) {
-            throw new AuthFailureException("Assistant application not exist");
+            throw new AuthFailureException(messageResolver.get("assistant.embedded.not.found.simple"));
         }
         Map<String, Object> assistant = assistantRepository.findById(embeddedId)
-                .orElseThrow(() -> new AuthFailureException("Assistant application not exist"));
+                .orElseThrow(() -> new AuthFailureException(messageResolver.get("assistant.embedded.not.found.simple")));
 
         // embedded 协议（app_secret + account）仅适用于页面嵌入（type=4）应用。
         if (Rows.intg(assistant, "type", 0) != EMBEDDED_TYPE) {
-            throw new AuthFailureException("Invalid embedded app type!");
+            throw new AuthFailureException(messageResolver.get("i18n_embedded.invalid_app_type"));
         }
         // 第二步：用该助手自己的 app_secret 验签。
         String appSecret = Rows.str(assistant, "app_secret");
@@ -153,19 +158,28 @@ public class EmbeddedTokenAuthenticator {
 
         Optional<Map<String, Object>> userRow = userRepository.findByAccount(account);
         if (!userRow.isPresent()) {
-            throw new AuthFailureException("Account does not exist");
+            throw new AuthFailureException(messageResolver.get("i18n_login.no_platform_user"));
         }
         Map<String, Object> user = userRepository.findById(Rows.lng(userRow.get(), "id", 0L))
-                .orElseThrow(() -> new AuthFailureException("Account does not exist"));
+                .orElseThrow(() -> new AuthFailureException(messageResolver.get("i18n_login.no_platform_user")));
         if (Rows.intg(user, "status", 0) != 1) {
-            throw new AuthFailureException("User is disabled");
+            throw new AuthFailureException(messageResolver.get("i18n_login.user_disable",
+                    java.util.Map.of("msg", account)));
         }
         if (Rows.lng(user, "oid", 0L) == 0L) {
-            throw new AuthFailureException("No associated workspace");
+            throw new AuthFailureException(messageResolver.get("i18n_login.no_associated_ws",
+                    java.util.Map.of("msg", account)));
         }
         // 安全红线：管理员账号不允许通过 embedded token 使用。
         if (isAdmin(user)) {
-            throw new AuthFailureException("Admin account is not allowed for embedded token!");
+            throw new AuthFailureException(messageResolver.get("i18n_embedded.admin_not_allowed"));
+        }
+        // F-08：SQLBot 语义——assistant.oid = user.oid 回写（对齐 get_assistant_user 分支，
+        // 让下流的问数/审计拿到与助手一致的归属工作空间）。
+        if (Rows.lng(assistant, "oid", 0L) != Rows.lng(user, "oid", 0L)) {
+            Map<String, Object> updated = new java.util.LinkedHashMap<>(assistant);
+            updated.put("oid", Rows.lng(user, "oid", 0L));
+            assistant = updated;
         }
         return new AuthResult(ApiKeyTokenAuthenticator.userView(user), assistant);
     }

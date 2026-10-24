@@ -187,9 +187,10 @@ class ChatKnowledgeChainTest {
         chatQuestionService = new ChatQuestionService(chatRepository, recommendedQuestionRepository,
                 datasourceRepository, datasourceService, currentUserService, schemaContextBuilder, modelClient,
                 modelRouter, new ChatChartBuilder(objectMapper), objectMapper, null, chatKnowledgeService,
-                new com.xiongx9527.askdata.embedded.DynamicDatasourceResolver(objectMapper),
+                new com.xiongx9527.askdata.embedded.DynamicDatasourceResolver(objectMapper, messageResolver),
                 new com.xiongx9527.askdata.embedded.AssistantRepository(appJdbc, idGenerator),
-                Mockito.mock(ChartImageService.class));
+                Mockito.mock(ChartImageService.class),
+                new com.xiongx9527.askdata.system.repository.SysArgRepository(appJdbc));
     }
 
     @AfterEach

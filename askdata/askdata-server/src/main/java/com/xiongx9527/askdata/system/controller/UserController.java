@@ -1,6 +1,9 @@
 package com.xiongx9527.askdata.system.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.xiongx9527.askdata.common.audit.AuditLog;
+import com.xiongx9527.askdata.common.audit.AuditModule;
+import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.AuthContext;
 import com.xiongx9527.askdata.common.web.BadRequestException;
@@ -50,11 +53,15 @@ public class UserController {
 
     private final UserImportService userImportService;
 
+    private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
+
     public UserController(UserRepository userRepository, UserService userService,
-                          UserImportService userImportService) {
+                          UserImportService userImportService,
+                          com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver) {
         this.userRepository = userRepository;
         this.userService = userService;
         this.userImportService = userImportService;
+        this.messageResolver = messageResolver;
     }
 
     // ------------------------------------------------------------------
@@ -81,18 +88,21 @@ public class UserController {
         return Result.ok(userService.wsOptions());
     }
 
+    @AuditLog(module = AuditModule.USER, operation = AuditOperationType.UPDATE)
     @PutMapping({"/user/ws/{oid}"})
     public Result<Void> switchWorkspace(@PathVariable long oid) {
         userService.switchWorkspace(oid);
         return Result.ok();
     }
 
+    @AuditLog(module = AuditModule.USER, operation = AuditOperationType.UPDATE)
     @PutMapping({"/user/language"})
     public Result<Void> changeLanguage(@RequestBody Map<String, Object> editor) {
         userService.changeLanguage(Rows.str(editor, "language"));
         return Result.ok();
     }
 
+    @AuditLog(module = AuditModule.USER, operation = AuditOperationType.UPDATE_PWD)
     @PutMapping({"/user/pwd"})
     public Result<Void> changeOwnPassword(@RequestBody Map<String, Object> editor) {
         userService.changeOwnPassword(Rows.str(editor, "pwd"), Rows.str(editor, "new_pwd"));
@@ -125,35 +135,41 @@ public class UserController {
         return Result.ok(userService.get(id));
     }
 
+    @AuditLog(module = AuditModule.USER, operation = AuditOperationType.CREATE)
     @PostMapping({"/user"})
     public Result<Map<String, Object>> create(@RequestBody Map<String, Object> creator) {
         return Result.ok(userService.create(creator));
     }
 
+    @AuditLog(module = AuditModule.USER, operation = AuditOperationType.UPDATE)
     @PutMapping({"/user"})
     public Result<Void> update(@RequestBody Map<String, Object> editor) {
         userService.update(editor);
         return Result.ok();
     }
 
+    @AuditLog(module = AuditModule.USER, operation = AuditOperationType.DELETE)
     @DeleteMapping({"/user/{id}"})
     public Result<Void> delete(@PathVariable long id) {
         userService.delete(id);
         return Result.ok();
     }
 
+    @AuditLog(module = AuditModule.USER, operation = AuditOperationType.DELETE)
     @DeleteMapping({"/user"})
     public Result<Void> deleteBatch(@RequestBody List<Long> idList) {
         userService.deleteBatch(idList);
         return Result.ok();
     }
 
+    @AuditLog(module = AuditModule.USER, operation = AuditOperationType.RESET_PWD)
     @PatchMapping({"/user/pwd/{id}"})
     public Result<Void> resetPassword(@PathVariable long id) {
         userService.resetPassword(id);
         return Result.ok();
     }
 
+    @AuditLog(module = AuditModule.USER, operation = AuditOperationType.UPDATE_STATUS)
     @PatchMapping({"/user/status"})
     public Result<Void> changeStatus(@RequestBody Map<String, Object> statusDto) {
         userService.changeStatus(Rows.lng(statusDto, "id", 0L), Rows.intg(statusDto, "status", 1));
@@ -167,6 +183,7 @@ public class UserController {
     }
 
     /** POST /user/batchImport：上传用户 Excel 批量建号，返回 {fileId,total,success,failed}。 */
+    @AuditLog(module = AuditModule.USER, operation = AuditOperationType.IMPORT)
     @PostMapping({"/user/batchImport"})
     public Result<Map<String, Object>> batchImport(@RequestParam("file") MultipartFile file) {
         return Result.ok(userImportService.batchImport(file));
@@ -194,7 +211,7 @@ public class UserController {
 
     private UserInfoVO toUserInfo(Optional<Map<String, Object>> row, long exp, long now) {
         if (!row.isPresent()) {
-            throw new BadRequestException("Login user does not exist");
+            throw new BadRequestException(messageResolver.get("user.login.not.exists"));
         }
         return toUserInfo(row.get(), exp, now);
     }
@@ -208,7 +225,7 @@ public class UserController {
      */
     private UserInfoVO toUserInfo(Map<String, Object> user, long exp, long now) {
         if (user == null) {
-            throw new BadRequestException("Login user does not exist");
+            throw new BadRequestException(messageResolver.get("user.login.not.exists"));
         }
         // 用 Rows 取值（大小写不敏感）：H2 在 MySQL 兼容模式下返回大写列标签（ID/ACCOUNT/…），
         // 直接 map.get("id") 会取不到值。支线通道的用户视图是小写键，主通道是 H2 大写键，两条路径都要覆盖。

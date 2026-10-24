@@ -1,5 +1,8 @@
 package com.xiongx9527.askdata.system.controller;
 
+import com.xiongx9527.askdata.common.audit.AuditLog;
+import com.xiongx9527.askdata.common.audit.AuditModule;
+import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.common.web.Result;
 import com.xiongx9527.askdata.system.service.AiModelService;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -20,6 +23,7 @@ import java.util.Map;
 /**
  * AI 模型（对齐 SQLBot apps/system/api/aimodel.py）：
  * CRUD/默认/连通检查/工作空间映射仅管理员；list/by_ws 为 ws_admin。
+ * F-05：写操作与管理动作全量接入审计（CREATE/UPDATE/DELETE/CREATE_OR_UPDATE + 默认设置）。
  */
 @RestController
 @RequestMapping({"api/v1"})
@@ -36,11 +40,13 @@ public class AiModelController {
         return Result.ok(aiModelService.list(keyword));
     }
 
+    @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.CREATE)
     @PostMapping({"/system/aimodel"})
     public Result<Map<String, Object>> create(@RequestBody Map<String, Object> creator) {
         return Result.ok(aiModelService.create(creator));
     }
 
+    @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.UPDATE)
     @PutMapping({"/system/aimodel"})
     public Result<Void> update(@RequestBody Map<String, Object> editor) {
         aiModelService.update(editor);
@@ -54,6 +60,7 @@ public class AiModelController {
         return Result.ok();
     }
 
+    @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.UPDATE)
     @PutMapping({"/system/aimodel/default/{id}"})
     public Result<Void> setDefault(@PathVariable long id) {
         aiModelService.setDefault(id);
@@ -70,6 +77,7 @@ public class AiModelController {
         return Result.ok(aiModelService.editor(id));
     }
 
+    @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.DELETE)
     @DeleteMapping({"/system/aimodel/{id}"})
     public Result<Void> delete(@PathVariable long id) {
         aiModelService.delete(id);
@@ -90,16 +98,19 @@ public class AiModelController {
         return Result.ok(aiModelService.wsMapping(id));
     }
 
+    @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.CREATE_OR_UPDATE)
     @PutMapping({"/system/aimodel/{id}/ws_mapping"})
     public Result<List<String>> replaceWsMapping(@PathVariable long id, @RequestBody List<String> wsIds) {
         return Result.ok(aiModelService.replaceWsMapping(id, wsIds));
     }
 
+    @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.ADD)
     @PostMapping({"/system/aimodel/{id}/ws_mapping"})
     public Result<List<String>> addWsMapping(@PathVariable long id, @RequestBody List<String> wsIds) {
         return Result.ok(aiModelService.addWsMapping(id, wsIds));
     }
 
+    @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.DELETE)
     @DeleteMapping({"/system/aimodel/{id}/ws_mapping"})
     public Result<List<String>> deleteWsMapping(@PathVariable long id, @RequestBody List<String> wsIds) {
         return Result.ok(aiModelService.deleteWsMapping(id, wsIds));

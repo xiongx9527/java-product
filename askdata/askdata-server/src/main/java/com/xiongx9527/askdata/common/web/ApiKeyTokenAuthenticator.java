@@ -36,9 +36,14 @@ public class ApiKeyTokenAuthenticator {
 
     private final UserRepository userRepository;
 
-    public ApiKeyTokenAuthenticator(ApiKeyRepository apiKeyRepository, UserRepository userRepository) {
+    /** 错误文案统一走消息包（A4 / F-15）。 */
+    private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
+
+    public ApiKeyTokenAuthenticator(ApiKeyRepository apiKeyRepository, UserRepository userRepository,
+                                    com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver) {
         this.apiKeyRepository = apiKeyRepository;
         this.userRepository = userRepository;
+        this.messageResolver = messageResolver;
     }
 
     /**
@@ -49,11 +54,11 @@ public class ApiKeyTokenAuthenticator {
      */
     public Map<String, Object> authenticate(String rawHeader) {
         if (rawHeader == null || rawHeader.trim().isEmpty()) {
-            throw new AuthFailureException("Miss Token[" + HEADER + "]!");
+            throw new AuthFailureException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", HEADER)));
         }
         String[] parts = rawHeader.trim().split("\\s+", 2);
         if (parts.length < 2 || !SCHEME.equalsIgnoreCase(parts[0])) {
-            throw new AuthFailureException("Token schema error!");
+            throw new AuthFailureException(messageResolver.get("i18n_apikey.token_schema_error"));
         }
         String token = parts[1].trim();
 
@@ -66,16 +71,16 @@ public class ApiKeyTokenAuthenticator {
         }
         String accessKey = claims.get("access_key") == null ? null : String.valueOf(claims.get("access_key"));
         if (accessKey == null || accessKey.isEmpty()) {
-            throw new AuthFailureException("Miss access_key payload error!");
+            throw new AuthFailureException(messageResolver.get("i18n_apikey.miss_access_key"));
         }
 
         Optional<Map<String, Object>> keyRow = apiKeyRepository.findByAccessKey(accessKey);
         if (!keyRow.isPresent()) {
-            throw new AuthFailureException("Invalid access_key!");
+            throw new AuthFailureException(messageResolver.get("i18n_apikey.invalid_access_key"));
         }
         Map<String, Object> key = keyRow.get();
         if (!Rows.bool(key, "status", true)) {
-            throw new AuthFailureException("Disabled access_key!");
+            throw new AuthFailureException(messageResolver.get("i18n_apikey.disabled_access_key"));
         }
         String secretKey = Rows.str(key, "secret_key");
         try {
@@ -87,12 +92,14 @@ public class ApiKeyTokenAuthenticator {
 
         long uid = Rows.lng(key, "uid", 0L);
         Map<String, Object> user = userRepository.findById(uid)
-                .orElseThrow(() -> new AuthFailureException("Account does not exist"));
+                .orElseThrow(() -> new AuthFailureException(messageResolver.get("i18n_login.no_platform_user")));
         if (Rows.intg(user, "status", 0) != 1) {
-            throw new AuthFailureException("User is disabled");
+            throw new AuthFailureException(messageResolver.get("i18n_login.user_disable",
+                    java.util.Map.of("msg", Rows.str(user, "account") == null ? "" : Rows.str(user, "account"))));
         }
         if (Rows.lng(user, "oid", 0L) == 0L) {
-            throw new AuthFailureException("No associated workspace");
+            throw new AuthFailureException(messageResolver.get("i18n_login.no_associated_ws",
+                    java.util.Map.of("msg", Rows.str(user, "account") == null ? "" : Rows.str(user, "account"))));
         }
         return userView(user);
     }

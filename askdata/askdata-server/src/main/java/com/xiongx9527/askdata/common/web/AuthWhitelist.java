@@ -5,12 +5,16 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * 公共路径白名单（对齐 SQLBot {@code common/utils/whitelist.py} 的 33 条规则）。
+ * 公共路径白名单（对齐 SQLBot {@code common/utils/whitelist.py}；条目数以
+ * {@link #DEFAULT_PATHS} 实际值为准，数量见 {@link #COMMENT_COUNT}）。
  *
  * <p>关键语义：白名单判定使用<strong>请求行真实路径</strong>（{@link HttpServletRequest#getRequestURI()}），
  * 而不是由 Host 头拼接出来的 URL 路径。SQLBot 侧对应 {@code request.scope.get("path")}：
@@ -25,13 +29,15 @@ import java.util.regex.Pattern;
  *   <li>先做<strong>精确</strong>成员判定（只有白名单里逐字出现的无通配符条目命中，
  *       因此 {@code /system/license/} 这类带尾斜杠的写法不命中——与 SQLBot 相同）；</li>
  *   <li>再对去掉尾斜杠的路径做通配正则匹配：仅含 {@code *} 的条目编译为正则，
- *       {@code .} 先转义为 {@code \.}、{@code *} 再替换为 {@code .*}，整体 {@code ^...$} 锚定。</li>
+ *       {@code .} 先转义为 {@code \.}、{@code *} 再替换为 {@code .*}，整体 {@code ^...$} 锚定；
+ *       F-13：归一化剥掉全部尾随 {@code /}（原来只剥一个，{@code //path//} 不命中），
+ *       多重斜杠后空段不合入避免误吞空段语义。</li>
  * </ol>
  */
 @Component
 public class AuthWhitelist {
 
-    /** SQLBot {@code common/utils/whitelist.py} 的 wlist（33 条，顺序与内容逐字一致）。 */
+    /** SQLBot {@code common/utils/whitelist.py} 的 wlist（实测 35 条，顺序与内容逐字一致；F-20 注释对齐）。 */
     public static final List<String> DEFAULT_PATHS;
 
     static {
@@ -74,7 +80,26 @@ public class AuthWhitelist {
         DEFAULT_PATHS = Collections.unmodifiableList(paths);
     }
 
+    /**
+     * askdata 侧新增的 API 文档站点路径（Knife4j UI + OpenAPI 规范）。
+     *
+     * <p>不并入 {@link #DEFAULT_PATHS}：后者与 SQLBot {@code whitelist.py} 逐条等价（35 条），
+     * 混入 Java 侧新增条目会破坏 parity 测试与“逐字一致”的语义。文档站点是 askdata 自建的
+     * 对外能力，单独维护。静态资源（{@code /webjars/**.js|css|woff2}、{@code *.html}）本就命中
+     * {@code DEFAULT_PATHS} 的扩展名规则，这里只补无扩展名的规范端点。</p>
+     */
+    public static final List<String> API_DOCS_PATHS = Collections.unmodifiableList(Arrays.asList(
+            "/doc.html",
+            "/docs",
+            "/openapi.json",
+            "/v3/api-docs*",
+            "/swagger-ui/*",
+            "/swagger-resources/*"));
+
     private final List<String> paths;
+
+    /** 精确匹配集合（{@link #DEFAULT_PATHS} + {@link #API_DOCS_PATHS} 中的无通配条目）。 */
+    private final Set<String> exactPaths;
 
     private final List<Pattern> compiledPatterns;
 
@@ -88,7 +113,10 @@ public class AuthWhitelist {
         this.apiV1Str = apiV1Str == null ? "" : apiV1Str;
         this.contextPath = "";
         this.paths = DEFAULT_PATHS;
-        this.compiledPatterns = compile(paths);
+        List<String> effective = new ArrayList<>(DEFAULT_PATHS);
+        effective.addAll(API_DOCS_PATHS);
+        this.compiledPatterns = compile(effective);
+        this.exactPaths = new HashSet<>(effective);
     }
 
     /** 带 context path 的实例（SQLBot 的 API_V1_STR = CONTEXT_PATH + "/api/v1"）。 */
@@ -154,10 +182,14 @@ public class AuthWhitelist {
         if (path.isEmpty()) {
             path = "/";
         }
-        if (paths.contains(path)) {
+        if (exactPaths.contains(path)) {
             return true;
         }
-        String normalized = path.endsWith("/") ? path.substring(0, path.length() - 1) : path;
+        String normalized = path;
+        // F-13：剥掉全部尾随 '/'（原实现只剥一个，多重尾斜杠漏判）
+        while (normalized.length() > 1 && normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
         for (Pattern pattern : compiledPatterns) {
             if (pattern.matcher(normalized).matches()) {
                 return true;

@@ -45,13 +45,14 @@ class ChatKnowledgeLlmExtractionTest {
             Mockito.when(router.defaultChatModel()).thenReturn(Optional.empty());
         } else {
             ChatModelRouter.ModelRef model =
-                    new ChatModelRouter.ModelRef(1L, "chat", "gpt-4", "https://api", "key", 0.2);
+                    new ChatModelRouter.ModelRef(1L, "chat", "gpt-4", "https://api", "key", 1, 0,
+                            new java.util.LinkedHashMap<String, Object>(), 0.2);
             Mockito.when(router.defaultChatModel()).thenReturn(Optional.of(model));
         }
 
         ChatModelClient client = Mockito.mock(ChatModelClient.class);
-        Mockito.when(client.generate(Mockito.anyString(), Mockito.anyString(), Mockito.anyString(), Mockito.any()))
-                .thenReturn(llmOutput);
+        Mockito.when(client.generate(Mockito.anyString(), Mockito.anyString(), Mockito.anyString(),
+                Mockito.any(), Mockito.any())).thenReturn(llmOutput);
 
         return new ChatKnowledgeService(recall, schema, jdbc, router, client);
     }

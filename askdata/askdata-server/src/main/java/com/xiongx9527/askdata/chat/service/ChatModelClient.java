@@ -88,12 +88,31 @@ public class ChatModelClient {
      * @param apiKey    访问密钥（可为空，本地 Ollama 通常不需要）
      * @param baseModel 模型名（如 gemma3 / deepseek-r1）
      */
+    /**
+     * 流式补全（含额外推理参数）。
+     *
+     * @param extraParams §2.3: 模型推理参数（temperature / top_p / max_tokens / enable_thinking 及厂商自定义
+     *                    additional_params）；null 或空时忽略。这些参数原先只落库不下发，现透传到请求体。
+     */
     public void streamCompletion(String apiDomain, String apiKey, String baseModel,
-                                 List<ModelMessage> messages, TokenHandler handler) {
+                                 List<ModelMessage> messages, Map<String, Object> extraParams,
+                                 TokenHandler handler) {
         if (apiDomain == null || apiDomain.trim().isEmpty() || baseModel == null || baseModel.trim().isEmpty()) {
             handler.onError("模型未配置：缺少 api_domain 或 base_model（请先到系统-AI 模型配置并设置默认模型）");
             return;
         }
+        streamCompletionImpl(apiDomain, apiKey, baseModel, messages, extraParams, handler);
+    }
+
+    /** 兼容旧调用方（不传额外参数）。 */
+    public void streamCompletion(String apiDomain, String apiKey, String baseModel,
+                                 List<ModelMessage> messages, TokenHandler handler) {
+        streamCompletion(apiDomain, apiKey, baseModel, messages, null, handler);
+    }
+
+    private void streamCompletionImpl(String apiDomain, String apiKey, String baseModel,
+                                      List<ModelMessage> messages, Map<String, Object> extraParams,
+                                      TokenHandler handler) {
         HttpURLConnection connection = null;
         try {
             connection = (HttpURLConnection) new URL(chatCompletionsUrl(apiDomain)).openConnection();
@@ -116,6 +135,15 @@ public class ChatModelClient {
                 msgs.add(item);
             }
             payload.put("messages", msgs);
+            // §2.3: 透传模型推理参数（temperature / top_p / max_tokens / enable_thinking 及厂商自定义
+            // additional_params）；跳过 null 值，避免冲掉模型端点默认行为。
+            if (extraParams != null) {
+                for (Map.Entry<String, Object> entry : extraParams.entrySet()) {
+                    if (entry.getValue() != null) {
+                        payload.put(entry.getKey(), entry.getValue());
+                    }
+                }
+            }
             payload.put("stream", true);
             connection.getOutputStream().write(objectMapper.writeValueAsBytes(payload));
             connection.getOutputStream().flush();
@@ -138,11 +166,13 @@ public class ChatModelClient {
         }
     }
 
-    /** 非流式一次性补全（用于少量补充推理，如图表类型判定）。失败时返回 null。 */
-    public String generate(String apiDomain, String apiKey, String baseModel, List<ModelMessage> messages) {
+    /** 非流式一次性补全（用于少量补充推理，如图表类型判定）。失败时返回 null。
+     * @param extraParams §2.3: 透传的模型推理参数（见 {@link #streamCompletion}）；可为 null。 */
+    public String generate(String apiDomain, String apiKey, String baseModel, List<ModelMessage> messages,
+                           Map<String, Object> extraParams) {
         final StringBuilder sb = new StringBuilder();
         final boolean[] failed = {false};
-        streamCompletion(apiDomain, apiKey, baseModel, messages, new TokenHandler() {
+        streamCompletion(apiDomain, apiKey, baseModel, messages, extraParams, new TokenHandler() {
             @Override
             public void onToken(String content, String reasoningContent) {
                 if (content != null) {
@@ -161,6 +191,11 @@ public class ChatModelClient {
             }
         });
         return failed[0] || sb.length() == 0 ? null : sb.toString();
+    }
+
+    /** 兼容旧调用方（不传额外参数）。 */
+    public String generate(String apiDomain, String apiKey, String baseModel, List<ModelMessage> messages) {
+        return generate(apiDomain, apiKey, baseModel, messages, null);
     }
 
     // ------------------------------------------------------------------

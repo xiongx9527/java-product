@@ -8,6 +8,7 @@ import com.xiongx9527.askdata.system.repository.AiModelRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -53,15 +54,29 @@ public class ChatModelRouter {
 
         public final String apiKey;
 
+        /** §2.3: 协议/供应商（ai_model.protocol / supplier）——原先只落库不消费，现随模型解析出来供路由使用。 */
+        public final int protocol;
+
+        public final int supplier;
+
+        /** §2.3: 模型推理参数（ai_model.config 的 config_list 解析为 key→val）。
+         * 覆盖 temperature / top_p / max_tokens / enable_thinking 及任何厂商自定义 additional_params；
+         * 主链路原先只读取 temperature 却从不下发，其余参数更是仅落库。现统一透传到请求体。 */
+        public final Map<String, Object> params;
+
+        /** 便捷：temperature（来自 params；缺省 null）。 */
         public final Double temperature;
 
         public ModelRef(long id, String name, String baseModel, String apiDomain, String apiKey,
-                        Double temperature) {
+                        int protocol, int supplier, Map<String, Object> params, Double temperature) {
             this.id = id;
             this.name = name;
             this.baseModel = baseModel;
             this.apiDomain = apiDomain;
             this.apiKey = apiKey;
+            this.protocol = protocol;
+            this.supplier = supplier;
+            this.params = params == null ? Collections.<String, Object>emptyMap() : params;
             this.temperature = temperature;
         }
 
@@ -77,6 +92,13 @@ public class ChatModelRouter {
         return row.map(this::toRef);
     }
 
+    /**
+     * 指定 id 的对话模型（对齐 SQLBot {@code custom_model}：MCP 可按次选择模型）；不存在返回 Optional.empty()。
+     */
+    public Optional<ModelRef> chatModelById(long id) {
+        return aiModelRepository.findById(id).map(this::toRef);
+    }
+
     /** 默认 embedding 模型（model_type=1）；未配置返回 Optional.empty()。 */
     public Optional<ModelRef> embeddingModel() {
         return aiModelRepository.list(null).stream()
@@ -87,34 +109,38 @@ public class ChatModelRouter {
     }
 
     private ModelRef toRef(Map<String, Object> row) {
+        Map<String, Object> params = paramsOf(Rows.str(row, "config"));
         return new ModelRef(
                 Rows.lng(row, "id", 0L),
                 Rows.str(row, "name"),
                 Rows.str(row, "base_model"),
                 CryptoUtil.resolvePlain(Rows.str(row, "api_domain")),
                 CryptoUtil.resolvePlain(Rows.str(row, "api_key")),
-                temperature(Rows.str(row, "config")));
+                Rows.intg(row, "protocol", 1),
+                Rows.intg(row, "supplier", 0),
+                params,
+                (Double) params.get("temperature"));
     }
 
-    private Double temperature(String configJson) {
+    /** §2.3: 把 ai_model.config（config_list：[{key,val},...]）解析为 key→val 的推理参数 Map；缺省/非法返回空 Map。 */
+    private Map<String, Object> paramsOf(String configJson) {
+        Map<String, Object> result = new LinkedHashMap<>();
         if (configJson == null || configJson.isEmpty()) {
-            return null;
+            return result;
         }
         try {
             List<Map<String, Object>> items = objectMapper.readValue(configJson,
                     new TypeReference<List<Map<String, Object>>>() {
                     });
             for (Map<String, Object> item : items == null ? Collections.<Map<String, Object>>emptyList() : items) {
-                if ("temperature".equals(Rows.str(item, "key"))) {
-                    Object value = Rows.get(item, "val");
-                    if (value instanceof Number) {
-                        return ((Number) value).doubleValue();
-                    }
+                String key = Rows.str(item, "key");
+                if (key != null && !key.isEmpty() && item.containsKey("val")) {
+                    result.put(key, Rows.get(item, "val"));
                 }
             }
         } catch (Exception e) {
-            return null;
+            return result;
         }
-        return null;
+        return result;
     }
 }

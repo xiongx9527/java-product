@@ -21,7 +21,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class DynamicDatasourceResolverTest {
 
-    private final DynamicDatasourceResolver resolver = new DynamicDatasourceResolver(new ObjectMapper());
+    private final DynamicDatasourceResolver resolver = new DynamicDatasourceResolver(new ObjectMapper(),
+            com.xiongx9527.askdata.common.i18n.TestMessageResolver.create());
 
     @Test
     void advancedApplicationTypesAreAccepted() {
@@ -66,7 +67,7 @@ class DynamicDatasourceResolverTest {
         Map<String, Object> host = new LinkedHashMap<>();
         host.put("type", "mysql");
         BadRequestException error = assertThrows(BadRequestException.class, () -> resolver.resolve(0, host));
-        assertTrue(error.getMessage().contains("advanced applications"), error.getMessage());
+        assertTrue(error.getMessage().contains("(type 1/3)"), error.getMessage());
         assertThrows(BadRequestException.class, () -> resolver.resolve(4, host));
     }
 

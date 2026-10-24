@@ -1,5 +1,8 @@
 package com.xiongx9527.askdata.system.controller;
 
+import com.xiongx9527.askdata.common.audit.AuditLog;
+import com.xiongx9527.askdata.common.audit.AuditModule;
+import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.common.web.PageResult;
 import com.xiongx9527.askdata.common.web.Result;
 import com.xiongx9527.askdata.system.service.WorkspaceService;
@@ -19,6 +22,7 @@ import java.util.Map;
 /**
  * 工作空间与成员（对齐 SQLBot apps/system/api/workspace.py）：
  * CRUD 仅管理员；uws 成员接口为 ws_admin（管理员或空间管理员）。
+ * F-05：写操作全量接入审计（MODULE=WORKSPACE / MEMBER）。
  */
 @RestController
 @RequestMapping({"api/v1"})
@@ -35,11 +39,13 @@ public class WorkspaceController {
         return Result.ok(workspaceService.list());
     }
 
+    @AuditLog(module = AuditModule.WORKSPACE, operation = AuditOperationType.CREATE)
     @PostMapping({"/system/workspace"})
     public Result<Map<String, Object>> create(@RequestBody Map<String, Object> creator) {
         return Result.ok(workspaceService.create(creator));
     }
 
+    @AuditLog(module = AuditModule.WORKSPACE, operation = AuditOperationType.UPDATE)
     @PutMapping({"/system/workspace"})
     public Result<Void> update(@RequestBody Map<String, Object> editor) {
         workspaceService.update(editor);
@@ -51,6 +57,7 @@ public class WorkspaceController {
         return Result.ok(workspaceService.get(id));
     }
 
+    @AuditLog(module = AuditModule.WORKSPACE, operation = AuditOperationType.DELETE)
     @DeleteMapping({"/system/workspace/{id}"})
     public Result<Void> delete(@PathVariable long id) {
         workspaceService.delete(id);
@@ -80,18 +87,24 @@ public class WorkspaceController {
         return Result.ok(workspaceService.optionUser(keyword));
     }
 
+    @AuditLog(module = AuditModule.MEMBER, operation = AuditOperationType.ADD,
+            resourceId = "#creator['uid_list']")
     @PostMapping({"/system/workspace/uws"})
     public Result<Void> uwsCreate(@RequestBody Map<String, Object> creator) {
         workspaceService.uwsCreate(creator);
         return Result.ok();
     }
 
+    @AuditLog(module = AuditModule.MEMBER, operation = AuditOperationType.UPDATE,
+            resourceId = "#editor['uid']")
     @PutMapping({"/system/workspace/uws"})
     public Result<Void> uwsUpdate(@RequestBody Map<String, Object> editor) {
         workspaceService.uwsUpdate(editor);
         return Result.ok();
     }
 
+    @AuditLog(module = AuditModule.MEMBER, operation = AuditOperationType.DELETE,
+            resourceId = "#dto['uid_list']")
     @DeleteMapping({"/system/workspace/uws"})
     public Result<Void> uwsDelete(@RequestBody Map<String, Object> dto) {
         workspaceService.uwsDelete(dto);

@@ -1,5 +1,8 @@
 package com.xiongx9527.askdata.system.controller;
 
+import com.xiongx9527.askdata.common.audit.AuditLog;
+import com.xiongx9527.askdata.common.audit.AuditModule;
+import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.common.web.Result;
 import com.xiongx9527.askdata.system.service.ParameterService;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,6 +19,7 @@ import java.util.Map;
 /**
  * 系统参数（对齐 SQLBot apps/system/api/parameter.py）：
  * GET/POST /system/parameter 仅管理员；login/chat 分组登录即可。
+ * F-05：参数保存接入审计（MODULE=PARAMS_SETTING）。
  */
 @RestController
 @RequestMapping({"api/v1"})
@@ -42,6 +46,7 @@ public class ParameterController {
         return Result.ok(parameterService.group("chat"));
     }
 
+    @AuditLog(module = AuditModule.PARAMS_SETTING, operation = AuditOperationType.CREATE_OR_UPDATE)
     @PostMapping({"/system/parameter"})
     public Result<Void> save(@RequestParam(value = "data", required = false) String data,
                              @RequestParam(value = "files", required = false) List<MultipartFile> files) {

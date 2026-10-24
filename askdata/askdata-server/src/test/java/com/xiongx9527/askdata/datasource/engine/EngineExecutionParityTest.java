@@ -128,8 +128,10 @@ class EngineExecutionParityTest {
         conf.setPort(1521);
         ConnectionPoolManager poolManager = mock(ConnectionPoolManager.class);
         JdbcEngine engine = new JdbcEngine(mock(JdbcTemplate.class), objectMapper, poolManager);
+        // 达梦驱动未随包（仅 Oracle/SQLServer 作为 test 范围驱动引入），tables 应在打开连接时
+        // 抛出可读的「驱动缺失」错误，而非 NPE。
         DatasourceException ex = assertThrows(DatasourceException.class,
-                () -> engine.tables(DatasourceType.ORACLE, conf));
+                () -> engine.tables(DatasourceType.DM, conf));
         assertTrue(ex.getMessage().toLowerCase().contains("driver"), ex.getMessage());
     }
 }

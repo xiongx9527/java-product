@@ -52,7 +52,20 @@ public class AuditLogAspect {
         long start = System.currentTimeMillis();
         Object result = null;
         Throwable error = null;
+        // 删除类操作必须在业务执行前取资源名：删除成功后业务行已不存在，事后解析只能拿到 null。
+        String preResourceId = null;
+        String preResourceName = null;
+        boolean preResolved = false;
         try {
+            if (auditLog.operation() == AuditOperationType.DELETE) {
+                preResourceId = resolveResourceId(auditLog, pjp, null);
+                if (preResourceId != null) {
+                    preResourceName = auditLog.resourceName().isEmpty()
+                            ? recorder.resolveResourceName(auditLog.module(), preResourceId)
+                            : resolveResourceName(auditLog, pjp, null, preResourceId, auditLog.module());
+                    preResolved = true;
+                }
+            }
             result = pjp.proceed();
             return result;
         } catch (Throwable t) {
@@ -64,8 +77,9 @@ public class AuditLogAspect {
                 boolean success = error == null;
                 if (shouldRecord(auditLog.recordOn(), success)) {
                 String status = success ? "success" : "failed";
-                String resourceId = resolveResourceId(auditLog, pjp, result);
-                String resourceName = resolveResourceName(auditLog, pjp, result, resourceId, auditLog.module());
+                String resourceId = preResolved ? preResourceId : resolveResourceId(auditLog, pjp, result);
+                String resourceName = preResolved ? preResourceName
+                        : resolveResourceName(auditLog, pjp, result, resourceId, auditLog.module());
                 String errorMessage = error == null ? null
                         : (error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage());
                 recorder.recordTimed(auditLog.operation(), auditLog.module(), resourceId, null, null,

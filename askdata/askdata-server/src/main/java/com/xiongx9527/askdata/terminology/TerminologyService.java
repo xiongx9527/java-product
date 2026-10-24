@@ -4,6 +4,7 @@ import com.xiongx9527.askdata.common.audit.AuditModule;
 import com.xiongx9527.askdata.common.audit.AuditLog;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.common.datasource.DatasourceNameLookup;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.common.util.ExcelUtils;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.BadRequestException;
@@ -49,6 +50,10 @@ public class TerminologyService {
 
     private final TerminologyRecallService terminologyRecallService;
 
+    /** 错误文案统一走消息包（A4 / F-15）。 */
+    @Autowired
+    private MessageResolver messageResolver;
+
     @Value("${askdata.excel.path:./data/excel}")
     private String excelPath;
 
@@ -90,9 +95,9 @@ public class TerminologyService {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
         Map<String, Object> row = terminologyRepository.findParentById(id)
-                .orElseThrow(() -> new BadRequestException("Terminology with id " + id + " not found"));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("i18n_terminology.terminology_not_exists")));
         if (Rows.lng(row, "oid", 0L) != oid) {
-            throw new BadRequestException("Terminology with id " + id + " not found");
+            throw new BadRequestException(messageResolver.get("i18n_terminology.terminology_not_exists"));
         }
         List<Long> ids = terminologyRepository.parseDatasourceIds(Rows.str(row, "datasource_ids"));
         Map<Long, String> dsNames = datasourceNameLookup.namesOf(ids);
@@ -178,7 +183,7 @@ public class TerminologyService {
         boolean enabled = Rows.get(body, "enabled") == null ? true : Rows.bool(body, "enabled", true);
         Long advancedApplication = Rows.lngOrNull(body, "advanced_application");
         if (specificDs && datasourceIds.isEmpty() && advancedApplication == null) {
-            throw new BadRequestException("Datasource and assistant cannot both be empty");
+            throw new BadRequestException(messageResolver.get("i18n_terminology.datasource_cannot_be_none"));
         }
         Long id = Rows.lngOrNull(body, "id");
         if (id != null) {
@@ -192,7 +197,7 @@ public class TerminologyService {
                         List<String> otherWords, boolean enabled, Long advancedApplication) {
         List<String> words = allWords(word, otherWords);
         if (terminologyRepository.duplicateExists(oid, words, specificDs, datasourceIds, advancedApplication, null)) {
-            throw new BadRequestException("Terminology already exists in db");
+            throw new BadRequestException(messageResolver.get("i18n_terminology.exists_in_db"));
         }
         long now = System.currentTimeMillis();
         String dsJson = terminologyRepository.datasourceIdsJson(datasourceIds);
@@ -211,11 +216,11 @@ public class TerminologyService {
                         List<Long> datasourceIds, List<String> otherWords, boolean enabled,
                         Long advancedApplication) {
         if (!terminologyRepository.exists(oid, id)) {
-            throw new BadRequestException("Terminology does not exist");
+            throw new BadRequestException(messageResolver.get("i18n_terminology.terminology_not_exists"));
         }
         List<String> words = allWords(word, otherWords);
         if (terminologyRepository.duplicateExists(oid, words, specificDs, datasourceIds, advancedApplication, id)) {
-            throw new BadRequestException("Terminology already exists in db");
+            throw new BadRequestException(messageResolver.get("i18n_terminology.exists_in_db"));
         }
         terminologyRepository.updateParent(id, word, description, specificDs,
                 terminologyRepository.datasourceIdsJson(datasourceIds), enabled, advancedApplication);
@@ -247,7 +252,7 @@ public class TerminologyService {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
         if (!terminologyRepository.exists(oid, id)) {
-            throw new BadRequestException("Terminology does not exist");
+            throw new BadRequestException(messageResolver.get("i18n_terminology.terminology_not_exists"));
         }
         terminologyRepository.updateEnabled(id, enabled);
     }
@@ -321,7 +326,7 @@ public class TerminologyService {
             }
         }
         if (!allowed) {
-            throw new BadRequestException("Only support .xlsx/.xls");
+            throw new BadRequestException(messageResolver.get("ds.only.xlsx"));
         }
         List<String[]> rows = ExcelUtils.readRows(new ByteArrayInputStream(content));
         List<Map<String, Object>> failed = new ArrayList<>();
@@ -349,10 +354,10 @@ public class TerminologyService {
             }
             seen.add(uniqueKey);
             if (word.isEmpty()) {
-                errors.add("Word cannot be empty");
+                errors.add(messageResolver.get("i18n_terminology.word_cannot_be_empty"));
             }
             if (description.isEmpty()) {
-                errors.add("Description cannot be empty");
+                errors.add(messageResolver.get("i18n_terminology.description_cannot_be_empty"));
             }
             List<Long> datasourceIds = new ArrayList<>();
             Long advancedApplication = null;
@@ -360,7 +365,8 @@ public class TerminologyService {
                 for (String dsName : datasourceNames) {
                     Long dsId = datasourceNameLookup.idByName(dsName);
                     if (dsId == null) {
-                        errors.add("Datasource [" + dsName + "] not found");
+                        errors.add(messageResolver.get("i18n_terminology.datasource_name_not_found",
+                                java.util.Map.of("name", dsName)));
                     } else {
                         datasourceIds.add(dsId);
                     }
@@ -368,16 +374,17 @@ public class TerminologyService {
                 if (!advancedApplicationName.isEmpty()) {
                     advancedApplication = resolveAssistantByName(oid, advancedApplicationName);
                     if (advancedApplication == null) {
-                        errors.add("Advanced application [" + advancedApplicationName + "] not found");
+                        errors.add(messageResolver.get("i18n_terminology.advanced_application_name_not_found",
+                                java.util.Map.of("name", advancedApplicationName)));
                     }
                 }
                 if (datasourceIds.isEmpty() && advancedApplication == null) {
-                    errors.add("Datasource and assistant cannot both be empty");
+                    errors.add(messageResolver.get("i18n_terminology.datasource_assistant_cannot_be_none"));
                 }
             }
             List<String> allWords = allWords(word, otherWords);
             if (allWords.size() != new java.util.LinkedHashSet<>(allWords).size()) {
-                errors.add("Words cannot be repeated");
+                errors.add(messageResolver.get("i18n_terminology.cannot_be_repeated"));
             }
             if (!errors.isEmpty()) {
                 failed.add(importFailed(word, otherWords, description, datasourceNames, specificDs,
@@ -571,10 +578,10 @@ public class TerminologyService {
         return values[index].trim();
     }
 
-    private static String requiredText(Map<String, Object> body, String key) {
+    private String requiredText(Map<String, Object> body, String key) {
         String value = Rows.str(body, key);
         if (value == null || value.trim().isEmpty()) {
-            throw new BadRequestException("Missing required argument: [" + key + "]");
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", key)));
         }
         return value.trim();
     }

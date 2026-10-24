@@ -44,7 +44,9 @@ class EmbeddedTokenAuthenticatorTest {
     void setUp() {
         assistantRepository = Mockito.mock(AssistantRepository.class);
         userRepository = Mockito.mock(UserRepository.class);
-        authenticator = new EmbeddedTokenAuthenticator(assistantRepository, userRepository, SECRET);
+        authenticator = new EmbeddedTokenAuthenticator(assistantRepository, userRepository, SECRET,
+                com.xiongx9527.askdata.common.i18n.TestMessageResolver.create());
+        org.springframework.context.i18n.LocaleContextHolder.setLocale(java.util.Locale.ENGLISH);
     }
 
     private void givenAssistant(long id, int type, String appSecret) {
@@ -113,7 +115,7 @@ class EmbeddedTokenAuthenticatorTest {
 
         AuthFailureException e = assertThrows(AuthFailureException.class,
                 () -> authenticator.authenticate(embeddedToken("alice", 101L, APP_SECRET)));
-        assertTrue(e.getMessage().contains("Invalid embedded app type"),
+        assertTrue(e.getMessage().contains("Invalid embedded application type"),
                 "message: " + e.getMessage());
     }
 
@@ -137,7 +139,7 @@ class EmbeddedTokenAuthenticatorTest {
 
         AuthFailureException e = assertThrows(AuthFailureException.class,
                 () -> authenticator.authenticate(token));
-        assertTrue(e.getMessage().contains("Miss account payload"), "message: " + e.getMessage());
+        assertTrue(e.getMessage().contains("Missing account parameter"), "message: " + e.getMessage());
     }
 
     @Test
@@ -157,7 +159,7 @@ class EmbeddedTokenAuthenticatorTest {
 
         AuthFailureException e = assertThrows(AuthFailureException.class,
                 () -> authenticator.authenticate(token));
-        assertTrue(e.getMessage().contains("Miss assistant payload"), "message: " + e.getMessage());
+        assertTrue(e.getMessage().contains("Missing assistant_id parameter"), "message: " + e.getMessage());
     }
 
     @Test

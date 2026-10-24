@@ -118,15 +118,19 @@ class McpFrameworkE2ETest {
         JsonNode tools = awaitId(messages, 2);
         JsonNode toolNames = tools.get("result").get("tools");
         assertNotNull(toolNames, "tools/list 缺 tools: " + tools);
-        boolean hasServerInfo = false;
-        boolean hasDatasourceList = false;
+        java.util.Set<String> names = new java.util.HashSet<>();
         for (JsonNode t : toolNames) {
-            String name = t.get("name").asText();
-            if ("server_info".equals(name)) hasServerInfo = true;
-            if ("datasource_list".equals(name)) hasDatasourceList = true;
+            names.add(t.get("name").asText());
         }
-        assertTrue(hasServerInfo, "tools/list 未暴露 server_info: " + tools);
-        assertTrue(hasDatasourceList, "tools/list 未暴露 datasource_list: " + tools);
+        assertTrue(names.contains("server_info"), "tools/list 未暴露 server_info: " + tools);
+        assertTrue(names.contains("datasource_list"), "tools/list 未暴露 datasource_list: " + tools);
+        // MCP parity（对齐 SQLBot 7 operations）：新增工具须被注册
+        assertTrue(names.contains("workspace_list"), "tools/list 未暴露 workspace_list: " + tools);
+        assertTrue(names.contains("model_list"), "tools/list 未暴露 model_list: " + tools);
+        assertTrue(names.contains("chat_start"), "tools/list 未暴露 chat_start: " + tools);
+        assertTrue(names.contains("access_token"), "tools/list 未暴露 access_token: " + tools);
+        assertTrue(names.contains("question_answer"), "tools/list 未暴露 question_answer: " + tools);
+        assertTrue(names.contains("assistant"), "tools/list 未暴露 assistant: " + tools);
 
         // 3) tools/call server_info（确定性，无 DB/LLM 依赖）
         post(msgUrl, "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{"
@@ -142,6 +146,14 @@ class McpFrameworkE2ETest {
                 + "\"name\":\"datasource_list\",\"arguments\":{}}}");
         JsonNode dsCall = awaitId(messages, 4);
         assertNotNull(dsCall.get("result"), "datasource_list 无 result: " + dsCall);
+
+        // 5) tools/call access_token（错误口令 → 可读 error，验证工具可调用且不崩溃）
+        post(msgUrl, "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{"
+                + "\"name\":\"access_token\",\"arguments\":{\"username\":\"__nobody__\",\"password\":\"x\"}}}");
+        JsonNode tokenCall = awaitId(messages, 5);
+        assertNotNull(tokenCall.get("result"), "access_token 无 result: " + tokenCall);
+        assertTrue(tokenCall.get("result").get("content").toString().contains("error"),
+                "access_token 错误口令应返回 error: " + tokenCall);
     }
 
     private static void post(String url, String json) throws Exception {

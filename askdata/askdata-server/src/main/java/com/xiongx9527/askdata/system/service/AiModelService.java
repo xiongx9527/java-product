@@ -142,8 +142,8 @@ public class AiModelService {
         Map<String, Object> model = aiModelRepository.findById(id)
                 .orElseThrow(() -> new BadRequestException(messageResolver.get("aimodel.not.found", id)));
         if (Rows.bool(model, "default_model", false)) {
-            throw new BadRequestException(
-                    "Cannot delete the default model [" + Rows.str(model, "name") + "]!");
+            throw new BadRequestException(messageResolver.get("i18n_llm.delete_default_error",
+                    java.util.Map.of("key", String.valueOf(Rows.str(model, "name")))));
         }
         aiModelRepository.deleteAllMappings(id);
         aiModelRepository.delete(id);
@@ -239,7 +239,7 @@ public class AiModelService {
             String apiKey = CryptoUtil.resolvePlain(Rows.str(body, "api_key"));
             String baseModel = Rows.str(body, "base_model");
             if (apiDomain == null || apiDomain.isEmpty() || baseModel == null || baseModel.isEmpty()) {
-                emitError(writer, "api_domain and base_model are required");
+                emitError(writer, messageResolver.get("aimodel.api_domain.required"));
                 return;
             }
             checkModel(chatCompletionsUrl(apiDomain), apiKey, baseModel, temperatureOf(body), writer);
@@ -278,7 +278,8 @@ public class AiModelService {
             int code = connection.getResponseCode();
             if (code >= 400) {
                 String detail = readAll(connection.getErrorStream());
-                emitError(writer, "HTTP " + code + (detail.isEmpty() ? "" : ": " + detail));
+                emitError(writer, messageResolver.get("aimodel.http_error", java.util.Map.of("msg",
+                        "HTTP " + code + (detail.isEmpty() ? "" : ": " + detail))));
                 return;
             }
             String contentType = connection.getContentType();
@@ -355,7 +356,8 @@ public class AiModelService {
     }
 
     private void emitError(PrintWriter writer, String message) throws IOException {
-        writeLine(writer, Rows.of("error", "Validation failed [" + message + "]"));
+        writeLine(writer, Rows.of("error",
+                messageResolver.get("i18n_llm.validate_error", java.util.Map.of("msg", message))));
     }
 
     private static String readAll(InputStream inputStream) throws IOException {
@@ -457,14 +459,14 @@ public class AiModelService {
         try {
             return objectMapper.writeValueAsString(configList);
         } catch (Exception e) {
-            throw new BadRequestException("Invalid config_list");
+            throw new BadRequestException(messageResolver.get("i18n_format_invalid", java.util.Map.of("key", "config_list")));
         }
     }
 
-    private static String required(Map<String, Object> body, String key) {
+    private String required(Map<String, Object> body, String key) {
         String value = Rows.str(body, key);
         if (value == null || value.isEmpty()) {
-            throw new BadRequestException("Missing required argument: [" + key + "]");
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", key)));
         }
         return value;
     }
