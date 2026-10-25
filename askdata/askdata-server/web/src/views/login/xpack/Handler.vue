@@ -28,6 +28,9 @@
       </div>
     </el-form-item>
   </div>
+  <div v-if="licenseInvalidTips" class="license-invalid-tips">
+    {{ licenseInvalidTips }}
+  </div>
 
   <el-dialog
     v-model="loginDialogVisible"
@@ -68,6 +71,8 @@ import { loadClient, origin_mapping, type LoginCategory } from './PlatformClient
 
 import { useI18n } from 'vue-i18n'
 const isLdap = ref(false)
+// A29：许可证无效提示（真实状态来自 GET /system/license）
+const licenseInvalidTips = ref('')
 defineProps<{
   loading: boolean
 }>()
@@ -413,6 +418,8 @@ onMounted(() => {
   // eslint-disable-next-line no-undef
   const obj = LicenseGenerator.getLicense()
   if (obj?.status !== 'valid') {
+    // A29：许可证无效时明确提示，不再静默不展示任何企业登录入口
+    licenseInvalidTips.value = t('about.license_invalid_tips')
     updateLoading(false, 100)
     return
   }
@@ -441,6 +448,14 @@ onMounted(() => {
 
 .other-login-item {
   margin-bottom: 0;
+}
+
+.license-invalid-tips {
+  margin-top: 12px;
+  text-align: center;
+  color: #f54a45;
+  font-size: 12px;
+  line-height: 20px;
 }
 .sqlbot-other-login {
   height: 68px;

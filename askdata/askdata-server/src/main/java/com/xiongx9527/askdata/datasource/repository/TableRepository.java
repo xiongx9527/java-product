@@ -104,6 +104,28 @@ public class TableRepository {
                 args(dsId, keepIds));
     }
 
+    /**
+     * A13：按 id 集合查询表（提示词外键段补全未入选关联表用）。
+     */
+    public List<Map<String, Object>> listByIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return jdbc.queryForList("SELECT " + COLUMNS + " FROM core_table WHERE id IN ("
+                + placeholders(ids.size()) + ")", ids.toArray());
+    }
+
+    /**
+     * A13：按 id 集合查询表名映射（外键段 {@code table.field=table.field} 渲染用）。
+     */
+    public Map<Long, String> tableNamesByIds(List<Long> ids) {
+        Map<Long, String> result = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> row : listByIds(ids)) {
+            result.put(Rows.lng(row, "id", 0L), Rows.str(row, "table_name"));
+        }
+        return result;
+    }
+
     public long countByDsId(long dsId) {
         Long count = jdbc.queryForObject("SELECT COUNT(*) FROM core_table WHERE ds_id = ?", Long.class, dsId);
         return count == null ? 0L : count;

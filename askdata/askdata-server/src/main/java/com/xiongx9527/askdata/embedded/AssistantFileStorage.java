@@ -20,8 +20,10 @@ import java.util.List;
 
 /**
  * 小助手图片文件存储（logo/float_icon；对齐 SQLBot SQLBotFileUtils 的保存/校验语义）：
- * 仅允许 jpg/jpeg/png/svg，大小 ≤ 10MB。物理字节经通用文件存储 {@link AskdataFileStorage}
- * （x-file-storage）落地，{@link #save} 返回存储 url 作为 fileId 供后续 {@link #load} 取回。
+ * A24 对齐 SQLBot {@code apps/system/api/assistant.py:206} 的 {@code check_file}：
+ * 仅允许 jpg/jpeg/png，大小 ≤ 10MB。物理字节经通用文件存储 {@link AskdataFileStorage}
+ * （x-file-storage）落地，{@link #save} 返回存储 url 作为 fileId 供后续 {@link #load} 取回；
+ * {@link #delete} 用于替换/清空时移除旧文件（对齐 SQLBot 的 {@code delete_file}）。
  *
  * <p>{@code originalName} 允许带 {@code ,<flag>} 后缀（对齐前端 SetUi 的 {@code 文件名,标志} 约定），
  * 扩展名以第一个点之前的纯扩展名段为准；落库前剥离该后缀以保证扩展名正确。</p>
@@ -34,7 +36,7 @@ public class AssistantFileStorage {
     @Autowired
     private MessageResolver messageResolver;
 
-    private static final List<String> ALLOWED_EXTENSIONS = Arrays.asList("jpg", "jpeg", "png", "svg");
+    private static final List<String> ALLOWED_EXTENSIONS = Arrays.asList("jpg", "jpeg", "png");
 
     private static final long MAX_SIZE = 10L * 1024 * 1024;
 
@@ -62,6 +64,32 @@ public class AssistantFileStorage {
         // 剥离 ",<flag>" 后缀，保证 x-file-storage 以正确扩展名落库
         String cleanName = baseName(originalName);
         return fileStorage.save(file, cleanName, "assistant").url();
+    }
+
+    /**
+     * A24：删除旧图片（替换或清空时调用；对齐 SQLBot {@code SQLBotFileUtils.delete_file}）。
+     *
+     * <p>fileId 为通用存储 url 时删除存储中的文件；为历史纯文件名时删除旧目录下的文件。
+     * 删除失败不抛错（主链路是配置更新，文件清理是尽力而为）。</p>
+     */
+    public void delete(String fileId) {
+        if (fileId == null || fileId.isEmpty()) {
+            return;
+        }
+        try {
+            fileStorage.delete(fileId);
+            return;
+        } catch (RuntimeException ignored) {
+            // 非通用存储中的 url（历史纯文件名），回退删旧目录
+        }
+        try {
+            String safe = new File(fileId).getName();
+            if (safe.equals(fileId)) {
+                java.nio.file.Files.deleteIfExists(Paths.get(legacyDir).resolve(safe));
+            }
+        } catch (Exception ignored) {
+            // 删除失败不影响主链路
+        }
     }
 
     /** 读取文件（不存在返回 null）。新 fileId 为存储 url（经通用存储读回）；旧 fileId 为纯文件名，回退读旧目录。 */

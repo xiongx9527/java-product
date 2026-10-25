@@ -61,7 +61,7 @@ class JdbcEngineParameterizedTest {
     @Test
     void execSqlUsesPreparedStatementNotStatement() throws Exception {
         // 借出的连接由 mock 提供，避免真实建连；prepareStatement 返回 mock
-        when(poolManager.borrow(anyString(), any())).thenReturn(connection);
+        when(poolManager.borrow(anyString(), any(), any())).thenReturn(connection);
         when(connection.prepareStatement(anyString())).thenReturn(preparedStatement);
         when(preparedStatement.executeQuery()).thenReturn(resultSet);
         when(resultSet.getMetaData()).thenReturn(resultSetMetaData);

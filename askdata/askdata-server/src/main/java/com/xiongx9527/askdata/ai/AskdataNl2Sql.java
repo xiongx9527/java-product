@@ -1,6 +1,7 @@
 package com.xiongx9527.askdata.ai;
 
 import com.xiongx9527.askdata.chat.service.ChatQuestionService;
+import com.xiongx9527.askdata.embedded.DynamicDatasource;
 import com.xiongx9527.askdata.chat.service.SchemaContextBuilder;
 import com.xiongx9527.askdata.datasource.engine.DatasourceType;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
@@ -156,6 +157,91 @@ public class AskdataNl2Sql {
         out.put("dialect", dialectType.getTemplateName());
         out.put("rows", rows);
         return out;
+    }
+
+    /**
+     * A24：宿主下发动态数据源问数（对齐 SQLBot {@code mcp_assistant} 的第三方数据接口链路）。
+     *
+     * <p>{@code url} + {@code authorization} 指向宿主数据源 API，返回的数据源仅在本次请求内
+     * 以 {@link DynamicDatasource} 存在：schema 取自该连接的实时元数据，SQL 生成后、执行前
+     * 注入宿主下发的表级子查询模板与行规则，执行走
+     * {@link DatasourceService#execSqlTransient}（不写入 core_datasource）。</p>
+     *
+     * <p>与静态数据源路径的差异：表白名单来自宿主连接实时元数据；数据边界由宿主行规则表达
+     * （SQLBot 侧高级应用同样不走 askdata 的行/列权限表）。</p>
+     *
+     * @param dynamic       宿主下发的动态数据源（type/conf/表级模板/行规则）
+     * @param modelOverride 非空时用该模型替代默认 ChatModel
+     */
+    public Map<String, Object> ask(String question, DynamicDatasource dynamic, ChatModel modelOverride)
+            throws Exception {
+        ChatModel model = modelOverride != null ? modelOverride : chatModel;
+        DatasourceType dialectType = dynamic.getType();
+        String structure = schemaContextBuilder.buildSchemaTextForConf(dialectType, dynamic.getConf(), question);
+        // generateOnly：SQL 的目标库是宿主连接而非应用库，不能让父类在应用库上执行
+        AskdataSqlRetriever retriever = new AskdataSqlRetriever(
+                dataSource, dialectType.getTemplateName(), structure,
+                PromptTemplate.from(SQL_PROMPT), model, MAX_RETRIES, true);
+        retriever.retrieve(Query.from(question));
+        String sql = retriever.lastSql();
+        if (sql == null || sql.trim().isEmpty()) {
+            throw new IllegalStateException(I18n.msg("nl2sql.no.valid.sql"));
+        }
+        AskdataSqlRetriever.checkSql(sql);
+        // 宿主表级子查询模板：受限表必须经占位符引用，执行前确定性替换
+        if (!dynamic.getTableSqlTemplates().isEmpty()) {
+            String directErr = DynamicDatasource.directTableReferenceError(sql, dynamic.getTableSqlTemplates(),
+                    ChatQuestionService::usedTables);
+            if (directErr != null) {
+                throw new IllegalArgumentException(directErr);
+            }
+            sql = DynamicDatasource.replaceSubSqlPlaceholders(sql, dynamic.getTableSqlTemplates());
+        }
+        // 宿主行规则：数据边界，执行前强制注入（对齐 SQLBot generate_assistant_filter）
+        if (!dynamic.getTableRules().isEmpty()) {
+            sql = DynamicDatasource.applyRowRules(sql, dynamic.getTableRules(), ChatQuestionService::usedTables);
+        }
+        // 表白名单：宿主连接实时元数据（防模型幻觉到不存在的表）
+        List<String> allowed = transientTableNames(dynamic);
+        if (allowed != null) {
+            String tableError = ChatQuestionService.validateTables(sql, allowed);
+            if (tableError != null) {
+                throw new IllegalArgumentException(tableError);
+            }
+        }
+        List<Map<String, Object>> rows = executeTransient(dynamic, withRowLimit(sql, dialectType));
+        Map<String, Object> out = new LinkedHashMap<String, Object>();
+        out.put("question", question);
+        out.put("sql", sql);
+        out.put("dialect", dialectType.getTemplateName());
+        out.put("rows", rows);
+        return out;
+    }
+
+    /** 宿主动态数据源当前表名（实时元数据）；读取失败返回 null（不阻断，交由执行阶段报真实错误）。 */
+    private List<String> transientTableNames(DynamicDatasource dynamic) {
+        try {
+            List<String> names = new ArrayList<String>();
+            for (com.xiongx9527.askdata.datasource.engine.TableSchema table
+                    : datasourceService.tablesTransient(dynamic.getType(), dynamic.getConf())) {
+                names.add(table.getTableName());
+            }
+            return names;
+        } catch (Exception e) {
+            log.warn("宿主数据源表名读取失败（不阻断）: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** 动态数据源只读执行（不落库，连接池键按连接配置派生）。 */
+    private List<Map<String, Object>> executeTransient(DynamicDatasource dynamic, String limited) {
+        Map<String, Object> result = datasourceService.execSqlTransient(
+                dynamic.getType(), dynamic.getConf(), limited);
+        Object data = result.get("data");
+        if (data instanceof List) {
+            return (List<Map<String, Object>>) data;
+        }
+        return new ArrayList<Map<String, Object>>();
     }
 
     /**

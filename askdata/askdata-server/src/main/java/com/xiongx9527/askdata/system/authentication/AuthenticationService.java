@@ -4,6 +4,7 @@ import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.system.repository.UserRepository;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import com.xiongx9527.askdata.system.platform.PlatformRepository;
+import com.xiongx9527.askdata.system.platform.EnterprisePlatformService;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
 import org.springframework.stereotype.Service;
@@ -51,6 +52,9 @@ public class AuthenticationService {
 
     private final IdGenerator idGenerator;
 
+    /** A31：企业 IM（type 6..9）扫码登录的第三方用户解析。 */
+    private final EnterprisePlatformService enterprisePlatformService;
+
     public AuthenticationService(AuthenticationRepository authenticationRepository,
                                  UserRepository userRepository,
                                  PlatformRepository platformRepository,
@@ -59,7 +63,8 @@ public class AuthenticationService {
                                  CasSsoClient casSsoClient,
                                  LdapSsoClient ldapSsoClient,
                                  Saml2SsoClient saml2SsoClient,
-                                 IdGenerator idGenerator) {
+                                 IdGenerator idGenerator,
+                                 EnterprisePlatformService enterprisePlatformService) {
         this.authenticationRepository = authenticationRepository;
         this.userRepository = userRepository;
         this.platformRepository = platformRepository;
@@ -69,14 +74,18 @@ public class AuthenticationService {
         this.ldapSsoClient = ldapSsoClient;
         this.saml2SsoClient = saml2SsoClient;
         this.idGenerator = idGenerator;
+        this.enterprisePlatformService = enterprisePlatformService;
     }
 
     // ------------------------------------------------------------------
     // 认证源 CRUD / 状态
     // ------------------------------------------------------------------
 
-    /** GET /system/authentication：全部认证源。 */
+    /**
+     * GET /system/authentication：全部认证源（A25：仅管理员，认证源配置含 IdP 密钥等敏感信息）。
+     */
     public List<Map<String, Object>> list() {
+        currentUserService.requireAdmin();
         List<Map<String, Object>> result = new ArrayList<>();
         for (Map<String, Object> row : authenticationRepository.list()) {
             result.add(view(row));
@@ -84,8 +93,9 @@ public class AuthenticationService {
         return result;
     }
 
-    /** GET /system/authentication/{id}：按 id 取认证源。 */
+    /** GET /system/authentication/{id}：按 id 取认证源（A25：仅管理员）。 */
     public Map<String, Object> getById(long id) {
+        currentUserService.requireAdmin();
         return view(authenticationRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("authentication not found: " + id)));
     }
@@ -291,7 +301,10 @@ public class AuthenticationService {
         Map<String, Object> config = ssoAuthenticator.parseConfig(Rows.str(stored, "config"));
 
         Map<String, Object> platformUser;
-        if (type == SsoAuthenticator.TYPE_LDAP) {
+        if (type >= EnterprisePlatformService.ORIGIN_WECOM) {
+            // A31：企业 IM 扫码（wecom/dingtalk/lark/larksuite）——回调 code 换平台用户
+            platformUser = enterprisePlatformService.platformUserByCode(type, body);
+        } else if (type == SsoAuthenticator.TYPE_LDAP) {
             String username = str(body, "username");
             String password = str(body, "password");
             platformUser = ldapSsoClient.loginWithPassword(config, username, password);

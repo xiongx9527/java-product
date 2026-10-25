@@ -7,8 +7,10 @@ import com.xiongx9527.askdata.datasource.engine.DatasourceConf;
 import com.xiongx9527.askdata.datasource.engine.DatasourceType;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -80,6 +82,225 @@ public class DynamicDatasourceResolver {
         return resolve(assistantType, hostConfig);
     }
 
+    /**
+     * A23：解析高级应用的宿主数据源端点配置（{@code sys_assistant.configuration}）。
+     *
+     * <p>对齐 SQLBot {@code AssistantOutDs.get_ds_from_api}：宿主在高级应用配置里给出
+     * {@code endpoint}（数据源列表 API）、{@code certificate}（header/cookie/param 形式的凭证）、
+     * {@code timeout}（秒，缺省 10）。endpoint 缺省时返回 null（该应用不走宿主下发）。</p>
+     *
+     * @param assistant sys_assistant 行（需含 configuration）
+     * @return {@code {endpoint, headers, timeout}}；未配置 endpoint 时返回 null
+     */
+    public Map<String, Object> hostEndpointOf(Map<String, Object> assistant) {
+        if (assistant == null) {
+            return null;
+        }
+        Object raw = assistant.get("configuration");
+        Map<String, Object> config;
+        if (raw instanceof Map) {
+            config = castMap(raw);
+        } else if (raw == null || String.valueOf(raw).trim().isEmpty()) {
+            return null;
+        } else {
+            try {
+                config = objectMapper.readValue(String.valueOf(raw),
+                        new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
+                        });
+            } catch (Exception e) {
+                return null;
+            }
+        }
+        Object endpoint = config.get("endpoint");
+        if (endpoint == null || String.valueOf(endpoint).trim().isEmpty()) {
+            return null;
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("endpoint", String.valueOf(endpoint).trim());
+        result.put("headers", certificateHeaders(config.get("certificate")));
+        int timeout = 10;
+        Object timeoutRaw = config.get("timeout");
+        if (timeoutRaw instanceof Number) {
+            timeout = ((Number) timeoutRaw).intValue();
+        } else if (timeoutRaw != null) {
+            try {
+                timeout = Integer.parseInt(String.valueOf(timeoutRaw).trim());
+            } catch (NumberFormatException ignored) {
+                timeout = 10;
+            }
+        }
+        result.put("timeout", timeout);
+        return result;
+    }
+
+    /** A23：把 certificate 列表中的 header 项收集为请求头（cookie/param 项本实现不使用）。 */
+    @SuppressWarnings("unchecked")
+    private static Map<String, String> certificateHeaders(Object certificate) {
+        Map<String, String> headers = new LinkedHashMap<>();
+        if (!(certificate instanceof List)) {
+            return headers;
+        }
+        for (Object item : (List<Object>) certificate) {
+            if (!(item instanceof Map)) {
+                continue;
+            }
+            Map<String, Object> entry = (Map<String, Object>) item;
+            if (!"header".equals(String.valueOf(entry.get("target")))) {
+                continue;
+            }
+            Object key = entry.get("key");
+            Object value = entry.get("value");
+            if (key != null && value != null) {
+                headers.put(String.valueOf(key), String.valueOf(value));
+            }
+        }
+        return headers;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castMap(Object raw) {
+        return (Map<String, Object>) raw;
+    }
+
+    /**
+     * A24：MCP {@code mcp_assistant} 的第三方数据接口端点（对齐 SQLBot {@code mcp_assistant}：
+     * 以 {@code configuration={"endpoint": url}} + {@code certificate=authorization} 构造
+     * 虚拟助手，再走 {@code AssistantOutDs} 拉取数据源列表）。
+     *
+     * <p>{@code authorization} 兼容两种形态：JSON 数组（SQLBot certificate 列表，取
+     * {@code target==header} 项）或裸凭证串（按 {@code Authorization} 请求头发送）。</p>
+     *
+     * @param url           第三方数据接口地址（必填）
+     * @param authorization 第三方接口凭证（可空）
+     * @return {@code {endpoint, headers, timeout}}
+     */
+    public Map<String, Object> hostEndpointFromMcp(String url, String authorization) {
+        if (url == null || url.trim().isEmpty()) {
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", Map.of("key", "url")));
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("endpoint", url.trim());
+        result.put("headers", authorizationHeaders(authorization));
+        result.put("timeout", 10);
+        return result;
+    }
+
+    /** authorization → 请求头：JSON certificate 列表取 header 项；裸凭证串按 Authorization 头发送。 */
+    private Map<String, String> authorizationHeaders(String authorization) {
+        Map<String, String> headers = new LinkedHashMap<>();
+        if (authorization == null || authorization.trim().isEmpty()) {
+            return headers;
+        }
+        String text = authorization.trim();
+        if (text.startsWith("[")) {
+            try {
+                List<Object> items = objectMapper.readValue(text,
+                        new com.fasterxml.jackson.core.type.TypeReference<List<Object>>() {
+                        });
+                for (Object item : items) {
+                    if (!(item instanceof Map)) {
+                        continue;
+                    }
+                    Map<String, Object> entry = castMap(item);
+                    if (!"header".equals(String.valueOf(entry.get("target")))) {
+                        continue;
+                    }
+                    Object key = entry.get("key");
+                    Object value = entry.get("value");
+                    if (key != null && value != null) {
+                        headers.put(String.valueOf(key), String.valueOf(value));
+                    }
+                }
+                return headers;
+            } catch (Exception e) {
+                // 非法 JSON 数组：退化为裸凭证串处理
+            }
+        }
+        headers.put("Authorization", text);
+        return headers;
+    }
+
+    /**
+     * A24：从宿主 API 拉取数据源列表并取第一个（MCP {@code mcp_assistant} 未指定数据源时）。
+     *
+     * @param assistantType 高级应用类型（必须为 1 或 3）
+     * @param hostEndpoint  {@link #hostEndpointFromMcp} 的返回
+     * @return 动态数据源（仅本次请求有效）
+     */
+    public DynamicDatasource resolveFirstFromHostList(int assistantType, Map<String, Object> hostEndpoint) {
+        List<Map<String, Object>> items = fetchHostDatasources(assistantType, hostEndpoint);
+        if (items.isEmpty()) {
+            throw new BadRequestException(messageResolver.get("i18n_embedded.host_fetch_failed",
+                    "host returned an empty datasource list"));
+        }
+        return resolve(assistantType, items.get(0));
+    }
+
+    /**
+     * A23：从宿主 API 拉取数据源列表并取出指定数据源（对齐 SQLBot
+     * {@code AssistantOutDs.get_ds}）。
+     *
+     * <p>宿主响应契约（SQLBot）：{@code {"code": 0|200, "data": [ {datasource}, ... ]}}。</p>
+     *
+     * @param assistantType 高级应用类型（必须为 1 或 3）
+     * @param hostEndpoint  {@link #hostEndpointOf} 的返回
+     * @param datasourceId  宿主侧数据源 id
+     * @return 动态数据源（仅本次请求有效）
+     */
+    public DynamicDatasource resolveFromHostList(int assistantType, Map<String, Object> hostEndpoint,
+                                                  long datasourceId) {
+        List<Map<String, Object>> items = fetchHostDatasources(assistantType, hostEndpoint);
+        for (Map<String, Object> item : items) {
+            Long id = Rows.lngOrNull(item, "id");
+            if (id != null && id == datasourceId) {
+                return resolve(assistantType, item);
+            }
+        }
+        throw new BadRequestException(messageResolver.get("i18n_embedded.host_fetch_failed",
+                "datasource " + datasourceId + " is not found in host response"));
+    }
+
+    /** 拉取宿主数据源列表（高级应用类型与端点校验 + code/data 契约校验）。 */
+    private List<Map<String, Object>> fetchHostDatasources(int assistantType, Map<String, Object> hostEndpoint) {
+        if (!isAdvancedApplication(assistantType)) {
+            throw new BadRequestException(messageResolver.get("i18n_embedded.dynamic_ds_advanced_only",
+                    Map.of("type", assistantType)));
+        }
+        if (hostEndpoint == null) {
+            throw new BadRequestException(messageResolver.get("i18n_embedded.host_fetch_failed",
+                    "assistant endpoint is not configured"));
+        }
+        String endpoint = String.valueOf(hostEndpoint.get("endpoint"));
+        Map<String, String> headers = castStringMap(hostEndpoint.get("headers"));
+        String body = fetchFromHost(endpoint, headers);
+        try {
+            Map<String, Object> payload = objectMapper.readValue(body,
+                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
+                    });
+            Object code = payload.get("code");
+            if (code != null && !"0".equals(String.valueOf(code)) && !"200".equals(String.valueOf(code))) {
+                throw new IllegalStateException("host returned code " + code
+                        + (payload.get("message") == null ? "" : ": " + payload.get("message")));
+            }
+            return castMapList(payload.get("data"));
+        } catch (BadRequestException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BadRequestException(messageResolver.get("i18n_embedded.host_fetch_failed",
+                    e.getMessage() == null ? e.toString() : e.getMessage()));
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, String> castStringMap(Object raw) {
+        return raw instanceof Map ? (Map<String, String>) raw : new LinkedHashMap<>();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> castMapList(Object raw) {
+        return raw instanceof List ? (List<Map<String, Object>>) raw : new ArrayList<>();
+    }
+
     /** GET 宿主 API（10s 连接/读取超时，对齐 SQLBot requests.get(..., timeout=10)）；非 2xx 或 IO 异常均报错。 */
     private String fetchFromHost(String hostUrl, Map<String, String> headers) {
         try {
@@ -142,14 +363,21 @@ public class DynamicDatasourceResolver {
         } catch (IllegalArgumentException e) {
             throw new BadRequestException(messageResolver.get("ds.type.not.support", typeText));
         }
-        DatasourceConf conf = parseConf(hostConfig.get("configuration"));
+        DatasourceConf conf = parseConf(configurationOf(hostConfig));
         // §2.4: 宿主可下发表级 SQL 模板（dynamic_sql：表名 → 子查询模板），用于二次 LLM 改写后作为子查询/CTE。
         Map<String, String> tableSqlTemplates = parseTableSqlTemplates(hostConfig.get("dynamic_sql"));
-        if (tableSqlTemplates.isEmpty() && hostConfig.get("configuration") instanceof Map) {
-            Object inner = ((Map<?, ?>) hostConfig.get("configuration")).get("dynamic_sql");
-            tableSqlTemplates = parseTableSqlTemplates(inner);
+        // A18: 宿主可下发表级行规则（table_rule：表名 → WHERE 条件片段），执行前注入过滤 SQL
+        Map<String, String> tableRules = parseTableSqlTemplates(hostConfig.get("table_rule"));
+        if (hostConfig.get("configuration") instanceof Map) {
+            Map<?, ?> inner = (Map<?, ?>) hostConfig.get("configuration");
+            if (tableSqlTemplates.isEmpty()) {
+                tableSqlTemplates = parseTableSqlTemplates(inner.get("dynamic_sql"));
+            }
+            if (tableRules.isEmpty()) {
+                tableRules = parseTableSqlTemplates(inner.get("table_rule"));
+            }
         }
-        return new DynamicDatasource(type, conf, Rows.str(hostConfig, "name"), tableSqlTemplates);
+        return new DynamicDatasource(type, conf, Rows.str(hostConfig, "name"), tableSqlTemplates, tableRules);
     }
 
     /** §2.4: 解析 dynamic_sql（表名 → 子查询模板）；非法/空返回空 Map。 */
@@ -173,6 +401,52 @@ public class DynamicDatasourceResolver {
             return Collections.emptyMap();
         }
         return result;
+    }
+
+    /**
+     * SQLBot {@code AssistantOutDsSchema} 的扁平配置字段（宿主数据源列表项）→ askdata
+     * {@link DatasourceConf} 属性名（MCP {@code mcp_assistant} 的第三方数据源列表即该形态）。
+     */
+    private static final Map<String, String> FLAT_CONF_KEYS = flatConfKeys();
+
+    private static Map<String, String> flatConfKeys() {
+        Map<String, String> m = new LinkedHashMap<>();
+        m.put("host", "host");
+        m.put("port", "port");
+        m.put("user", "username");
+        m.put("username", "username");
+        m.put("password", "password");
+        m.put("dataBase", "database");
+        m.put("database", "database");
+        m.put("extraParams", "extraJdbc");
+        m.put("extraJdbc", "extraJdbc");
+        m.put("schema", "dbSchema");
+        m.put("db_schema", "dbSchema");
+        m.put("dbSchema", "dbSchema");
+        m.put("mode", "mode");
+        m.put("lowVersion", "lowVersion");
+        m.put("timeout", "timeout");
+        return m;
+    }
+
+    /**
+     * 宿主数据源连接配置：优先取嵌套 {@code configuration}（askdata {@code dynamic_datasource}
+     * 形态）；缺失时按 SQLBot {@code AssistantOutDs.convert2schema} 的扁平字段
+     * （{@code host/port/user/password/dataBase/schema/extraParams/mode/lowVersion}）合成。
+     */
+    private Object configurationOf(Map<String, Object> hostConfig) {
+        Object nested = hostConfig.get("configuration");
+        if (nested instanceof Map || (nested != null && !String.valueOf(nested).trim().isEmpty())) {
+            return nested;
+        }
+        Map<String, Object> flat = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : FLAT_CONF_KEYS.entrySet()) {
+            Object value = hostConfig.get(entry.getKey());
+            if (value != null) {
+                flat.put(entry.getValue(), value);
+            }
+        }
+        return flat.isEmpty() ? nested : flat;
     }
 
     private DatasourceConf parseConf(Object configuration) {

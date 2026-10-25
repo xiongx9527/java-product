@@ -64,8 +64,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 验证术语命中时：
  * <ul>
  *   <li>{@code chat_record.extracted_keywords / expanded_keywords} 落库且非空；</li>
- *   <li>{@code chat_log} 记录 extract_keywords / filter_terms / filter_sql_example /
- *       filter_custom_prompt 四类操作；</li>
+ *   <li>{@code chat_log} 记录 EXTRACT_KEYWORDS / FILTER_TERMS / FILTER_SQL_EXAMPLE /
+ *       FILTER_CUSTOM_PROMPT 四类操作；</li>
  *   <li>SQL 生成提示词包含术语释义与同义词扩展（【业务术语】节）；</li>
  *   <li><b>未配置任何 embedding 模型</b>时链路照常完成（词法降级，不报错）。</li>
  * </ul>
@@ -235,15 +235,15 @@ class ChatKnowledgeChainTest {
         for (Map<String, Object> row : logs) {
             operates.add(Rows.str(row, "operate"));
         }
-        assertTrue(operates.contains("extract_keywords"), operates.toString());
-        assertTrue(operates.contains("filter_terms"), operates.toString());
-        assertTrue(operates.contains("filter_sql_example"), operates.toString());
-        assertTrue(operates.contains("filter_custom_prompt"), operates.toString());
+        assertTrue(operates.contains("EXTRACT_KEYWORDS"), operates.toString());
+        assertTrue(operates.contains("FILTER_TERMS"), operates.toString());
+        assertTrue(operates.contains("FILTER_SQL_EXAMPLE"), operates.toString());
+        assertTrue(operates.contains("FILTER_CUSTOM_PROMPT"), operates.toString());
 
         // A3：降级原因随步骤落库（无 embedding 模型时术语召回走词法匹配，状态可观测而非静默）
         String filterTermsMessage = null;
         for (Map<String, Object> row : logs) {
-            if ("filter_terms".equals(Rows.str(row, "operate"))) {
+            if ("FILTER_TERMS".equals(Rows.str(row, "operate"))) {
                 filterTermsMessage = Rows.str(row, "message");
             }
         }
@@ -283,10 +283,10 @@ class ChatKnowledgeChainTest {
         for (Map<String, Object> row : chatRepository.listLogsByRecord(recordId)) {
             operates.add(Rows.str(row, "operate"));
         }
-        assertTrue(operates.contains("extract_keywords"), operates.toString());
-        assertTrue(operates.contains("filter_terms"), operates.toString());
-        assertTrue(operates.contains("filter_sql_example"), operates.toString());
-        assertTrue(operates.contains("filter_custom_prompt"), operates.toString());
+        assertTrue(operates.contains("EXTRACT_KEYWORDS"), operates.toString());
+        assertTrue(operates.contains("FILTER_TERMS"), operates.toString());
+        assertTrue(operates.contains("FILTER_SQL_EXAMPLE"), operates.toString());
+        assertTrue(operates.contains("FILTER_CUSTOM_PROMPT"), operates.toString());
         // 无术语命中时提示词不含【业务术语】节
         assertFalse(sqlPromptOf().contains("【业务术语】"));
     }

@@ -45,7 +45,34 @@ public class AskdataSqlRetriever extends SqlDatabaseContentRetriever {
 
     private final SchemaProvider schemaProvider;
 
+    /** 只生成 SQL、不执行（宿主动态数据源；见带 generateOnly 的构造函数）。 */
+    private final boolean generateOnly;
+
     private volatile String lastSql;
+
+    /**
+     * 只生成 SQL、不在注入的 {@link DataSource} 上执行。
+     *
+     * <p>宿主动态数据源（A24）场景：SQL 的目标库是宿主连接而非应用库，父类
+     * {@code retrieve} 会在应用库上执行——既拿不到结果，又会把执行错误喂给模型触发无谓的
+     * 重试改写。该模式下只走「生成 → clean → 校验」，执行交由上层在宿主连接上进行。</p>
+     */
+    public AskdataSqlRetriever(DataSource dataSource, String sqlDialect, String databaseStructure,
+                               PromptTemplate promptTemplate, ChatModel chatModel, Integer maxRetries,
+                               boolean generateOnly) {
+        this(dataSource, sqlDialect, databaseStructure, promptTemplate, chatModel, maxRetries, null, generateOnly);
+    }
+
+    public AskdataSqlRetriever(DataSource dataSource, String sqlDialect, String databaseStructure,
+                               PromptTemplate promptTemplate, ChatModel chatModel, Integer maxRetries,
+                               SchemaProvider schemaProvider, boolean generateOnly) {
+        super(dataSource, sqlDialect, databaseStructure, promptTemplate, chatModel, maxRetries);
+        this.sqlDialect = sqlDialect;
+        this.promptTemplate = promptTemplate;
+        this.chatModel = chatModel;
+        this.schemaProvider = schemaProvider;
+        this.generateOnly = generateOnly;
+    }
 
     public AskdataSqlRetriever(DataSource dataSource, String sqlDialect, String databaseStructure,
                                PromptTemplate promptTemplate, ChatModel chatModel, Integer maxRetries) {
@@ -55,11 +82,8 @@ public class AskdataSqlRetriever extends SqlDatabaseContentRetriever {
     public AskdataSqlRetriever(DataSource dataSource, String sqlDialect, String databaseStructure,
                                PromptTemplate promptTemplate, ChatModel chatModel, Integer maxRetries,
                                SchemaProvider schemaProvider) {
-        super(dataSource, sqlDialect, databaseStructure, promptTemplate, chatModel, maxRetries);
-        this.sqlDialect = sqlDialect;
-        this.promptTemplate = promptTemplate;
-        this.chatModel = chatModel;
-        this.schemaProvider = schemaProvider;
+        this(dataSource, sqlDialect, databaseStructure, promptTemplate, chatModel, maxRetries,
+                schemaProvider, false);
     }
 
     /**
@@ -124,15 +148,27 @@ public class AskdataSqlRetriever extends SqlDatabaseContentRetriever {
 
     /**
      * 作为 Assistant 的 RAG 检索器时需稳健：模型未生成合法 SQL 或执行失败不应让整轮对话失败，
-     * 降级为“无检索上下文”，交由对话模型直接回答。
+     * 降级为"无检索上下文"，交由对话模型直接回答。
      */
     @Override
     public List<Content> retrieve(Query query) {
+        if (generateOnly) {
+            // 宿主动态数据源：SQL 在宿主连接上执行，父类实现会在应用库上跑 SQL，
+            // 既无意义又会触发无谓重试；这里只生成并校验，执行由上层负责。
+            try {
+                validate(clean(generateSqlQuery(query, null, null)));
+            } catch (Exception ignored) {
+                // 生成/校验失败：lastSql 可能未更新，由上层按"未输出可执行 SQL"处理
+            }
+            return Collections.emptyList();
+        }
         try {
             return super.retrieve(query);
         } catch (Exception e) {
             return Collections.emptyList();
         }
     }
+
+
 }
 

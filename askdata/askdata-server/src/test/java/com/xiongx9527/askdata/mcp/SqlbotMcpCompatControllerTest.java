@@ -135,7 +135,7 @@ class SqlbotMcpCompatControllerTest {
     @Test
     void mcpModelListAndAssistantDelegate() throws Exception {
         when(tools.mcp_model_list(2L)).thenReturn("[]");
-        when(tools.mcp_assistant("hi", "http://x", "auth", false, null))
+        when(tools.mcp_assistant("hi", "http://x", "auth", false, null, null))
                 .thenReturn("{\"answer\":\"ok\"}");
         mvc.perform(post("/api/v1/mcp/mcp_model_list")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -147,7 +147,7 @@ class SqlbotMcpCompatControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.answer").value("ok"));
         verify(tools).mcp_model_list(2L);
-        verify(tools).mcp_assistant("hi", "http://x", "auth", false, null);
+        verify(tools).mcp_assistant("hi", "http://x", "auth", false, null, null);
     }
 
     @Test

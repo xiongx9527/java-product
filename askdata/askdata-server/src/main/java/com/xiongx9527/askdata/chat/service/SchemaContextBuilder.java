@@ -84,6 +84,19 @@ public class SchemaContextBuilder {
     /** §2.1: chat.* 运行参数来源（sqlbot_name 等）；单测环境可为 null。 */
     private final SysArgRepository sysArgRepository;
 
+    /**
+     * A9：SQLBot 提示词模板装载器（classpath prompt/template.yaml + sql_examples/&lt;方言&gt;.yaml）。
+     *
+     * <p>Setter 注入（required=false）：单测用旧构造器创建实例时退化为内置的精简提示词，
+     * 不影响既有用例；Spring 环境下走移植模板。</p>
+     */
+    private SqlPromptTemplates promptTemplates;
+
+    @Autowired(required = false)
+    public void setPromptTemplates(SqlPromptTemplates promptTemplates) {
+        this.promptTemplates = promptTemplates;
+    }
+
     @Autowired
     public SchemaContextBuilder(DatasourceRepository datasourceRepository, TableRepository tableRepository,
                                 FieldRepository fieldRepository, DatasourceService datasourceService,
@@ -331,12 +344,66 @@ public class SchemaContextBuilder {
     }
 
     /** 构建图表生成的 system + user 消息（data 为已执行结果 {fields, data}）。 */
+    /**
+     * A10：静态数据源的 m-schema 文本（图表生成上下文用）。
+     *
+     * @return schema 文本；失败时返回空串（调用方省略该段）
+     */
+    public String mSchemaOf(long dsId) {
+        try {
+            return buildSchemaText(dsId);
+        } catch (RuntimeException e) {
+            log.info("m-schema 读取失败（图表上下文省略该段）: {}", e.getMessage());
+            return "";
+        }
+    }
+
+    /**
+     * A10：动态数据源的 m-schema 文本（图表生成上下文用）。
+     *
+     * @param tableSqlTemplates 宿主下发的表级 SQL 模板（占位符表 → 子查询）
+     */
+    public String mSchemaOfConf(DatasourceType type, DatasourceConf conf,
+                                Map<String, String> tableSqlTemplates) {
+        try {
+            String text = buildSchemaTextForConf(type, conf, "");
+            if (tableSqlTemplates != null && !tableSqlTemplates.isEmpty()) {
+                StringBuilder sb = new StringBuilder(text);
+                appendDynamicTemplateSection(sb, tableSqlTemplates, "查询这些受限表时");
+                return sb.toString();
+            }
+            return text;
+        } catch (RuntimeException e) {
+            log.info("m-schema 读取失败（图表上下文省略该段）: {}", e.getMessage());
+            return "";
+        }
+    }
+
     public List<ModelMessage> buildChartMessages(String question, String dataJson) {
+        return buildChartMessages(question, dataJson, null, null);
+    }
+
+    /**
+     * 构建图表生成的 system + user 消息（A10：对齐 SQLBot {@code llm.py:1085-1130}）。
+     *
+     * <p>用户消息除问题与查询结果外，还携带三段上下文：{@code <sql>}（生成该结果的 SQL）、
+     * {@code <m-schema>}（数据源的 mini schema，供模型判断字段语义与多指标）、
+     * {@code <chart-type>}（结果暗示的图表类型）。缺省传 null 时相应段省略，行为与旧版一致。</p>
+     */
+    public List<ModelMessage> buildChartMessages(String question, String dataJson, String sql, String mSchema) {
         List<ModelMessage> messages = new ArrayList<>();
         messages.add(new ModelMessage("system", chartSystemPrompt()));
-        messages.add(new ModelMessage("user",
-                "【用户问题】\n" + question + "\n\n【查询结果（JSON，最多 20 行）】\n" + dataJson
-                        + "\n\n请只输出一个 G2 图表配置 JSON（不要 Markdown 代码块）。"));
+        StringBuilder user = new StringBuilder();
+        user.append("【用户问题】\n").append(question);
+        if (sql != null && !sql.trim().isEmpty()) {
+            user.append("\n\n<sql>\n").append(sql.trim()).append("\n</sql>");
+        }
+        if (mSchema != null && !mSchema.trim().isEmpty()) {
+            user.append("\n\n<m-schema>\n").append(mSchema.trim()).append("\n</m-schema>");
+        }
+        user.append("\n\n【查询结果（JSON，最多 20 行）】\n").append(dataJson);
+        user.append("\n\n请只输出一个 G2 图表配置 JSON（不要 Markdown 代码块）。");
+        messages.add(new ModelMessage("user", user.toString()));
         return messages;
     }
 
@@ -464,9 +531,9 @@ public class SchemaContextBuilder {
             byId.put(Rows.lng(table, "id", 0L), table);
         }
         StringBuilder sb = new StringBuilder();
-        int count = 0;
+        List<Long> included = new ArrayList<>();
         for (Long tableId : topTableIds(dsId, question, matchText, new ArrayList<>(byId.keySet()))) {
-            if (count >= MAX_TABLES) {
+            if (included.size() >= MAX_TABLES) {
                 break;
             }
             Map<String, Object> table = byId.get(tableId);
@@ -474,9 +541,129 @@ public class SchemaContextBuilder {
                 continue;
             }
             sb.append(tableBlock(dsId, table));
-            count++;
+            included.add(tableId);
         }
+        // A13：外键关系段（含未入选关联表的补全），对齐 SQLBot crud/datasource.py:604-666
+        appendForeignKeys(sb, dsId, included);
         return sb.toString();
+    }
+
+    /**
+     * A13：把数据源的表关系（{@code core_datasource.table_relation} 的 jointjs edge 列表）
+     * 渲染为提示词的 {@code 【Foreign keys】} 段，形如 {@code a.x=b.y}。
+     *
+     * <p>语义对齐 SQLBot {@code apps/datasource/crud/datasource.py:604-666}：</p>
+     * <ul>
+     *   <li>只保留与已进入提示词的表相关（source/target 任一 cell 命中）的边；</li>
+     *   <li>关系涉及但未入选提示词的表，按 SQLBot 的 "Complete the missing table" 补全其结构；</li>
+     *   <li>无表关系、解析失败或表结构缺失时静默省略该段（不影响主链路）。</li>
+     * </ul>
+     */
+    private void appendForeignKeys(StringBuilder sb, long dsId, List<Long> includedTableIds) {
+        String relationJson;
+        try {
+            relationJson = datasourceRepository.findTableRelation(dsId);
+        } catch (Exception e) {
+            log.info("读取表关系失败（省略外键段）: {}", e.getMessage());
+            return;
+        }
+        if (relationJson == null || relationJson.trim().isEmpty() || "null".equals(relationJson.trim())) {
+            return;
+        }
+        List<Map<String, Object>> edges = new ArrayList<>();
+        try {
+            com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(relationJson);
+            if (root == null || !root.isArray()) {
+                return;
+            }
+            for (com.fasterxml.jackson.databind.JsonNode cell : root) {
+                if (cell != null && "edge".equals(cell.path("shape").asText())) {
+                    edges.add(objectMapper.convertValue(cell, Map.class));
+                }
+            }
+        } catch (Exception e) {
+            log.info("解析表关系失败（省略外键段）: {}", e.getMessage());
+            return;
+        }
+        if (edges.isEmpty()) {
+            return;
+        }
+        java.util.Set<Long> included = new java.util.HashSet<>(includedTableIds);
+        List<Map<String, Object>> relevant = new ArrayList<>();
+        java.util.Set<Long> tableIds = new java.util.LinkedHashSet<>();
+        java.util.Set<Long> fieldIds = new java.util.LinkedHashSet<>();
+        for (Map<String, Object> edge : edges) {
+            Map<String, Object> source = asMap(edge.get("source"));
+            Map<String, Object> target = asMap(edge.get("target"));
+            if (source == null || target == null) {
+                continue;
+            }
+            long sourceCell = toLong(source.get("cell"));
+            long targetCell = toLong(target.get("cell"));
+            if (sourceCell <= 0 || targetCell <= 0) {
+                continue;
+            }
+            if (!included.contains(sourceCell) && !included.contains(targetCell)) {
+                continue;
+            }
+            relevant.add(edge);
+            tableIds.add(sourceCell);
+            tableIds.add(targetCell);
+            fieldIds.add(toLong(source.get("port")));
+            fieldIds.add(toLong(target.get("port")));
+        }
+        if (relevant.isEmpty()) {
+            return;
+        }
+        Map<Long, String> tableNames = tableRepository.tableNamesByIds(new ArrayList<>(tableIds));
+        Map<Long, String> fieldNames = fieldRepository.fieldNamesByIds(new ArrayList<>(fieldIds));
+        // 补全关系涉及但未进入提示词的表（SQLBot: Complete the missing table）
+        List<Long> lostIds = new ArrayList<>();
+        for (Long tableId : tableIds) {
+            if (!included.contains(tableId)) {
+                lostIds.add(tableId);
+            }
+        }
+        if (!lostIds.isEmpty()) {
+            for (Map<String, Object> lost : tableRepository.listByIds(lostIds)) {
+                sb.append(tableBlock(dsId, lost));
+            }
+        }
+        sb.append("【Foreign keys】\n");
+        for (Map<String, Object> edge : relevant) {
+            Map<String, Object> source = asMap(edge.get("source"));
+            Map<String, Object> target = asMap(edge.get("target"));
+            String sourceTable = tableNames.get(toLong(source.get("cell")));
+            String sourceField = fieldNames.get(toLong(source.get("port")));
+            String targetTable = tableNames.get(toLong(target.get("cell")));
+            String targetField = fieldNames.get(toLong(target.get("port")));
+            if (sourceTable == null || sourceField == null || targetTable == null || targetField == null) {
+                continue;
+            }
+            sb.append(sourceTable).append(".").append(sourceField)
+                    .append("=").append(targetTable).append(".").append(targetField).append("\n");
+        }
+    }
+
+    /** A13：jointjs 端点的 source/target 节点转为 Map。 */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> asMap(Object value) {
+        return value instanceof Map ? (Map<String, Object>) value : null;
+    }
+
+    /** A13：jointjs 节点的 cell/port id（可能为字符串数字）转为 long，非法值返回 0。 */
+    private static long toLong(Object value) {
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        if (value instanceof String) {
+            try {
+                return Long.parseLong(((String) value).trim());
+            } catch (NumberFormatException e) {
+                return 0L;
+            }
+        }
+        return 0L;
     }
 
     /**
@@ -681,6 +868,23 @@ public class SchemaContextBuilder {
                                                       String terminologyText, String customPromptText,
                                                       String historyText, String matchText,
                                                       Map<String, String> tableSqlTemplates) {
+        return buildSqlMessagesForConf(question, type, conf, terminologyText, customPromptText, historyText,
+                matchText, tableSqlTemplates, null);
+    }
+
+    /**
+     * 构建 SQL 生成消息（动态数据源版，A8 / §2.4 / A18）。
+     *
+     * @param tableSqlTemplates §2.4: 表级 SQL 模板（表名 -> 子查询模板）；非空时作为 CTE/子查询提示注入，
+     *                          要求模型在最终 SQL 中优先复用这些已下发的子查询（对齐 SQLBot dynamic_sql）。
+     * @param tableRules        A18: 宿主下发的表级行规则（表名 -> WHERE 条件片段）；非空时告知模型这些
+     *                          数据边界，执行前还会由 ChatQuestionService 确定性注入。
+     */
+    public List<ModelMessage> buildSqlMessagesForConf(String question, DatasourceType type, DatasourceConf conf,
+                                                      String terminologyText, String customPromptText,
+                                                      String historyText, String matchText,
+                                                      Map<String, String> tableSqlTemplates,
+                                                      Map<String, String> tableRules) {
         List<ModelMessage> messages = new ArrayList<>();
         messages.add(new ModelMessage("system", sqlSystemPrompt(false, type)));
         StringBuilder user = new StringBuilder();
@@ -693,6 +897,12 @@ public class SchemaContextBuilder {
         }
         if (tableSqlTemplates != null && !tableSqlTemplates.isEmpty()) {
             appendDynamicTemplateSection(user, tableSqlTemplates, "查询这些受限表时");
+        }
+        if (tableRules != null && !tableRules.isEmpty()) {
+            String rules = com.xiongx9527.askdata.embedded.DynamicDatasource.rowRulesPromptSection(tableRules);
+            if (!rules.isEmpty()) {
+                user.append("\n\n【宿主数据边界（行规则，必须满足；系统执行前会强制注入）】\n").append(rules);
+            }
         }
         if (historyText != null && !historyText.isEmpty()) {
             user.append("\n\n【前文问答（追问请优先引用其中已出现的表名、列名与实体）】\n").append(historyText);
@@ -1012,7 +1222,22 @@ public class SchemaContextBuilder {
      */
     private String sqlSystemPrompt(boolean withTraining, DatasourceType dialect) {
         String name = chatArg("chat.sqlbot_name", "SQLBot");
-        boolean rowLimit = Boolean.parseBoolean(chatArg("chat.limit_rows", "false"));
+        boolean rowLimit = Boolean.parseBoolean(chatArg("chat.limit_rows", "true"));
+        // A9：注入移植模板（SQLBot backend/templates/template.yaml + sql_examples/<方言>.yaml）。
+        // 模板缺失或读取失败时退回到下方内置精简提示词，保证问数链路可用。
+        if (promptTemplates != null) {
+            try {
+                String ported = promptTemplates.sqlSystemPrompt(dialect, rowLimit, name);
+                if (ported != null && !ported.trim().isEmpty()) {
+                    if (withTraining) {
+                        ported = ported + "\n\n已提供 SQL 样例作为参考，优先对齐其风格。";
+                    }
+                    return ported;
+                }
+            } catch (RuntimeException e) {
+                log.info("提示词模板读取失败，退化为内置提示词: {}", e.getMessage());
+            }
+        }
         StringBuilder sb = new StringBuilder();
         sb.append("你是一个严谨的数据库 SQL 专家，服务于一个中文问数（NL2SQL）系统")
                 .append(name)
@@ -1077,7 +1302,21 @@ public class SchemaContextBuilder {
         }
     }
 
-    private static String chartSystemPrompt() {
+    /**
+     * 图表生成 system 提示词（A9：优先使用移植的 SQLBot chart 模板；
+     * 模板不可用时退化为内置精简说明）。
+     */
+    private String chartSystemPrompt() {
+        if (promptTemplates != null) {
+            try {
+                String ported = promptTemplates.chartSystemPrompt(chatArg("chat.sqlbot_name", "SQLBot"));
+                if (ported != null && !ported.trim().isEmpty()) {
+                    return ported;
+                }
+            } catch (RuntimeException e) {
+                log.info("图表提示词模板读取失败，退化为内置提示词: {}", e.getMessage());
+            }
+        }
         return "你是数据可视化专家。根据查询结果输出一个 G2 图表配置 JSON，字段说明：\n"
                 + "type: column(柱状)/bar(条形)/line(折线)/pie(饼图)/area(面积)/table(表格)；\n"
                 + "title: 标题字符串；\n"
@@ -1085,6 +1324,7 @@ public class SchemaContextBuilder {
                 + "axis: {x:{name,value}, y:{name,value} 或 [{name,value}], series?:{name,value}}。\n"
                 + "只输出 JSON，不要 Markdown 代码块。";
     }
+
 
     private static String analysisSystemPrompt() {
         return "你是数据分析专家。基于查询结果与图表，输出简洁的分析结论（使用中文 Markdown，可含要点列表）。";

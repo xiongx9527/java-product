@@ -104,7 +104,7 @@ class EngineExecutionParityTest {
         conf.setPassword("");
 
         ConnectionPoolManager poolManager = mock(ConnectionPoolManager.class);
-        when(poolManager.borrow(anyString(), any())).thenAnswer(inv ->
+        when(poolManager.borrow(anyString(), any(), any())).thenAnswer(inv ->
                 ((ConnectionPoolManager.ConnectionFactory) inv.getArgument(1)).create());
 
         JdbcEngine engine = new JdbcEngine(mock(JdbcTemplate.class), objectMapper, poolManager);
@@ -122,17 +122,23 @@ class EngineExecutionParityTest {
     }
 
     @Test
-    void missingDriverReturnsReadableError() {
+    void unreachableDatasourceReturnsReadableError() throws Exception {
         DatasourceConf conf = baseConf();
         conf.setHost("localhost");
         conf.setPort(1521);
         ConnectionPoolManager poolManager = mock(ConnectionPoolManager.class);
+        // A8：六类驱动已随包（runtime scope），连接不再因「驱动缺失」失败；此处让池管理器
+        // 真正执行借出逻辑，从而走真实连接失败路径，验证错误可读而非 NPE。
+        when(poolManager.borrow(any(), any(), any())).thenAnswer(invocation -> {
+            ConnectionPoolManager.ConnectionFactory factory = invocation.getArgument(1);
+            return factory.create();
+        });
         JdbcEngine engine = new JdbcEngine(mock(JdbcTemplate.class), objectMapper, poolManager);
-        // 达梦驱动未随包（仅 Oracle/SQLServer 作为 test 范围驱动引入），tables 应在打开连接时
-        // 抛出可读的「驱动缺失」错误，而非 NPE。
         DatasourceException ex = assertThrows(DatasourceException.class,
                 () -> engine.tables(DatasourceType.DM, conf));
-        assertTrue(ex.getMessage().toLowerCase().contains("driver"), ex.getMessage());
+        // 驱动已随包：失败走「查询元数据失败: <连接原因>」而不是 NPE / 驱动缺失
+        assertTrue(ex.getMessage() != null && !ex.getMessage().isEmpty()
+                && !ex.getMessage().contains("not found"), ex.getMessage());
     }
 }
 

@@ -33,6 +33,10 @@ public class DatasourceConf {
     private boolean lowVersion;
     private boolean ssl;
     private int poolSize = 5;
+    /** A21：并发高峰可额外创建的连接数（SQLAlchemy max_overflow 语义）。 */
+    private int maxOverflow = 10;
+    /** A21：池满时等待空闲连接的超时（秒）。 */
+    private int poolTimeout = 30;
     private String engine = "hive";
 
     public String getHost() {
@@ -153,6 +157,24 @@ public class DatasourceConf {
 
     public void setPoolSize(Object value) {
         this.poolSize = toInt(value, 5);
+    }
+
+    public int getMaxOverflow() {
+        return maxOverflow;
+    }
+
+    @com.fasterxml.jackson.annotation.JsonAlias({"max_overflow"})
+    public void setMaxOverflow(Object value) {
+        this.maxOverflow = toInt(value, 10);
+    }
+
+    public int getPoolTimeout() {
+        return poolTimeout;
+    }
+
+    @com.fasterxml.jackson.annotation.JsonAlias({"pool_timeout"})
+    public void setPoolTimeout(Object value) {
+        this.poolTimeout = toInt(value, 30);
     }
 
     public String getEngine() {

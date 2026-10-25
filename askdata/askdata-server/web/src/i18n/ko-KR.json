@@ -833,6 +833,7 @@
     "title": "정보",
     "auth_to": "다음에 인증됨",
     "invalid_license": "라이선스가 유효하지 않습니다",
+    "license_invalid_tips": "라이선스가 유효하지 않습니다. 기업 IM QR 로그인, 플랫폼 사용자 동기화 등 엔터프라이즈 기능을 사용할 수 없습니다. 「정보」 페이지에서 라이선스를 업데이트하세요.",
     "update_license": "라이선스 업데이트",
     "expiration_time": "만료 시간",
     "expirationed": "(만료됨)",

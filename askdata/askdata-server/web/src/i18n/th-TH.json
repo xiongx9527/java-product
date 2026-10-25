@@ -833,6 +833,7 @@
     "title": "เกี่ยวกับ",
     "auth_to": "อนุญาตให้",
     "invalid_license": "License ไม่ถูกต้อง",
+    "license_invalid_tips": "License ไม่ถูกต้อง: ฟีเจอร์ระดับองค์กร เช่น การเข้าสู่ระบบด้วย QR ของ enterprise IM และการซิงก์ผู้ใช้แพลตฟอร์มจะไม่สามารถใช้งานได้ กรุณาอัปเดต License ได้ที่หน้า เกี่ยวกับ",
     "update_license": "อัปเดต License",
     "expiration_time": "เวลาหมดอายุ",
     "expirationed": "(หมดอายุแล้ว)",

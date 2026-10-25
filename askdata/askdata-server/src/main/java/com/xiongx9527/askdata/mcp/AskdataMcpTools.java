@@ -17,6 +17,8 @@ import com.xiongx9527.askdata.chat.service.ChatService;
 import com.xiongx9527.askdata.common.i18n.I18n;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
+import com.xiongx9527.askdata.embedded.DynamicDatasource;
+import com.xiongx9527.askdata.embedded.DynamicDatasourceResolver;
 import dev.langchain4j.model.chat.ChatModel;
 import com.xiongx9527.askdata.common.audit.AuditModule;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
@@ -612,20 +614,50 @@ public class AskdataMcpTools {
     }
 
     /**
-     * 兼容 SQLBot mcp_assistant → assistant。
+     * 兼容 SQLBot {@code mcp_assistant}（Cordys CRM 虚拟用户链路）。
      *
-     * <p>SQLBot 该工具面向 Cordys CRM，入参为 {@code question/url/authorization/stream}，由虚拟用户
-     * 调第三方数据接口；askdata 侧只保留问答能力——{@code url/authorization} 接受但忽略（第三方凭据
-     * 不落 askdata 配置），{@code stream} 同样忽略（MCP 工具层单次返回 JSON）。问题文本优先取
-     * {@code question}，同时兼容 askdata 早期调用方使用的 {@code message}。</p>
+     * <p>下发 {@code url} + {@code authorization} 时：按 SQLBot 的虚拟助手形态
+     * （{@code configuration={"endpoint": url}} + {@code certificate=authorization}）从第三方
+     * 数据接口拉取数据源列表，并在该数据源上完成本次问数（生成 SQL → 只读执行 → 返回
+     * {@code question/sql/dialect/rows}）。宿主返回多个数据源时取第一个，也可用
+     * {@code datasourceId} 指定宿主侧数据源 id。未下发 {@code url} 时退化为本地
+     * {@link #assistant(String)} 问答（askdata 早期行为）。</p>
+     *
+     * <p>{@code stream} 接受但忽略：MCP 工具层单次返回 JSON（对齐 SQLBot {@code stream=false}
+     * 的 JSON 形态）。问题文本优先取 {@code question}，同时兼容早期调用方的 {@code message}。</p>
      */
-    @Tool(value = "mcp_assistant", description = "兼容 SQLBot mcp_assistant：问数助手对话（question/url/authorization/stream）")
+    @Tool(value = "mcp_assistant", description = "兼容 SQLBot mcp_assistant：第三方数据接口问数（question/url/authorization/stream/datasourceId）")
     public String mcp_assistant(@ToolArg(value = "question", required = false) String question,
                                 @ToolArg(value = "url", required = false) String url,
                                 @ToolArg(value = "authorization", required = false) String authorization,
                                 @ToolArg(value = "stream", required = false) Boolean stream,
-                                @ToolArg(value = "message", required = false) String message) throws Exception {
+                                @ToolArg(value = "message", required = false) String message,
+                                @ToolArg(value = "datasourceId", required = false) Long datasourceId)
+            throws Exception {
         String ask = question != null && !question.trim().isEmpty() ? question : message;
-        return assistant(ask);
+        // 未下发第三方数据接口：本地助手问答（askdata 早期行为）
+        if (url == null || url.trim().isEmpty()) {
+            return assistant(ask);
+        }
+        ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
+        try {
+            Map<String, AskdataNl2Sql> beans = SpringUtils.getBeansOfType(AskdataNl2Sql.class);
+            if (beans.isEmpty()) {
+                Map<String, Object> err = new LinkedHashMap<String, Object>();
+                err.put("error", I18n.msg("mcp.error.question.answer.not.assembled"));
+                return mapper.writeValueAsString(err);
+            }
+            DynamicDatasourceResolver resolver = SpringUtils.getBean(DynamicDatasourceResolver.class);
+            Map<String, Object> hostEndpoint = resolver.hostEndpointFromMcp(url, authorization);
+            DynamicDatasource dynamic = datasourceId != null
+                    ? resolver.resolveFromHostList(DynamicDatasourceResolver.TYPE_ADVANCED_APP,
+                    hostEndpoint, datasourceId)
+                    : resolver.resolveFirstFromHostList(DynamicDatasourceResolver.TYPE_ADVANCED_APP,
+                    hostEndpoint);
+            Map<String, Object> result = beans.values().iterator().next().ask(ask, dynamic, null);
+            return mapper.writeValueAsString(result);
+        } catch (Exception e) {
+            return errorJson(mapper, "mcp_assistant", e);
+        }
     }
 }

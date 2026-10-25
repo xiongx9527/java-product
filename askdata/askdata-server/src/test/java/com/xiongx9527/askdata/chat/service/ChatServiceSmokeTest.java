@@ -109,7 +109,13 @@ class ChatServiceSmokeTest {
         assertEquals(dsId, Rows.lng(chat, "datasource", 0L));
         assertEquals("askdata_demo 演示库", chat.get("datasource_name"));
         assertEquals(true, chat.get("datasource_exists"));
-        assertEquals(0, ((List<?>) chat.get("records")).size());
+        // A17：创建会话即生成 first_chat=TRUE 的空记录（对齐 SQLBot create_chat），
+        // 前端据 first_chat 标记跳过该记录的提问气泡
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> startRecords = (List<Map<String, Object>>) chat.get("records");
+        assertEquals(1, startRecords.size());
+        assertEquals(true, startRecords.get(0).get("first_chat"));
+        assertNull(startRecords.get(0).get("question"));
 
         // assistant/start（嵌入通道 origin=2）
         Map<String, Object> embedded = chatService.start(Rows.of("datasource", dsId, "origin", 2));
@@ -133,15 +139,18 @@ class ChatServiceSmokeTest {
         Map<String, Object> loaded = chatService.get(chatId, true);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> records = (List<Map<String, Object>>) loaded.get("records");
-        assertEquals(1, records.size());
-        assertEquals("每个状态的订单数", records.get(0).get("question"));
-        assertEquals("SELECT status FROM orders", records.get(0).get("sql"));
-        assertEquals(true, records.get(0).get("finish"));
-        assertEquals(33L, ((Number) records.get(0).get("total_tokens")).longValue());
+        // A17：首条 first_chat 空记录 + 本条真实记录
+        assertEquals(2, records.size());
+        assertEquals(true, records.get(0).get("first_chat"));
+        Map<String, Object> real = records.get(1);
+        assertEquals("每个状态的订单数", real.get("question"));
+        assertEquals("SELECT status FROM orders", real.get("sql"));
+        assertEquals(true, real.get("finish"));
+        assertEquals(33L, ((Number) real.get("total_tokens")).longValue());
         @SuppressWarnings("unchecked")
-        Map<String, Object> data = (Map<String, Object>) records.get(0).get("data");
+        Map<String, Object> data = (Map<String, Object>) real.get("data");
         assertEquals(1, ((List<?>) data.get("data")).size());
-        assertEquals("[\"追问1\"]", records.get(0).get("recommended_question"));
+        assertEquals("[\"追问1\"]", real.get("recommended_question"));
 
         // 记录端点（data / predict_data / log / usage）
         assertEquals(1, ((List<?>) chatService.recordData(recordId).get("data")).size());
@@ -162,7 +171,7 @@ class ChatServiceSmokeTest {
         assertEquals(45L, ((Number) steps.get(0).get("total_tokens")).longValue());
         // usage 只保留有 token 的步骤
         chatRepository.insertLog(recordId, 1L, 1L, new java.sql.Timestamp(System.currentTimeMillis()),
-                new java.sql.Timestamp(System.currentTimeMillis()), 5L, 0L, "execute_sql", true, false, null);
+                new java.sql.Timestamp(System.currentTimeMillis()), 5L, 0L, "EXECUTE_SQL", true, false, null);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> usageSteps = (List<Map<String, Object>>) chatService.recordLog(recordId, true)
                 .get("steps");

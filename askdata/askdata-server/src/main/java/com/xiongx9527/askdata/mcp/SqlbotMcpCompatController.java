@@ -177,11 +177,12 @@ public class SqlbotMcpCompatController {
         }
     }
 
-    /** POST /mcp_assistant：body McpAssistant{question, url?, authorization?, stream?} → 助手对话结果。 */
+    /** POST /mcp_assistant：body McpAssistant{question, url?, authorization?, stream?, datasourceId?} → 问数结果。 */
     @PostMapping("/mcp_assistant")
     public ResponseEntity<String> mcpAssistant(@RequestBody(required = false) JsonNode body) throws Exception {
         return respond(tools.get().mcp_assistant(text(body, "question"), text(body, "url"),
-                text(body, "authorization"), boolOrNull(body, "stream"), text(body, "message")));
+                text(body, "authorization"), boolOrNull(body, "stream"), text(body, "message"),
+                longOrNull(body, "datasourceId")));
     }
 
     /** 工具 JSON → HTTP 响应：含 error 键转 400 {"detail"}（镜像 SQLBot HTTPException），否则 200 原样。 */

@@ -31,8 +31,12 @@ public class AppearanceService {
 
     private final SysArgRepository sysArgRepository;
 
-    public AppearanceService(SysArgRepository sysArgRepository) {
+    private final com.xiongx9527.askdata.common.util.IdGenerator idGenerator;
+
+    public AppearanceService(SysArgRepository sysArgRepository,
+                             com.xiongx9527.askdata.common.util.IdGenerator idGenerator) {
         this.sysArgRepository = sysArgRepository;
+        this.idGenerator = idGenerator;
     }
 
     /**
@@ -54,6 +58,35 @@ public class AppearanceService {
             result.add(item);
         }
         return result;
+    }
+
+    /**
+     * 保存外观配置（A5：{@code POST /system/appearance}）。
+     *
+     * <p>入参为前端 {@code views/system/appearance/index.vue} 提交的变更项数组
+     * {@code [{pkey, pval, ptype, sort}]} 与已落库的文件 id 映射；逐项 upsert 到 sys_arg，
+     * 存储键加 {@code appearance.} 前缀。</p>
+     *
+     * @param items 变更项（pkey 为去掉前缀的名字）
+     * @return 实际写入的键数量
+     */
+    @org.springframework.transaction.annotation.Transactional
+    public int save(List<Map<String, Object>> items) {
+        if (items == null || items.isEmpty()) {
+            return 0;
+        }
+        int written = 0;
+        for (Map<String, Object> item : items) {
+            String pkey = Rows.str(item, "pkey");
+            if (pkey == null || pkey.isEmpty()) {
+                continue;
+            }
+            String fullKey = pkey.startsWith(APPEARANCE_PREFIX) ? pkey : APPEARANCE_PREFIX + pkey;
+            String pval = item.get("pval") == null ? null : String.valueOf(item.get("pval"));
+            sysArgRepository.upsert(idGenerator.nextId(), fullKey, pval);
+            written++;
+        }
+        return written;
     }
 
     /** 剥掉 {@code appearance.} 前缀。 */

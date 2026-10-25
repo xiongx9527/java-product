@@ -1,4 +1,10 @@
 <template>
+  <div v-if="licenseInvalidTips" class="card license-invalid-tips">
+    <div class="card-title">{{ t('about.invalid_license') }}</div>
+    <div class="card-item" style="width: 100%">
+      <div class="value">{{ licenseInvalidTips }}</div>
+    </div>
+  </div>
   <div v-if="xpackValid" class="card">
     <div class="card-title">
       {{ t('parameter.third_party_platform_settings') }}
@@ -121,6 +127,9 @@ const formData = inject<Record<string, any>>('parameterForm', {})
 
 const xpackValid = ref(false)
 
+// A29：许可证无效提示（真实状态来自 GET /system/license）
+const licenseInvalidTips = ref('')
+
 const organizations = shallowRef<any[]>([])
 const roles = [
   {
@@ -154,7 +163,9 @@ onMounted(async () => {
   // eslint-disable-next-line no-undef
   const obj = LicenseGenerator.getLicense()
   if (obj?.status !== 'valid') {
+    // A29：许可证无效时给出明确提示，不再静默隐藏整个企业参数区
     xpackValid.value = false
+    licenseInvalidTips.value = t('about.license_invalid_tips')
     return
   }
   const wsRes: any = await workspaceList()
@@ -181,6 +192,14 @@ onMounted(async () => {
 </script>
 
 <style lang="less" scoped>
+.license-invalid-tips {
+  border-color: var(--ed-color-danger, #f54a45);
+  .value {
+    color: #646a73;
+    font-size: 14px;
+    line-height: 22px;
+  }
+}
 .card {
   width: 100%;
   border-radius: 12px;

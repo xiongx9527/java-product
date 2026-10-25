@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.audit.AuditModule;
+import com.xiongx9527.askdata.common.web.CorsConfig;
 import com.xiongx9527.askdata.common.audit.AuditLog;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.common.util.Rows;
@@ -20,6 +21,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,6 +36,9 @@ import java.util.UUID;
  */
 @Service
 public class AssistantService {
+
+    /** A24：助手 UI 的图片配置键（对齐 SQLBot ui 端点的 logo / float_icon）。 */
+    private static final List<String> IMAGE_FLAGS = Arrays.asList("logo", "float_icon");
     @Autowired
     private MessageResolver messageResolver;
 
@@ -53,13 +58,17 @@ public class AssistantService {
 
     private final DynamicDatasourceResolver dynamicDatasourceResolver;
 
+    /** A25：助手域名变更时即时刷新 CORS 动态 origin（对齐 SQLBot 运行时加入 allow_origins）。 */
+    private final CorsConfig corsConfig;
+
     private final SecureRandom random = new SecureRandom();
 
     public AssistantService(AssistantRepository assistantRepository, DatasourceRepository datasourceRepository,
                             CurrentUserService currentUserService, AssistantFileStorage fileStorage,
                             AuditRecorder auditRecorder, ObjectMapper objectMapper,
                             DatasourceService datasourceService,
-                            DynamicDatasourceResolver dynamicDatasourceResolver) {
+                            DynamicDatasourceResolver dynamicDatasourceResolver,
+                            CorsConfig corsConfig) {
         this.assistantRepository = assistantRepository;
         this.datasourceRepository = datasourceRepository;
         this.currentUserService = currentUserService;
@@ -68,6 +77,7 @@ public class AssistantService {
         this.objectMapper = objectMapper;
         this.datasourceService = datasourceService;
         this.dynamicDatasourceResolver = dynamicDatasourceResolver;
+        this.corsConfig = corsConfig;
     }
 
     // ------------------------------------------------------------------
@@ -113,7 +123,8 @@ public class AssistantService {
      * 此处从 configuration(JSON) 读取 {@code online}，缺失时默认 true（返回该 oid 全部数据源）。
      */
     public List<Map<String, Object>> datasources(Long assistantId) {
-        currentUserService.requireWsAdmin();
+        // A24：嵌入页取数据源只要求登录（对齐 SQLBot GET /system/assistant/ds 无 ws_admin 限制）
+        currentUserService.currentUser();
         Map<String, Object> assistant;
         if (assistantId != null) {
             assistant = assistantRepository.findById(assistantId)
@@ -202,6 +213,7 @@ public class AssistantService {
                 Rows.str(body, "configuration"), newAppId(), newAppSecret(), createOid,
                 Rows.bool(body, "enable_custom_model", false), Rows.str(body, "custom_model"),
                 System.currentTimeMillis() / 1000);
+        registerCorsDomain(domain);
         return view(assistantRepository.findById(id)
                 .orElseThrow(() -> new BadRequestException(messageResolver.get("assistant.not.found.simple"))));
     }
@@ -223,6 +235,16 @@ public class AssistantService {
         assistantRepository.update(id, requiredText(body, "name"), intOf(body.get("type"), 0),
                 requiredText(body, "domain"), Rows.str(body, "description"), Rows.str(body, "configuration"),
                 oid, Rows.bool(body, "enable_custom_model", false), Rows.str(body, "custom_model"));
+        registerCorsDomain(requiredText(body, "domain"));
+    }
+
+    /** A25：把助手域名加入 CORS 动态允许来源（失败不影响主链路）。 */
+    private void registerCorsDomain(String domain) {
+        try {
+            corsConfig.addDynamicOrigins(CorsConfig.splitDomains(domain));
+        } catch (Exception ignored) {
+            // CORS 刷新失败不影响助手创建/更新
+        }
     }
 
     /** DELETE /system/assistant/{id}。 */
@@ -255,6 +277,9 @@ public class AssistantService {
         Map<String, Object> existing = assistantRepository.findById(id)
                 .orElseThrow(() -> new BadRequestException(messageResolver.get("assistant.not.found", id)));
         Map<String, Object> config = parseConfig(Rows.str(existing, "configuration"));
+        // A24：本次请求显式设置的图片键（替换时据此删除旧文件；对齐 SQLBot uiSchema.model_dump
+        // 的「只含本次显式字段」语义）
+        java.util.Set<String> replacedFlags = new java.util.LinkedHashSet<>();
         if (files != null) {
             for (MultipartFile file : files) {
                 String filename = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
@@ -263,7 +288,13 @@ public class AssistantService {
                 if (!"logo".equals(flag) && !"float_icon".equals(flag)) {
                     throw new BadRequestException(messageResolver.get("assistant.file.flag.unsupported", flag));
                 }
+                // A24：替换前删除旧文件（对齐 SQLBot ui 端点的 delete_file 分支）
+                Object previous = config.get(flag);
+                if (previous != null && !String.valueOf(previous).isEmpty()) {
+                    fileStorage.delete(String.valueOf(previous));
+                }
                 config.put(flag, fileStorage.save(file, filename));
+                replacedFlags.add(flag);
             }
         }
         for (Map.Entry<String, Object> entry : uiSchema.entrySet()) {
@@ -271,7 +302,22 @@ public class AssistantService {
             if ("id".equals(key) || key.startsWith("__")) {
                 continue;
             }
+            if (("logo".equals(key) || "float_icon".equals(key))
+                    && entry.getValue() != null && !String.valueOf(entry.getValue()).isEmpty()) {
+                replacedFlags.add(key);
+            }
             config.put(key, entry.getValue());
+        }
+        // A24：本次未设置的图片键置空并删除旧文件（对齐 SQLBot assistant.py:221-225 的清空分支）
+        for (String flag : IMAGE_FLAGS) {
+            if (replacedFlags.contains(flag)) {
+                continue;
+            }
+            Object previous = config.get(flag);
+            if (previous != null && !String.valueOf(previous).isEmpty()) {
+                fileStorage.delete(String.valueOf(previous));
+                config.put(flag, null);
+            }
         }
         assistantRepository.updateConfiguration(id, objectMapper.writeValueAsString(config));
     }

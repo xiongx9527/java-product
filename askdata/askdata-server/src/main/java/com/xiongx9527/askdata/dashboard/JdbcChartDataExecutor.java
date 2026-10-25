@@ -2,6 +2,7 @@ package com.xiongx9527.askdata.dashboard;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xiongx9527.askdata.datasource.support.DatasourceCrypto;
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -94,8 +95,8 @@ public class JdbcChartDataExecutor implements ChartDataExecutor {
         if (configuration == null || configuration.isEmpty()) {
             return new LinkedHashMap<>();
         }
-        String plain = CryptoUtil.decryptSqlbot(configuration);
-        String json = plain != null ? plain : configuration;
+        // 与 DatasourceService 落库形态保持一致：应用 SECRET_KEY 优先，SQLBot 前端密钥回退。
+        String json = DatasourceCrypto.decodeConfiguration(configuration);
         JsonNode node = objectMapper.readTree(json);
         Map<String, Object> config = new LinkedHashMap<>();
         node.fields().forEachRemaining(entry -> config.put(entry.getKey(),

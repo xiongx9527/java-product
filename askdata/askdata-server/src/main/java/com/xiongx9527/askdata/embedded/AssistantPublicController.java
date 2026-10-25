@@ -52,9 +52,10 @@ public class AssistantPublicController {
     /**
      * GET /system/assistant/info/{id}：助手信息 + 访问 token。
      *
-     * <p>SQLBot 侧还要求 {@code SQLBOT-EMBEDDED-SIGN} 请求头（xpack 的签名校验）。
-     * askdata 无该 xpack 能力，改为等价的 <b>origin 与助手 domain 匹配</b>判定：
-     * 匹配才返回助手信息与 token，不匹配直接拒绝。</p>
+     * <p><b>A7 安全边界</b>（对齐 SQLBot xpack {@code SQLBOT-EMBEDDED-SIGN} 校验）：
+     * 除 origin 与助手 domain 匹配外，还必须携带合法签名头——签名头含 assistantId、
+     * 时间戳与 HMAC-SHA256(app_secret, ...)，校验 assistantId 一致性、时间窗与
+     * webdriver UA。仅伪造 Origin 头不足以换取 token。</p>
      */
     @GetMapping({"/system/assistant/info/{id}"})
     public ResponseEntity<Result<Map<String, Object>>> info(@PathVariable long id,
@@ -63,6 +64,7 @@ public class AssistantPublicController {
         Map<String, Object> assistant = assistantRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("assistant application not exist"));
         String origin = requireMatchedOrigin(request, assistant);
+        requireEmbeddedSign(request, assistant, id);
 
         long assistantOid = 1L;
         if (Rows.intg(assistant, "type", 0) == 0) {
@@ -116,6 +118,25 @@ public class AssistantPublicController {
         return ResponseEntity.ok()
                 .header("Access-Control-Allow-Origin", origin)
                 .body(Result.ok(result));
+    }
+
+    /**
+     * A7：校验嵌入签名头（{@code SQLBOT-EMBEDDED-SIGN}）。
+     *
+     * <p>签名密钥为助手的 {@code app_secret}；未配置 app_secret 的助手视为未开放嵌入，
+     * 直接拒绝。</p>
+     */
+    private void requireEmbeddedSign(HttpServletRequest request, Map<String, Object> assistant, long assistantId) {
+        String appSecret = Rows.str(assistant, "app_secret");
+        if (appSecret == null || appSecret.isEmpty()) {
+            throw new IllegalArgumentException("embedded sign is not available for this assistant");
+        }
+        String header = request.getHeader(EmbeddedSigner.HEADER);
+        boolean ok = EmbeddedSigner.valid(header, assistantId, appSecret, request.getHeader("User-Agent"),
+                System.currentTimeMillis() / 1000L);
+        if (!ok) {
+            throw new IllegalArgumentException("invalid embedded sign");
+        }
     }
 
     /**

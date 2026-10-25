@@ -208,7 +208,7 @@ VALUES (7, 'chat.expand_thinking_block', 'false', 'str', 7);
 
 MERGE INTO sys_arg (id, pkey, pval, ptype, sort_no)
 KEY (id)
-VALUES (8, 'chat.limit_rows', 'false', 'str', 8);
+VALUES (8, 'chat.limit_rows', 'true', 'str', 8);
 
 MERGE INTO sys_arg (id, pkey, pval, ptype, sort_no)
 KEY (id)
@@ -655,6 +655,9 @@ ALTER TABLE chat_record ADD COLUMN IF NOT EXISTS datasource_select_answer CLOB;
 ALTER TABLE chat_record ADD COLUMN IF NOT EXISTS extracted_keywords CLOB;
 ALTER TABLE chat_record ADD COLUMN IF NOT EXISTS expanded_keywords CLOB;
 
+-- A12：token 用量明细（input/output），与 total_tokens 一起支撑 /chat/record/{rid}/log 与 usage
+ALTER TABLE chat_log ADD COLUMN IF NOT EXISTS input_tokens BIGINT;
+ALTER TABLE chat_log ADD COLUMN IF NOT EXISTS output_tokens BIGINT;
 ALTER TABLE chat_log ADD COLUMN IF NOT EXISTS type VARCHAR(255);
 ALTER TABLE chat_log ADD COLUMN IF NOT EXISTS pid BIGINT;
 ALTER TABLE chat_log ADD COLUMN IF NOT EXISTS ai_modal_id BIGINT;
@@ -662,6 +665,26 @@ ALTER TABLE chat_log ADD COLUMN IF NOT EXISTS base_modal VARCHAR(255);
 ALTER TABLE chat_log ADD COLUMN IF NOT EXISTS reasoning_content CLOB;
 
 -- =====================================================================
+-- ---------------------------------------------------------------------
+-- 许可证（A28：POST/GET /system/license 持久化；status valid/invalid/expired）
+-- 仅保留最新一条（id 固定为 1），上传即覆盖；license 为许可证原文（JSON）。
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sys_license (
+    id          BIGINT PRIMARY KEY,
+    license     VARCHAR(20000) NOT NULL,
+    status      VARCHAR(32)    NOT NULL DEFAULT 'invalid',
+    version     VARCHAR(64),
+    edition     VARCHAR(64),
+    corporation VARCHAR(255),
+    count       INT,
+    serial_no   VARCHAR(128),
+    remark      VARCHAR(1000),
+    isv         VARCHAR(255),
+    expire_at   BIGINT,
+    fail_reason VARCHAR(1000),
+    create_time BIGINT          NOT NULL DEFAULT 0
+);
+
 -- askdata-sqlbot-full-parity / auth-whitelist：SSO 认证源与企业平台同步表（append）
 -- =====================================================================
 -- askdata-sqlbot-full-parity / auth-whitelist：SSO 认证源与企业平台同步表

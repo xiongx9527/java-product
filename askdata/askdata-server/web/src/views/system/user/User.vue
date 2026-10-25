@@ -25,9 +25,9 @@
         </el-button>
 
         <el-tooltip
-          v-if="!platformType.length && showSyncBtn"
+          v-if="!platformType.length && (showSyncBtn || licenseInvalid)"
           effect="dark"
-          :content="$t('sync.integration')"
+          :content="syncTips"
           placement="left"
         >
           <el-button disabled secondary>
@@ -39,7 +39,7 @@
         </el-tooltip>
 
         <el-popover
-          v-if="platformType.length && showSyncBtn"
+          v-if="platformType.length && showSyncBtn && !licenseInvalid"
           popper-class="sync-platform"
           placement="bottom-start"
         >
@@ -557,7 +557,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, unref, reactive, onMounted, nextTick, h, shallowRef } from 'vue'
+import { ref, unref, reactive, computed, onMounted, nextTick, h, shallowRef } from 'vue'
 import UserImport from './UserImport.vue'
 import SuccessFilled from '@/assets/svg/gou_icon.svg'
 import icon_replace_outlined from '@/assets/svg/icon_replace_outlined.svg'
@@ -1326,6 +1326,11 @@ const formatUserOrigin = (origin?: number) => {
 }
 
 const showSyncBtn = ref(false)
+// A29：许可证无效时保留同步入口但禁用，并说明原因（不再静默隐藏）
+const licenseInvalid = ref(false)
+const syncTips = computed(() =>
+  licenseInvalid.value ? t('about.license_invalid_tips') : t('sync.integration')
+)
 onMounted(() => {
   // eslint-disable-next-line no-undef
   const obj = LicenseGenerator.getLicense()
@@ -1334,6 +1339,7 @@ onMounted(() => {
     loadData()
   } else {
     platformType.value = []
+    licenseInvalid.value = true
   }
 
   workspaceList().then((res) => {

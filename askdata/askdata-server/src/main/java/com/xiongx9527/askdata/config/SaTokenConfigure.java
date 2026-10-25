@@ -4,6 +4,7 @@ import cn.dev33.satoken.interceptor.SaInterceptor;
 import cn.dev33.satoken.stp.StpUtil;
 import com.xiongx9527.askdata.common.web.AuthChannelFilter;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -29,6 +30,16 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class SaTokenConfigure implements WebMvcConfigurer {
 
+    /**
+     * A22：每请求复查用户 status / oid。
+     *
+     * <p>Sa-Token 只校验「token 有效」，账号被禁用或解除工作空间绑定后 token 仍有效；
+     * SQLBot 在 {@code TokenMiddleware.validateToken} 里每请求从库里取用户并校验，
+     * 此处对齐该语义（对齐后禁用/解绑即时生效）。</p>
+     */
+    @Autowired(required = false)
+    private com.xiongx9527.askdata.system.service.CurrentUserService currentUserService;
+
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(new SaInterceptor(handle -> {
@@ -37,6 +48,10 @@ public class SaTokenConfigure implements WebMvcConfigurer {
                         return;
                     }
                     StpUtil.checkLogin();
+                    // A22：登录态之外，每请求复查用户 status / oid（对齐 SQLBot validateToken）
+                    if (currentUserService != null) {
+                        currentUserService.requireActiveSession();
+                    }
                 }))
                 .addPathPatterns("/api/v1/**");
     }

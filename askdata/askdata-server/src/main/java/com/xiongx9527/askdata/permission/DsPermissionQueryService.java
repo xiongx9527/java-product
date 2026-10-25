@@ -293,8 +293,12 @@ public class DsPermissionQueryService {
     }
 
     private String resolveNormal(Map<String, Object> item, String term, DatasourceType dtype, String fieldTypeStr) {
-        if ("null".equals(term) || "not_null".equals(term) || "empty".equals(term)
-                || "not_empty".equals(term)) {
+        // A18：empty / not_empty 的值是空串字面量（对齐 SQLBot row_permission.py 的 "''"），
+        // null / not_null 不需要值（term 已给出 IS NULL / IS NOT NULL）
+        if ("empty".equals(term) || "not_empty".equals(term)) {
+            return "''";
+        }
+        if ("null".equals(term) || "not_null".equals(term)) {
             return "";
         }
         Object valueObj = item.get("value");
@@ -311,10 +315,11 @@ public class DsPermissionQueryService {
             }
             return inClause(escaped, isNType(dtype, fieldTypeStr));
         }
+        // A18：like / not like 生成 '%value%'（对齐 SQLBot row_permission.py:159-161）
         if ("like".equals(term) || "not like".equals(term)) {
-            return "'" + escapeSqlValue(value) + "'";
+            return quotedLikeValue(value, dtype, fieldTypeStr);
         }
-        return "'" + escapeSqlValue(value) + "'";
+        return quotedValue(value, dtype, fieldTypeStr);
     }
 
     @SuppressWarnings("unchecked")
@@ -380,8 +385,10 @@ public class DsPermissionQueryService {
         if (v == null) {
             return null;
         }
-        if ("null".equals(term) || "not_null".equals(term) || "empty".equals(term)
-                || "not_empty".equals(term)) {
+        if ("empty".equals(term) || "not_empty".equals(term)) {
+            return "''";
+        }
+        if ("null".equals(term) || "not_null".equals(term)) {
             return "";
         }
         if ("in".equals(term) || "not in".equals(term)) {
@@ -397,9 +404,9 @@ public class DsPermissionQueryService {
             return inClause(escaped, isNType(dtype, fieldTypeStr));
         }
         if ("like".equals(term) || "not like".equals(term)) {
-            return "'" + escapeSqlValue(v) + "'";
+            return quotedLikeValue(v, dtype, fieldTypeStr);
         }
-        return "'" + escapeSqlValue(v) + "'";
+        return quotedValue(v, dtype, fieldTypeStr);
     }
 
     private String buildUserVariableWhereValue(String term, String varType, List<Object> values,
@@ -407,8 +414,10 @@ public class DsPermissionQueryService {
         if (values == null || values.isEmpty()) {
             return null;
         }
-        if ("null".equals(term) || "not_null".equals(term) || "empty".equals(term)
-                || "not_empty".equals(term)) {
+        if ("empty".equals(term) || "not_empty".equals(term)) {
+            return "''";
+        }
+        if ("null".equals(term) || "not_null".equals(term)) {
             return "";
         }
         List<String> stringValues = new ArrayList<>();
@@ -423,9 +432,26 @@ public class DsPermissionQueryService {
             return inClause(escaped, isNType(dtype, fieldTypeStr));
         }
         if ("like".equals(term) || "not like".equals(term)) {
-            return "'" + escapeSqlValue(stringValues.get(0)) + "'";
+            return quotedLikeValue(stringValues.get(0), dtype, fieldTypeStr);
         }
-        return "'" + escapeSqlValue(stringValues.get(0)) + "'";
+        return quotedValue(stringValues.get(0), dtype, fieldTypeStr);
+    }
+
+    /**
+     * A18：普通等值/范围比较的字面量（SQLServer nchar/nvarchar 列用 N'..' 前缀，
+     * 对齐 SQLBot row_permission.py 的 N'..' 分支）。
+     */
+    private static String quotedValue(String value, DatasourceType dtype, String fieldTypeStr) {
+        String escaped = escapeSqlValue(value);
+        return isNType(dtype, fieldTypeStr) ? "N'" + escaped + "'" : "'" + escaped + "'";
+    }
+
+    /**
+     * A18：like / not like 的字面量：{@code '%value%'}（对齐 SQLBot row_permission.py:159-161）。
+     */
+    private static String quotedLikeValue(String value, DatasourceType dtype, String fieldTypeStr) {
+        String escaped = escapeSqlValue(value);
+        return isNType(dtype, fieldTypeStr) ? "N'%" + escaped + "%'" : "'%" + escaped + "%'";
     }
 
     private static String inClause(List<String> escaped, boolean nType) {

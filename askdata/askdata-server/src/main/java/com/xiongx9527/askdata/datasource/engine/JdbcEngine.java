@@ -14,6 +14,7 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
+import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -146,9 +147,10 @@ public class JdbcEngine {
         String poolKey = datasourceId == null
                 ? ConnectionPoolManager.poolKeyOfConfig(url, conf.getUsername())
                 : ConnectionPoolManager.poolKeyOf(datasourceId);
-        // 借出的连接其 close() 被拦截为「归还连接池」，try-with-resources 语义不变
+        // 借出的连接其 close() 被拦截为「归还连接池」，try-with-resources 语义不变。
+        // A21：池参数（poolSize / max_overflow / pool_timeout）来自数据源配置。
         return poolManager.borrow(poolKey, () -> DriverManager.getConnection(url, conf.getUsername(),
-                conf.getPassword()));
+                conf.getPassword()), ConnectionPoolManager.PoolSettings.of(conf));
     }
 
     /**
@@ -178,11 +180,21 @@ public class JdbcEngine {
                         + conf.isSsl() + "&allowPublicKeyRetrieval=true", conf.getExtraJdbc());
                 break;
             case PG:
-            case KINGBASE:
             case REDSHIFT:
                 url = "jdbc:postgresql://" + host(conf) + ":" + port(conf) + "/" + conf.getDatabase();
                 if (conf.getDbSchema() != null && !conf.getDbSchema().isEmpty()) {
                     // pgjdbc 原生 currentSchema 参数（等价 SQLBot 的 -c search_path 连接参数）
+                    url = appendParams(url, "?", "&",
+                            "currentSchema=" + encodeUri(conf.getDbSchema()), conf.getExtraJdbc());
+                } else {
+                    url = appendParams(url, "?", "&", null, conf.getExtraJdbc());
+                }
+                break;
+            case KINGBASE:
+                // 人大金仓驱动只认 jdbc:kingbase8:// 前缀（com.kingbase8.Driver.acceptsURL 实测），
+                // 不能复用 pgjdbc 的 jdbc:postgresql://；参数形态保持 PG 兼容
+                url = "jdbc:kingbase8://" + host(conf) + ":" + port(conf) + "/" + conf.getDatabase();
+                if (conf.getDbSchema() != null && !conf.getDbSchema().isEmpty()) {
                     url = appendParams(url, "?", "&",
                             "currentSchema=" + encodeUri(conf.getDbSchema()), conf.getExtraJdbc());
                 } else {
@@ -215,7 +227,12 @@ public class JdbcEngine {
                 url = appendParams(url, "?", "&", null, conf.getExtraJdbc());
                 break;
             case DM:
+                // 达梦驱动（dm.jdbc.driver.DmDriver）接受 jdbc:dm://host:port[/database]，
+                // schema 走连接参数（对齐达梦官方 JDBC 用法）
                 url = "jdbc:dm://" + host(conf) + ":" + port(conf);
+                if (conf.getDatabase() != null && !conf.getDatabase().isEmpty()) {
+                    url = url + "/" + conf.getDatabase();
+                }
                 if (conf.getDbSchema() != null && !conf.getDbSchema().isEmpty()) {
                     url = appendParams(url, "?", "&", "schema=" + encodeUri(conf.getDbSchema()), conf.getExtraJdbc());
                 } else {
@@ -337,11 +354,98 @@ public class JdbcEngine {
         }
         DatasourceType dialect = dialectOf(type);
         DatasourceType.SqlText sqlText = dialect.tableSql(conf, version(type, conf, datasourceId));
+        // A19：Hive 按 Spark Thrift / HiveServer2 的结果集形态解析（列名不稳定，按位置取）
+        if (type == DatasourceType.HIVE) {
+            return parseHiveTableRows(queryPositional(type, conf, sqlText.getSql(), datasourceId),
+                    isSparkThrift(conf));
+        }
         List<TableSchema> result = new ArrayList<>();
         for (Map<String, Object> row : query(dialect, type, conf, sqlText, datasourceId)) {
             result.add(new TableSchema(stringOf(row.get("TABLE_NAME")), stringOf(row.get("TABLE_COMMENT"))));
         }
         return result;
+    }
+
+    /**
+     * A19：Hive 数据源是否指向 Spark Thrift Server（对齐 SQLBot db.py 的 {@code is_spark_thrift}：
+     * {@code conf.engine == "spark"}）。Spark 2.4+ 的 SHOW TABLES 返回
+     * {@code (database, tableName, isTemporary)}，HiveServer2 只返回单列 {@code tab_name}。
+     */
+    public static boolean isSparkThrift(DatasourceConf conf) {
+        if (conf == null || conf.getEngine() == null || conf.getEngine().trim().isEmpty()) {
+            return false;
+        }
+        return "spark".equalsIgnoreCase(conf.getEngine().trim());
+    }
+
+    /**
+     * A19：解析 Hive {@code SHOW TABLES} 结果行（移植 SQLBot {@code parse_hive_table_rows}）。
+     *
+     * <ul>
+     *   <li>Spark Thrift Server：取第二列表名，跳过遗留 Hive-JDBC 路径可能带回的
+     *       {@code tableName} 表头行；</li>
+     *   <li>HiveServer2：取第一列；</li>
+     *   <li>空表名与重复表名都跳过（HiveServer2 的 SHOW TABLES 可能带库名前缀重复行）。</li>
+     * </ul>
+     */
+    public static List<TableSchema> parseHiveTableRows(List<List<Object>> rows, boolean sparkThrift) {
+        List<TableSchema> tables = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+        for (List<Object> item : rows) {
+            if (item == null || item.isEmpty()) {
+                continue;
+            }
+            String name;
+            if (sparkThrift && item.size() >= 2) {
+                if ("tablename".equalsIgnoreCase(String.valueOf(item.get(1)))) {
+                    continue;
+                }
+                name = String.valueOf(item.get(1)).trim();
+            } else {
+                name = String.valueOf(item.get(0)).trim();
+            }
+            if (name.isEmpty() || seen.contains(name)) {
+                continue;
+            }
+            seen.add(name);
+            tables.add(new TableSchema(name, ""));
+        }
+        return tables;
+    }
+
+    /**
+     * A19：解析 Hive {@code DESCRIBE table} 结果行（移植 SQLBot {@code parse_hive_field_rows}）。
+     *
+     * <p>{@code # Partition Information} / {@code # col_name} 段标题行与遗留 Hive-JDBC 路径的
+     * 表头行都跳过；分区列会重复出现，按字段名去重（保留首次出现的定义行）。</p>
+     */
+    public static List<ColumnSchema> parseHiveFieldRows(List<List<Object>> rows, boolean sparkThrift) {
+        List<ColumnSchema> fields = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+        for (List<Object> item : rows) {
+            if (item == null || item.isEmpty()) {
+                continue;
+            }
+            String fieldName = stringOf(item.get(0)).trim();
+            if (fieldName.isEmpty()) {
+                continue;
+            }
+            String fieldType = item.size() > 1 ? stringOf(item.get(1)).trim() : "";
+            String fieldComment = item.size() > 2 ? stringOf(item.get(2)) : "";
+            if (sparkThrift && "col_name".equalsIgnoreCase(fieldName)) {
+                continue;
+            }
+            // 段标题行（# Partition Information / # col_name）没有 data_type 伴随
+            if (fieldName.startsWith("#") && (fieldType.isEmpty() || "data_type".equalsIgnoreCase(fieldType))) {
+                continue;
+            }
+            if (seen.contains(fieldName)) {
+                continue;
+            }
+            seen.add(fieldName);
+            fields.add(new ColumnSchema(fieldName, fieldType, fieldComment));
+        }
+        return fields;
     }
 
     /** 字段列表（对齐 SQLBot get_fields → ColumnSchema）。 */
@@ -356,6 +460,11 @@ public class JdbcEngine {
         }
         DatasourceType dialect = dialectOf(type);
         DatasourceType.SqlText sqlText = dialect.fieldSql(conf, tableName);
+        // A19：Hive 的 DESCRIBE 结果按位置解析（段标题行/表头行/分区列重复）
+        if (type == DatasourceType.HIVE) {
+            return parseHiveFieldRows(queryPositional(type, conf, sqlText.getSql(), datasourceId),
+                    isSparkThrift(conf));
+        }
         List<ColumnSchema> result = new ArrayList<>();
         for (Map<String, Object> row : query(dialect, type, conf, sqlText, datasourceId)) {
             result.add(new ColumnSchema(stringOf(row.get("COLUMN_NAME")), stringOf(row.get("DATA_TYPE")),
@@ -430,6 +539,34 @@ public class JdbcEngine {
         return query(dialect, type, conf, sqlText, null);
     }
 
+    /**
+     * A19：按位置读取结果集（Hive 的 SHOW TABLES / DESCRIBE 在不同 Thrift 实现间列名不稳定，
+     * 不能依赖 ResultSetMetaData 的列标签）。
+     */
+    private List<List<Object>> queryPositional(DatasourceType type, DatasourceConf conf, String sql,
+                                               Long datasourceId) {
+        if (sql == null || sql.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<List<Object>> rows = new ArrayList<>();
+        try (Connection connection = openConnection(type, conf, datasourceId);
+             java.sql.PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet rs = statement.executeQuery()) {
+            ResultSetMetaData metaData = rs.getMetaData();
+            int columnCount = metaData.getColumnCount();
+            while (rs.next()) {
+                List<Object> row = new ArrayList<>(columnCount);
+                for (int i = 1; i <= columnCount; i++) {
+                    row.add(rs.getObject(i));
+                }
+                rows.add(row);
+            }
+        } catch (SQLException e) {
+            throw new DatasourceException("Query metadata failed: " + e.getMessage(), e);
+        }
+        return rows;
+    }
+
     private List<Map<String, Object>> query(DatasourceType dialect, DatasourceType type, DatasourceConf conf,
                                             DatasourceType.SqlText sqlText, Long datasourceId) {
         if (sqlText.getSql() == null || sqlText.getSql().isEmpty()) {
@@ -482,7 +619,7 @@ public class JdbcEngine {
         }
         if (type.usesAppDatabase()) {
             appJdbc.query(statement, rs -> {
-                collect(rs, fields, fieldsInfo, data);
+                collect(rs, fields, fieldsInfo, data, type);
                 return null;
             });
         } else {
@@ -491,7 +628,7 @@ public class JdbcEngine {
                  PreparedStatement stmt = connection.prepareStatement(statement)) {
                 applyTimeout(stmt, conf);
                 try (ResultSet rs = stmt.executeQuery()) {
-                    collect(rs, fields, fieldsInfo, data);
+                    collect(rs, fields, fieldsInfo, data, type);
                 }
             } catch (SQLException e) {
                 throw new DatasourceException("Execute SQL failed: " + e.getMessage(), e);
@@ -505,20 +642,76 @@ public class JdbcEngine {
 
     private void collect(ResultSet rs, List<Object> fields, List<Map<String, Object>> fieldsInfo,
                          List<Map<String, Object>> data) throws SQLException {
+        collect(rs, fields, fieldsInfo, data, null);
+    }
+
+    /**
+     * 读取结果集。
+     *
+     * <p>A19：SQLServer 的 varchar 列在驱动以 latin-1 读出 GBK 字节时是乱码，
+     * 字符串列按 {@link #convertGbkString} 回正（对齐 SQLBot db.py 的
+     * {@code convert_gbk_string} / {@code convert_mssql_value}）。</p>
+     */
+    private void collect(ResultSet rs, List<Object> fields, List<Map<String, Object>> fieldsInfo,
+                         List<Map<String, Object>> data, DatasourceType type) throws SQLException {
         ResultSetMetaData metaData = rs.getMetaData();
         int columnCount = metaData.getColumnCount();
         List<String> columns = new ArrayList<>();
+        boolean gbk = type == DatasourceType.SQLSERVER;
+        boolean[] stringColumn = new boolean[columnCount + 1];
         for (int i = 1; i <= columnCount; i++) {
             columns.add(metaData.getColumnLabel(i));
+            stringColumn[i] = gbk && isStringColumn(metaData, i);
             fieldsInfo.add(Rows0.of("name", metaData.getColumnLabel(i), "is_numeric", isNumeric(metaData.getColumnType(i))));
         }
         fields.addAll(columns);
         while (rs.next()) {
             Map<String, Object> row = new LinkedHashMap<>();
             for (int i = 1; i <= columnCount; i++) {
-                row.put(columns.get(i - 1), convertValue(rs.getObject(i)));
+                Object value = convertValue(rs.getObject(i));
+                if (stringColumn[i] && value instanceof String) {
+                    value = convertGbkString((String) value);
+                }
+                row.put(columns.get(i - 1), value);
             }
             data.add(row);
+        }
+    }
+
+    /** A19：SQLServer 字符串列判定（varchar/char/text/nvarchar/nchar/ntext）。 */
+    private static boolean isStringColumn(ResultSetMetaData metaData, int index) {
+        try {
+            String typeName = metaData.getColumnTypeName(index);
+            if (typeName == null) {
+                return false;
+            }
+            String lower = typeName.toLowerCase();
+            return lower.contains("char") || lower.contains("text");
+        } catch (SQLException e) {
+            return false;
+        }
+    }
+
+    /**
+     * A19：把 SQLServer 中以 latin-1 读出的 GBK 乱码字符串还原为正确文本
+     * （移植 SQLBot db.py 的 {@code convert_gbk_string}：
+     * {@code value.encode("latin-1").decode("gbk")}，任一步失败返回原值）。
+     */
+    public static String convertGbkString(String value) {
+        if (value == null) {
+            return null;
+        }
+        byte[] bytes = value.getBytes(StandardCharsets.ISO_8859_1);
+        // 与 Python 的 value.encode('latin-1') 对齐：含无法用 latin-1 表示的字符时 Python 抛
+        // UnicodeEncodeError 并原样返回，而 Java 的 getBytes 会静默替换为 '?'；
+        // 用 round-trip 比对识别该情形，避免把正常中文文本误转成乱码。
+        if (!new String(bytes, StandardCharsets.ISO_8859_1).equals(value)) {
+            return value;
+        }
+        try {
+            return new String(bytes, "GBK");
+        } catch (UnsupportedEncodingException e) {
+            return value;
         }
     }
 

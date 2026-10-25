@@ -5,6 +5,7 @@ import com.xiongx9527.askdata.common.util.Rows;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import jakarta.annotation.PostConstruct;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -48,6 +49,17 @@ public class CorsConfig implements WebMvcConfigurer {
                       AssistantRepository assistantRepository) {
         this.configuredOrigins = parseOrigins(origins);
         this.assistantRepository = assistantRepository;
+    }
+
+    /**
+     * 启动时加载助手动态域名（A25：对齐 SQLBot init_dynamic_cors 在 FastAPI 启动时调用）。
+     *
+     * <p>没有这一步，助手域名只在被显式调用时才生效，嵌入页跨域请求会在助手创建后、服务重启前
+     * 一直失败——动态 origin 必须被实际调用。</p>
+     */
+    @PostConstruct
+    void initDynamicOrigins() {
+        loadAssistantDomains();
     }
 
     @Override
@@ -120,7 +132,7 @@ public class CorsConfig implements WebMvcConfigurer {
     }
 
     /** 逗号/分号分隔的域名拆分（对齐 SQLBot {@code get_domain_list}）。 */
-    static List<String> splitDomains(String domain) {
+    public static List<String> splitDomains(String domain) {
         List<String> domains = new ArrayList<>();
         if (domain == null || domain.isEmpty()) {
             return domains;

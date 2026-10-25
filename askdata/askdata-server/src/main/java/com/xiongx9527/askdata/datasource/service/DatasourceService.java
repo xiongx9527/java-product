@@ -20,6 +20,7 @@ import com.xiongx9527.askdata.datasource.repository.DatasourceRepository;
 import com.xiongx9527.askdata.datasource.repository.FieldRepository;
 import com.xiongx9527.askdata.datasource.repository.TableRepository;
 import com.xiongx9527.askdata.datasource.support.DatasourceCrypto;
+import com.xiongx9527.askdata.permission.DsPermissionQueryService;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,10 +29,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /**
@@ -73,6 +76,17 @@ public class DatasourceService {
 
     /** 数据源级向量服务（新增/勾选表/字段同步后回填 {@code core_datasource.embedding}）。 */
     private final DatasourceEmbeddingService datasourceEmbeddingService;
+
+    /**
+     * 行/列权限查询服务（A2 预览权限）。setter 注入：测试用旧构造器直连 mock 时可为 null，
+     * 此时预览退化为无权限裁剪（仅管理员路径可达）。
+     */
+    private DsPermissionQueryService permissionQuery;
+
+    @Autowired(required = false)
+    void setPermissionQuery(DsPermissionQueryService permissionQuery) {
+        this.permissionQuery = permissionQuery;
+    }
 
     @Autowired
     public DatasourceService(DatasourceRepository datasourceRepository, TableRepository tableRepository,
@@ -235,6 +249,8 @@ public class DatasourceService {
                 type.getType(), type.getDbName(), DatasourceCrypto.encodeForStore(plainConf));
         // 连接信息变更：移除该数据源的连接池（下次查询重建，避免旧连接串残留）
         poolManager.removeDatasource(id);
+        // A20：连接配置变更后重算数据源向量（core_datasource.embedding 反映新库/表范围）
+        backfillDatasourceEmbedding(id);
     }
 
     /** POST /datasource/delete/{id}/{name}：excel 类型先 drop 应用库中的表（对齐 SQLBot delete_ds）。 */
@@ -286,6 +302,8 @@ public class DatasourceService {
                 .orElseThrow(() -> new DatasourceException(messageResolver.get("ds.data.source.id.mismatch")));
         tableRepository.updateCheckedAndComment(id, Rows.bool(body, "checked", Rows.bool(record, "checked", true)),
                 Rows.str(body, "custom_comment"));
+        // A20：表注释/勾选变化后重算该数据源的表向量（tableDoc 含表注释与字段注释）
+        backfillTableEmbeddings(dsId);
     }
 
     /** POST /datasource/editField：更新字段勾选/自定义注释（对齐 SQLBot updateField）。 */
@@ -301,6 +319,8 @@ public class DatasourceService {
                 .orElseThrow(() -> new DatasourceException(messageResolver.get("ds.resource.id.mismatch")));
         fieldRepository.updateCheckedAndComment(id, Rows.bool(body, "checked", true),
                 Rows.str(body, "custom_comment"));
+        // A20：字段注释/勾选变化后重算该数据源的表向量（tableDoc 含勾选字段名/类型/注释）
+        backfillTableEmbeddings(dsId);
     }
 
     /** POST /datasource/syncFields/{ds_id}/{id}：从数据源重新同步单表字段（对齐 SQLBot sync_single_fields）。 */
@@ -393,24 +413,37 @@ public class DatasourceService {
     // 预览 / 执行
     // ------------------------------------------------------------------
 
-    /** POST /datasource/previewData/{id}：表数据预览（勾选字段，方言 limit 100，对齐 SQLBot preview）。 */
+    /**
+     * POST /datasource/previewData/{id}：表数据预览（勾选字段，方言 limit 100，对齐 SQLBot preview）。
+     *
+     * <p><b>A2 行/列权限</b>（对齐 SQLBot {@code crud/datasource.py:335-350}）：普通用户预览时
+     * 按列权限剔除无权字段，并按行权限追加 WHERE 条件；ws admin 不受限。</p>
+     */
     public Map<String, Object> previewData(long id, Map<String, Object> body) {
         Map<String, Object> dsRow = requireAccessible(id);
         Long tableId = Rows.lngOrNull(singleMap(Rows.get(body, "table")), "id");
         if (tableId == null || tableId <= 0) {
             return Rows.of("fields", new ArrayList<>(), "data", new ArrayList<>(), "sql", "");
         }
-        List<Map<String, Object>> fields = new ArrayList<>();
-        for (Map<String, Object> row : fieldRepository.listByTableId(tableId)) {
-            if (Rows.bool(row, "checked", true)) {
-                fields.add(row);
-            }
-        }
-        if (fields.isEmpty()) {
-            return Rows.of("fields", new ArrayList<>(), "data", new ArrayList<>(), "sql", "");
-        }
         Map<String, Object> tableRow = tableRepository.findById(tableId).orElse(null);
         if (tableRow == null) {
+            return Rows.of("fields", new ArrayList<>(), "data", new ArrayList<>(), "sql", "");
+        }
+        String tableName = Rows.str(tableRow, "table_name");
+
+        // -- A2：列权限（普通用户剔除隐藏字段）；管理员看到全部勾选字段
+        Set<String> hidden = hiddenColumnsFor(id, tableName);
+        List<Map<String, Object>> fields = new ArrayList<>();
+        for (Map<String, Object> row : fieldRepository.listByTableId(tableId)) {
+            if (!Rows.bool(row, "checked", true)) {
+                continue;
+            }
+            if (hidden.contains(Rows.str(row, "field_name"))) {
+                continue;
+            }
+            fields.add(row);
+        }
+        if (fields.isEmpty()) {
             return Rows.of("fields", new ArrayList<>(), "data", new ArrayList<>(), "sql", "");
         }
         List<String> fieldNames = new ArrayList<>();
@@ -419,8 +452,49 @@ public class DatasourceService {
         }
         DatasourceType type = typeOf(Rows.str(dsRow, "type"));
         DatasourceConf conf = confOf(Rows.str(dsRow, "configuration"));
-        String sql = type.previewSql(fieldNames, Rows.str(tableRow, "table_name"), conf, null);
+
+        // -- A2：行权限（普通用户注入 WHERE；无规则时传 null）
+        String where = rowFilterWhereFor(id, tableName);
+        String sql = type.previewSql(fieldNames, tableName, conf,
+                where == null || where.isEmpty() ? null : "WHERE " + where);
         return engine.execSql(type, conf, sql, id);
+    }
+
+    /** A2：当前用户在该数据源指定表上的隐藏列集合（管理员/未配置权限时为空）。 */
+    private Set<String> hiddenColumnsFor(long dsId, String tableName) {
+        if (permissionQuery == null) {
+            return Collections.emptySet();
+        }
+        Map<String, Object> user = currentUserService.currentUser();
+        if (currentUserService.isAdmin(user)) {
+            return Collections.emptySet();
+        }
+        return permissionQuery.hiddenColumns(currentUserService.oidOf(user),
+                Rows.lng(user, "id", 0L), dsId, tableName);
+    }
+
+    /** A2：当前用户在该数据源指定表上的行权限 WHERE 片段（管理员/无规则时为 null）。 */
+    private String rowFilterWhereFor(long dsId, String tableName) {
+        if (permissionQuery == null) {
+            return null;
+        }
+        Map<String, Object> user = currentUserService.currentUser();
+        if (currentUserService.isAdmin(user)) {
+            return null;
+        }
+        List<Map<String, Object>> filters = permissionQuery.rowFilters(currentUserService.oidOf(user),
+                Rows.lng(user, "id", 0L), dsId, Collections.singletonList(tableName));
+        StringBuilder sb = new StringBuilder();
+        for (Map<String, Object> f : filters) {
+            String filter = Rows.str(f, "filter");
+            if (filter != null && !filter.isEmpty()) {
+                if (sb.length() > 0) {
+                    sb.append(" AND ");
+                }
+                sb.append(filter);
+            }
+        }
+        return sb.length() == 0 ? null : sb.toString();
     }
 
     /** POST /datasource/execSql/{id}：执行只读 SQL（对齐 SQLBot execSql → exec_sql(origin_column=True)）。 */
@@ -434,6 +508,23 @@ public class DatasourceService {
     public DatasourceType type(long id) {
         Map<String, Object> row = requireAccessible(id);
         return typeOf(Rows.str(row, "type"));
+    }
+
+    /**
+     * 连通性检查（A26：对齐 SQLBot 生成 SQL 前的 {@code check_connection}）。
+     *
+     * <p>问数主链路在生成 SQL 之前调用；连接不可用时抛出异常，由调用方转换为
+     * {@code db-connection-err} 错误帧，避免"生成完 SQL 才报连接错误"。</p>
+     */
+    public void checkConnection(long id) {
+        Map<String, Object> row = requireAccessible(id);
+        DatasourceType type = typeOf(Rows.str(row, "type"));
+        DatasourceConf conf = confOf(Rows.str(row, "configuration"));
+        try {
+            engine.checkConnection(type, conf, true, id);
+        } catch (RuntimeException e) {
+            throw new DatasourceException(messageResolver.get("chat.ds_is_invalid"), e);
+        }
     }
 
     /** 在指定数据源上执行只读 SQL，返回 {fields, data}（验收 A2：dsId 路径的执行入口）。 */
@@ -492,21 +583,20 @@ public class DatasourceService {
         return engine.execSql(type, confOf(Rows.str(row, "configuration")), sql, id);
     }
 
-    /** POST /datasource/fieldEnum/{ds_id}/{id}（SQLBot 保留路由）：字段去重值。 */
+    /**
+     * POST /datasource/fieldEnum/{ds_id}/{id}（SQLBot 保留路由）：字段去重值。
+     *
+     * <p>A19：{@code id} 是 <b>core_field.id</b>（SQLBot {@code get_field_enum} 按字段 id 取字段定义），
+     * 此前误按 table_id 遍历，导致除巧合外永远取不到目标字段。</p>
+     */
     public List<Object> fieldEnum(long dsId, long fieldId) {
         Map<String, Object> dsRow = requireAccessible(dsId);
-        Map<String, Object> field = null;
-        for (Map<String, Object> row : fieldRepository.listByTableId(fieldId)) {
-            if (Rows.lng(row, "id", 0L) == fieldId) {
-                field = row;
-                break;
-            }
-        }
+        Map<String, Object> field = fieldRepository.findById(fieldId).orElse(null);
         if (field == null) {
             return new ArrayList<>();
         }
         Map<String, Object> table = tableRepository.findById(Rows.lng(field, "table_id", 0L)).orElse(null);
-        if (table == null) {
+        if (table == null || Rows.lng(table, "ds_id", 0L) != dsId) {
             return new ArrayList<>();
         }
         DatasourceType type = typeOf(Rows.str(dsRow, "type"));
@@ -613,6 +703,9 @@ public class DatasourceService {
                 }
             }
         }
+        // A20：批量改注释后重算表/字段向量与数据源向量
+        backfillTableEmbeddings(id);
+        backfillDatasourceEmbedding(id);
         return true;
     }
 

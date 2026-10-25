@@ -29,10 +29,10 @@ import com.xiongx9527.askdata.system.sso.SamlSignatureVerifier;
  *       {@code SAMLRequest}（HTTP-Redirect 绑定，Deflate + base64）跳转 URL；</li>
  *   <li><b>回调解析</b>：解析 base64 的 {@code SAMLResponse} XML，读取
  *       {@code NameID} 与 {@code AttributeStatement} 中的属性；</li>
- *   <li><b>签名校验</b>：需要 opensaml 运行时（{@code net.shibboleth.opensaml}）才能做
- *       XML-DSig 验签与断言签名校验；本机 {@code ~/.m2} 中无该依赖且项目不得新增无法离线解析的
- *       坐标，因此断言签名校验<b>未实现</b>——部署时须在网关层强制 TLS + IdP 侧约束，
- *       或引入 opensaml 后补齐 {@code #validateSignature}。</li>
+ *   <li><b>断言签名校验</b>：配置了 IdP 证书时用 {@link SamlSignatureVerifier} 做 XML-DSig
+ *       验签（复用 A7 的 fail-closed 语义：验签失败直接拒绝，不放行未验证断言）；
+ *       配置了 {@code wantAssertionsSigned=true} 但未配证书时同样拒绝；两者都未配置时
+ *       记警告日志并按历史行为放行（部署时应在网关上强制 TLS + IdP 侧约束）。</li>
  * </ul>
  */
 public class Saml2SsoClient implements SsoClient {

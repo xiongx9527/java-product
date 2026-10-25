@@ -69,7 +69,9 @@ class DatasourceTypeStrategyTest {
         assertEquals("jdbc:ch://ck.host:8123/default", url(DatasourceType.CK, ck));
 
         DatasourceConf kb = conf("kb.host", 54321, "u", "p", "db1", "public");
-        assertEquals("jdbc:postgresql://kb.host:54321/db1?currentSchema=public", url(DatasourceType.KINGBASE, kb));
+        // A8：人大金仓驱动只认 jdbc:kingbase8:// 前缀（com.kingbase8.Driver.acceptsURL 实测），
+        // 不复用 pgjdbc 的 jdbc:postgresql://；参数形态保持 PG 兼容
+        assertEquals("jdbc:kingbase8://kb.host:54321/db1?currentSchema=public", url(DatasourceType.KINGBASE, kb));
         assertEquals("jdbc:postgresql://rs.host:5439/db1?currentSchema=public",
                 url(DatasourceType.REDSHIFT, conf("rs.host", 5439, "u", "p", "db1", "public")));
         assertEquals("jdbc:dm://dm.host:5236?schema=SCHEMA", url(DatasourceType.DM, conf("dm.host", 5236, "u", "p", "", "SCHEMA")));

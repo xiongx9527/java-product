@@ -76,6 +76,31 @@ class AssistantFileStorageTest {
     }
 
     @Test
+    void rejectsSvgExtension() {
+        // A24：SQLBot check_file 仅允许 jpg/jpeg/png（svg 不在白名单，防 XSS 载体）
+        MockMultipartFile file = new MockMultipartFile("file", "icon.svg", "image/svg+xml",
+                "<svg onload=alert(1)/>".getBytes());
+        assertThrows(IllegalArgumentException.class, () -> storage.save(file, "icon.svg"));
+    }
+
+    @Test
+    void deleteRemovesSavedFile() throws Exception {
+        byte[] png = new byte[]{(byte) 0x89, 'P', 'N', 'G', 7, 8, 9};
+        MockMultipartFile file = new MockMultipartFile("file", "logo.png,logo", "image/png", png);
+        String fileId = storage.save(file, "logo.png,logo");
+        assertNotNull(storage.load(fileId));
+        storage.delete(fileId);
+        assertNull(storage.load(fileId), "delete 之后文件应不可读");
+    }
+
+    @Test
+    void deleteOfUnknownFileIsNoOp() {
+        storage.delete("assistant/not-exists.png");
+        storage.delete(null);
+        storage.delete("");
+    }
+
+    @Test
     void loadUnknownReturnsNull() {
         assertNull(storage.load("does-not-exist"));
         assertNull(storage.load(null));

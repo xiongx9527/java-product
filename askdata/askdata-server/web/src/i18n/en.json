@@ -833,6 +833,7 @@
     "title": "About",
     "auth_to": "Authorized to",
     "invalid_license": " License is invalid",
+    "license_invalid_tips": "Invalid license: enterprise features such as enterprise IM QR login and platform user sync are unavailable. Please update your license on the About page.",
     "update_license": "Update License",
     "expiration_time": "Expiration Time",
     "expirationed": "(Expired)",

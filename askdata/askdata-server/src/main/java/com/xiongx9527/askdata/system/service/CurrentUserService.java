@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import cn.dev33.satoken.stp.StpUtil;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.AuthContext;
+import com.xiongx9527.askdata.common.web.AuthFailureException;
 import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.system.repository.UserRepository;
 import com.xiongx9527.askdata.system.repository.UserWsRepository;
@@ -58,6 +59,35 @@ public class CurrentUserService {
         }
         return userRepository.findById(uid())
                 .orElseThrow(() -> new BadRequestException(messageResolver.get("user.login.not.exists")));
+    }
+
+    /**
+     * A22：每请求复查用户 {@code status} / {@code oid}（对齐 SQLBot
+     * {@code TokenMiddleware.validateToken}：每个请求都从库里取当前用户并校验）。
+     *
+     * <p>效果：账号被禁用、或被解除工作空间绑定后<b>立即</b>失效，而不是等 token 自然过期。
+     * 助手通道（{@code sqlbot-inner-assistant} 合成用户，无库行）不适用该校验，按 SQLBot
+     * 的 {@code validateAssistant} 语义跳过。</p>
+     *
+     * @throws AuthFailureException 账号已禁用或未关联工作空间（HTTP 401）
+     */
+    /** 助手通道合成用户账号名（SQLBot {@code sqlbot-inner-assistant}，无 sys_user 行）。 */
+    public static final String INNER_ASSISTANT_ACCOUNT = "sqlbot-inner-assistant";
+
+    public void requireActiveSession() {
+        Map<String, Object> user = currentUser();
+        // 助手通道是合成用户（无 sys_user 行），无 status/oid 可校验
+        if (INNER_ASSISTANT_ACCOUNT.equals(Rows.str(user, "account"))) {
+            return;
+        }
+        if (Rows.lng(user, "status", 0L) != 1L) {
+            throw new AuthFailureException(messageResolver.get("i18n_login.user_disable",
+                    java.util.Map.of("msg", "")));
+        }
+        if (oidOf(user) == 0L) {
+            throw new AuthFailureException(messageResolver.get("i18n_login.no_associated_ws",
+                    java.util.Map.of("msg", "")));
+        }
     }
 
     public boolean isAdmin(Map<String, Object> user) {

@@ -4,6 +4,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import com.xiongx9527.askdata.common.util.IdGenerator;
+import com.xiongx9527.askdata.common.util.Rows;
 
 import java.util.Collections;
 import java.util.List;
@@ -40,6 +41,11 @@ public class FieldRepository {
         return jdbc.queryForList("SELECT " + COLUMNS + " FROM core_field WHERE table_id = ? "
                 + "AND LOWER(field_name) LIKE LOWER(?) ORDER BY field_index",
                 tableId, "%" + fieldName + "%");
+    }
+
+    /** A19：按字段 id 查询（fieldEnum 按 CoreField.id 取字段定义）。 */
+    public Optional<Map<String, Object>> findById(long id) {
+        return jdbc.queryForList("SELECT " + COLUMNS + " FROM core_field WHERE id = ?", id).stream().findFirst();
     }
 
     public Optional<Map<String, Object>> findByTableAndName(long tableId, String fieldName) {
@@ -98,6 +104,22 @@ public class FieldRepository {
         }
         jdbc.update("DELETE FROM core_field WHERE table_id NOT IN (" + placeholders(keepTableIds.size()) + ")",
                 keepTableIds.toArray());
+    }
+
+    /**
+     * A13：按 id 集合查询字段名映射（外键段 {@code table.field=table.field} 渲染用）。
+     */
+    public Map<Long, String> fieldNamesByIds(List<Long> ids) {
+        Map<Long, String> result = new java.util.LinkedHashMap<>();
+        if (ids == null || ids.isEmpty()) {
+            return result;
+        }
+        List<Map<String, Object>> rows = jdbc.queryForList("SELECT id, field_name FROM core_field WHERE id IN ("
+                + placeholders(ids.size()) + ")", ids.toArray());
+        for (Map<String, Object> row : rows) {
+            result.put(Rows.lng(row, "id", 0L), Rows.str(row, "field_name"));
+        }
+        return result;
     }
 
     private static Object[] args(long tableId, List<Long> ids) {

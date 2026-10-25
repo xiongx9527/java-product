@@ -253,13 +253,8 @@ export const useAppearanceStore = defineStore('appearanceStore', {
       // if (!isDataEaseBi) {
       //   document.title = ''
       // }
-      const obj = LicenseGenerator.getLicense()
-      if (obj?.status !== 'valid') {
-        setCurrentColor('#1CBA90')
-        document.title = 'SQLBot'
-        setLinkIcon()
-        return
-      }
+      // [askdata-xpack-patch] A27：外观配置与许可证解耦——社区版同样可以自定义
+      // 主题/登录页/图标，不再因 status !== 'valid' 而回落到硬编码外观。
       const resData = await request.get('/system/appearance/ui')
       this.loaded = true
       if (!resData?.length) {

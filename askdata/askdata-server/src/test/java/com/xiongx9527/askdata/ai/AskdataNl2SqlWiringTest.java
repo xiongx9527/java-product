@@ -75,7 +75,7 @@ class AskdataNl2SqlWiringTest {
         when(override.chat(any(ChatRequest.class))).thenReturn(ok);
         when(override.chat(any(java.util.List.class))).thenReturn(ok);
 
-        Map<String, Object> result = nl2Sql.ask("随便问一个问题", null, override);
+        Map<String, Object> result = nl2Sql.ask("随便问一个问题", (Long) null, override);
 
         assertEquals("SELECT 2 AS custom", result.get("sql"));
         Object value = ((Map<?, ?>) ((List<?>) result.get("rows")).get(0)).values().iterator().next();

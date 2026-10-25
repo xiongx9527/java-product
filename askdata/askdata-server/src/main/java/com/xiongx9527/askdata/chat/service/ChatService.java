@@ -65,6 +65,18 @@ public class ChatService {
     /** A7: i18n 消息解析（错误文案统一走 messageResolver）。 */
     private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
 
+    /**
+     * A17：数据源推荐问题（{@code recommended_config==2} 时预填首条记录）。
+     * setter 注入：测试用旧构造器直连 mock 时可为 null，此时跳过预填。
+     */
+    private com.xiongx9527.askdata.datasource.service.RecommendedProblemService recommendedProblemService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setRecommendedProblemService(
+            com.xiongx9527.askdata.datasource.service.RecommendedProblemService recommendedProblemService) {
+        this.recommendedProblemService = recommendedProblemService;
+    }
+
     // ------------------------------------------------------------------
     // 会话
     // ------------------------------------------------------------------
@@ -121,6 +133,19 @@ public class ChatService {
         }
         long chatId = chatRepository.insertChat(uid, oid, null, datasource, engineType, dsType, origin,
                 Rows.str(body, "question"));
+        // A17：首条 first_chat 空记录（对齐 SQLBot create_chat）；recommended_config==2 时
+        // 预填该数据源配置的推荐问题，前端首问引导直接可用
+        long firstRecordId = chatRepository.insertFirstChatRecord(chatId, uid, oid, datasource);
+        if (datasource != null && recommendedProblemService != null
+                && Integer.valueOf(2).equals(datasourceRepository.recommendedConfigOf(datasource))) {
+            String questions;
+            try {
+                questions = objectMapper.writeValueAsString(recommendedProblemService.list(datasource));
+            } catch (Exception e) {
+                questions = "[]";
+            }
+            chatRepository.updateRecordField(firstRecordId, "recommended_question", questions);
+        }
         return get(chatId, false);
     }
 

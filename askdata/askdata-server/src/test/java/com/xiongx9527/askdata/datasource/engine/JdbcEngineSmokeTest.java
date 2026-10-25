@@ -241,20 +241,23 @@ class JdbcEngineSmokeTest {
     }
 
     @Test
-    void missingDriverFollowsSqlbotConvention() {
-        // 驱动不在 classpath（达梦未随包；仅 Oracle/SQLServer 作为 test 范围驱动随真实方言验收引入）：
-        // 连接检查报驱动缺失（A12 其余类型的离线行为）。
+    void dmDriverBundledSoConnectionFailsOnNetworkNotOnDriver() {
+        // A8：达梦驱动已随包（runtime scope）。驱动存在，连接检查因此走真实连接失败路径，
+        // 报「数据源连接失败: ...」而不是「驱动缺失」——这正是前端可选即可用的前提。
         JdbcEngine engine = engine(null);
         DatasourceConf conf = conf("db1");
-        conf.setHost("h");
+        conf.setHost("127.0.0.1");
         conf.setPort(1);
         conf.setUsername("u");
         conf.setPassword("p");
         DatasourceException ex = assertThrows(DatasourceException.class,
                 () -> engine.checkConnection(DatasourceType.DM, conf, true));
-        assertTrue(ex.getMessage().contains("jdbc driver [dm.jdbc.driver.DmDriver] not found"), ex.getMessage());
+        // 驱动已随包：失败原因是连不上 127.0.0.1:1（网络错误），而不是「驱动缺失」
+        assertTrue(ex.getMessage() != null && !ex.getMessage().isEmpty()
+                && !ex.getMessage().contains("not found"), ex.getMessage());
         // 连接串仍可按方言生成（元数据策略存在；与驱动是否随包无关）
-        assertTrue(engine.buildJdbcUrl(DatasourceType.ORACLE, conf).startsWith("jdbc:oracle:thin:@//h:1/db1"));
+        assertTrue(engine.buildJdbcUrl(DatasourceType.ORACLE, conf)
+                .startsWith("jdbc:oracle:thin:@//127.0.0.1:1/db1"));
     }
 
     @Test

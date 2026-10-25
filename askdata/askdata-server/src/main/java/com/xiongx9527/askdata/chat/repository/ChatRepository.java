@@ -123,6 +123,19 @@ public class ChatRepository {
     }
 
     /**
+     * 会话中是否存在真实问答记录（A17：排除创建会话时生成的 first_chat 空记录）。
+     *
+     * <p>用于「首问」判定（会话摘要生成、前端首问引导），对齐 SQLBot 侧
+     * {@code first_chat == False} 的过滤语义。</p>
+     */
+    public boolean hasUserRecord(long chatId) {
+        Long count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM chat_record WHERE chat_id = ? AND first_chat = FALSE",
+                Long.class, chatId);
+        return count != null && count > 0L;
+    }
+
+    /**
      * 最近一条可用于「重新生成」的记录 id：排除首条记录与 analysis/predict 子记录
      * （对齐 SQLBot {@code question_answer_inner} 的 last record 查询条件）。
      */
@@ -142,6 +155,22 @@ public class ChatRepository {
                         + "datasource, finish, first_chat, regenerate_record_id) "
                         + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, FALSE, ?, ?)",
                 id, chatId, question, createBy, oid, now, now, datasource, firstChat, regenerateRecordId);
+        return id;
+    }
+
+    /**
+     * A17：创建会话时的首条空记录（first_chat=TRUE，question 为空）。
+     *
+     * <p>对齐 SQLBot {@code curd/chat.py:783-800} 的 {@code create_chat}：会话一经创建就存在
+     * 一条首记录，前端据此渲染首问引导；{@code lastUsableRecordId} 等查询已排除
+     * {@code first_chat=TRUE} 的记录，不影响重新生成语义。</p>
+     */
+    public long insertFirstChatRecord(long chatId, long createBy, long oid, Long datasource) {
+        long id = idGenerator.nextId();
+        Timestamp now = new Timestamp(System.currentTimeMillis());
+        jdbc.update("INSERT INTO chat_record (id, chat_id, question, create_by, oid, create_time, update_time, "
+                        + "datasource, finish, first_chat) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, FALSE, TRUE)",
+                id, chatId, createBy, oid, now, now, datasource);
         return id;
     }
 
@@ -208,7 +237,11 @@ public class ChatRepository {
     }
 
     /**
-     * 记录级 analysis/predict 子记录：独立新增一条记录并回链基础记录。
+     * 记录级 analysis/predict 子记录：独立新增一条子记录，外键只写 child → base。
+     *
+     * <p>对齐 SQLBot {@code curd/chat.py:841-865}：基础记录的 analysis_record_id /
+     * predict_record_id 保持 NULL。前端 index.vue 要求基础气泡两个外键为 NULL 才渲染
+     * ChartAnswer；若反向回写基础记录，刷新后基础气泡的 SQL/数据/图表全部丢失。</p>
      *
      * @param actionType analysis 或 predict
      */
@@ -222,7 +255,6 @@ public class ChatRepository {
                         + "datasource, finish, first_chat, " + linkColumn + ") "
                         + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE, ?)",
                 id, chatId, question, createBy, oid, now, now, datasource, baseRecordId);
-        jdbc.update("UPDATE chat_record SET " + linkColumn + " = ? WHERE id = ?", id, baseRecordId);
         return id;
     }
 
@@ -233,11 +265,23 @@ public class ChatRepository {
     public long insertLog(long chatRecordId, long oid, long createBy, Timestamp startTime, Timestamp finishTime,
                           long duration, long totalTokens, String operate, boolean localOperation, boolean error,
                           String message) {
+        return insertLog(chatRecordId, oid, createBy, startTime, finishTime, duration, totalTokens, operate,
+                localOperation, error, message, 0L, 0L);
+    }
+
+    /**
+     * A12：记录操作日志（token/耗时/错误），input/output/total 三项落库，
+     * 支撑 /chat/record/{rid}/log 与 usage。
+     */
+    public long insertLog(long chatRecordId, long oid, long createBy, Timestamp startTime, Timestamp finishTime,
+                          long duration, long totalTokens, String operate, boolean localOperation, boolean error,
+                          String message, long inputTokens, long outputTokens) {
         long id = idGenerator.nextId();
         jdbc.update("INSERT INTO chat_log (id, chat_record_id, oid, create_by, start_time, finish_time, duration, "
-                        + "total_tokens, operate, local_operation, error, message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "total_tokens, operate, local_operation, error, message, input_tokens, output_tokens) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 id, chatRecordId, oid, createBy, startTime, finishTime, duration, totalTokens, operate,
-                localOperation, error, message);
+                localOperation, error, message, inputTokens, outputTokens);
         return id;
     }
 
@@ -309,7 +353,9 @@ public class ChatRepository {
         record.put("sql_answer", Rows.str(row, "sql_answer"));
         record.put("sql", Rows.str(row, "sql"));
         record.put("datasource", Rows.lngOrNull(row, "datasource"));
-        record.put("chart_answer", Rows.str(row, "chart_answer"));
+        // A26：chart_answer 落库为 {"content","reasoning_content"}（对齐 SQLBot
+        // curd/chat.py:517-522：JSON 时取 reasoning_content），历史纯文本/图片 URL 原样返回
+        record.put("chart_answer", unwrapThinking(Rows.str(row, "chart_answer")));
         record.put("chart", Rows.str(row, "chart"));
         record.put("analysis", Rows.str(row, "analysis"));
         record.put("analysis_thinking", Rows.str(row, "analysis_thinking"));
@@ -345,7 +391,9 @@ public class ChatRepository {
         item.put("operate", Rows.str(row, "operate"));
         item.put("local_operation", Rows.bool(row, "local_operation", false));
         item.put("error", Rows.bool(row, "error", false));
-        item.put("message", Rows.str(row, "message"));
+        // A26：message 为结构化对象（对齐 SQLBot get_chat_log：非 CHOOSE_TABLE 时 orjson.loads，
+        // 失败回落原始文本；CHOOSE_TABLE 的 messages 本身就是纯文本表名列表）
+        item.put("message", parseLogMessage(Rows.str(row, "message"), Rows.str(row, "operate")));
         return item;
     }
 
@@ -359,6 +407,64 @@ public class ChatRepository {
             return objectMapper.writeValueAsString(value);
         } catch (Exception e) {
             return "{}";
+        }
+    }
+
+    /**
+     * chat_log.messages → 结构化对象（A26：对齐 SQLBot {@code get_chat_log}：
+     * {@code orjson.loads} 后作为 {@code message} 返回；CHOOSE_TABLE 例外保持纯文本）。
+     *
+     * <p>解析失败时回落原始文本，不抛异常。</p>
+     */
+    private Object parseLogMessage(String messages, String operate) {
+        if (messages == null || messages.isEmpty()) {
+            return null;
+        }
+        if ("CHOOSE_TABLE".equals(operate)) {
+            return messages;
+        }
+        String trimmed = messages.trim();
+        try {
+            if (trimmed.startsWith("[")) {
+                return objectMapper.readValue(trimmed, new TypeReference<List<Object>>() {
+                });
+            }
+            if (trimmed.startsWith("{")) {
+                return objectMapper.readValue(trimmed, new TypeReference<Map<String, Object>>() {
+                });
+            }
+        } catch (Exception e) {
+            return messages;
+        }
+        return messages;
+    }
+
+    /**
+     * 思考流字段解包（A26）：{@code {"reasoning_content": "...", "content": "..."}} 取
+     * reasoning_content（空则 content）；非 JSON（历史纯文本/旧图片 URL）原样返回。
+     *
+     * <p>对齐 SQLBot {@code curd/chat.py:517-522}。</p>
+     */
+    static String unwrapThinking(String stored) {
+        if (stored == null || stored.isEmpty()) {
+            return stored;
+        }
+        String trimmed = stored.trim();
+        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
+            return stored;
+        }
+        try {
+            Map<String, Object> obj = new ObjectMapper().readValue(trimmed,
+                    new TypeReference<Map<String, Object>>() {
+                    });
+            Object reasoning = obj.get("reasoning_content");
+            if (reasoning != null && !String.valueOf(reasoning).isEmpty()) {
+                return String.valueOf(reasoning);
+            }
+            Object content = obj.get("content");
+            return content == null ? "" : String.valueOf(content);
+        } catch (Exception e) {
+            return stored;
         }
     }
 

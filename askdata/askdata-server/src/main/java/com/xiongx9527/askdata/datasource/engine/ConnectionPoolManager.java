@@ -40,6 +40,15 @@ public class ConnectionPoolManager {
     /** 默认池上限（对齐 SQLBot max_pools=500）。 */
     public static final int DEFAULT_MAX_POOLS = 500;
 
+    /** A21 默认常驻连接数（对齐 DatasourceConf.poolSize 默认 5）。 */
+    public static final int DEFAULT_POOL_SIZE = 5;
+
+    /** A21 默认溢出连接数。 */
+    public static final int DEFAULT_MAX_OVERFLOW = 10;
+
+    /** A21 默认等待空闲连接超时（毫秒）。 */
+    public static final long DEFAULT_POOL_TIMEOUT_MS = 30_000L;
+
     private final int maxPools;
 
     private final Object lock = new Object();
@@ -62,38 +71,77 @@ public class ConnectionPoolManager {
     // ------------------------------------------------------------------
 
     /**
-     * 从池中借出一条连接（无可用连接时新建）。
+     * 从池中借出一条连接（无可用连接时新建；使用默认池参数）。
      *
      * @param poolKey 池键（数据源 id 派生或配置派生）
      * @param factory 连接工厂（新建连接时调用；已有可用连接时不调用）
      * @return 代理连接（其 {@code close()} 表示归还到池）
-     * @throws SQLException 连接创建失败
+     * @throws SQLException 连接创建失败或等待超时
      */
     public Connection borrow(String poolKey, ConnectionFactory factory) throws SQLException {
-        PooledConnection pool;
-        Connection raw;
+        return borrow(poolKey, factory, PoolSettings.defaults());
+    }
+
+    /**
+     * 从池中借出一条连接（验收 A21：按数据源配置的池参数借出）。
+     *
+     * <p>语义对齐 SQLAlchemy/常见连接池：</p>
+     * <ul>
+     *   <li>{@code poolSize}（coreSize）：池常驻连接数，归还后保留在池内复用；</li>
+     *   <li>{@code max_overflow}：并发高峰时可额外创建的连接数，归还超出 coreSize 的
+     *       连接会被关闭（不占常驻位）；</li>
+     *   <li>{@code pool_timeout}：池满时等待空闲连接的最长时间（毫秒），超时抛
+     *       {@link SQLException}（对齐 SQLAlchemy {@code pool_timeout} 的 TimeoutError）。</li>
+     * </ul>
+     *
+     * @param poolKey  池键（数据源 id 派生或配置派生）
+     * @param factory  连接工厂（新建连接时调用；已有可用连接时不调用）
+     * @param settings 池参数（coreSize / maxOverflow / timeoutMs）
+     * @return 代理连接（其 {@code close()} 表示归还到池）
+     * @throws SQLException 连接创建失败或等待超时
+     */
+    public Connection borrow(String poolKey, ConnectionFactory factory, PoolSettings settings)
+            throws SQLException {
+        PoolSettings effective = settings == null ? PoolSettings.defaults() : settings;
+        long deadline = System.currentTimeMillis() + effective.timeoutMs();
         synchronized (lock) {
-            pool = pools.get(poolKey);
-            if (pool != null) {
-                raw = pool.take();
-                if (raw != null) {
-                    // 命中：LinkedHashMap(accessOrder) 的 get() 已刷新 LRU 位置
-                    return wrap(poolKey, pool, raw);
+            while (true) {
+                PooledConnection pool = pools.get(poolKey);
+                if (pool != null) {
+                    Connection idle = pool.take();
+                    if (idle != null) {
+                        // 命中：LinkedHashMap(accessOrder) 的 get() 已刷新 LRU 位置
+                        return wrap(poolKey, pool, idle, effective);
+                    }
+                    if (pool.canCreate(effective)) {
+                        // 有空位（coreSize + maxOverflow 之内）：新建并借出
+                        Connection created = factory.create();
+                        pool.noteCreated();
+                        return wrap(poolKey, pool, created, effective);
+                    }
+                } else {
+                    // 首个连接：建池后立刻借出
+                    Connection created = factory.create();
+                    PooledConnection fresh = new PooledConnection();
+                    fresh.noteCreated();
+                    pools.put(poolKey, fresh);
+                    evictIfNeeded();
+                    return wrap(poolKey, fresh, created, effective);
+                }
+                // 池已满：等待归还（release 会 notifyAll）
+                long remaining = deadline - System.currentTimeMillis();
+                if (remaining <= 0L) {
+                    throw new SQLException("Connection pool [" + poolKey + "] timeout after "
+                            + effective.timeoutMs() + "ms (poolSize=" + effective.coreSize()
+                            + ", maxOverflow=" + effective.maxOverflow() + ")");
+                }
+                try {
+                    lock.wait(remaining);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new SQLException("Interrupted while waiting for connection pool " + poolKey, e);
                 }
             }
-            // 无可用连接：新建
-            raw = factory.create();
-            if (pool == null) {
-                pool = new PooledConnection();
-                pools.put(poolKey, pool);
-                evictIfNeeded();
-            }
-            pool.give(raw);
-            Connection handed = pool.take();
-            if (handed == null) {
-                throw new SQLException("Unable to acquire connection for pool " + poolKey);
-            }
-            return wrap(poolKey, pool, handed);
         }
     }
 
@@ -103,6 +151,17 @@ public class ConnectionPoolManager {
      * <p>归还时校验有效性；坏连接直接丢弃（不缓存），下次借出时重建。</p>
      */
     public void release(String poolKey, Connection connection) {
+        release(poolKey, connection, null);
+    }
+
+    /**
+     * 显式归还连接（代理 {@code close()} 也会走这里）。
+     *
+     * <p>归还时校验有效性；坏连接直接丢弃（不缓存），下次借出时重建。
+     * {@code settings} 非空时，超出 coreSize 的常驻连接会被关闭（A21 的 max_overflow
+     * 语义：溢出连接不常驻）；归还后唤醒等待借出的线程。</p>
+     */
+    public void release(String poolKey, Connection connection, PoolSettings settings) {
         if (connection == null) {
             return;
         }
@@ -110,13 +169,16 @@ public class ConnectionPoolManager {
             PooledConnection pool = pools.get(poolKey);
             if (pool == null) {
                 closeQuietly(connection);
+                lock.notifyAll();
                 return;
             }
             if (!isUsable(connection)) {
                 pool.discard(connection);
+                lock.notifyAll();
                 return;
             }
-            pool.give(connection);
+            pool.give(connection, settings);
+            lock.notifyAll();
         }
     }
 
@@ -202,11 +264,16 @@ public class ConnectionPoolManager {
 
     /** 代理连接：拦截 close() 改为归还；其余方法透传。 */
     private Connection wrap(String poolKey, PooledConnection pool, Connection raw) {
-        return (Connection) Proxy.newProxyInstance(Connection.class.getClassLoader(),
-                new Class<?>[]{Connection.class}, new PooledHandler(this, poolKey, pool, raw));
+        return wrap(poolKey, pool, raw, null);
     }
 
-    /** 代理调用处理���（拦截 close / isClosed / isValid / unwrap）。 */
+    /** 代理连接（A21：归还时按池参数决定常驻/关闭）。 */
+    private Connection wrap(String poolKey, PooledConnection pool, Connection raw, PoolSettings settings) {
+        return (Connection) Proxy.newProxyInstance(Connection.class.getClassLoader(),
+                new Class<?>[]{Connection.class}, new PooledHandler(this, poolKey, pool, raw, settings));
+    }
+
+    /** 代理调用处理器（拦截 close / isClosed / isValid / unwrap）。 */
     private static final class PooledHandler implements InvocationHandler {
 
         private final ConnectionPoolManager manager;
@@ -217,14 +284,18 @@ public class ConnectionPoolManager {
 
         private final Connection raw;
 
+        /** A21：借出时的池参数（归还时用于溢出连接回收）；null 表示不限制常驻数。 */
+        private final PoolSettings settings;
+
         private boolean released;
 
         private PooledHandler(ConnectionPoolManager manager, String poolKey, PooledConnection pool,
-                              Connection raw) {
+                              Connection raw, PoolSettings settings) {
             this.manager = manager;
             this.poolKey = poolKey;
             this.pool = pool;
             this.raw = raw;
+            this.settings = settings;
         }
 
         @Override
@@ -233,7 +304,7 @@ public class ConnectionPoolManager {
             if ("close".equals(name)) {
                 if (!released) {
                     released = true;
-                    manager.release(poolKey, raw);
+                    manager.release(poolKey, raw, settings);
                 }
                 return null;
             }
@@ -324,53 +395,103 @@ public class ConnectionPoolManager {
      * 单个池键对应的连接池。
      *
      * <p>空闲连接以栈（后进先出）保存；借出时移出，归还时放回。
-     * 同一池键同一时刻只允许一条连接被借出。</p>
+     * {@code created} 记录本池已创建的连接总数（空闲 + 借出），
+     * 用于 A21 的 {@code poolSize + max_overflow} 上限判定。</p>
      */
     private static final class PooledConnection {
 
         private final List<Connection> idle = new ArrayList<>(2);
 
-        private Connection inUse;
+        private int created;
 
         /** 借出一条空闲连接；无空闲连接返回 null。 */
         synchronized Connection take() {
             if (idle.isEmpty()) {
                 return null;
             }
-            Connection connection = idle.remove(idle.size() - 1);
-            inUse = connection;
-            return connection;
+            return idle.remove(idle.size() - 1);
         }
 
-        /** 归还一条连接（放在栈顶，优先复用最近归还的）。 */
-        synchronized void give(Connection connection) {
-            if (inUse == connection) {
-                inUse = null;
-            }
+        /** 是否还能新建连接（created &lt; coreSize + maxOverflow）。 */
+        synchronized boolean canCreate(PoolSettings settings) {
+            return created < settings.coreSize() + settings.maxOverflow();
+        }
+
+        /** 记录一次新建。 */
+        synchronized void noteCreated() {
+            created++;
+        }
+
+        /**
+         * 归还一条连接。
+         *
+         * @param settings 池参数；为空时全部保留在池内（旧行为）。非空时若空闲数已达到
+         *                 coreSize，则关闭该连接（max_overflow 连接不常驻）。
+         */
+        synchronized void give(Connection connection, PoolSettings settings) {
             idle.add(connection);
+            if (settings != null) {
+                while (idle.size() > settings.coreSize()) {
+                    Connection excess = idle.remove(idle.size() - 1);
+                    closeQuietly(excess);
+                    created--;
+                }
+            }
+        }
+
+        /** 归还一条连接（不限制常驻数；保留旧签名便于测试）。 */
+        synchronized void give(Connection connection) {
+            give(connection, null);
         }
 
         /** 丢弃一条坏连接（不缓存）。 */
         synchronized void discard(Connection connection) {
-            if (inUse == connection) {
-                inUse = null;
-            }
             idle.remove(connection);
+            created = Math.max(0, created - 1);
         }
 
         /** 取出并清空全部连接（供关闭时释放）。 */
         synchronized List<Connection> drain() {
             List<Connection> all = new ArrayList<>(idle);
             idle.clear();
-            if (inUse != null) {
-                all.add(inUse);
-                inUse = null;
-            }
+            created = 0;
             return all;
         }
 
         synchronized int size() {
-            return idle.size() + (inUse == null ? 0 : 1);
+            return idle.size() + created - idle.size();
+        }
+
+        /** 已创建的连接总数（空闲 + 借出），供测试/诊断。 */
+        synchronized int createdCount() {
+            return created;
+        }
+    }
+
+    /**
+     * 连接池参数（验收 A21：数据源配置的 poolSize / max_overflow / pool_timeout 生效）。
+     *
+     * @param coreSize   常驻连接数（SQLBot/DatasourceConf 的 {@code poolSize}，默认 5）
+     * @param maxOverflow 并发高峰可额外创建的连接数（默认 10）
+     * @param timeoutMs  池满时等待空闲连接的最长时间（默认 30000）
+     */
+    public record PoolSettings(int coreSize, int maxOverflow, long timeoutMs) {
+
+        /** 默认参数（未配置数据源池参数时使用）。 */
+        public static PoolSettings defaults() {
+            return new PoolSettings(DEFAULT_POOL_SIZE, DEFAULT_MAX_OVERFLOW, DEFAULT_POOL_TIMEOUT_MS);
+        }
+
+        /** 由数据源配置派生（缺省/非法值回落默认）。 */
+        public static PoolSettings of(DatasourceConf conf) {
+            if (conf == null) {
+                return defaults();
+            }
+            int core = conf.getPoolSize() > 0 ? conf.getPoolSize() : DEFAULT_POOL_SIZE;
+            int overflow = conf.getMaxOverflow() >= 0 ? conf.getMaxOverflow() : DEFAULT_MAX_OVERFLOW;
+            long timeout = conf.getPoolTimeout() > 0 ? (long) conf.getPoolTimeout() * 1000L
+                    : DEFAULT_POOL_TIMEOUT_MS;
+            return new PoolSettings(core, overflow, timeout);
         }
     }
 }

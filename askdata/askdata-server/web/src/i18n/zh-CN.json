@@ -833,6 +833,7 @@
     "title": "关于",
     "auth_to": "授权给",
     "invalid_license": "License 无效",
+    "license_invalid_tips": "许可证无效：企业 IM 扫码登录、平台用户同步等企业功能不可用，请在「关于」页面更新 License。",
     "update_license": "更新 License",
     "expiration_time": "过期时间",
     "expirationed": "(已过期)",

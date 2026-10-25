@@ -179,7 +179,19 @@ public class LoginController {
                 : Long.parseLong(String.valueOf(value).trim());
     }
 
-    private static boolean isValidPwdFormat(String pwd) {
-        return pwd != null && pwd.length() >= 8;
+    /**
+     * A22：口令强度（对齐 SQLBot {@code system_schema.PWD_REGEX}）：
+     * 必须同时包含小写字母、大写字母、数字与特殊字符，长度 8-20。
+     *
+     * <p>口令允许的特殊字符集见 {@link #PWD_SPECIALS}。</p>
+     */
+    private static final String PWD_SPECIALS = "~!@#$%^&*()_+\\-={}|:\\u0022<>?`\\[\\]',./";
+
+    private static final java.util.regex.Pattern PWD_PATTERN = java.util.regex.Pattern.compile(
+            "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[" + PWD_SPECIALS + "])"
+                    + "[A-Za-z\\d" + PWD_SPECIALS + "]{8,20}$");
+
+    public static boolean isValidPwdFormat(String pwd) {
+        return pwd != null && PWD_PATTERN.matcher(pwd).matches();
     }
 }

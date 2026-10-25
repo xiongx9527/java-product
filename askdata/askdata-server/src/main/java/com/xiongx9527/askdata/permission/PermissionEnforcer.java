@@ -41,8 +41,10 @@ import java.util.Set;
  *   <li>管理员与白名单用户不受影响（{@link DsPermissionQueryService} 内部已对用户身份做短路）。</li>
  * </ul>
  *
- * <p>降级优先于报错：解析失败、权限配置不可用或规则无法套用时，原样返回 SQL 且不隐藏列，
- * 不阻断问数主链路（对齐 SQLBot 的降级语义）。</p>
+ * <p><b>fail-closed</b>：SQL 无法解析（JSQLParserException）或改写过程出现运行时异常时，
+ * 抛出 {@link PermissionEnforceException} 拒绝执行，不再以未加固的原始 SQL 放行
+ * （对齐 SQLBot {@code llm.py:1068-1085}：重写失败即抛错终止）。
+ * 无表可匹配、无权限规则或管理员场景仍按原样返回。</p>
  */
 @Service
 public class PermissionEnforcer {
@@ -71,6 +73,13 @@ public class PermissionEnforcer {
 
         public Set<String> getHiddenColumns() {
             return hiddenColumns;
+        }
+    }
+
+    /** 权限加固失败（fail-closed）时抛出，调用方据此拒绝执行并返回错误。 */
+    public static class PermissionEnforceException extends RuntimeException {
+        public PermissionEnforceException(String message, Throwable cause) {
+            super(message, cause);
         }
     }
 
@@ -114,9 +123,11 @@ public class PermissionEnforcer {
                 hidden.addAll(permQuery.hiddenColumns(oid, userId, dsId, t));
             }
             return new EnforcedQuery(rewritten, hidden);
-        } catch (JSQLParserException | RuntimeException e) {
-            // 降级：权限不可用时不阻断查询
-            return new EnforcedQuery(sql, Collections.emptySet());
+        } catch (JSQLParserException e) {
+            // fail-closed：无法解析即拒绝执行，避免未加固 SQL 绕过行/列权限
+            throw new PermissionEnforceException("failed to parse SQL for permission enforcement", e);
+        } catch (RuntimeException e) {
+            throw new PermissionEnforceException("failed to enforce row/column permission", e);
         }
     }
 

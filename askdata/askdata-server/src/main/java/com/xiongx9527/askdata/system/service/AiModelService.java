@@ -255,7 +255,13 @@ public class AiModelService {
                 emitError(writer, messageResolver.get("aimodel.api_domain.required"));
                 return;
             }
-            checkModel(chatCompletionsUrl(apiDomain), apiKey, baseModel, temperatureOf(body), writer);
+            // A23：config_list 的推理参数（temperature / top_p / max_tokens / 厂商自定义）参与连通检查；
+            // Azure 专有域名走 deployment URL + api-key 头（与 ChatModelClient 同一套规则）
+            Map<String, Object> params = modelParams(body);
+            boolean azure = com.xiongx9527.askdata.chat.service.ChatModelClient.isAzureEndpoint(apiDomain);
+            String url = com.xiongx9527.askdata.chat.service.ChatModelClient.chatCompletionsUrl(
+                    apiDomain, baseModel, params);
+            checkModel(url, apiKey, baseModel, params, azure, writer);
         } catch (Exception e) {
             emitError(writer, e.getMessage() == null ? e.toString() : e.getMessage());
         } finally {
@@ -263,8 +269,26 @@ public class AiModelService {
         }
     }
 
-    private void checkModel(String url, String apiKey, String baseModel, Double temperature, PrintWriter writer)
-            throws IOException {
+    /**
+     * A23：把 config_list（{@code [{key, val}]}）归并为请求参数 Map。
+     *
+     * <p>与 ChatModelRouter 组装 extraParams 的口径一致：只有同时含 key 与 val 的项生效。</p>
+     */
+    public static Map<String, Object> modelParams(Map<String, Object> body) {
+        Map<String, Object> params = new LinkedHashMap<>();
+        for (Map<String, Object> item : Rows.mapList(Rows.get(body, "config_list"))) {
+            String key = Rows.str(item, "key");
+            Object val = Rows.get(item, "val");
+            if (key == null || key.isEmpty() || val == null) {
+                continue;
+            }
+            params.put(key, val);
+        }
+        return params;
+    }
+
+    private void checkModel(String url, String apiKey, String baseModel, Map<String, Object> params,
+                           boolean azure, PrintWriter writer) throws IOException {
         HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
         try {
             connection.setRequestMethod("POST");
@@ -274,17 +298,20 @@ public class AiModelService {
             connection.setRequestProperty("Content-Type", "application/json");
             connection.setRequestProperty("Accept", "text/event-stream");
             if (apiKey != null && !apiKey.isEmpty()) {
-                connection.setRequestProperty("Authorization", "Bearer " + apiKey);
+                if (azure) {
+                    // Azure 不用 Bearer，改用 api-key 头（对齐 SQLBot AzureOpenAI 分支）
+                    connection.setRequestProperty("api-key", apiKey);
+                } else {
+                    connection.setRequestProperty("Authorization", "Bearer " + apiKey);
+                }
             }
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("model", baseModel);
-            List<Map<String, Object>> messages = new ArrayList<>();
-            messages.add(Rows.of("role", "user", "content", "1+1=?"));
-            payload.put("messages", messages);
-            payload.put("stream", true);
-            if (temperature != null) {
-                payload.put("temperature", temperature);
-            }
+            List<com.xiongx9527.askdata.chat.service.ChatModelClient.ModelMessage> messages =
+                    new ArrayList<>();
+            messages.add(new com.xiongx9527.askdata.chat.service.ChatModelClient.ModelMessage(
+                    "user", "1+1=?"));
+            // A23：复用主链路的请求体组装，保证连通检查与真实问数走同一套参数口径
+            Map<String, Object> payload = com.xiongx9527.askdata.chat.service.ChatModelClient.buildPayload(
+                    baseModel, messages, params, azure);
             connection.getOutputStream().write(objectMapper.writeValueAsBytes(payload));
             connection.getOutputStream().flush();
 
@@ -392,43 +419,6 @@ public class AiModelService {
         return text.length() > 800 ? text.substring(0, 800) : text;
     }
 
-    /** 端点规范化：{@code http://host:11434} → {@code .../v1/chat/completions}，{@code .../v1} → {@code .../v1/chat/completions}。 */
-    static String chatCompletionsUrl(String apiDomain) {
-        String base = apiDomain.trim();
-        while (base.endsWith("/")) {
-            base = base.substring(0, base.length() - 1);
-        }
-        if (base.endsWith("/chat/completions")) {
-            return base;
-        }
-        String path;
-        try {
-            path = new URL(base).getPath();
-        } catch (Exception e) {
-            return base + "/chat/completions";
-        }
-        if (path == null || path.isEmpty() || "/".equals(path)) {
-            return base + "/v1/chat/completions";
-        }
-        return base + "/chat/completions";
-    }
-
-    private Double temperatureOf(Map<String, Object> body) {
-        for (Map<String, Object> item : Rows.mapList(Rows.get(body, "config_list"))) {
-            if ("temperature".equals(Rows.str(item, "key"))) {
-                Object val = Rows.get(item, "val");
-                if (val instanceof Number) {
-                    return ((Number) val).doubleValue();
-                }
-                try {
-                    return val == null ? null : Double.parseDouble(String.valueOf(val));
-                } catch (NumberFormatException e) {
-                    return null;
-                }
-            }
-        }
-        return null;
-    }
 
     private void requireModel(long id) {
         if (!aiModelRepository.findById(id).isPresent()) {

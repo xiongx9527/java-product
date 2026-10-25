@@ -358,10 +358,11 @@ class ChatPipelineTest {
         Map<String, Object> record = chatService.get(chatId, true);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> records = (List<Map<String, Object>>) record.get("records");
-        assertEquals(1, records.size());
-        assertEquals(STUB_SQL, records.get(0).get("sql"));
+        // A17：首条 first_chat 空记录 + 本条真实记录
+        assertEquals(2, records.size());
+        assertEquals(STUB_SQL, records.get(1).get("sql"));
         @SuppressWarnings("unchecked")
-        Map<String, Object> data = (Map<String, Object>) records.get(0).get("data");
+        Map<String, Object> data = (Map<String, Object>) records.get(1).get("data");
         // 记录 data 为 {fields, data}（前端 ChartBlock 直接消费）
         assertEquals(2, ((List<?>) data.get("data")).size(), "distinct status = PAID/NEW");
         assertEquals(2, ((List<?>) data.get("fields")).size());
@@ -378,9 +379,9 @@ class ChatPipelineTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> steps = (List<Map<String, Object>>) log.get("steps");
         assertTrue(steps.size() >= 3, steps.toString());
-        assertTrue(steps.stream().anyMatch(step -> "generate_sql".equals(step.get("operate"))), steps.toString());
-        assertTrue(steps.stream().anyMatch(step -> "execute_sql".equals(step.get("operate"))), steps.toString());
-        assertTrue(steps.stream().anyMatch(step -> "generate_chart".equals(step.get("operate"))), steps.toString());
+        assertTrue(steps.stream().anyMatch(step -> "GENERATE_SQL".equals(step.get("operate"))), steps.toString());
+        assertTrue(steps.stream().anyMatch(step -> "EXECUTE_SQL".equals(step.get("operate"))), steps.toString());
+        assertTrue(steps.stream().anyMatch(step -> "GENERATE_CHART".equals(step.get("operate"))), steps.toString());
         assertNotNull(chatService.recordLog(recordId, true));
         assertTrue(chatService.recentQuestions(dsId).contains("每个状态的订单数"));
 
@@ -422,7 +423,8 @@ class ChatPipelineTest {
         Map<String, Object> chat = chatService.get(chatId, false);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> records = (List<Map<String, Object>>) chat.get("records");
-        assertNotNull(records.get(0).get("chart"));
+        // A17：records[0] 是 first_chat 空记录，真实记录在 records[1]
+        assertNotNull(records.get(1).get("chart"));
     }
 
     // ------------------------------------------------------------------
@@ -452,10 +454,16 @@ class ChatPipelineTest {
         Map<String, Object> chat = chatService.get(chatId, true);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> records = (List<Map<String, Object>>) chat.get("records");
-        assertEquals("PAID 与 NEW 两个状态的订单分布如下。", records.get(0).get("analysis"));
-        // 子记录不单独出现在会话记录列表
-        assertEquals(1, records.size());
-        assertNotNull(records.get(0).get("analysis_record_id"));
+        // A17：records[0] 是 first_chat 空记录，基础记录在 records[1]
+        assertEquals("PAID 与 NEW 两个状态的订单分布如下。", records.get(1).get("analysis"));
+        // 子记录不单独出现在会话记录列表（first_chat 空记录 + 基础记录）
+        assertEquals(2, records.size());
+        // A4：外键只写 child → base；基础记录自身两个外键保持 NULL，
+        // 否则前端 index.vue 不渲染基础气泡的 ChartAnswer（刷新后 SQL/数据/图表全丢）
+        assertNull(records.get(1).get("analysis_record_id"));
+        assertNull(records.get(1).get("predict_record_id"));
+        // 子记录指向基础记录
+        assertTrue(analysisChildPointsToBase(recordId), "子记录应指向基础记录");
         assertTrue(stubCalls.contains("analysis"), stubCalls.toString());
     }
 
@@ -535,8 +543,9 @@ class ChatPipelineTest {
         Map<String, Object> chat = chatService.get(chatId, true);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> records = (List<Map<String, Object>>) chat.get("records");
-        assertEquals(2, records.size());
-        assertEquals(recordId, ((Number) records.get(1).get("regenerate_record_id")).longValue());
+        // A17：first_chat 空记录 + 原记录 + 重新生成记录
+        assertEquals(3, records.size());
+        assertEquals(recordId, ((Number) records.get(2).get("regenerate_record_id")).longValue());
     }
 
     @Test
@@ -631,12 +640,13 @@ class ChatPipelineTest {
         // SQL 在动态库执行（2 行），静态库同表有 3 行
         Map<String, Object> chat = chatService.get(chatId, true);
         List<Map<String, Object>> records = (List<Map<String, Object>>) chat.get("records");
-        assertEquals(1, records.size());
-        assertEquals(STUB_SQL, records.get(0).get("sql"));
-        Map<String, Object> data = (Map<String, Object>) records.get(0).get("data");
+        // A17：first_chat 空记录 + 动态数据源问答记录
+        assertEquals(2, records.size());
+        assertEquals(STUB_SQL, records.get(1).get("sql"));
+        Map<String, Object> data = (Map<String, Object>) records.get(1).get("data");
         assertEquals(2, ((List<?>) data.get("data")).size(), "动态库 PAID/NEW 两行");
         // 记录照常落库，但不持久化该数据源
-        assertNull(records.get(0).get("datasource"), records.get(0).toString());
+        assertNull(records.get(1).get("datasource"), records.get(1).toString());
         assertEquals(datasourceCountBefore,
                 appJdbc.queryForObject("SELECT COUNT(*) FROM core_datasource", Long.class).longValue());
     }
@@ -812,5 +822,16 @@ class ChatPipelineTest {
 
     static long frameLong(List<JsonNode> frames, String type, String key) {
         return frameOf(frames, type).get(key).asLong();
+    }
+
+    /**
+     * A4：子记录的 analysis_record_id 指向基础记录（child → base）。
+     *
+     * <p>子记录不出现在会话记录列表（前端只渲染基础记录），因此直接查库校验外键方向。</p>
+     */
+    boolean analysisChildPointsToBase(long baseRecordId) {
+        List<Map<String, Object>> children = appJdbc.queryForList(
+                "SELECT id FROM chat_record WHERE analysis_record_id = ?", baseRecordId);
+        return children.size() == 1;
     }
 }

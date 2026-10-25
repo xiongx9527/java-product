@@ -75,8 +75,16 @@ public class ChatModelClient {
 
         void onError(String message);
 
-        /** 流末 usage 上报（A6 token 用量）；端点未上报时不触发。 */
+        /**
+         * A12：流末 usage 上报。默认实现只取 total（旧行为）；
+         * 需要 input/output 明细时覆写 {@link #onUsageDetail(long, long, long)}。
+         */
         default void onUsage(long totalTokens) {
+            onUsageDetail(0L, 0L, totalTokens);
+        }
+
+        /** A12：usage 明细（input / output / total）；端点未上报分项时为 0。 */
+        default void onUsageDetail(long inputTokens, long outputTokens, long totalTokens) {
             // 默认忽略：仅关心文本流的调用方无需实现
         }
     }
@@ -177,7 +185,7 @@ public class ChatModelClient {
      *       非 Azure 端点仍按普通参数透传。</li>
      * </ul>
      */
-    static Map<String, Object> buildPayload(String baseModel, List<ModelMessage> messages,
+    public static Map<String, Object> buildPayload(String baseModel, List<ModelMessage> messages,
                                             Map<String, Object> extraParams, boolean azure) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("model", baseModel);
@@ -221,6 +229,11 @@ public class ChatModelClient {
             payload.put("extra_body", extraBody);
         }
         payload.put("stream", true);
+        // A12：请求流式 usage（对齐 SQLBot stream_usage=True），使端点在上报 usage 时
+        // 同时给出 input/output/total 三项（此前只取 total_tokens）
+        Map<String, Object> streamOptions = new LinkedHashMap<>();
+        streamOptions.put("include_usage", Boolean.TRUE);
+        payload.put("stream_options", streamOptions);
         return payload;
     }
 
@@ -257,6 +270,16 @@ public class ChatModelClient {
      * @param extraParams §2.3: 透传的模型推理参数（见 {@link #streamCompletion}）；可为 null。 */
     public String generate(String apiDomain, String apiKey, String baseModel, List<ModelMessage> messages,
                            Map<String, Object> extraParams) {
+        return generate(apiDomain, apiKey, baseModel, messages, extraParams, null);
+    }
+
+    /**
+     * 非流式一次性补全（A12：可回传 usage 明细）。
+     *
+     * @param usage 非 null 时写入本次调用的 input/output/total（端点未上报时为 0）
+     */
+    public String generate(String apiDomain, String apiKey, String baseModel, List<ModelMessage> messages,
+                           Map<String, Object> extraParams, final Usage usage) {
         final StringBuilder sb = new StringBuilder();
         final boolean[] failed = {false};
         streamCompletion(apiDomain, apiKey, baseModel, messages, extraParams, new TokenHandler() {
@@ -276,8 +299,24 @@ public class ChatModelClient {
             public void onError(String message) {
                 failed[0] = true;
             }
+
+            @Override
+            public void onUsageDetail(long inputTokens, long outputTokens, long total) {
+                if (usage != null) {
+                    usage.input += inputTokens;
+                    usage.output += outputTokens;
+                    usage.total += total;
+                }
+            }
         });
         return failed[0] || sb.length() == 0 ? null : sb.toString();
+    }
+
+    /** A12：LLM 调用的 token 用量（可变 holder）。 */
+    public static final class Usage {
+        public long input;
+        public long output;
+        public long total;
     }
 
     /** 兼容旧调用方（不传额外参数）。 */
@@ -423,8 +462,12 @@ public class ChatModelClient {
                 try {
                     JsonNode node = objectMapper.readTree(data);
                     JsonNode usage = node.get("usage");
-                    if (usage != null && usage.get("total_tokens") != null) {
-                        handler.onUsage(usage.get("total_tokens").asLong());
+                    if (usage != null) {
+                        long input = usage.has("prompt_tokens") ? usage.get("prompt_tokens").asLong() : 0L;
+                        long output = usage.has("completion_tokens") ? usage.get("completion_tokens").asLong() : 0L;
+                        long total = usage.has("total_tokens")
+                                ? usage.get("total_tokens").asLong() : input + output;
+                        handler.onUsageDetail(input, output, total);
                     }
                     JsonNode choices = node.get("choices");
                     if (choices != null && choices.isArray() && choices.size() > 0) {
@@ -492,7 +535,7 @@ public class ChatModelClient {
     }
 
     /** Azure 专有端点判定：资源域名形如 {@code <res>.openai.azure.com} / {@code <res>.openai.azure.cn}。 */
-    static boolean isAzureEndpoint(String apiDomain) {
+    public static boolean isAzureEndpoint(String apiDomain) {
         String host;
         try {
             host = new URL(trimBase(apiDomain)).getHost();
@@ -507,7 +550,7 @@ public class ChatModelClient {
      *  Azure 专有域名改走 deployment 形态：{@code {base}/openai/deployments/{deployment}/chat/completions?api-version={v}}
      *  （deployment 取 additional_params 的 {@code deployment_name}，缺省模型名；api-version 取 {@code api_version}，
      *  缺省 2024-02-15-preview——与前端 supplier.ts Azure 预设一致）。 */
-    static String chatCompletionsUrl(String apiDomain, String baseModel, Map<String, Object> extraParams) {
+    public static String chatCompletionsUrl(String apiDomain, String baseModel, Map<String, Object> extraParams) {
         if (isAzureEndpoint(apiDomain)) {
             String base = trimBase(apiDomain);
             String deployment = baseModel;
