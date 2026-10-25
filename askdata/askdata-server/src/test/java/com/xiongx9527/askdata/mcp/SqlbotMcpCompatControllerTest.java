@@ -1,6 +1,8 @@
 package com.xiongx9527.askdata.mcp;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xiongx9527.askdata.chat.service.ChatQuestionService;
+import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -8,11 +10,17 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -23,13 +31,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class SqlbotMcpCompatControllerTest {
 
     private AskdataMcpTools tools;
+    private ChatQuestionService questionService;
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
         tools = Mockito.mock(AskdataMcpTools.class);
+        questionService = Mockito.mock(ChatQuestionService.class);
         mvc = MockMvcBuilders.standaloneSetup(
-                new SqlbotMcpCompatController(new ObjectMapper(), () -> tools)).build();
+                new SqlbotMcpCompatController(new ObjectMapper(), () -> tools, () -> questionService)).build();
     }
 
     @Test
@@ -91,20 +101,53 @@ class SqlbotMcpCompatControllerTest {
     }
 
     @Test
+    void mcpQuestionStreamsSseWhenStreamTrue() throws Exception {
+        doAnswer(invocation -> {
+            HttpServletResponse response = invocation.getArgument(1);
+            response.setContentType("text/event-stream;charset=UTF-8");
+            response.getWriter().write("data:{\"type\":\"question\",\"question\":\"q\"}\n\n");
+            return null;
+        }).when(questionService).streamQuestion(anyMap(), any(HttpServletResponse.class));
+
+        mvc.perform(post("/api/v1/mcp/mcp_question")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"tk\",\"chat_id\":5,\"question\":\"q\",\"stream\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
+                .andExpect(content().string(containsString("data:{\"type\":\"question\"")));
+
+        verify(tools).bindTokenStrict("tk");
+        verify(tools, never()).mcp_question(any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void mcpQuestionFallsBackToSyncWithoutChatId() throws Exception {
+        when(tools.mcp_question(eq("tk"), isNull(), eq("q"), isNull(), isNull(), isNull(), eq(true), isNull()))
+                .thenReturn("{\"sql\":\"SELECT 1\"}");
+        mvc.perform(post("/api/v1/mcp/mcp_question")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"tk\",\"question\":\"q\",\"stream\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sql").value("SELECT 1"));
+        verify(questionService, never()).streamQuestion(anyMap(), any(HttpServletResponse.class));
+    }
+
+    @Test
     void mcpModelListAndAssistantDelegate() throws Exception {
         when(tools.mcp_model_list(2L)).thenReturn("[]");
-        when(tools.mcp_assistant("http://x", "hi")).thenReturn("{\"answer\":\"ok\"}");
+        when(tools.mcp_assistant("hi", "http://x", "auth", false, null))
+                .thenReturn("{\"answer\":\"ok\"}");
         mvc.perform(post("/api/v1/mcp/mcp_model_list")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"oid\":2}"))
                 .andExpect(status().isOk());
         mvc.perform(post("/api/v1/mcp/mcp_assistant")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"url\":\"http://x\",\"message\":\"hi\"}"))
+                        .content("{\"question\":\"hi\",\"url\":\"http://x\",\"authorization\":\"auth\",\"stream\":false}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.answer").value("ok"));
         verify(tools).mcp_model_list(2L);
-        verify(tools).mcp_assistant("http://x", "hi");
+        verify(tools).mcp_assistant("hi", "http://x", "auth", false, null);
     }
 
     @Test

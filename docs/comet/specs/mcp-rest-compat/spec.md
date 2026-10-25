@@ -14,6 +14,11 @@
 - **THEN** 响应分别为 {access_token} 与 {access_token, chat_id}（mcp_start 另附会话详情）；列表类端点返回 JSON 数组
 验收：A1
 
+### Scenario: mcp_question 流式返回
+- **WHEN** POST /mcp_question 携带 stream=true 且带 chat_id
+- **THEN** 响应为 text/event-stream（data:{json} 帧，与 /chat/question 一致），身份绑定在打开流之前完成；未传 stream（默认同步，保持既有 MCP 客户端兼容）、缺少 chat_id 或指定 custom_model 时返回同步 JSON
+验收：A1
+
 ## 2. 鉴权
 
 ### Scenario: 免会话头访问
@@ -24,6 +29,10 @@
 ### Scenario: token 身份绑定
 - **WHEN** body 携带有效 token（access_token 端点签发的 Sa-Token 令牌）
 - **THEN** 该次调用以 token 对应用户身份执行（行/列权限、工作空间过滤均按该用户生效）
+
+### Scenario: token 无效直接拒绝
+- **WHEN** body 携带非空但无法反查登录身份的 token
+- **THEN** 不执行任何业务逻辑，返回 400 {"detail": "无效或过期的 token"}
 验收：A2
 
 ## 3. 错误形态

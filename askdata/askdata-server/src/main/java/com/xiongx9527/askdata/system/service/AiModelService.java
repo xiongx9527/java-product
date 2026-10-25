@@ -205,6 +205,19 @@ public class AiModelService {
         return toStringIds(aiModelRepository.mappingIds(id));
     }
 
+    /** MCP mcp_model_list：按指定工作空间列模型（调用方负责归属校验）。 */
+    public List<Map<String, Object>> listByWs(long oid) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> row : aiModelRepository.listByWorkspace(oid, false)) {
+            result.add(Rows.of(
+                    "id", String.valueOf(Rows.lng(row, "id", 0L)),
+                    "name", Rows.str(row, "name"),
+                    "default_model", Rows.bool(row, "default_model", false),
+                    "supplier", Rows.intg(row, "supplier", 0)));
+        }
+        return result;
+    }
+
     /** /system/aimodel/list/by_ws：当前用户工作空间可用模型（id 为字符串，对齐 SQLBot AiModelBrief）。 */
     public List<Map<String, Object>> listByWs() {
         currentUserService.requireWsAdmin();

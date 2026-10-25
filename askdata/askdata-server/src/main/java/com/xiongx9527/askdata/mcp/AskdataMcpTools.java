@@ -26,11 +26,17 @@ import com.xiongx9527.askdata.system.auth.CryptoUtil;
 import com.xiongx9527.askdata.system.repository.UserRepository;
 import com.xiongx9527.askdata.system.service.AiModelService;
 import com.xiongx9527.askdata.system.service.WorkspaceService;
+import com.xiongx9527.askdata.system.repository.UserWsRepository;
+import com.xiongx9527.askdata.common.web.AuthContext;
+import com.xiongx9527.askdata.common.web.BadRequestException;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -97,8 +103,11 @@ public class AskdataMcpTools {
     public String model_list() throws Exception {
         ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
         try {
+            // 对齐 SQLBot mcp_model_list：按调用者当前工作空间取模型，不要求管理员（REST 的 by_ws 才限管理员）
+            CurrentUserService users = currentUserService();
+            long oid = users.oidOf(users.currentUser());
             AiModelService service = SpringUtils.getBean(AiModelService.class);
-            return mapper.writeValueAsString(service.listByWs());
+            return mapper.writeValueAsString(service.listByWs(oid));
         } catch (Exception e) {
             return errorJson(mapper, "model_list", e);
         }
@@ -357,17 +366,64 @@ public class AskdataMcpTools {
     // 签发的令牌，不签新 token、不做新鉴权机制）。
 
     /**
-     * token 参数身份绑定：token 有效时把该令牌绑定为本次调用的登录身份，
-     * 后续 CurrentUserService（Sa-Token 主通道）即以该用户执行；无效或为空时
-     * 沿用现有会话身份，交由底层业务校验。
+     * 身份绑定：token 非空且有效时把该令牌绑定为本次调用的登录身份（后续 CurrentUserService
+     * 即以该用户执行）；token 非空但无效时抛出业务拒绝（对齐 SQLBot {@code get_user} 的 403 语义）；
+     * token 为空时沿用现有会话（兼容既有调用）。
      */
-    private void applyTokenIdentity(String token) {
+    void bindTokenStrict(String token) {
         if (token == null || token.trim().isEmpty()) {
             return;
         }
         String trimmed = token.trim();
-        if (StpUtil.getLoginIdByToken(trimmed) != null) {
-            StpUtil.setTokenValue(trimmed);
+        if (StpUtil.getLoginIdByToken(trimmed) == null) {
+            throw new BadRequestException(I18n.msg("mcp.error.token.invalid"));
+        }
+        StpUtil.setTokenValue(trimmed);
+    }
+
+    /** 校验当前用户可访问指定工作空间：管理员放行，普通成员须存在于 sys_user_ws（对齐 SQLBot user_ws_options）。 */
+    private void requireWorkspace(Map<String, Object> user, long oid) {
+        if (oid <= 0) {
+            return;
+        }
+        if (currentUserService().isAdmin(user)) {
+            return;
+        }
+        UserWsRepository repo = SpringUtils.getBean(UserWsRepository.class);
+        if (!repo.find(Rows.lng(user, "id", 0L), oid).isPresent()) {
+            throw new BadRequestException(I18n.msg("mcp.error.user.not.in.workspace"));
+        }
+    }
+
+    private CurrentUserService currentUserService() {
+        return SpringUtils.getBean(CurrentUserService.class);
+    }
+
+    /**
+     * 临时切换到指定工作空间（对齐 SQLBot mcp_start 的 {@code user.oid = oid}）：
+     * 覆盖 {@link AuthContext} 的当前用户视图，不改变用户持久默认工作空间；返回原上下文以便恢复。
+     */
+    private AuthContext enterWorkspace(long oid) {
+        CurrentUserService svc = currentUserService();
+        AuthContext existing = AuthContext.current();
+        AuthContext temp = new AuthContext();
+        if (existing != null) {
+            temp.setChannel(existing.getChannel());
+            temp.setAssistant(existing.getAssistant());
+            temp.setRequestOrigin(existing.getRequestOrigin());
+        }
+        Map<String, Object> user = new HashMap<String, Object>(svc.currentUser());
+        user.put("oid", oid);
+        temp.setCurrentUser(user);
+        AuthContext.set(temp);
+        return existing;
+    }
+
+    private void restoreWorkspace(AuthContext existing) {
+        if (existing != null) {
+            AuthContext.set(existing);
+        } else {
+            AuthContext.clear();
         }
     }
 
@@ -409,8 +465,9 @@ public class AskdataMcpTools {
                             @ToolArg(value = "datasource_id", required = false) Object datasourceId,
                             @ToolArg(value = "question", required = false) String question) throws Exception {
         ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
+        AuthContext previous = null;
         try {
-            applyTokenIdentity(token);
+            bindTokenStrict(token);
             String resToken = token != null && !token.trim().isEmpty() && StpUtil.getLoginIdByToken(token.trim()) != null
                     ? token.trim() : null;
             if (resToken == null && username != null && password != null) {
@@ -431,6 +488,10 @@ public class AskdataMcpTools {
                     // 无会话：保持 null（SQLBot 对应 res_token=None）
                 }
             }
+            if (oid != null && oid > 0) {
+                requireWorkspace(currentUserService().currentUser(), oid);
+                previous = enterWorkspace(oid);
+            }
             String started = chat_start(longArgOrNull(datasourceId), question);
             Map<String, Object> info = mapper.readValue(started, Map.class);
             if (info.containsKey("error")) {
@@ -439,31 +500,77 @@ public class AskdataMcpTools {
             return mapper.writeValueAsString(mcpStartResponse(resToken, info));
         } catch (Exception e) {
             return errorJson(mapper, "mcp_start", e);
+        } finally {
+            restoreWorkspace(previous);
         }
     }
 
     /** 兼容 SQLBot mcp_ws_list → workspace_list。 */
     @Tool(value = "mcp_ws_list", description = "兼容 SQLBot mcp_ws_list：列出当前用户可管理的工作空间")
     public String mcp_ws_list(@ToolArg(value = "token", required = false) String token) throws Exception {
-        applyTokenIdentity(token);
-        return workspace_list();
+        ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
+        try {
+            bindTokenStrict(token);
+            return workspace_list();
+        } catch (Exception e) {
+            return errorJson(mapper, "mcp_ws_list", e);
+        }
     }
 
     /** 兼容 SQLBot mcp_datasource_list（路由 /mcp_ds_list 的 operation_id）→ datasource_list。 */
     @Tool(value = "mcp_datasource_list", description = "兼容 SQLBot mcp_datasource_list：列出当前用户可用的数据源")
     public String mcp_datasource_list(@ToolArg(value = "token", required = false) String token,
                                       @ToolArg(value = "oid", required = false) Long oid) throws Exception {
-        applyTokenIdentity(token);
-        return datasource_list(oid);
+        ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
+        try {
+            bindTokenStrict(token);
+            // 对齐 SQLBot mcp_ds_list：显式 oid 时校验成员关系（非成员 400，而非静默忽略）
+            requireWorkspace(currentUserService().currentUser(), oid == null ? 0L : oid);
+            return filterDatasourceFields(mapper, datasource_list(oid));
+        } catch (Exception e) {
+            return errorJson(mapper, "mcp_datasource_list", e);
+        }
     }
 
-    /** 兼容 SQLBot mcp_model_list → model_list（oid 接受并忽略，按当前工作空间取模型）。 */
+    /** 对齐 SQLBot mcp_ds_list：移除内部字段（embedding/table_relation/recommended_config/configuration）。 */
+    private String filterDatasourceFields(ObjectMapper mapper, String json) throws Exception {
+        com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(json);
+        if (node != null && node.isArray()) {
+            for (com.fasterxml.jackson.databind.JsonNode item : node) {
+                if (item.isObject()) {
+                    com.fasterxml.jackson.databind.node.ObjectNode obj = (com.fasterxml.jackson.databind.node.ObjectNode) item;
+                    obj.remove("embedding");
+                    obj.remove("table_relation");
+                    obj.remove("recommended_config");
+                    obj.remove("configuration");
+                }
+            }
+        }
+        return mapper.writeValueAsString(node);
+    }
+
+    /** 兼容 SQLBot mcp_model_list → model_list：oid 指定工作空间（非成员拒绝），缺省用当前工作空间。 */
     @Tool(value = "mcp_model_list", description = "兼容 SQLBot mcp_model_list：列出当前工作空间可用的对话模型")
     public String mcp_model_list(@ToolArg(value = "oid", required = false) Long oid) throws Exception {
-        return model_list();
+        ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
+        try {
+            if (oid == null || oid <= 0) {
+                return model_list();
+            }
+            requireWorkspace(currentUserService().currentUser(), oid);
+            AiModelService service = SpringUtils.getBean(AiModelService.class);
+            return mapper.writeValueAsString(service.listByWs(oid));
+        } catch (Exception e) {
+            return errorJson(mapper, "mcp_model_list", e);
+        }
     }
 
-    /** 兼容 SQLBot mcp_question → question_answer；lang/stream 接受并忽略（stream 沿用同步返回）。 */
+    /**
+     * 兼容 SQLBot mcp_question → question_answer。
+     *
+     * <p>{@code lang} 用于本次调用的错误文案语言；{@code stream} 在本工具层忽略（MCP 协议单次返回），
+     * HTTP 兼容层 {@code SqlbotMcpCompatController} 在 {@code stream=true} 时改走 SSE 链路。</p>
+     */
     @Tool(value = "mcp_question", description = "兼容 SQLBot mcp_question：自然语言转SQL并只读执行")
     public String mcp_question(@ToolArg(value = "token", required = false) String token,
                                @ToolArg(value = "chat_id", required = false) Object chatId,
@@ -473,15 +580,52 @@ public class AskdataMcpTools {
                                @ToolArg(value = "lang", required = false) String lang,
                                @ToolArg(value = "stream", required = false) Boolean stream,
                                @ToolArg(value = "return_img", required = false) Boolean returnImg) throws Exception {
-        applyTokenIdentity(token);
-        return question_answer(question, longArgOrNull(datasourceId), longArgOrNull(chatId),
-                longArgOrNull(customModel), returnImg);
+        ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
+        Locale previous = LocaleContextHolder.getLocale();
+        try {
+            bindTokenStrict(token);
+            if (lang != null && !lang.trim().isEmpty()) {
+                LocaleContextHolder.setLocale(Locale.forLanguageTag(lang.trim()));
+            }
+            Long dsId;
+            Long chatIdL;
+            Long modelL;
+            try {
+                dsId = longArgOrNull(datasourceId);
+                chatIdL = longArgOrNull(chatId);
+                modelL = longArgOrNull(customModel);
+            } catch (NumberFormatException nfe) {
+                Map<String, Object> err = new LinkedHashMap<String, Object>();
+                err.put("error", I18n.msg("mcp.error.invalid.id"));
+                return mapper.writeValueAsString(err);
+            }
+            return question_answer(question, dsId, chatIdL, modelL, returnImg);
+        } catch (Exception e) {
+            return errorJson(mapper, "mcp_question", e);
+        } finally {
+            if (previous != null) {
+                LocaleContextHolder.setLocale(previous);
+            } else {
+                LocaleContextHolder.resetLocaleContext();
+            }
+        }
     }
 
-    /** 兼容 SQLBot mcp_assistant → assistant（url 接受并忽略，按 askdata 默认对话模型执行）。 */
-    @Tool(value = "mcp_assistant", description = "兼容 SQLBot mcp_assistant：问数助手对话")
-    public String mcp_assistant(@ToolArg(value = "url", required = false) String url,
+    /**
+     * 兼容 SQLBot mcp_assistant → assistant。
+     *
+     * <p>SQLBot 该工具面向 Cordys CRM，入参为 {@code question/url/authorization/stream}，由虚拟用户
+     * 调第三方数据接口；askdata 侧只保留问答能力——{@code url/authorization} 接受但忽略（第三方凭据
+     * 不落 askdata 配置），{@code stream} 同样忽略（MCP 工具层单次返回 JSON）。问题文本优先取
+     * {@code question}，同时兼容 askdata 早期调用方使用的 {@code message}。</p>
+     */
+    @Tool(value = "mcp_assistant", description = "兼容 SQLBot mcp_assistant：问数助手对话（question/url/authorization/stream）")
+    public String mcp_assistant(@ToolArg(value = "question", required = false) String question,
+                                @ToolArg(value = "url", required = false) String url,
+                                @ToolArg(value = "authorization", required = false) String authorization,
+                                @ToolArg(value = "stream", required = false) Boolean stream,
                                 @ToolArg(value = "message", required = false) String message) throws Exception {
-        return assistant(message);
+        String ask = question != null && !question.trim().isEmpty() ? question : message;
+        return assistant(ask);
     }
 }

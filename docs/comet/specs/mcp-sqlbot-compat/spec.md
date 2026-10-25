@@ -15,8 +15,28 @@
 验收：A1
 
 ### Scenario: 参数名兼容
-- **WHEN** 别名工具收到 SQLBot 风格 snake_case 参数（datasource_id、chat_id、custom_model、return_img、oid 等）
-- **THEN** 内部映射到对应实现参数后正常执行；token 参数在会话未认证时按 Sa-Token 反查登录身份，查不到时返回可读错误
+- **WHEN** 别名工具收到 SQLBot 风格参数（datasource_id、chat_id、custom_model、return_img、lang、oid、question/url/authorization/stream 等）
+- **THEN** 内部映射到对应实现参数后正常执行；token 参数按 Sa-Token 反查登录身份，非空但无效时返回可读错误
+验收：A1
+
+### Scenario: 工作空间参数生效
+- **WHEN** mcp_start / mcp_datasource_list / mcp_model_list 携带 oid
+- **THEN** 先校验当前用户属于该工作空间（非成员返回可读错误），再按该 oid 取会话/数据源/模型
+验收：A1
+
+### Scenario: mcp_datasource_list 字段裁剪
+- **WHEN** 调用 mcp_datasource_list
+- **THEN** 响应项不含 embedding、table_relation、recommended_config、configuration 四个内部字段
+验收：A1
+
+### Scenario: mcp_question 语言与出参
+- **WHEN** 调用 mcp_question 携带 lang 与非法 datasource_id/chat_id/custom_model
+- **THEN** 本次调用的错误文案按 lang 本地化；非法 ID 返回可读错误（HTTP 400 {"detail"}），不抛 500
+验收：A1
+
+### Scenario: mcp_assistant 入参对齐
+- **WHEN** 调用 mcp_assistant 携带 question/url/authorization/stream
+- **THEN** 以 question 作为提问文本执行助手对话；url/authorization/stream 接受但忽略（第三方接口与流式不在 askdata 侧实现），旧调用方的 message 仍可用
 验收：A1
 
 ## 2. access_token 响应兼容
