@@ -86,9 +86,12 @@ public class CacheConfig {
         return manager;
     }
 
-    /** 防抖窗口（毫秒，至少 1ms）。 */
+    /**
+     * 防抖缓存区域的基础 TTL（毫秒）。为覆盖「单接口自定义窗口上限」，取全局窗口与上限的较大者再加缓冲，
+     * 保证任意合法窗口内占位都不会被 TTL 提前回收；逻辑窗口由占位值中的过期时间戳判定（见 {@link RequestDebouncer}）。
+     */
     private long debounceWindowMs() {
-        return Math.max(1L, debounceProperties.getWindowMs());
+        return Math.max(1L, debounceProperties.getWindowMs()) + DebounceProperties.MAX_WINDOW_MS + 1000L;
     }
 
     private CacheManager redisCacheManager(RedisConnectionFactory factory) {

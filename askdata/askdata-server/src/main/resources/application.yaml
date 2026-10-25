@@ -81,14 +81,12 @@ askdata:
     # Sa-Token 会话存储：memory（缺省，进程内）/ redis；留空则跟随上面的 type。
     sa-token-store: "${ASKDATA_SA_TOKEN_STORE:}"
   debounce:
-    # 接口防抖：同一「调用方 + 接口」在窗口内只放行一次，重复请求返回 429。
-    # 缺省关闭；启用后由 paths 限定生效范围（为空表示全部）。
+    # 接口防抖：在控制器方法上用 @Debounce 声明，窗口内同一维度只放行一次，重复请求返回 429。
+    # 缺省关闭；维度由注解决定（接口 + 可选当前用户 + 可选接口参数 + 可选 SpEL）。
     # 后端复用缓存层（askdata.cache.type）：memory 单实例、redis 多实例全局。
     enabled: ${ASKDATA_DEBOUNCE_ENABLED:false}
     # 防抖窗口（毫秒）。
     window-ms: ${ASKDATA_DEBOUNCE_WINDOW_MS:1000}
-    # 生效路径（Ant 风格）；为空表示全部。
-    paths: ${ASKDATA_DEBOUNCE_PATHS:}
   lock:
     # 单 worker 启动守卫的锁后端：db（缺省，元数据库表行锁，作用域=各元数据库）
     # / redis（全局 SET NX PX 锁，仅在「共享 Redis + 各实例独立库」部署下有意义）。

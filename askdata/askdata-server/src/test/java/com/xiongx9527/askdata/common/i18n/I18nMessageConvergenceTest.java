@@ -125,7 +125,8 @@ class I18nMessageConvergenceTest {
     /** 401 未登录正文曾硬编码英文前缀，不随 Accept-Language 切换；此处固定回归。 */
     @Test
     void notLoginMessageFollowsAcceptLanguage() {
-        ApiExceptionHandler handler = new ApiExceptionHandler(TestMessageResolver.create());
+        ApiExceptionHandler handler = new ApiExceptionHandler(TestMessageResolver.create(),
+                new com.xiongx9527.askdata.common.debounce.DebounceProperties());
         NotLoginException e = new NotLoginException("token invalid", "login", "-1");
 
         LocaleContextHolder.setLocale(Locale.SIMPLIFIED_CHINESE);
