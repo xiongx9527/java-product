@@ -37,9 +37,19 @@ spring:
     driver-class-name: org.h2.Driver
     username: sa
     password: ""
+  # 元数据库版本化迁移（A9）：common 种子 + 当前方言 baseline。
+  # {vendor} 由 Flyway 按 JDBC URL 解析为 h2 / postgresql / mysql。
+  flyway:
+    enabled: true
+    locations: classpath:db/migration/common,classpath:db/migration/{vendor}
+    # 兼容 schema.sql 时代的旧库：已有表但没有 flyway_schema_history 时，
+    # 以 V2 为基线（旧库已完成建表+种子），不会重复执行 V1/V2；空库仍完整执行 V1→V2。
+    baseline-on-migrate: true
+    baseline-version: "2"
+  # 运行期不再执行 schema.sql（文件已删除由 Flyway 接管）
   sql:
     init:
-      mode: always
+      mode: never
   data:
     redis:
       # Redis 连接（askdata.cache.type=redis 或 sa-token-store=redis 时生效）；
@@ -56,7 +66,7 @@ spring:
       max-request-size: 60MB
 
 # 框架 UidGenerator 开关：启用后由 UIDAutoConfiguration 创建 UidGenerator（CachedUidGenerator），
-# 底层 DisposableWorkerIdAssigner 写 WORKER_NODE 表分配 worker id（见 schema.sql）。
+# 底层 DisposableWorkerIdAssigner 写 WORKER_NODE 表分配 worker id（见 db/migration/h2/V1__baseline.sql）。
 # epochStr 留空 → 框架默认取当日（CachedUidGenerator 默认 28 位时间戳，需贴近当前日期，
 # 与旧雪花 epoch=0/1970 的 41/5/5/12 布局不同；生成的仍是全局唯一 long，对调用方透明）。
 fw:

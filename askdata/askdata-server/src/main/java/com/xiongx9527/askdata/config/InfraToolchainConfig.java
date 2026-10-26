@@ -1,12 +1,15 @@
 package com.xiongx9527.askdata.config;
 
+import com.xiongx9527.askdata.common.util.PortableWorkerIdAssigner;
 import com.xiongx9527.askdata.common.util.SnowflakeIdGenerator;
 import com.xiongx9527.askdata.datasource.engine.ConnectionPoolManager;
 import com.xiongx9527.fw.plus.common.uid.UidGenerator;
+import com.xiongx9527.fw.plus.common.uid.worker.WorkerIdAssigner;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * 基础设施工具链的 Bean 装配（连接池上限、雪花 ID 位段参数）。
@@ -28,6 +31,15 @@ public class InfraToolchainConfig {
     public ConnectionPoolManager connectionPoolManager(
             @Value("${askdata.datasource.pool.max-pools:500}") int maxPools) {
         return new ConnectionPoolManager(maxPools);
+    }
+
+    /**
+     * 覆盖框架 {@code DisposableWorkerIdAssigner}：后者以 {@code setObject(Date)} 写 WORKER_NODE，
+     * PostgreSQL 驱动无法推断类型。此处显式绑定 JDBC 时间类型，保证 H2/PostgreSQL/MySQL 均可启动。
+     */
+    @Bean
+    public WorkerIdAssigner workerIdAssigner(JdbcTemplate jdbcTemplate) {
+        return new PortableWorkerIdAssigner(jdbcTemplate);
     }
 
     /**

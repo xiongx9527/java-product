@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.scheduled;
 
+import com.xiongx9527.askdata.support.MetadbMigration;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
@@ -26,10 +28,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mockito;
 import org.springframework.context.support.StaticMessageSource;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.jdbc.datasource.init.ScriptUtils;
 
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -88,7 +88,7 @@ class ScheduledTaskIntegrationTest {
         appJdbc = new JdbcTemplate(new DriverManagerDataSource(
                 "jdbc:h2:mem:sched_app_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
         try (Connection connection = appJdbc.getDataSource().getConnection()) {
-            ScriptUtils.executeSqlScript(connection, new ClassPathResource("schema.sql"));
+            MetadbMigration.migrate(connection);
         }
         try (Connection connection = DriverManager.getConnection(TARGET_URL, "sa", "");
              Statement statement = connection.createStatement()) {

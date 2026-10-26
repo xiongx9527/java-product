@@ -1,15 +1,15 @@
 package com.xiongx9527.askdata.system.license;
 
+import com.xiongx9527.askdata.support.MetadbMigration;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.web.AuthFailureException;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.jdbc.datasource.init.ScriptUtils;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -45,7 +45,7 @@ class LicenseServiceTest {
         jdbc = new JdbcTemplate(new DriverManagerDataSource(
                 "jdbc:h2:mem:license_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
         try (Connection connection = jdbc.getDataSource().getConnection()) {
-            ScriptUtils.executeSqlScript(connection, new ClassPathResource("schema.sql"));
+            MetadbMigration.migrate(connection);
         }
         CurrentUserService users = mock(CurrentUserService.class);
         service = new LicenseService(jdbc, objectMapper, users, "9.9.9", SIGN_KEY);

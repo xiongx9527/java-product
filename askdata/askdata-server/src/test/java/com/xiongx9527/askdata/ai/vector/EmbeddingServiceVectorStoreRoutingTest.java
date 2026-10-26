@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.ai.vector;
 
+import com.xiongx9527.askdata.support.MetadbMigration;
+
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.xiongx9527.askdata.ai.EmbeddingService;
@@ -14,10 +16,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.jdbc.datasource.init.ScriptUtils;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -65,7 +65,7 @@ class EmbeddingServiceVectorStoreRoutingTest {
         appJdbc = new JdbcTemplate(new DriverManagerDataSource(
                 "jdbc:h2:mem:vector_routing_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
         try (java.sql.Connection connection = appJdbc.getDataSource().getConnection()) {
-            ScriptUtils.executeSqlScript(connection, new ClassPathResource("schema.sql"));
+            MetadbMigration.migrate(connection);
         }
         java.nio.file.Path modelDir = Files.createTempDirectory("no-model");
         modelRouter = new ChatModelRouter(new AiModelRepository(appJdbc, ids), objectMapper);

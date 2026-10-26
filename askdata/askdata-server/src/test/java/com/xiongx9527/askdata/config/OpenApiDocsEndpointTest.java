@@ -25,8 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 且规范里带上了自定义元数据与 {@code X-SQLBOT-TOKEN} 安全方案；受保护接口路径不受白名单扩大影响。</p>
  */
 @SpringBootTest(properties = {
-        "spring.datasource.url=jdbc:h2:mem:askdata-openapi-test;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE",
-        "spring.sql.init.mode=always"
+        "spring.datasource.url=jdbc:h2:mem:askdata-openapi-test;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE"
 })
 @AutoConfigureMockMvc
 class OpenApiDocsEndpointTest {

@@ -38,8 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * </ol>
  */
 @SpringBootTest(properties = {
-        "spring.datasource.url=jdbc:h2:mem:askdata-auth-test;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE",
-        "spring.sql.init.mode=always"
+        "spring.datasource.url=jdbc:h2:mem:askdata-auth-test;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE"
 })
 @AutoConfigureMockMvc
 class AuthChannelE2ETest {

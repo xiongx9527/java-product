@@ -1,0 +1,9 @@
+# 元数据库切换：MySQL（A9）
+# 启用方式：--spring.profiles.active=mysql（或 SPRING_PROFILES_ACTIVE=mysql）
+# 只需提供空库与连接配置，Flyway 会按 db/migration/common + db/migration/mysql 完成建表/种子。
+spring:
+  datasource:
+    url: ${ASKDATA_DB_URL:jdbc:mysql://127.0.0.1:3306/askdata?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${ASKDATA_DB_USERNAME:askdata}
+    password: ${ASKDATA_DB_PASSWORD:}

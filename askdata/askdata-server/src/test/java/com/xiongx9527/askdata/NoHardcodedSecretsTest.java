@@ -13,7 +13,7 @@ import java.util.regex.Pattern;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * 验收 A5 静态检查：主源码与 schema.sql 中不得出现硬编码口令/密钥字面量。
+ * 验收 A5 静态检查：主源码与 Flyway 迁移脚本中不得出现硬编码口令/密钥字面量。
  *
  * <p>白名单：SQLBot 产品默认管理员口令（MD5 种子，测试依赖，非新增密钥）——
  * 仅允许该已知哈希，新增明文口令/密钥一律禁止。</p>
@@ -40,9 +40,11 @@ class NoHardcodedSecretsTest {
         if (Files.exists(root)) {
             walkAndCheck(root, offenders);
         }
-        Path schema = Paths.get("src/main/resources/schema.sql");
-        if (Files.exists(schema)) {
-            checkFile(schema, offenders);
+        Path migrations = Paths.get("src/main/resources/db/migration");
+        if (Files.exists(migrations)) {
+            try (var paths = Files.walk(migrations)) {
+                paths.filter(p -> p.toString().endsWith(".sql")).forEach(p -> checkFile(p, offenders));
+            }
         }
         if (!offenders.isEmpty()) {
             fail("发现硬编码口令/密钥字面量:\n" + String.join("\n", offenders));

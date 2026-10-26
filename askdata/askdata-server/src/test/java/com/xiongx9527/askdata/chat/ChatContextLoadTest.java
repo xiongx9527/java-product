@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 验证 chat 模块全部 Bean 可注入、且 {@code /chat/**} 端点在真实 MVC 路由表中注册
  * （避免与其它模块的控制器出现 {@code Ambiguous mapping} 导致应用启动失败）。
  *
- * <p>元数据库指向进程内 H2（{@code spring.sql.init.mode=always} 会照常执行 schema.sql），
+ * <p>元数据库指向进程内 H2（Flyway 从空库执行 db/migration 下的 baseline 与种子），
  * 故本测试不落任何文件。</p>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)

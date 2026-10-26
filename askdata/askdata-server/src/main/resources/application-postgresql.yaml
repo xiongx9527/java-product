@@ -1,0 +1,9 @@
+# 元数据库切换：PostgreSQL（A9）
+# 启用方式：--spring.profiles.active=postgresql（或 SPRING_PROFILES_ACTIVE=postgresql）
+# 只需提供空库与连接配置，Flyway 会按 db/migration/common + db/migration/postgresql 完成建表/种子。
+spring:
+  datasource:
+    url: ${ASKDATA_DB_URL:jdbc:postgresql://127.0.0.1:5432/askdata}
+    driver-class-name: org.postgresql.Driver
+    username: ${ASKDATA_DB_USERNAME:askdata}
+    password: ${ASKDATA_DB_PASSWORD:}

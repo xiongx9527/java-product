@@ -363,6 +363,20 @@
             <artifactId>h2</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <!-- 元数据库版本化迁移（A9）：common 种子 + h2/postgresql/mysql 方言 baseline。
+             方言模块由 Flyway 按 JDBC URL 自动匹配，切换元数据库只需改连接配置。 -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+        </dependency>
 
         <!-- SQL 解析（A5：SQL 安全升级为 sqlglot 等价的 AST 校验；A3：行权限 WHERE 注入） -->
         <dependency>
@@ -500,6 +514,14 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- A9：PostgreSQL 元数据库真库测试（进程内临时实例，不需要 Docker/本机 psql） -->
+        <dependency>
+            <groupId>io.zonky.test</groupId>
+            <artifactId>embedded-postgres</artifactId>
+            <version>2.1.0</version>
             <scope>test</scope>
         </dependency>
 

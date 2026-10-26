@@ -34,8 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 经真实 HTTP + Sa-Token 登录态跑通管理面 CRUD/启停/导入导出/密钥重置。
  */
 @SpringBootTest(properties = {
-        "spring.datasource.url=jdbc:h2:mem:askdata-value-add-test;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE",
-        "spring.sql.init.mode=always"
+        "spring.datasource.url=jdbc:h2:mem:askdata-value-add-test;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE"
 })
 @AutoConfigureMockMvc
 class ValueAddModulesSmokeTest {

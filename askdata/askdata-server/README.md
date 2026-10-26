@@ -38,7 +38,26 @@ java -jar target/askdata-server.jar
 # 种子管理员：admin / SQLBot@123456（MD5 口令落库）
 ```
 
-元数据库：H2 文件库 `./data/askdata`（首次启动自动建表 + 种子，见 `src/main/resources/schema.sql`）。
+元数据库：默认 H2 文件库 `./data/askdata`。首次启动由 Flyway 执行
+`src/main/resources/db/migration/common`（种子）与 `db/migration/{vendor}`（方言 baseline）自动建表并写入种子；
+旧 `schema.sql` 已移除，运行期不再由 `spring.sql.init` 执行建表脚本。
+
+切换 PostgreSQL / MySQL 只需启用对应 profile 并提供连接配置（详见
+[`docs/sqlbot-parity/metadb.md`](../../docs/sqlbot-parity/metadb.md)）：
+
+```bash
+# PostgreSQL（空库；Flyway 自动迁移）
+SPRING_PROFILES_ACTIVE=postgresql \
+ASKDATA_DB_URL='jdbc:postgresql://127.0.0.1:5432/askdata' \
+ASKDATA_DB_USERNAME=askdata ASKDATA_DB_PASSWORD='***' \
+java -jar target/askdata-server.jar
+
+# MySQL（空库；Flyway 自动迁移）
+SPRING_PROFILES_ACTIVE=mysql \
+ASKDATA_DB_URL='jdbc:mysql://127.0.0.1:3306/askdata?useUnicode=true&characterEncoding=utf8&useSSL=false' \
+ASKDATA_DB_USERNAME=askdata ASKDATA_DB_PASSWORD='***' \
+java -jar target/askdata-server.jar
+```
 
 ## MCP 兼容层（SQLBot）
 

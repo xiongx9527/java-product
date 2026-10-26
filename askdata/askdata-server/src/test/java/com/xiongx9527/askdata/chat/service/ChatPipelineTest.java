@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.chat.service;
 
+import com.xiongx9527.askdata.support.MetadbMigration;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
@@ -36,10 +38,8 @@ import org.junit.jupiter.api.io.TempDir;
 import com.xiongx9527.askdata.permission.DsGrantRepository;
 import com.xiongx9527.askdata.permission.DsGrantService;
 import org.mockito.Mockito;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import java.io.ByteArrayOutputStream;
@@ -132,7 +132,7 @@ class ChatPipelineTest {
         appJdbc = new JdbcTemplate(new DriverManagerDataSource(
                 "jdbc:h2:mem:chat_app_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
         try (Connection connection = appJdbc.getDataSource().getConnection()) {
-            ScriptUtils.executeSqlScript(connection, new ClassPathResource("schema.sql"));
+            MetadbMigration.migrate(connection);
         }
         try (Connection connection = DriverManager.getConnection(TARGET_URL, "sa", "");
              Statement statement = connection.createStatement()) {
@@ -539,7 +539,7 @@ class ChatPipelineTest {
     @Test
     @SuppressWarnings("unchecked")
     void unboundChatWithoutExplicitDatasourceUsesRagSelectionAndPersists() throws Exception {
-        // schema.sql 预置的演示库使用部署密钥加密，单测随机密钥无法解密；移除后 RAG 只有本测试
+        // V2 种子预置的演示库使用部署密钥加密，单测随机密钥无法解密；移除后 RAG 只有本测试
         // 注册的可用数据源一个候选，保证选库结果确定且可真实执行。
         appJdbc.update("DELETE FROM core_datasource WHERE id = 1");
         long chatId = ((Number) chatService.startForMcp(new java.util.HashMap<String, Object>())
