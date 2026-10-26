@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.datasource.embedding;
 
+import com.xiongx9527.askdata.support.MetadbMigration;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
@@ -14,10 +16,8 @@ import com.xiongx9527.askdata.system.repository.AiModelRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.jdbc.datasource.init.ScriptUtils;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -52,7 +52,7 @@ class TableEmbeddingServiceTest {
     private static final String[] KEYWORDS =
             {"订单", "用户", "商品", "库存", "盘点", "差异", "金额", "状态"};
 
-    /** 测试数据源 id（schema.sql 种子数据只覆盖 ds_id=1，避开种子行）。 */
+    /** 测试数据源 id（V2 种子数据只覆盖 ds_id=1，避开种子行）。 */
     private static final long DS = 42L;
 
     private JdbcTemplate appJdbc;
@@ -79,7 +79,7 @@ class TableEmbeddingServiceTest {
         appJdbc = new JdbcTemplate(new DriverManagerDataSource(
                 "jdbc:h2:mem:table_embedding_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
         try (Connection connection = appJdbc.getDataSource().getConnection()) {
-            ScriptUtils.executeSqlScript(connection, new ClassPathResource("schema.sql"));
+            MetadbMigration.migrate(connection);
         }
         tableRepository = new TableRepository(appJdbc, ids);
         fieldRepository = new FieldRepository(appJdbc, ids);

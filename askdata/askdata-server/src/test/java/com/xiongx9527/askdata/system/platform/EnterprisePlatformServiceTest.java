@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system.platform;
 
+import com.xiongx9527.askdata.support.MetadbMigration;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import com.xiongx9527.askdata.system.authentication.AuthenticationRepository;
@@ -7,10 +9,8 @@ import com.xiongx9527.askdata.system.service.CurrentUserService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.jdbc.datasource.init.ScriptUtils;
 
 import java.io.OutputStream;
 import java.net.InetAddress;
@@ -54,7 +54,7 @@ class EnterprisePlatformServiceTest {
         jdbc = new JdbcTemplate(new DriverManagerDataSource(
                 "jdbc:h2:mem:platform_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
         try (Connection connection = jdbc.getDataSource().getConnection()) {
-            ScriptUtils.executeSqlScript(connection, new ClassPathResource("schema.sql"));
+            MetadbMigration.migrate(connection);
         }
         authenticationRepository = new AuthenticationRepository(jdbc);
         CurrentUserService users = mock(CurrentUserService.class);

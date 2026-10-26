@@ -70,8 +70,8 @@ public class EmbeddingBackfillRunner {
     /**
      * 应用就绪后执行回填（对齐 SQLBot lifespan 中的三次回填调用）。
      *
-     * <p>用 {@link ApplicationReadyEvent} 而非 {@code @PostConstruct}：此时 schema.sql
-     * 已执行完毕（表已建好），且不影响应用启动耗时。</p>
+     * <p>用 {@link ApplicationReadyEvent} 而非 {@code @PostConstruct}：此时 Flyway 迁移
+     * 已完成（表已建好），且不影响应用启动耗时。</p>
      */
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {

@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.ai.vector;
 
+import com.xiongx9527.askdata.support.MetadbMigration;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.ai.EmbeddingService;
@@ -10,10 +12,8 @@ import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.system.repository.AiModelRepository;
 import com.xiongx9527.askdata.terminology.TerminologyRecallService;
 import org.junit.jupiter.api.Test;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.jdbc.datasource.init.ScriptUtils;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -90,7 +90,7 @@ class QdrantLiveIntegrationTest {
         JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
                 "jdbc:h2:mem:qdrant_live_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
         try (Connection c = jdbc.getDataSource().getConnection()) {
-            ScriptUtils.executeSqlScript(c, new ClassPathResource("schema.sql"));
+            MetadbMigration.migrate(c);
         }
         IdGenerator ids = new IdGenerator();
         ObjectMapper om = new ObjectMapper();

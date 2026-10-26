@@ -271,16 +271,19 @@ class RemainingFidelityTest {
     }
 
     // ------------------------------------------------------------------
-    // A6：schema.sql DDL 唯一（F-18）+ 全量结构断言
+    // A6/A9：Flyway baseline DDL 唯一（F-18）+ 全量结构断言
     // ------------------------------------------------------------------
 
     @Test
     void hostnameSourceTableOnlyDefinedOnce() throws Exception {
-        String schema = java.nio.file.Files.readString(
-                java.nio.file.Path.of("src/main/resources/schema.sql"));
-        long count = java.util.regex.Pattern.compile("CREATE TABLE IF NOT EXISTS sys_logs_resource")
-                .matcher(schema).results().count();
-        assertEquals(1, count, "sys_logs_resource 应只定义一次（F-18）");
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
+                "CREATE TABLE(?: IF NOT EXISTS)? sys_logs_resource");
+        for (String vendor : java.util.List.of("h2", "postgresql", "mysql")) {
+            String schema = java.nio.file.Files.readString(java.nio.file.Path.of(
+                    "src/main/resources/db/migration/" + vendor + "/V1__baseline.sql"));
+            long count = pattern.matcher(schema).results().count();
+            assertEquals(1, count, vendor + " 方言中 sys_logs_resource 应只定义一次（F-18）");
+        }
     }
 
     // ------------------------------------------------------------------

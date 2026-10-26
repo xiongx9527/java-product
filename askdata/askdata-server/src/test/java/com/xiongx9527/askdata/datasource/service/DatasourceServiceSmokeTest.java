@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.datasource.service;
 
+import com.xiongx9527.askdata.support.MetadbMigration;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.BadRequestException;
@@ -23,10 +25,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mockito;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.mock.web.MockMultipartFile;
 
 import java.io.ByteArrayOutputStream;
@@ -51,7 +51,7 @@ import org.springframework.context.support.StaticMessageSource;
 
 /**
  * 数据源服务全周期 smoke（A5/A12 离线证据，H2 引擎）：
- * schema.sql 种子 → 演示数据源可读 → H2 数据源 add/get/list/check/表字段/勾选/预览/执行/注释/同步/
+ * V2 种子 → 演示数据源可读 → H2 数据源 add/get/list/check/表字段/勾选/预览/执行/注释/同步/
  * 更新/删除 → excel 上传建表全周期 → 表关系 → 推荐问题 → schema 备注导入导出。
  */
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
@@ -80,13 +80,13 @@ class DatasourceServiceSmokeTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        // 非 Spring 测试：显式注入与 schema.sql 种子一致的应用密钥（A5 起密钥配置化，默认 AskDataSecret001）
+        // 非 Spring 测试：显式注入与 V2 种子一致的应用密钥（A5 起密钥配置化，默认 AskDataSecret001）
         DatasourceCrypto.configure(new CryptoUtil("AskDataSecret001"));
         // 每个测试方法独立内存库（DB_CLOSE_DELAY=-1 下同名库跨方法共享，故加唯一后缀）
         appJdbc = new JdbcTemplate(new DriverManagerDataSource(
                 "jdbc:h2:mem:svc_app_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
         try (Connection connection = appJdbc.getDataSource().getConnection()) {
-            ScriptUtils.executeSqlScript(connection, new ClassPathResource("schema.sql"));
+            MetadbMigration.migrate(connection);
         }
         // 目标 H2 数据源库
         try (Connection connection = DriverManager.getConnection(TARGET_URL, "sa", "");
