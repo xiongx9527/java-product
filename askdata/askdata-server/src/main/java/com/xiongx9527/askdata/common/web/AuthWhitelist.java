@@ -96,6 +96,18 @@ public class AuthWhitelist {
             "/swagger-ui/*",
             "/swagger-resources/*"));
 
+    /**
+     * askdata 服务端出图（SSR 图表 PNG）访问端点。
+     *
+     * <p>不并入 {@link #DEFAULT_PATHS}：后者与 SQLBot {@code whitelist.py} 逐条等价（35 条）；
+     * 也不并入 {@link #API_DOCS_PATHS}（语义是文档站点）。独立维护，保证 MCP / IM / 第三方
+     * 凭 {@code /api/chart/image/{token}} 在 TTL 内可免登录访问，同时 {@link #DEFAULT_PATHS} 的
+     * parity 测试不受影响。</p>
+     */
+    public static final List<String> CHART_IMAGE_PATHS = Collections.unmodifiableList(Arrays.asList(
+            "/api/chart/image",
+            "/api/chart/image/*"));
+
     private final List<String> paths;
 
     /** 精确匹配集合（{@link #DEFAULT_PATHS} + {@link #API_DOCS_PATHS} 中的无通配条目）。 */
@@ -115,6 +127,7 @@ public class AuthWhitelist {
         this.paths = DEFAULT_PATHS;
         List<String> effective = new ArrayList<>(DEFAULT_PATHS);
         effective.addAll(API_DOCS_PATHS);
+        effective.addAll(CHART_IMAGE_PATHS);
         this.compiledPatterns = compile(effective);
         this.exactPaths = new HashSet<>(effective);
     }

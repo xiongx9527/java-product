@@ -13,6 +13,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -56,8 +57,8 @@ class ChatChartBuilderTest {
         assertNull(builder.normalize("抱歉，我无法生成图表"));
         assertNull(builder.normalize(""));
         assertNull(builder.normalize(null));
-        // 未知类型降级为表格（前端 chartType 默认 table）
-        assertEquals("table", builder.normalize("{\"type\":\"donut\"}").get("type"));
+        // A4：未知 chart type 必须报错（而非静默降级为 table）
+        assertThrows(IllegalArgumentException.class, () -> builder.normalize("{\"type\":\"donut\"}"));
         // 数组形态的 y 轴保留
         Map<String, Object> chart = builder.normalize(
                 "{\"type\":\"line\",\"axis\":{\"y\":[{\"name\":\"a\",\"value\":\"a\"},"

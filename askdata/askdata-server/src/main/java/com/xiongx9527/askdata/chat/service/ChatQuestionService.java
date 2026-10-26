@@ -1356,7 +1356,16 @@ public class ChatQuestionService {
         String text = generateText(writer, aiModel,
                 schemaContextBuilder.buildChartMessages(question, dataJson, sql, mSchema),
                 "chart-result", totalTokens, null, reasoning);
-        Map<String, Object> chart = text == null ? null : chartBuilder.normalize(text);
+        Map<String, Object> chart = null;
+        if (text != null) {
+            try {
+                chart = chartBuilder.normalize(text);
+            } catch (IllegalArgumentException e) {
+                // A4：模型给出未知 chart type 属于产出错误；记录后回退确定性启发式构造，
+                // 不把错误类型静默改成 table 写进 chart 配置。
+                log.info("图表配置不可用（{}），回退启发式构造", e.getMessage());
+            }
+        }
         if (chart == null) {
             chart = chartBuilder.build(result, question);
         }
