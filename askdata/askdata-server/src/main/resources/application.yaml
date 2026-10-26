@@ -1,6 +1,23 @@
 server:
   port: 8000
 
+# Actuator：对外暴露 /health（base-path 设为根，使外部探针 path=/health 命中；
+# 默认挂载在 /actuator/health）。show-details 仅对鉴权用户可见，避免泄露内部组件状态。
+management:
+  endpoints:
+    web:
+      base-path: /
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: when-authorized
+  # Elasticsearch 为可选外部依赖（未部署时不强制要求），不纳入 /health 聚合，
+  # 避免本地未起 ES 时 /health 误报 DOWN（与 Redis/Milvus 可选化策略一致）。
+  health:
+    elasticsearch:
+      enabled: false
+
 spring:
   application:
     name: askdata-server
