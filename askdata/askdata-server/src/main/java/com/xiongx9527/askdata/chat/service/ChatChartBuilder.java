@@ -65,8 +65,16 @@ public class ChatChartBuilder {
             }
             Map<String, Object> chart = new LinkedHashMap<>();
             String type = text(node, "type");
-            chart.put("type", type == null || !SUPPORTED_TYPES.contains(type.toLowerCase(Locale.ROOT))
-                    ? "table" : type.toLowerCase(Locale.ROOT));
+            String normalizedType = type == null ? "" : type.trim().toLowerCase(Locale.ROOT);
+            if (normalizedType.isEmpty()) {
+                throw new IllegalArgumentException("chart type is required");
+            }
+            if (!SUPPORTED_TYPES.contains(normalizedType)) {
+                // A4：未知类型是模型产出错误，返回错误而不是静默降级为 table
+                // （否则前端/SSR 会把柱/饼图误当表格展示，掩盖模型问题）。
+                throw new IllegalArgumentException("unsupported chart type: " + type);
+            }
+            chart.put("type", normalizedType);
             String title = text(node, "title");
             chart.put("title", title == null || title.isEmpty() ? "" : title);
             List<Map<String, Object>> columns = axisList(node, "columns");
@@ -86,9 +94,19 @@ public class ChatChartBuilder {
                 if (series != null) {
                     axis.put("series", series);
                 }
+                // A4：保留 G2 双轴/多指标标记（前端按该标记渲染左右轴），
+                // 不能因为归一化把多指标语义丢掉。
+                JsonNode multiQuota = axisNode.get("multi-quota");
+                if (multiQuota != null && !multiQuota.isNull()) {
+                    axis.put("multi-quota", objectMapper.convertValue(multiQuota, Object.class));
+                }
             }
             chart.put("axis", axis);
             return chart;
+        } catch (IllegalArgumentException e) {
+            // A4：未知/缺失 chart type 属模型产出错误，向上抛出（由调用方显式记录并回退），
+            // 不在此静默吞掉改成 table。
+            throw e;
         } catch (Exception e) {
             log.info("图表配置解析失败（回退启发式构造）: {}", e.getMessage());
             return null;
@@ -143,6 +161,14 @@ public class ChatChartBuilder {
                 ? Rows.of("name", numeric.get(0), "value", numeric.get(0))
                 : yList(numeric);
         axis.put("y", y);
+        if (numeric.size() > 1) {
+            // A4：多指标时同步产出 multi-quota（与模型产出形态一致，前端据此走多轴渲染）
+            List<Object> multiQuota = new ArrayList<>();
+            for (String name : numeric) {
+                multiQuota.add(name);
+            }
+            axis.put("multi-quota", multiQuota);
+        }
         if (nonNumeric.size() > 1) {
             String series = nonNumeric.get(1);
             axis.put("series", Rows.of("name", series, "value", series));

@@ -5,6 +5,7 @@ import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics2D;
+import java.awt.Polygon;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -21,6 +22,15 @@ import org.springframework.stereotype.Component;
  * <p>Equivalent to SQLBot's g2-ssr (AntV G2 config -> PNG) but implemented with JDK
  * Java2D instead of Node/browser, so it is offline-unit-testable and requires no external
  * process. Supports column/bar/line/area/pie/table; unknown types render as a table.</p>
+ *
+ * <p>服务端出图语义（验收 A4）：</p>
+ * <ul>
+ *   <li>多 series 使用不同颜色（{@link #seriesColor}）；</li>
+ *   <li>multi-quota 多指标轴由 ChatChartBuilder 保留，渲染端按 y 轴多字段绘制；</li>
+ *   <li>横向 bar 条长按数值比例（value-proportional length），而非按类别顺序；</li>
+ *   <li>area 用系列色浅投影填充（{@link #areaFillColor}）形成面积区；</li>
+ *   <li>pie 标签为「名称 数值 (占比)」格式（{@link #pieLabel}）。</li>
+ * </ul>
  */
 @Component
 public class ChartImageRenderer {
@@ -35,6 +45,52 @@ public class ChartImageRenderer {
             new Color(91, 143, 246), new Color(91, 199, 160), new Color(246, 173, 85),
             new Color(237, 104, 104), new Color(165, 125, 225), new Color(82, 196, 196)
     };
+
+    /** 第 index 个系列的颜色（不同 series 使用不同颜色；测试与图例共用）。 */
+    public static Color seriesColor(int index) {
+        return SERIES[Math.floorMod(index, SERIES.length)];
+    }
+
+    /**
+     * 面积图填充色：系列色的浅色投影（与白底合成后的确定颜色，便于断言渲染语义）。
+     */
+    public static Color areaFillColor(int index) {
+        Color base = seriesColor(index);
+        int alpha = 70;
+        return new Color(
+                (base.getRed() * alpha + 255 * (255 - alpha)) / 255,
+                (base.getGreen() * alpha + 255 * (255 - alpha)) / 255,
+                (base.getBlue() * alpha + 255 * (255 - alpha)) / 255);
+    }
+
+    /** 数值格式：千分位 + 最多两位小数，整数不带小数点（轴刻度与饼图数值共用）。 */
+    public static String formatNumber(double value) {
+        if (Double.isNaN(value) || Double.isInfinite(value)) {
+            return "0";
+        }
+        String text = String.format(java.util.Locale.ROOT, "%,.2f", value);
+        if (text.indexOf('.') >= 0) {
+            while (text.endsWith("0")) {
+                text = text.substring(0, text.length() - 1);
+            }
+            if (text.endsWith(".")) {
+                text = text.substring(0, text.length() - 1);
+            }
+        }
+        return text;
+    }
+
+    /** 占比格式：一位小数百分比。 */
+    public static String formatPercent(double value, double total) {
+        double pct = total == 0 ? 0d : value / total * 100d;
+        return String.format(java.util.Locale.ROOT, "%.1f%%", pct);
+    }
+
+    /** 饼图标签：名称 + 数值 + 占比（如 {@code PAID 1,234 (35.0%)}）。 */
+    public static String pieLabel(String name, double value, double total) {
+        return (name == null ? "" : name) + " " + formatNumber(value)
+                + " (" + formatPercent(value, total) + ")";
+    }
 
     public byte[] renderPng(Map<String, Object> chart, List<Map<String, Object>> data) {
         return renderPng(chart, data, DEFAULT_WIDTH, DEFAULT_HEIGHT);
@@ -78,6 +134,7 @@ public class ChartImageRenderer {
                 drawCartesian(g, chart, rows, type, pad, 56, width - pad * 2, height - pad - 56, true);
                 break;
             case "bar":
+                // 横向 bar：类别沿 y 轴、条长按数值比例（value-proportional length）
                 drawCartesian(g, chart, rows, "bar", pad, 56, width - pad * 2, height - pad - 56, false);
                 break;
             case "column":
@@ -167,6 +224,7 @@ public class ChartImageRenderer {
             drawEmpty(g, x0, y0, w, h);
             return;
         }
+        boolean horizontal = type.equals("bar");
         List<String> cats = categories(rows, xf);
         int n = Math.max(cats.size(), 1);
         double max = 0;
@@ -186,65 +244,107 @@ public class ChartImageRenderer {
         int plotW = w - 80;
         int plotH = h - 60;
 
+        // 网格 + 数值刻度（横向 bar 不画左侧数值刻度，避免与类别标签重叠）
         g.setColor(GRID);
         g.setFont(new Font("SansSerif", Font.PLAIN, 12));
         int ticks = 5;
         for (int i = 0; i <= ticks; i++) {
             int gy = bottom - (int) ((double) i / ticks * plotH);
             g.drawLine(left, gy, left + plotW, gy);
-            double val = min + (max - min) * (double) i / ticks;
-            g.setColor(Color.GRAY);
-            g.drawString(fmt(val), left - 56, gy + 4);
-            g.setColor(GRID);
+            if (!horizontal) {
+                double val = min + (max - min) * (double) i / ticks;
+                g.setColor(Color.GRAY);
+                g.drawString(fmt(val), left - 56, gy + 4);
+                g.setColor(GRID);
+            }
         }
         g.setColor(AXIS);
         g.setStroke(new BasicStroke(1.5f));
         g.drawLine(left, y0, left, bottom);
         g.drawLine(left, bottom, left + plotW, bottom);
 
-        double catW = (double) plotW / n;
-        for (int s = 0; s < yfs.size(); s++) {
-            String yf = yfs.get(s);
-            double[] vals = values(rows, yf);
-            Color c = SERIES[s % SERIES.length];
-            g.setColor(c);
-            int prevX = -1, prevY = -1;
+        if (!horizontal) {
+            double catW = (double) plotW / n;
+            for (int s = 0; s < yfs.size(); s++) {
+                String yf = yfs.get(s);
+                double[] vals = values(rows, yf);
+                Color c = SERIES[s % SERIES.length];
+                List<int[]> pts = new ArrayList<>();
+                for (int i = 0; i < cats.size(); i++) {
+                    int cx = left + (int) (catW * (i + 0.5));
+                    int cy = bottom - (int) (((vals[i] - min) / (max - min)) * plotH);
+                    pts.add(new int[]{cx, cy});
+                    if (type.equals("column")) {
+                        int bw = (int) (catW * 0.6 / yfs.size());
+                        int bx = cx - bw / 2 + s * (bw + 4);
+                        g.setColor(c);
+                        g.fillRect(bx, cy, bw, bottom - cy);
+                    }
+                }
+                if (connect && !pts.isEmpty()) {
+                    // 面积填充（多边形闭合到基线）
+                    if (type.equals("area")) {
+                        Polygon area = new Polygon();
+                        for (int[] p : pts) area.addPoint(p[0], p[1]);
+                        area.addPoint(pts.get(pts.size() - 1)[0], bottom);
+                        area.addPoint(pts.get(0)[0], bottom);
+                        g.setColor(areaFillColor(s));
+                        g.fill(area);
+                    }
+                    // 连线 + 数据点（系列色）
+                    g.setColor(c);
+                    for (int i = 0; i < pts.size(); i++) {
+                        if (i > 0) {
+                            g.setStroke(new BasicStroke(2.5f));
+                            g.drawLine(pts.get(i - 1)[0], pts.get(i - 1)[1], pts.get(i)[0], pts.get(i)[1]);
+                            g.setStroke(new BasicStroke(1.5f));
+                        }
+                        g.fillOval(pts.get(i)[0] - 4, pts.get(i)[1] - 4, 8, 8);
+                    }
+                }
+            }
+            // x 轴类别标签
+            g.setColor(Color.GRAY);
+            g.setFont(new Font("SansSerif", Font.PLAIN, 12));
             for (int i = 0; i < cats.size(); i++) {
                 int cx = left + (int) (catW * (i + 0.5));
-                int cy = bottom - (int) (((vals[i] - min) / (max - min)) * plotH);
-                if (type.equals("column")) {
-                    int bw = (int) (catW * 0.6 / yfs.size());
-                    int bx = cx - bw / 2 + s * (bw + 4);
-                    g.fillRect(bx, cy, bw, bottom - cy);
-                } else if (type.equals("bar")) {
-                    int bh = (int) (catW * 0.6 / yfs.size());
-                    int by = cy - bh / 2 + s * (bh + 4);
-                    g.fillRect(left, by, cx - left, bh);
-                } else if (connect) {
-                    if (prevX >= 0) {
-                        g.setStroke(new BasicStroke(2.5f));
-                        g.drawLine(prevX, prevY, cx, cy);
-                        g.setStroke(new BasicStroke(1.5f));
-                    }
-                    if (type.equals("area")) {
-                        g.fillRect(cx - 1, cy, 2, bottom - cy);
-                    }
-                    g.fillOval(cx - 4, cy - 4, 8, 8);
-                }
-                prevX = cx;
-                prevY = cy;
+                String label = cats.get(i);
+                if (label.length() > 6) label = label.substring(0, 6) + "..";
+                g.drawString(label, cx - 12, bottom + 18);
             }
+            drawLegend(g, yfs, x0, y0);
+        } else {
+            // 横向 bar：类别沿 y 轴，条长按数值比例
+            double catH = (double) plotH / n;
+            for (int s = 0; s < yfs.size(); s++) {
+                String yf = yfs.get(s);
+                double[] vals = values(rows, yf);
+                Color c = SERIES[s % SERIES.length];
+                for (int i = 0; i < cats.size(); i++) {
+                    int yc = bottom - (int) (catH * (i + 0.5));
+                    int barLen = (int) (((vals[i] - min) / (max - min)) * plotW);
+                    int bh = (int) (catH * 0.6 / yfs.size());
+                    int by = yc - bh / 2 + s * (bh + 4);
+                    g.setColor(c);
+                    g.fillRect(left, by, barLen, bh);
+                }
+            }
+            // 类别标签（y 轴左侧）
+            g.setColor(Color.GRAY);
+            g.setFont(new Font("SansSerif", Font.PLAIN, 12));
+            for (int i = 0; i < cats.size(); i++) {
+                int yc = bottom - (int) (catH * (i + 0.5));
+                String label = cats.get(i);
+                if (label.length() > 10) label = label.substring(0, 10) + "..";
+                g.drawString(label, x0 + 2, yc + 4);
+            }
+            drawLegend(g, yfs, x0, y0);
         }
-        g.setColor(Color.GRAY);
+    }
+
+    private void drawLegend(Graphics2D g, List<String> yfs, int x0, int y0) {
         g.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        for (int i = 0; i < cats.size(); i++) {
-            int cx = left + (int) (catW * (i + 0.5));
-            String label = cats.get(i);
-            if (label.length() > 6) label = label.substring(0, 6) + "..";
-            g.drawString(label, cx - 12, bottom + 18);
-        }
-        g.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        int lx = left;
+        int lx = x0;
         for (int s = 0; s < yfs.size(); s++) {
             g.setColor(SERIES[s % SERIES.length]);
             g.fillRect(lx, y0 - 6, 14, 14);
@@ -288,8 +388,9 @@ public class ChartImageRenderer {
             g.setColor(SERIES[i % SERIES.length]);
             g.fillRect(lx, ly + i * 20, 14, 14);
             g.setColor(Color.DARK_GRAY);
-            String label = cats.get(i) + " (" + fmt(vals[i]) + ")";
-            if (label.length() > 22) label = label.substring(0, 22) + "..";
+            // A4：饼图标签 = 名称 + 数值 + 占比（与 pieLabel 一致）
+            String label = pieLabel(cats.get(i), vals[i], total);
+            if (label.length() > 30) label = label.substring(0, 30) + "..";
             g.drawString(label, lx + 18, ly + i * 20 + 12);
         }
     }
