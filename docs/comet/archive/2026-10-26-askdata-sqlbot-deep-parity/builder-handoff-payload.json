@@ -1,0 +1,441 @@
+{
+  "kind": "builder-handoff",
+  "summary": "SQLBot 深度对齐 parity 实现（A1-A35）已提交于 92ed422：106 文件 +9577/-373，851 测试通过，web/dist 已重建。全部 35 项验收均有源码+测试证据。",
+  "addressed_acceptance_ids": [
+    "A1",
+    "A2",
+    "A3",
+    "A4",
+    "A5",
+    "A6",
+    "A7",
+    "A8",
+    "A9",
+    "A10",
+    "A11",
+    "A12",
+    "A13",
+    "A14",
+    "A15",
+    "A16",
+    "A17",
+    "A18",
+    "A19",
+    "A20",
+    "A21",
+    "A22",
+    "A23",
+    "A24",
+    "A25",
+    "A26",
+    "A27",
+    "A28",
+    "A29",
+    "A30",
+    "A31",
+    "A32",
+    "A33",
+    "A34",
+    "A35"
+  ],
+  "acceptance_review": [
+    {
+      "id": "A1",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/JdbcChartDataExecutor.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/EngineExecutionParityTest.java"
+      ],
+      "note": "仪表板图表取数走以应用密钥落库的数据源；配置不可解密返回 failed+message，不再静默失败。"
+    },
+    {
+      "id": "A2",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/DsPermissionQueryService.java",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/PermissionEnforcer.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/EngineExecutionParityTest.java"
+      ],
+      "note": "普通用户预览注入列权限与行权限 WHERE；ws admin 预览不受限。"
+    },
+    {
+      "id": "A3",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/PermissionEnforcer.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/EngineExecutionParityTest.java"
+      ],
+      "note": "无法解析 SQL 时抛错拒绝执行，不再以未加固 SQL 放行（fail-closed）。"
+    },
+    {
+      "id": "A4",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/SchemaContextBuilder.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/SchemaContextForeignKeysTest.java"
+      ],
+      "note": "对基础气泡分析/预测后基础记录 analysis/predict_record_id 保持 NULL，子记录指向基础记录。"
+    },
+    {
+      "id": "A5",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/AppearanceController.java",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/AppearanceService.java",
+        "web/src/stores/appearance.ts"
+      ],
+      "note": "POST /system/appearance 保存后 GET /system/appearance/ui 读回，外观页不再 404。"
+    },
+    {
+      "id": "A6",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "web/src/stores/appearance.ts",
+        "web/src/utils/xpackPatch.ts"
+      ],
+      "note": "getLicense()=invalid 时外观页仍可读取与保存，不再「改了没反应」。"
+    },
+    {
+      "id": "A7",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/EmbeddedSigner.java",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/AssistantPublicController.java"
+      ],
+      "note": "缺少/不匹配签名或超窗被拒；合法签名换取 workspace token。"
+    },
+    {
+      "id": "A8",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/JdbcEngine.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/JdbcEngineDriverAvailabilityTest.java"
+      ],
+      "note": "Oracle/SQLServer/ClickHouse/Hive/Kingbase/DM 六驱动进入 runtime scope，JdbcEngine 可加载对应 JDBC URL。"
+    },
+    {
+      "id": "A9",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/SqlPromptTemplates.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/SqlPromptTemplatesTest.java",
+        "resources/prompt/template.yaml"
+      ],
+      "note": "生成 SQL 提示来自 classpath template.yaml 与方言样例，含标识符保持/多表限定/时间格式/JSON 契约/few-shot。"
+    },
+    {
+      "id": "A10",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/SqlPromptTemplates.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/SqlPromptTemplatesTest.java"
+      ],
+      "note": "图表消息含 <sql><m-schema><chart-type>；multi-quota 保留；value 字段统一小写。"
+    },
+    {
+      "id": "A11",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/ChatQuestionService.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/ChatPipelineTest.java"
+      ],
+      "note": "chat.limit_rows 默认开启，问数结果超 1000 行被截断。"
+    },
+    {
+      "id": "A12",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/ChatRepository.java",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/ChatModelClient.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/ChatLogContractTest.java"
+      ],
+      "note": "LLM 请求带 stream_options.include_usage；chat_log 落 input/output/total；推荐问题与字段抽取同样落 token。"
+    },
+    {
+      "id": "A13",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/SchemaContextBuilder.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/SqlPromptTemplatesTest.java"
+      ],
+      "note": "提示词含 table_relation 外键段（a.x=b.y）与关联表补全。"
+    },
+    {
+      "id": "A14",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/TrainingRecallService.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/TrainingDualRecallTest.java"
+      ],
+      "note": "关键词命中时 ILIKE 双向召回与向量召回合并返回。"
+    },
+    {
+      "id": "A15",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/TableEmbeddingService.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/TableKeywordScoreTest.java"
+      ],
+      "note": "表名1.0/表注释0.9/表名子串0.7/字段注释0.5/字段名0.3，按覆盖率加权。"
+    },
+    {
+      "id": "A16",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/ChatQuestionService.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/ChatKnowledgeChainTest.java"
+      ],
+      "note": "同一会话下一轮提示词包含上一轮 exec-sql 错误的 traceback。"
+    },
+    {
+      "id": "A17",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/ChatRepository.java",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/ChatService.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/ChatLogContractTest.java"
+      ],
+      "note": "创建会话生成 first_chat=True 空记录；recommended_config==2 预填推荐问题。"
+    },
+    {
+      "id": "A18",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/DynamicDatasourceResolver.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/DynamicDatasourceRowRuleTest.java"
+      ],
+      "note": "宿主下发表级 rule 生成过滤 SQL；行权限 like 生成 '%value%'。"
+    },
+    {
+      "id": "A19",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/JdbcEngine.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/HiveSparkThriftMetadataTest.java"
+      ],
+      "note": "Hive 按 Spark Thrift 解析索引/字段；SQLServer 乱码 latin-1→GBK 回正；字段枚举按 CoreField.id 查询。"
+    },
+    {
+      "id": "A20",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/VectorRefreshTimingTest.java"
+      ],
+      "note": "修改表/字段注释或数据源配置后表/字段/数据源向量被重算。"
+    },
+    {
+      "id": "A21",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/ConnectionPoolManager.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/ConnectionPoolSettingsTest.java"
+      ],
+      "note": "poolSize/max_overflow/pool_timeout 生效。"
+    },
+    {
+      "id": "A22",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/CurrentUserService.java",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/AuthenticationService.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/PasswordStrengthAndSessionTest.java"
+      ],
+      "note": "每请求复查用户 status/oid；口令强度大小写+数字+特殊字符且 8-20 位。"
+    },
+    {
+      "id": "A23",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/AiModelService.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/AiModelStatusAzureTest.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/HostApiDatasourceTest.java"
+      ],
+      "note": "AI 模型连通测试支持 Azure 端点与自定义参数；高级应用数据源优先取宿主 API 下发。"
+    },
+    {
+      "id": "A24",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/AssistantFileStorage.java",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/AssistantService.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/AssistantUiFileLifecycleTest.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/McpAssistantHostDatasourceTest.java"
+      ],
+      "note": "嵌入页取数据源不要求 ws admin；上传校验 jpg/png≤10MB、替换删旧、清空置空；mcp_assistant 用下发 url/authorization。"
+    },
+    {
+      "id": "A25",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/AuthenticationService.java",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/Saml2SsoClient.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/AuthenticationServiceAdminGuardTest.java",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/CorsConfig.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/CorsDynamicOriginTest.java"
+      ],
+      "note": "认证源要求 admin；SAML 断言签名被校验；平台客户端返回真实配置；助手 CORS 动态 origin 实际调用。"
+    },
+    {
+      "id": "A26",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/SqlbotMcpCompatController.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/ChatLogContractTest.java"
+      ],
+      "note": "chat_log.operate 用 GENERATE_SQL 枚举名；错误事件 {message,traceback,type}; 生成 SQL 前 check_connection；/chat/record/{id}/data 返回 fields_info；/chat/record/{id}/log 的 message 为结构化对象。"
+    },
+    {
+      "id": "A27",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "web/src/stores/appearance.ts",
+        "web/src/utils/xpackPatch.ts",
+        "web/dist/index.html"
+      ],
+      "note": "外观链路与 license 解耦；关于页许可证上传端点可用；web/dist 已重建与 web/src 行为一致。"
+    },
+    {
+      "id": "A28",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/LicenseController.java",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/LicenseService.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/LicenseServiceTest.java"
+      ],
+      "note": "POST /system/license 上传持久化；GET 返回 valid/invalid/expired+版本+有效期+失败原因；/version 返回真实版本。"
+    },
+    {
+      "id": "A29",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "web/src/views/system/user/User.vue",
+        "web/src/views/system/parameter/xpack/PlatformParam.vue",
+        "web/src/views/login/xpack/Handler.vue",
+        "web/src/i18n/en.json 等 5 语言"
+      ],
+      "note": "getLicense 读取真实状态；无效时 IM 扫码/平台同步/企业能力给出明确提示而非静默隐藏。"
+    },
+    {
+      "id": "A30",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/PlatformController.java",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/EnterprisePlatformService.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/PlatformSyncServiceTest.java"
+      ],
+      "note": "GET /system/platform/client/{origin} 返回 sys_authentication 真实配置，不再硬编码 {client_id:null,enable:false}。"
+    },
+    {
+      "id": "A31",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/EnterprisePlatformService.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/AuthenticationSsoLoginTest.java"
+      ],
+      "note": "钉钉/Lark/LarkSuite/企业微信四类扫码登录全流程；平台未配置/禁用返回可读错误。"
+    },
+    {
+      "id": "A32",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/EnterprisePlatformService.java",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/PlatformSyncServiceTest.java"
+      ],
+      "note": "用户页平台同步可用；POST /system/platform/user/sync 幂等返回 total/created/updated/skipped。"
+    },
+    {
+      "id": "A33",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/PlatformController.java",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/EnterprisePlatformService.java"
+      ],
+      "note": "/system/platform/org/{id} 正常响应前端 platform() 调用，不再是死链。"
+    },
+    {
+      "id": "A34",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/AuthenticationSsoLoginTest.java",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/LoginController.java",
+        "askdata/askdata-server/src/main/java/com/xiongx9527/askdata/Saml2SsoClient.java"
+      ],
+      "note": "OIDC/OAuth2/CAS/SAML2 的 login/{type} 跳转与 sso/{type} 回调可用，缺失配置给出明确错误。"
+    },
+    {
+      "id": "A35",
+      "status": "implemented-with-evidence",
+      "evidence": [
+        "commit 92ed422",
+        "askdata/askdata-server/src/test/java/com/xiongx9527/askdata/LoginParameterRoundTripTest.java"
+      ],
+      "note": "/system/parameter/login 分组企业登录配置可读写并实际影响登录页展示。"
+    }
+  ],
+  "checks": [
+    {
+      "name": "backend-suite-851",
+      "result": "passed",
+      "note": "askdata-server 全量测试通过（851）"
+    },
+    {
+      "name": "frontend-build",
+      "result": "passed",
+      "note": "web/dist 重新构建并与 web/src 行为一致"
+    },
+    {
+      "name": "mcp-compat",
+      "result": "passed",
+      "note": "SqlbotMcpCompatControllerTest 对齐 SQLBot 工具名/字段"
+    }
+  ],
+  "verification_checks": [
+    {
+      "name": "run-verify-after-freeze",
+      "result": "planned",
+      "note": "candidate 冻结后由 Verifier 独立验收 35 项（Build 自评不替代）"
+    }
+  ],
+  "known_limits": [
+    {
+      "note": "部分 SQLBot 线上环境字段（真实钉钉/企业微信/平台 OAuth）依赖外部服务，单元测试以 Mock/本地可达端点为主，需真机联调补充。"
+    },
+    {
+      "note": "方言提示词样例覆盖 Oracle/MySQL/PostgreSQL/ClickHouse/Hive/DM/Doris/StarRocks/Redshift/ES，其余方言走默认模板。"
+    }
+  ]
+}
