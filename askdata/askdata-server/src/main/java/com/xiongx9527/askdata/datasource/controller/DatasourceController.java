@@ -146,7 +146,8 @@ public class DatasourceController {
 
     @PostMapping({"/datasource/execSql/{id}"})
     public Result<Map<String, Object>> execSql(@PathVariable long id, @RequestBody Map<String, Object> body) {
-        return Result.ok(datasourceService.execSql(id, body));
+        // A6：require ws_admin 并在执行前应用行/列权限（hiddenColumnsFor + rowFilterWhereFor）
+        return Result.ok(datasourceService.execSqlAuthorized(id, body));
     }
 
     /** POST /datasource/fieldEnum/{ds_id}/{id}（SQLBot include_in_schema=False 的保留路由）。 */

@@ -21,6 +21,7 @@ import com.xiongx9527.askdata.datasource.repository.FieldRepository;
 import com.xiongx9527.askdata.datasource.repository.TableRepository;
 import com.xiongx9527.askdata.datasource.support.DatasourceCrypto;
 import com.xiongx9527.askdata.permission.DsPermissionQueryService;
+import com.xiongx9527.askdata.permission.PermissionEnforcer;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -86,6 +87,16 @@ public class DatasourceService {
     @Autowired(required = false)
     void setPermissionQuery(DsPermissionQueryService permissionQuery) {
         this.permissionQuery = permissionQuery;
+    }
+
+    /**
+     * 权限强制器（A6/A7：execSql 端点在执行前据此施加行/列权限；setter 注入，未注入时退化为不强制）。
+     */
+    private PermissionEnforcer permissionEnforcer;
+
+    @Autowired(required = false)
+    public void setPermissionEnforcer(PermissionEnforcer permissionEnforcer) {
+        this.permissionEnforcer = permissionEnforcer;
     }
 
     @Autowired
@@ -502,6 +513,28 @@ public class DatasourceService {
         Map<String, Object> row = requireAccessible(id);
         DatasourceType type = typeOf(Rows.str(row, "type"));
         return engine.execSql(type, confOf(Rows.str(row, "configuration")), Rows.str(body, "sql"), id);
+    }
+
+    /**
+     * A6：带授权的 execSql 端点入口。要求 {@code ws_admin}（管理员/空间管理员），并在执行前应用
+     * 行/列权限（{@code hiddenColumnsFor} + {@code rowFilterWhereFor} 的运行时强制版本）：
+     * 非 ws_admin 被 {@link CurrentUserService#requireWsAdmin()} 直接拒绝；ws_admin 中的非管理员用户
+     * 仍受行/列权限约束，无法绕过。
+     */
+    public Map<String, Object> execSqlAuthorized(long id, Map<String, Object> body) {
+        currentUserService.requireWsAdmin();
+        Map<String, Object> row = requireAccessible(id);
+        DatasourceType type = typeOf(Rows.str(row, "type"));
+        String sql = Rows.str(body, "sql");
+        if (permissionEnforcer == null) {
+            return engine.execSql(type, confOf(Rows.str(row, "configuration")), sql, id);
+        }
+        Map<String, Object> user = currentUserService.currentUser();
+        PermissionEnforcer.EnforcedQuery enforced = permissionEnforcer.enforce(
+                currentUserService.oidOf(user), currentUserService.uid(), id, sql);
+        Map<String, Object> result = engine.execSql(type, confOf(Rows.str(row, "configuration")),
+                enforced.getSql(), id);
+        return permissionEnforcer.applyHiddenColumns(result, enforced.getHiddenColumns());
     }
 
     /** 解析数据源方言类型（验收 A2：供 NL2SQL 注入正确方言，不再硬编码 MySQL）。 */
