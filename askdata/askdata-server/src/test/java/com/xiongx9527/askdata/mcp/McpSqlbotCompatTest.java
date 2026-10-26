@@ -1,25 +1,30 @@
 package com.xiongx9527.askdata.mcp;
 
 import com.ajaxjs.mcp.server.feature.annotation.Tool;
+import com.xiongx9527.askdata.common.util.Rows;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * SQLBot 预设客户端兼容层（A1/A2 结构与纯函数部分）：
+ * SQLBot 预设客户端兼容层（A7/A11 与纯函数部分）：
  * - 7 个 SQLBot operation_id 在 AskdataMcpTools 上均有 @Tool 注册；
- * - mcp_start 响应组装含 access_token 与 chat_id；
+ * - mcp_start 响应只含 access_token 与 chat_id；
+ * - MCP 数据源列表裁掉内部字段并按名称排序；
  * - int|str 联合类型参数转换。
  */
 class McpSqlbotCompatTest {
@@ -50,14 +55,19 @@ class McpSqlbotCompatTest {
     }
 
     @Test
-    void mcpStartResponseContainsAccessTokenAndChatId() {
+    void mcpStartResponseContainsOnlyAccessTokenAndChatId() {
         Map<String, Object> chatInfo = new LinkedHashMap<String, Object>();
         chatInfo.put("id", 9L);
         chatInfo.put("brief", "会话");
+        chatInfo.put("datasource", 7L);
+        chatInfo.put("engine_type", "mysql");
         Map<String, Object> out = AskdataMcpTools.mcpStartResponse("tok-123", chatInfo);
+        assertEquals(2, out.size(), out.toString());
         assertEquals("tok-123", out.get("access_token"));
         assertEquals(9L, out.get("chat_id"));
-        assertEquals("会话", out.get("brief"));
+        assertFalse(out.containsKey("brief"));
+        assertFalse(out.containsKey("datasource"));
+        assertFalse(out.containsKey("engine_type"));
     }
 
     @Test
@@ -66,6 +76,29 @@ class McpSqlbotCompatTest {
                 new HashMap<String, Object>() {{ put("id", 3L); }});
         assertNull(out.get("access_token"));
         assertEquals(3L, out.get("chat_id"));
+        assertEquals(1, out.size(), out.toString());
+    }
+
+    @Test
+    void datasourceListStripsInternalFieldsAndSortsByName() {
+        Map<String, Object> zeta = Rows.of("id", 2L, "name", "zeta", "configuration", "secret",
+                "embedding", "[]", "table_relation", "{}", "recommended_config", 2, "type", "mysql");
+        Map<String, Object> alpha = Rows.of("id", 1L, "name", "alpha", "configuration", "secret",
+                "embedding", "[]", "table_relation", "{}", "recommended_config", 0, "type", "h2");
+        List<Map<String, Object>> list = new ArrayList<>(Arrays.asList(zeta, alpha));
+
+        AskdataMcpTools.sanitizeDatasourceList(list);
+
+        assertEquals(Arrays.asList("alpha", "zeta"),
+                Arrays.asList(Rows.str(list.get(0), "name"), Rows.str(list.get(1), "name")));
+        for (Map<String, Object> row : list) {
+            for (String removed : Arrays.asList("configuration", "embedding", "table_relation",
+                    "recommended_config")) {
+                assertFalse(row.containsKey(removed), "MCP 数据源列表不应包含 " + removed + ": " + row);
+            }
+            assertTrue(row.containsKey("id") && row.containsKey("name") && row.containsKey("type"),
+                    "其余既有字段应保留: " + row);
+        }
     }
 
     @Test
@@ -80,4 +113,3 @@ class McpSqlbotCompatTest {
         assertThrows(NumberFormatException.class, () -> AskdataMcpTools.longArgOrNull("abc"));
     }
 }
-

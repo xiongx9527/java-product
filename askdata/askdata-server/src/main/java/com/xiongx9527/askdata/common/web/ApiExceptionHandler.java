@@ -4,10 +4,12 @@ import cn.dev33.satoken.exception.NotLoginException;
 import com.xiongx9527.askdata.common.debounce.DebounceBlockedException;
 import com.xiongx9527.askdata.common.debounce.DebounceProperties;
 import com.xiongx9527.askdata.common.web.Result;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -32,6 +34,8 @@ public class ApiExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
+    private static final ObjectMapper JSON = new ObjectMapper();
+
     /** 错误文案统一走消息包（A4 / F-15）；由 Spring MVC 按 Accept-Language 设定 locale。 */
     private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
 
@@ -46,7 +50,19 @@ public class ApiExceptionHandler {
     @ExceptionHandler(BadRequestException.class)
     public ResponseEntity<String> badRequest(BadRequestException e) {
         log.info("业务拒绝: {}", e.getMessage());
+        if (isMcpRequest()) {
+            return detail(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
         return error(HttpStatus.BAD_REQUEST, e.getMessage());
+    }
+
+    /**
+     * 无效 token / 禁止访问：SQLBot MCP 客户端按 HTTP 403 + {@code {"detail":...}} 解析。
+     */
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<String> forbidden(ForbiddenException e) {
+        log.info("禁止访问: {}", e.getMessage());
+        return detail(HttpStatus.FORBIDDEN, e.getMessage());
     }
 
     @ExceptionHandler(NotLoginException.class)
@@ -100,6 +116,26 @@ public class ApiExceptionHandler {
         return ResponseEntity.status(status)
                 .header(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, allowedOrigin())
                 .body(detail);
+    }
+
+    /** MCP 兼容层错误体：{@code {"detail": ...}}（镜像 SQLBot HTTPException）。 */
+    private ResponseEntity<String> detail(HttpStatus status, String detail) {
+        String body;
+        try {
+            body = JSON.writeValueAsString(java.util.Map.of("detail", detail == null ? "" : detail));
+        } catch (Exception e) {
+            body = "{\"detail\":\"\"}";
+        }
+        return ResponseEntity.status(status)
+                .header(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, allowedOrigin())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body);
+    }
+
+    private static boolean isMcpRequest() {
+        HttpServletRequest request = currentRequest();
+        return request != null && request.getRequestURI() != null
+                && request.getRequestURI().startsWith("/api/v1/mcp/");
     }
 
     /**

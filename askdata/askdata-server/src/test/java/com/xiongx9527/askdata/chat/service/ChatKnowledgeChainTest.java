@@ -193,6 +193,7 @@ class ChatKnowledgeChainTest {
                 new com.xiongx9527.askdata.embedded.AssistantRepository(appJdbc, idGenerator),
                 Mockito.mock(ChartImageService.class),
                 new com.xiongx9527.askdata.system.repository.SysArgRepository(appJdbc),
+                Mockito.mock(DsGrantService.class),
                 messageResolver);
     }
 

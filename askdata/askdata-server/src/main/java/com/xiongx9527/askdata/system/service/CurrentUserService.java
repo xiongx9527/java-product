@@ -74,10 +74,14 @@ public class CurrentUserService {
     /** 助手通道合成用户账号名（SQLBot {@code sqlbot-inner-assistant}，无 sys_user 行）。 */
     public static final String INNER_ASSISTANT_ACCOUNT = "sqlbot-inner-assistant";
 
+    /** SQLBot mcp_assistant 合成用户账号名（id=-1，无 sys_user 行）。 */
+    public static final String MCP_ASSISTANT_ACCOUNT = "sqlbot-mcp-assistant";
+
     public void requireActiveSession() {
         Map<String, Object> user = currentUser();
         // 助手通道是合成用户（无 sys_user 行），无 status/oid 可校验
-        if (INNER_ASSISTANT_ACCOUNT.equals(Rows.str(user, "account"))) {
+        if (INNER_ASSISTANT_ACCOUNT.equals(Rows.str(user, "account"))
+                || MCP_ASSISTANT_ACCOUNT.equals(Rows.str(user, "account"))) {
             return;
         }
         if (Rows.lng(user, "status", 0L) != 1L) {

@@ -17,6 +17,7 @@ import com.xiongx9527.askdata.chat.service.ChatService;
 import com.xiongx9527.askdata.chat.service.SchemaContextBuilder;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.util.Rows;
+import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.datasource.embedding.TableEmbeddingService;
 import com.xiongx9527.askdata.datasource.engine.DatasourceType;
 import com.xiongx9527.askdata.datasource.engine.JdbcEngine;
@@ -32,6 +33,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import com.xiongx9527.askdata.permission.DsGrantRepository;
 import com.xiongx9527.askdata.permission.DsGrantService;
 import org.mockito.Mockito;
 import org.springframework.core.io.ClassPathResource;
@@ -59,6 +61,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import org.springframework.context.support.StaticMessageSource;
@@ -99,6 +102,9 @@ class ChatPipelineTest {
     private ChatService chatService;
 
     private ChatQuestionService chatQuestionService;
+
+    private DsGrantService dsGrantService;
+    private CurrentUserService currentUserService;
     private final ChartImageService chartImageService = Mockito.mock(ChartImageService.class);
 
     private ChatKnowledgeService chatKnowledgeService;
@@ -147,6 +153,7 @@ class ChatPipelineTest {
         TableRepository tableRepository = new TableRepository(appJdbc, idGenerator);
         FieldRepository fieldRepository = new FieldRepository(appJdbc, idGenerator);
         CurrentUserService currentUserService = Mockito.mock(CurrentUserService.class);
+        this.currentUserService = currentUserService;
         Mockito.when(currentUserService.currentUser())
                 .thenReturn(Rows.of("id", 1L, "account", "admin", "oid", 1L));
         Mockito.when(currentUserService.isAdmin(Mockito.any())).thenReturn(true);
@@ -183,8 +190,10 @@ class ChatPipelineTest {
                 fieldRepository, datasourceService, modelClient, modelRouter, appJdbc, objectMapper,
                 new TableEmbeddingService(tableRepository, fieldRepository, modelRouter, modelClient, appJdbc,
                         objectMapper));
+        dsGrantService = new DsGrantService(new DsGrantRepository(appJdbc, idGenerator),
+                datasourceRepository, currentUserService, messageResolver);
         chatService = new ChatService(chatRepository, recommendedQuestionRepository, datasourceRepository,
-                datasourceService, currentUserService, objectMapper, Mockito.mock(DsGrantService.class),
+                datasourceService, currentUserService, objectMapper, dsGrantService,
                 messageResolver);
         chatKnowledgeService = new ChatKnowledgeService(
                 new TerminologyRecallService(new EmbeddingService(new LocalEmbeddingModel(excelDir.toString(), 128),
@@ -197,6 +206,7 @@ class ChatPipelineTest {
                 new com.xiongx9527.askdata.embedded.AssistantRepository(appJdbc, idGenerator),
                 chartImageService,
                 new com.xiongx9527.askdata.system.repository.SysArgRepository(appJdbc),
+                dsGrantService,
                 messageResolver);
     }
 
@@ -311,6 +321,290 @@ class ChatPipelineTest {
         assertEquals(2, data.get("data").size(),
                 "limit_rows 缺省 false 时不截断，应保留聚合出的 2 行，实际: " + data.get("data"));
         assertFalse(data.has("limit"), "limit_rows 关闭时 data_obj 不应带 limit: " + data);
+    }
+
+    // ------------------------------------------------------------------
+    // A1/A3/A5/A6/A9 MCP gap closure
+    // ------------------------------------------------------------------
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void nonStreamAskReturnsSqlbotJsonAndPersistedDataObject() throws Exception {
+        Mockito.when(chartImageService.renderFromResult(Mockito.any(), Mockito.any()))
+                .thenReturn("/api/chart/image/ask-test");
+        long chatId = Rows.lng(chatService.start(Rows.of("datasource", dsId)), "id", 0L);
+
+        Map<String, Object> result = chatQuestionService.ask(
+                Rows.of("question", "每个状态的订单数", "chat_id", chatId));
+
+        assertEquals(Boolean.TRUE, result.get("success"), result.toString());
+        long recordId = ((Number) result.get("record_id")).longValue();
+        assertTrue(recordId > 0L, result.toString());
+        assertEquals(STUB_SQL, result.get("sql"));
+        Map<String, Object> data = (Map<String, Object>) result.get("data");
+        assertEquals(Arrays.asList("status", "cnt"), data.get("fields"), data.toString());
+        assertEquals(2, ((List<?>) data.get("data")).size(), data.toString());
+        assertEquals(dsId, ((Number) data.get("datasource")).longValue());
+        assertNotNull(result.get("chart"), result.toString());
+        assertEquals("/api/chart/image/ask-test", result.get("image_url"));
+
+        // 落库 data 与响应 data 完全一致（不再是裸行数组）
+        Map<String, Object> persistedRow = appJdbc.queryForMap(
+                "SELECT data, chart FROM chat_record WHERE id = ?", recordId);
+        Map<String, Object> persisted = objectMapper.readValue(
+                Rows.str(persistedRow, "data"), Map.class);
+        assertEquals(persisted, data);
+        assertNotNull(persistedRow.get("chart"), "chart 应同时落库");
+    }
+
+    @Test
+    void returnImgFalseSkipsRenderingInBothPaths() throws Exception {
+        long chatId = Rows.lng(chatService.start(Rows.of("datasource", dsId)), "id", 0L);
+
+        Map<String, Object> result = chatQuestionService.ask(Rows.of(
+                "question", "每个状态的订单数", "chat_id", chatId, "return_img", false));
+        assertEquals(Boolean.TRUE, result.get("success"), result.toString());
+        assertFalse(result.containsKey("image_url"), result.toString());
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        chatQuestionService.streamQuestion(Rows.of(
+                "question", "每个状态的订单数", "chat_id", chatId, "return_img", false), response);
+        List<JsonNode> frames = parseFrames(response.getContentAsString());
+        assertTrue(typesOf(frames).contains("chart"), typesOf(frames).toString());
+        assertFalse(typesOf(frames).contains("imageUrl"), typesOf(frames).toString());
+
+        Mockito.verify(chartImageService, Mockito.never())
+                .renderFromResult(Mockito.any(), Mockito.any());
+    }
+
+    @Test
+    void customModelAppliesToSqlAndChartGeneration() throws Exception {
+        long customModelId = idGenerator.nextId();
+        new AiModelRepository(appJdbc, idGenerator).insert(customModelId, "",
+                "http://127.0.0.1:" + stubPort, 1, 0, "自定义模型", 0, "custom-gemma", false,
+                "[]", 1, System.currentTimeMillis());
+        long chatId = Rows.lng(chatService.start(Rows.of("datasource", dsId)), "id", 0L);
+
+        Map<String, Object> result = chatQuestionService.ask(Rows.of("question", "每个状态的订单数",
+                "chat_id", chatId, "custom_model", customModelId));
+
+        assertEquals(Boolean.TRUE, result.get("success"), result.toString());
+        assertTrue(stubCalls.contains("sql"), stubCalls.toString());
+        assertTrue(stubCalls.contains("chart"), stubCalls.toString());
+        // 逐次请求关联 prompt 类型，证明 SQL 与图表两条生成链路都使用了 custom_model，
+        // 而不是仅凭任一请求体出现 custom-gemma 就算通过。
+        List<String> sqlBodies = requestBodiesForPrompt("请只输出 SQL");
+        List<String> chartBodies = requestBodiesForPrompt("请只输出一个 G2 图表配置 JSON");
+        assertFalse(sqlBodies.isEmpty(), "应有 SQL 生成请求，实际 prompts=" + userPrompts);
+        assertFalse(chartBodies.isEmpty(), "应有图表生成请求，实际 prompts=" + userPrompts);
+        for (String body : sqlBodies) {
+            assertEquals("custom-gemma", objectMapper.readTree(body).path("model").asText(),
+                    "SQL 生成必须使用 custom_model，实际请求体=" + body);
+        }
+        for (String body : chartBodies) {
+            assertEquals("custom-gemma", objectMapper.readTree(body).path("model").asText(),
+                    "图表生成必须使用 custom_model，实际请求体=" + body);
+        }
+    }
+
+    @Test
+    void unknownCustomModelFailsWithoutUsingDefaultModel() throws Exception {
+        long chatId = Rows.lng(chatService.start(Rows.of("datasource", dsId)), "id", 0L);
+
+        Map<String, Object> result = chatQuestionService.ask(Rows.of("question", "每个状态的订单数",
+                "chat_id", chatId, "custom_model", 999999999L));
+
+        assertEquals(Boolean.FALSE, result.get("success"), result.toString());
+        assertTrue(String.valueOf(result.get("message")).contains("custom.model.unavailable"),
+                result.toString());
+        assertFalse(stubCalls.contains("sql"), "模型不可用时不应回退默认模型生成 SQL: " + stubCalls);
+    }
+
+    @Test
+    void mcpStartCreatesChatWithoutFirstChatRecordAndDerivesBrief() throws Exception {
+        String question = "  统计每个状态的订单数量并按金额从高到低排序  ";
+        Map<String, Object> chat = chatService.startForMcp(Rows.of("question", question));
+        long chatId = ((Number) chat.get("id")).longValue();
+
+        assertEquals(0L, appJdbc.queryForObject(
+                "SELECT COUNT(*) FROM chat_record WHERE chat_id = ?", Long.class, chatId).longValue(),
+                "MCP 建会话不应创建 first_chat 空记录");
+        String expectedBrief = question.trim().substring(0, 20);
+        assertEquals(expectedBrief, appJdbc.queryForObject(
+                "SELECT brief FROM chat WHERE id = ?", String.class, chatId));
+        assertEquals(expectedBrief, chat.get("brief"));
+
+        Map<String, Object> noQuestion = chatService.startForMcp(new java.util.HashMap<String, Object>());
+        String timestampBrief = appJdbc.queryForObject(
+                "SELECT brief FROM chat WHERE id = ?", String.class, ((Number) noQuestion.get("id")).longValue());
+        assertTrue(timestampBrief.matches("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}"),
+                "无问题时应使用当前时间: " + timestampBrief);
+    }
+
+    @Test
+    void mcpStartValidatesAndPersistsDatasourceWithoutCreatingRecord() {
+        Map<String, Object> chat = chatService.startForMcp(
+                Rows.of("datasource", dsId, "question", "统计订单"));
+        long chatId = ((Number) chat.get("id")).longValue();
+
+        assertEquals(dsId, appJdbc.queryForObject(
+                "SELECT datasource FROM chat WHERE id = ?", Long.class, chatId).longValue(),
+                "MCP 建会话应写入已授权数据源");
+        assertEquals(0L, appJdbc.queryForObject(
+                "SELECT COUNT(*) FROM chat_record WHERE chat_id = ?", Long.class, chatId).longValue(),
+                "MCP 建会话不应创建首条空记录");
+
+        // 风险修复：使用真实 DsGrantService 验证白名单语义（不再 mock checkUsable）。
+        // 种入成员 2 的授权后该数据源进入白名单模式：成员 2 可用、成员 3 被拒，管理员始终放行。
+        new DsGrantRepository(appJdbc, idGenerator).insert(1L, dsId, 2L, 1L);
+
+        switchUser(2L, "member", false);
+        Map<String, Object> granted = chatService.startForMcp(
+                Rows.of("datasource", dsId, "question", "已授权成员"));
+        assertEquals(dsId, appJdbc.queryForObject(
+                "SELECT datasource FROM chat WHERE id = ?", Long.class,
+                ((Number) granted.get("id")).longValue()).longValue(),
+                "被授权成员应可用该数据源建会话");
+
+        switchUser(3L, "outsider", false);
+        BadRequestException denied = assertThrows(BadRequestException.class,
+                () -> chatService.startForMcp(Rows.of("datasource", dsId, "question", "授权失败")),
+                "MCP 建会话应拒绝未授权数据源");
+        assertEquals(messageResolver.get("ds.not.authorized", Map.of("id", dsId)),
+                denied.getMessage());
+
+        switchUser(1L, "admin", true);
+        Map<String, Object> admin = chatService.startForMcp(
+                Rows.of("datasource", dsId, "question", "管理员"));
+        assertEquals(dsId, appJdbc.queryForObject(
+                "SELECT datasource FROM chat WHERE id = ?", Long.class,
+                ((Number) admin.get("id")).longValue()).longValue(),
+                "管理员应始终可绕过数据源白名单");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void boundDatasourceWinsAndUnboundChatUsesRequestedDatasource() throws Exception {
+        String altUrl = createTargetDatabase("chat_alt_ds", 1);
+        long altDsId = addDatasource("chat 备用库", altUrl);
+
+        // 已绑定 D1：请求 D2 仍走 D1，且不改写 chat/record datasource
+        long boundChatId = Rows.lng(chatService.start(Rows.of("datasource", dsId)), "id", 0L);
+        Map<String, Object> boundResult = chatQuestionService.ask(Rows.of("question", "每个状态的订单数",
+                "chat_id", boundChatId, "datasource_id", altDsId));
+        assertEquals(Boolean.TRUE, boundResult.get("success"), boundResult.toString());
+        assertEquals(2, ((List<?>) ((Map<String, Object>) boundResult.get("data")).get("data")).size(),
+                "已绑定会话应在 D1 上执行（2 组状态）: " + boundResult);
+        assertEquals(dsId, appJdbc.queryForObject(
+                "SELECT datasource FROM chat WHERE id = ?", Long.class, boundChatId).longValue());
+        assertEquals(dsId, appJdbc.queryForObject(
+                "SELECT datasource FROM chat_record WHERE id = ?", Long.class,
+                ((Number) boundResult.get("record_id")).longValue()).longValue());
+
+        // 流式路径同一优先级：已绑定 D1 忽略请求 D2
+        MockHttpServletResponse boundStream = new MockHttpServletResponse();
+        chatQuestionService.streamQuestion(Rows.of("question", "每个状态的订单数",
+                "chat_id", boundChatId, "datasource_id", altDsId), boundStream);
+        JsonNode boundDsFrame = frameOf(parseFrames(boundStream.getContentAsString()), "datasource");
+        assertEquals(dsId, boundDsFrame.get("id").asLong(),
+                "流式路径也必须使用已绑定数据源: " + boundDsFrame);
+
+        // 未绑定：请求 D2 生效并回写 chat.datasource
+        long unboundChatId = ((Number) chatService.startForMcp(new java.util.HashMap<String, Object>())
+                .get("id")).longValue();
+        Map<String, Object> unboundResult = chatQuestionService.ask(Rows.of("question", "每个状态的订单数",
+                "chat_id", unboundChatId, "datasource_id", altDsId));
+        assertEquals(Boolean.TRUE, unboundResult.get("success"), unboundResult.toString());
+        assertEquals(1, ((List<?>) ((Map<String, Object>) unboundResult.get("data")).get("data")).size(),
+                "未绑定会话应在请求 D2 上执行（1 组状态）: " + unboundResult);
+        assertEquals(altDsId, appJdbc.queryForObject(
+                "SELECT datasource FROM chat WHERE id = ?", Long.class, unboundChatId).longValue());
+        assertEquals(altDsId, appJdbc.queryForObject(
+                "SELECT datasource FROM chat_record WHERE id = ?", Long.class,
+                ((Number) unboundResult.get("record_id")).longValue()).longValue());
+
+        // 流式路径：另一条未绑定会话同样采用请求 D2 并回写
+        long unboundStreamChatId = ((Number) chatService.startForMcp(new java.util.HashMap<String, Object>())
+                .get("id")).longValue();
+        MockHttpServletResponse unboundStream = new MockHttpServletResponse();
+        chatQuestionService.streamQuestion(Rows.of("question", "每个状态的订单数",
+                "chat_id", unboundStreamChatId, "datasource_id", altDsId), unboundStream);
+        JsonNode unboundDsFrame = frameOf(parseFrames(unboundStream.getContentAsString()), "datasource");
+        assertEquals(altDsId, unboundDsFrame.get("id").asLong(),
+                "流式路径应采用请求数据源: " + unboundDsFrame);
+        assertEquals(altDsId, appJdbc.queryForObject(
+                "SELECT datasource FROM chat WHERE id = ?", Long.class, unboundStreamChatId).longValue());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void unboundChatWithoutExplicitDatasourceUsesRagSelectionAndPersists() throws Exception {
+        // schema.sql 预置的演示库使用部署密钥加密，单测随机密钥无法解密；移除后 RAG 只有本测试
+        // 注册的可用数据源一个候选，保证选库结果确定且可真实执行。
+        appJdbc.update("DELETE FROM core_datasource WHERE id = 1");
+        long chatId = ((Number) chatService.startForMcp(new java.util.HashMap<String, Object>())
+                .get("id")).longValue();
+
+        Map<String, Object> result = chatQuestionService.ask(Rows.of(
+                "question", "查询 orders 表每个状态的订单数", "chat_id", chatId));
+
+        assertEquals(Boolean.TRUE, result.get("success"), result.toString());
+        assertEquals(dsId, appJdbc.queryForObject(
+                "SELECT datasource FROM chat WHERE id = ?", Long.class, chatId).longValue(),
+                "未绑定且未显式指定时应沿用 RAG 选库并回写 chat.datasource");
+        assertEquals(dsId, appJdbc.queryForObject(
+                "SELECT datasource FROM chat_record WHERE id = ?", Long.class,
+                ((Number) result.get("record_id")).longValue()).longValue());
+    }
+
+    @Test
+    void datasourceGrantDeniedStopsSqlInStreamAndNonStreamPaths() throws Exception {
+        // 先在「无授权记录 = 共享模式」下由普通成员 3 建会话（授权校验不拦截）；
+        // 随后为成员 2 种入授权，使该数据源进入白名单模式，成员 3 仍是会话所有者但不再被授权。
+        switchUser(3L, "outsider", false);
+        long boundChatId = Rows.lng(chatService.start(Rows.of("datasource", dsId)), "id", 0L);
+        long unboundChatId = ((Number) chatService.startForMcp(new java.util.HashMap<String, Object>())
+                .get("id")).longValue();
+        // 风险修复：真实 DsGrantService + 真实 ds_grant 行，验证非管理员在流式/非流式两条链路被拒。
+        new DsGrantRepository(appJdbc, idGenerator).insert(1L, dsId, 2L, 1L);
+        String expected = messageResolver.get("ds.not.authorized", Map.of("id", dsId));
+
+        stubCalls.clear();
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        chatQuestionService.streamQuestion(Rows.of("question", "每个状态的订单数", "chat_id", boundChatId), response);
+        List<JsonNode> frames = parseFrames(response.getContentAsString());
+        List<String> types = typesOf(frames);
+        assertTrue(types.contains("error"), types.toString());
+        assertFalse(types.contains("sql"), types.toString());
+        assertFalse(types.contains("sql-data"), types.toString());
+        assertTrue(frameOf(frames, "error").get("content").asText().contains(expected), types.toString());
+        assertFalse(stubCalls.contains("sql"), "授权拒绝后不得生成 SQL: " + stubCalls);
+
+        Map<String, Object> deniedRecord = appJdbc.queryForMap(
+                "SELECT error, sql, first_chat FROM chat_record WHERE chat_id = ? ORDER BY id DESC LIMIT 1",
+                boundChatId);
+        assertEquals(Boolean.FALSE, deniedRecord.get("first_chat"), deniedRecord.toString());
+        assertTrue(Rows.str(deniedRecord, "error").contains(expected), deniedRecord.toString());
+        assertNull(deniedRecord.get("sql"), "授权拒绝后 SQL 不应落库: " + deniedRecord);
+
+        Map<String, Object> result = chatQuestionService.ask(Rows.of("question", "每个状态的订单数",
+                "chat_id", unboundChatId, "datasource_id", dsId));
+        assertEquals(Boolean.FALSE, result.get("success"), result.toString());
+        assertTrue(String.valueOf(result.get("message")).contains(expected), result.toString());
+        assertNotNull(result.get("record_id"), "已创建记录时非流式错误应带 record_id: " + result);
+        assertFalse(stubCalls.contains("sql"), "授权拒绝后不得生成 SQL: " + stubCalls);
+        assertNull(appJdbc.queryForObject("SELECT sql FROM chat_record WHERE id = ?", String.class,
+                ((Number) result.get("record_id")).longValue()),
+                "授权拒绝后非流式 SQL 不应落库");
+    }
+
+    /** 在当前测试内切换登录用户（CurrentUserService 为 mock，DsGrantService 读取其返回值）。 */
+    private void switchUser(long id, String account, boolean admin) {
+        Mockito.when(currentUserService.currentUser())
+                .thenReturn(Rows.of("id", id, "account", account, "oid", 1L));
+        Mockito.when(currentUserService.isAdmin(Mockito.any())).thenReturn(admin);
+        Mockito.when(currentUserService.oidOf(Mockito.any())).thenReturn(1L);
+        Mockito.when(currentUserService.uid()).thenReturn(id);
     }
 
     // ------------------------------------------------------------------
@@ -768,6 +1062,17 @@ class ChatPipelineTest {
         return Collections.emptyList();
     }
 
+    /** 按桩服务器收到的 prompt 类型筛选对应请求体（requestBodies 与 userPrompts 同序追加）。 */
+    private List<String> requestBodiesForPrompt(String marker) {
+        List<String> matched = new ArrayList<>();
+        for (int i = 0; i < requestBodies.size() && i < userPrompts.size(); i++) {
+            if (userPrompts.get(i).contains(marker)) {
+                matched.add(requestBodies.get(i));
+            }
+        }
+        return matched;
+    }
+
     private static String readBody(InputStream inputStream) throws Exception {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         byte[] chunk = new byte[4096];
@@ -779,11 +1084,39 @@ class ChatPipelineTest {
     }
 
     private String h2Configuration() {
+        return h2Configuration(TARGET_URL);
+    }
+
+    private String h2Configuration(String url) {
         String plain = "{\"host\":\"\",\"port\":0,\"username\":\"sa\",\"password\":\"\",\"database\":\""
-                + TARGET_URL + "\",\"extraJdbc\":\"\",\"dbSchema\":\"\",\"filename\":\"\",\"sheets\":[],"
+                + url + "\",\"extraJdbc\":\"\",\"dbSchema\":\"\",\"filename\":\"\",\"sheets\":[],"
                 + "\"mode\":\"\",\"timeout\":10,\"lowVersion\":false,\"ssl\":false,\"poolSize\":5,"
                 + "\"engine\":\"hive\"}";
         return com.xiongx9527.askdata.system.auth.CryptoUtil.encryptSqlbot(plain);
+    }
+
+    /** 新建一个带 orders 表的独立 H2 目标库（用于 A5 datasource_id 优先级验证）。 */
+    private String createTargetDatabase(String name, int paidRows) throws Exception {
+        String url = "jdbc:h2:mem:" + name + "_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1";
+        try (Connection connection = DriverManager.getConnection(url, "sa", "");
+             Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE \"orders\" (\"id\" BIGINT PRIMARY KEY,"
+                    + " \"user_id\" BIGINT, \"amount\" DECIMAL(10,2), \"status\" VARCHAR(20))");
+            for (int i = 1; i <= paidRows; i++) {
+                statement.execute("INSERT INTO \"orders\" VALUES (" + i + ", " + (100 + i)
+                        + ", 10.00, 'PAID')");
+            }
+        }
+        return url;
+    }
+
+    /** 注册静态数据源（与 setUp 的 chat 目标库同构）。 */
+    private long addDatasource(String name, String url) {
+        return Rows.lng(datasourceService.add(Rows.of(
+                "name", name, "description", "", "type", DatasourceType.H2.getType(),
+                "configuration", h2Configuration(url),
+                "tables", Arrays.asList(
+                        Rows.of("table_name", "orders", "table_comment", "订单表")))), "id", 0L);
     }
 
     // ------------------------------------------------------------------

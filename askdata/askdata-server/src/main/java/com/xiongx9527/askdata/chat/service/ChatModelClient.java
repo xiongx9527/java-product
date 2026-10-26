@@ -411,6 +411,11 @@ public class ChatModelClient {
     // 流式帧输出（协议：data:{json}\n\n）
     // ------------------------------------------------------------------
 
+    /** 帧观察者：非流式 {@code ask} 用它在复用同一流式管线时捕获帧，不依赖 HttpServletResponse。 */
+    public interface FrameListener {
+        void onFrame(Map<String, Object> frame);
+    }
+
     /** 把流式响应写进 HttpServletResponse（text/event-stream），逐帧 flush。 */
     public static class FrameWriter implements AutoCloseable {
 
@@ -418,8 +423,16 @@ public class ChatModelClient {
 
         private final ObjectMapper objectMapper;
 
+        private final FrameListener listener;
+
         public FrameWriter(HttpServletResponse response, ObjectMapper objectMapper) throws IOException {
+            this(response, objectMapper, null);
+        }
+
+        public FrameWriter(HttpServletResponse response, ObjectMapper objectMapper, FrameListener listener)
+                throws IOException {
             this.objectMapper = objectMapper;
+            this.listener = listener;
             response.setStatus(HttpServletResponse.SC_OK);
             response.setContentType("text/event-stream;charset=UTF-8");
             response.setCharacterEncoding("UTF-8");
@@ -428,8 +441,27 @@ public class ChatModelClient {
             this.writer = response.getWriter();
         }
 
+        private FrameWriter(PrintWriter writer, ObjectMapper objectMapper, FrameListener listener) {
+            this.writer = writer;
+            this.objectMapper = objectMapper;
+            this.listener = listener;
+        }
+
+        /**
+         * 捕获模式：帧只交给监听器，不写 HTTP 响应。
+         *
+         * <p>非流式 {@code mcp_question} 复用同一问数管线，通过捕获帧组装 SQLBot JSON，
+         * 避免再维护一套简化链路。{@link #close()} 对捕获模式不产生副作用。</p>
+         */
+        public static FrameWriter capturing(ObjectMapper objectMapper, FrameListener listener) {
+            return new FrameWriter(new PrintWriter(java.io.Writer.nullWriter()), objectMapper, listener);
+        }
+
         /** 写出一帧 {@code data:{json}\n\n}，与 SQLBot 前端 answer/*.vue 解析逐字兼容。 */
         public void write(Map<String, Object> frame) throws IOException {
+            if (listener != null) {
+                listener.onFrame(frame);
+            }
             writer.write("data:" + objectMapper.writeValueAsString(frame) + "\n\n");
             writer.flush();
         }

@@ -13,12 +13,11 @@ import com.xiongx9527.askdata.chart.server.ChartImageService;
 import com.xiongx9527.askdata.chat.repository.ChatRepository;
 import com.xiongx9527.askdata.chat.service.ChatChartBuilder;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter;
+import com.xiongx9527.askdata.chat.service.ChatQuestionService;
 import com.xiongx9527.askdata.chat.service.ChatService;
 import com.xiongx9527.askdata.common.i18n.I18n;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
-import com.xiongx9527.askdata.embedded.DynamicDatasource;
-import com.xiongx9527.askdata.embedded.DynamicDatasourceResolver;
 import dev.langchain4j.model.chat.ChatModel;
 import com.xiongx9527.askdata.common.audit.AuditModule;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
@@ -31,10 +30,13 @@ import com.xiongx9527.askdata.system.service.WorkspaceService;
 import com.xiongx9527.askdata.system.repository.UserWsRepository;
 import com.xiongx9527.askdata.common.web.AuthContext;
 import com.xiongx9527.askdata.common.web.BadRequestException;
+import com.xiongx9527.askdata.common.web.ForbiddenException;
 import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -50,6 +52,7 @@ import java.util.Optional;
  * access_token、question_answer（returnImg 可选）、assistant；另有 server_info 连通探针。</p>
  */
 @McpService
+@Component
 public class AskdataMcpTools {
 
     private static final Logger log = LoggerFactory.getLogger(AskdataMcpTools.class);
@@ -64,7 +67,10 @@ public class AskdataMcpTools {
             DatasourceService datasourceService = SpringUtils.getBean(DatasourceService.class);
             // 对齐 SQLBot mcp_ds_list：按当前用户 oid 过滤；管理员可显式指定 workspaceId
             List<Map<String, Object>> list = datasourceService.list(workspaceId);
+            sanitizeDatasourceList(list);
             return mapper.writeValueAsString(list);
+        } catch (ForbiddenException e) {
+            throw e;
         } catch (Exception e) {
             return errorJson(mapper, "datasource_list", e);
         }
@@ -92,7 +98,10 @@ public class AskdataMcpTools {
         ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
         try {
             WorkspaceService service = SpringUtils.getBean(WorkspaceService.class);
-            return mapper.writeValueAsString(service.list());
+            // A10/L1：MCP 列表只返回 {id,name} 并按翻译后的名称升序
+            return mapper.writeValueAsString(service.listOptions());
+        } catch (ForbiddenException e) {
+            throw e;
         } catch (Exception e) {
             return errorJson(mapper, "workspace_list", e);
         }
@@ -131,7 +140,10 @@ public class AskdataMcpTools {
             if (question != null) {
                 body.put("question", question);
             }
-            return mapper.writeValueAsString(service.start(body));
+            // A6/D7：MCP 只建 chat，不建 first_chat 空记录
+            return mapper.writeValueAsString(service.startForMcp(body));
+        } catch (ForbiddenException e) {
+            throw e;
         } catch (Exception e) {
             return errorJson(mapper, "chat_start", e);
         }
@@ -378,7 +390,7 @@ public class AskdataMcpTools {
         }
         String trimmed = token.trim();
         if (StpUtil.getLoginIdByToken(trimmed) == null) {
-            throw new BadRequestException(I18n.msg("mcp.error.token.invalid"));
+            throw new ForbiddenException(I18n.msg("mcp.error.token.invalid"));
         }
         StpUtil.setTokenValue(trimmed);
     }
@@ -444,7 +456,7 @@ public class AskdataMcpTools {
         return Long.parseLong(s);
     }
 
-    /** mcp_start 响应组装：access_token + chat_id + 会话详情（对齐 SQLBot mcp_start 响应键）。 */
+    /** mcp_start 响应组装（A11/L2）：只保留 access_token 与 chat_id。 */
     static Map<String, Object> mcpStartResponse(String resToken, Map<String, Object> chatInfo) {
         Map<String, Object> out = new LinkedHashMap<String, Object>();
         if (resToken != null) {
@@ -452,7 +464,6 @@ public class AskdataMcpTools {
         }
         if (chatInfo != null) {
             out.put("chat_id", chatInfo.get("id"));
-            out.putAll(chatInfo);
         }
         return out;
     }
@@ -500,6 +511,8 @@ public class AskdataMcpTools {
                 return started;
             }
             return mapper.writeValueAsString(mcpStartResponse(resToken, info));
+        } catch (ForbiddenException e) {
+            throw e;
         } catch (Exception e) {
             return errorJson(mapper, "mcp_start", e);
         } finally {
@@ -514,6 +527,8 @@ public class AskdataMcpTools {
         try {
             bindTokenStrict(token);
             return workspace_list();
+        } catch (ForbiddenException e) {
+            throw e;
         } catch (Exception e) {
             return errorJson(mapper, "mcp_ws_list", e);
         }
@@ -528,40 +543,29 @@ public class AskdataMcpTools {
             bindTokenStrict(token);
             // 对齐 SQLBot mcp_ds_list：显式 oid 时校验成员关系（非成员 400，而非静默忽略）
             requireWorkspace(currentUserService().currentUser(), oid == null ? 0L : oid);
-            return filterDatasourceFields(mapper, datasource_list(oid));
+            return datasource_list(oid);
+        } catch (ForbiddenException e) {
+            throw e;
         } catch (Exception e) {
             return errorJson(mapper, "mcp_datasource_list", e);
         }
     }
 
-    /** 对齐 SQLBot mcp_ds_list：移除内部字段（embedding/table_relation/recommended_config/configuration）。 */
-    private String filterDatasourceFields(ObjectMapper mapper, String json) throws Exception {
-        com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(json);
-        if (node != null && node.isArray()) {
-            for (com.fasterxml.jackson.databind.JsonNode item : node) {
-                if (item.isObject()) {
-                    com.fasterxml.jackson.databind.node.ObjectNode obj = (com.fasterxml.jackson.databind.node.ObjectNode) item;
-                    obj.remove("embedding");
-                    obj.remove("table_relation");
-                    obj.remove("recommended_config");
-                    obj.remove("configuration");
-                }
-            }
-        }
-        return mapper.writeValueAsString(node);
-    }
-
     /** 兼容 SQLBot mcp_model_list → model_list：oid 指定工作空间（非成员拒绝），缺省用当前工作空间。 */
     @Tool(value = "mcp_model_list", description = "兼容 SQLBot mcp_model_list：列出当前工作空间可用的对话模型")
-    public String mcp_model_list(@ToolArg(value = "oid", required = false) Long oid) throws Exception {
+    public String mcp_model_list(@ToolArg(value = "token", required = false) String token,
+                                 @ToolArg(value = "oid", required = false) Long oid) throws Exception {
         ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
         try {
+            bindTokenStrict(token);
             if (oid == null || oid <= 0) {
                 return model_list();
             }
             requireWorkspace(currentUserService().currentUser(), oid);
             AiModelService service = SpringUtils.getBean(AiModelService.class);
             return mapper.writeValueAsString(service.listByWs(oid));
+        } catch (ForbiddenException e) {
+            throw e;
         } catch (Exception e) {
             return errorJson(mapper, "mcp_model_list", e);
         }
@@ -597,13 +601,41 @@ public class AskdataMcpTools {
                 chatIdL = longArgOrNull(chatId);
                 modelL = longArgOrNull(customModel);
             } catch (NumberFormatException nfe) {
+                // A8：字段格式非法按 SQLBot 校验口径 400，不进入问数执行
                 Map<String, Object> err = new LinkedHashMap<String, Object>();
                 err.put("error", I18n.msg("mcp.error.invalid.id"));
                 return mapper.writeValueAsString(err);
             }
-            return question_answer(question, dsId, chatIdL, modelL, returnImg);
+            if (question == null || question.trim().isEmpty()) {
+                Map<String, Object> err = new LinkedHashMap<String, Object>();
+                err.put("error", I18n.msg("i18n_miss_args", "question"));
+                return mapper.writeValueAsString(err);
+            }
+            // A1/D2：无 chat_id 时先创建 MCP 会话（origin=1，brief=问题前 20 字符）
+            chatIdL = resolveChatForQuestion(chatIdL, question);
+
+            Map<String, Object> body = new LinkedHashMap<String, Object>();
+            body.put("chat_id", chatIdL);
+            body.put("question", question);
+            if (dsId != null) {
+                body.put("datasource_id", dsId);
+            }
+            if (modelL != null) {
+                body.put("custom_model", modelL);
+            }
+            if (returnImg != null) {
+                body.put("return_img", returnImg);
+            }
+            Map<String, Object> result = SpringUtils.getBean(ChatQuestionService.class).ask(body);
+            return mapper.writeValueAsString(result);
+        } catch (ForbiddenException e) {
+            throw e;
         } catch (Exception e) {
-            return errorJson(mapper, "mcp_question", e);
+            // A8：非流式问数运行期错误 → success=false（HTTP 层映射 500）
+            Map<String, Object> err = new LinkedHashMap<String, Object>();
+            err.put("success", false);
+            err.put("message", e.getMessage() == null ? e.toString() : e.getMessage());
+            return mapper.writeValueAsString(err);
         } finally {
             if (previous != null) {
                 LocaleContextHolder.setLocale(previous);
@@ -614,17 +646,44 @@ public class AskdataMcpTools {
     }
 
     /**
-     * 兼容 SQLBot {@code mcp_assistant}（Cordys CRM 虚拟用户链路）。
+     * A7/M4：MCP 数据源列表统一裁掉 {@code configuration}/{@code embedding}/{@code table_relation}/
+     * {@code recommended_config}，并按名称升序。原地修改传入列表（REST 列表使用另一份 VO，不受影响）。
+     */
+    static void sanitizeDatasourceList(List<Map<String, Object>> list) {
+        for (Map<String, Object> row : list) {
+            row.remove("configuration");
+            row.remove("embedding");
+            row.remove("table_relation");
+            row.remove("recommended_config");
+        }
+        list.sort(Comparator.comparing(row -> Rows.str(row, "name") == null ? "" : Rows.str(row, "name")));
+    }
+
+    /**
+     * mcp_question 的会话解析（A1/D2）：已有 chat_id 原样复用；缺省时创建 MCP 会话
+     * （不建 first_chat 空记录），供流式/非流式共用。
+     */
+    Long resolveChatForQuestion(Long chatId, String question) {
+        if (chatId != null && chatId > 0L) {
+            return chatId;
+        }
+        Map<String, Object> body = new LinkedHashMap<String, Object>();
+        body.put("question", question);
+        body.put("origin", 1);
+        Map<String, Object> chat = SpringUtils.getBean(ChatService.class).startForMcp(body);
+        return Rows.lng(chat, "id", 0L);
+    }
+
+    /**
+     * 兼容 SQLBot {@code mcp_assistant}（A4/D3/D4）。
      *
-     * <p>下发 {@code url} + {@code authorization} 时：按 SQLBot 的虚拟助手形态
-     * （{@code configuration={"endpoint": url}} + {@code certificate=authorization}）从第三方
-     * 数据接口拉取数据源列表，并在该数据源上完成本次问数（生成 SQL → 只读执行 → 返回
-     * {@code question/sql/dialect/rows}）。宿主返回多个数据源时取第一个，也可用
-     * {@code datasourceId} 指定宿主侧数据源 id。未下发 {@code url} 时退化为本地
-     * {@link #assistant(String)} 问答（askdata 早期行为）。</p>
+     * <p>{@code url} 与 {@code authorization} 必填；以合成身份创建会话与真实记录，
+     * 从第三方数据接口拉取宿主数据源，并以 {@code finish_step=QUERY_DATA} 完成问数
+     * （只出 SQL 与数据，不生成图表/图片）。宿主返回多个数据源时取第一个，也可用
+     * {@code datasourceId} 指定宿主侧数据源 id。</p>
      *
-     * <p>{@code stream} 接受但忽略：MCP 工具层单次返回 JSON（对齐 SQLBot {@code stream=false}
-     * 的 JSON 形态）。问题文本优先取 {@code question}，同时兼容早期调用方的 {@code message}。</p>
+     * <p>{@code stream} 接受但忽略：MCP 工具层单次返回 JSON；HTTP 兼容层按 stream 分流。
+     * 问题文本优先取 {@code question}，同时兼容早期调用方的 {@code message}。</p>
      */
     @Tool(value = "mcp_assistant", description = "兼容 SQLBot mcp_assistant：第三方数据接口问数（question/url/authorization/stream/datasourceId）")
     public String mcp_assistant(@ToolArg(value = "question", required = false) String question,
@@ -635,27 +694,18 @@ public class AskdataMcpTools {
                                 @ToolArg(value = "datasourceId", required = false) Long datasourceId)
             throws Exception {
         String ask = question != null && !question.trim().isEmpty() ? question : message;
-        // 未下发第三方数据接口：本地助手问答（askdata 早期行为）
-        if (url == null || url.trim().isEmpty()) {
-            return assistant(ask);
-        }
         ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
         try {
-            Map<String, AskdataNl2Sql> beans = SpringUtils.getBeansOfType(AskdataNl2Sql.class);
-            if (beans.isEmpty()) {
+            Map<String, Object> result = SpringUtils.getBean(McpAssistantSupport.class)
+                    .ask(ask, url, authorization, datasourceId);
+            if (Boolean.FALSE.equals(result.get("success"))) {
                 Map<String, Object> err = new LinkedHashMap<String, Object>();
-                err.put("error", I18n.msg("mcp.error.question.answer.not.assembled"));
+                err.put("error", result.get("message"));
                 return mapper.writeValueAsString(err);
             }
-            DynamicDatasourceResolver resolver = SpringUtils.getBean(DynamicDatasourceResolver.class);
-            Map<String, Object> hostEndpoint = resolver.hostEndpointFromMcp(url, authorization);
-            DynamicDatasource dynamic = datasourceId != null
-                    ? resolver.resolveFromHostList(DynamicDatasourceResolver.TYPE_ADVANCED_APP,
-                    hostEndpoint, datasourceId)
-                    : resolver.resolveFirstFromHostList(DynamicDatasourceResolver.TYPE_ADVANCED_APP,
-                    hostEndpoint);
-            Map<String, Object> result = beans.values().iterator().next().ask(ask, dynamic, null);
             return mapper.writeValueAsString(result);
+        } catch (ForbiddenException e) {
+            throw e;
         } catch (Exception e) {
             return errorJson(mapper, "mcp_assistant", e);
         }

@@ -59,21 +59,44 @@ public class WorkspaceService {
      * 与普通 API 共用同一实现。
      */
     public List<Map<String, Object>> list() {
-        Map<String, Object> user = currentUserService.currentUser();
         String language = userLanguage();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> row : visibleWorkspaceRows()) {
+            result.add(toWorkspace(row, language));
+        }
+        return result;
+    }
+
+    /**
+     * MCP 工作空间选项（A10 / SQLBot {@code user_ws_options}）：只返回 {@code {id,name}}，
+     * 名称为当前语言翻译后的名称，按名称升序。可见性规则与 {@link #list()} 一致。
+     */
+    public List<Map<String, Object>> listOptions() {
+        String language = userLanguage();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> row : visibleWorkspaceRows()) {
+            Map<String, Object> option = new LinkedHashMap<>();
+            option.put("id", Rows.lng(row, "id", 0L));
+            option.put("name", localizeWorkspaceName(Rows.str(row, "name"), language));
+            result.add(option);
+        }
+        result.sort((left, right) -> String.valueOf(left.get("name"))
+                .compareTo(String.valueOf(right.get("name"))));
+        return result;
+    }
+
+    /** 当前用户可见工作空间行：管理员全部，普通用户仅所属空间。 */
+    private List<Map<String, Object>> visibleWorkspaceRows() {
+        Map<String, Object> user = currentUserService.currentUser();
         List<Map<String, Object>> rows = new ArrayList<>();
         if (currentUserService.isAdmin(user)) {
             rows.addAll(workspaceRepository.list());
         } else {
-            for (Long oid : userWsRepository.oidsOf(com.xiongx9527.askdata.common.util.Rows.lng(user, "id", 0L))) {
+            for (Long oid : userWsRepository.oidsOf(Rows.lng(user, "id", 0L))) {
                 workspaceRepository.findById(oid).ifPresent(rows::add);
             }
         }
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (Map<String, Object> row : rows) {
-            result.add(toWorkspace(row, language));
-        }
-        return result;
+        return rows;
     }
 
     public Map<String, Object> get(long id) {

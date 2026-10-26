@@ -40,6 +40,29 @@ java -jar target/askdata-server.jar
 
 元数据库：H2 文件库 `./data/askdata`（首次启动自动建表 + 种子，见 `src/main/resources/schema.sql`）。
 
+## MCP 兼容层（SQLBot）
+
+`/api/v1/mcp/*` 提供 SQLBot MCP 的 7 个 operation_id（`access_token`、`mcp_start`、`mcp_ws_list`、
+`mcp_datasource_list`、`mcp_model_list`、`mcp_question`、`mcp_assistant`），同时保留 askdata 原生工具名。
+关键语义：
+
+- `mcp_question` / `mcp_assistant` 的 `stream` 缺省为 `true`（SSE `data:{json}` 帧）；`stream=false` 时
+  `mcp_question` 返回 `{success,record_id,sql,data,chart,image_url?}`，并把同一 `data` 对象
+  （`{fields,data,datasource,limit?}`）写入 `chat_record.data`。
+- `return_img=false` 不生成图片；`custom_model` 同时作用于 SQL 与图表生成，模型不可用时返回错误，
+  不静默回落默认模型。
+- `datasource_id` 仅在会话尚未绑定数据源时生效；最终使用的数据源（已绑定 / 显式指定 / RAG 选中）
+  都要通过 `DsGrantService.checkUsable`。
+- `mcp_start` / `chat_start` 只创建会话，不创建 `first_chat` 空记录；`brief` 在有 `question` 时取
+  去空白后的前 20 个字符，否则取当前时间；`mcp_start` 响应只含 `access_token` 与 `chat_id`。
+- `mcp_assistant` 必填 `url` / `authorization`，以合成用户（id=-1、`sqlbot-mcp-assistant`、oid=1，
+  不写 `sys_user`）创建会话并拉取宿主数据源，按 `QUERY_DATA` 只返回 SQL 与数据，不生成图表/图片。
+- MCP 列表裁剪：数据源不含 `configuration` / `embedding` / `table_relation` / `recommended_config`；
+  工作空间仅 `{id,name}`；两者均按名称升序。REST `/datasource/list` 与 Web `/chat/start` 契约不变。
+- 错误码：无效 token → 403 `{"detail"}`；非流式 `mcp_question` 运行期错误 → 500
+  `{"success":false,"message":...}`；其他工具错误 → 400 `{"detail"}`；`datasource_id` / `chat_id` /
+  `custom_model` 格式非法 → 400 `{"detail"}`。
+
 ## 向量存储（可插拔后端）
 
 术语 / SQL 示例 / 表 / 数据源四类对象的向量，统一经 `EmbeddingService` 写入与召回，

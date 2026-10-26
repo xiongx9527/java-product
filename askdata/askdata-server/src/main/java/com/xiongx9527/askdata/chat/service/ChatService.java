@@ -115,24 +115,12 @@ public class ChatService {
         Map<String, Object> user = currentUserService.currentUser();
         long uid = currentUserService.uid();
         long oid = currentUserService.oidOf(user);
-        Long datasource = Rows.lngOrNull(body, "datasource");
+        Map<String, Object> ds = resolveStartDatasource(body, user, uid, oid);
+        Long datasource = ds == null ? null : Rows.lng(ds, "id", 0L);
         int origin = Rows.intg(body, "origin", 1);
-        String engineType = null;
-        String dsType = null;
-        if (datasource != null) {
-            Map<String, Object> ds = datasourceRepository.findById(datasource)
-                    .orElseThrow(() -> new BadRequestException(messageResolver.get("ds.not.found", datasource)));
-            if (!currentUserService.isAdmin(user) && Rows.lng(ds, "oid", 0L) != oid) {
-                throw new BadRequestException(messageResolver.get("ds.not.found", datasource));
-            }
-            // 资源级使用授权（对齐 SQLBot @require_permissions(type='ds')）：白名单覆盖语义，
-            // 该数据源存在授权记录时未授权成员拒绝建会话
-            dsGrantService.checkUsable(oid, uid, currentUserService.isAdmin(user), datasource);
-            engineType = Rows.str(ds, "type_name");
-            dsType = Rows.str(ds, "type");
-        }
-        long chatId = chatRepository.insertChat(uid, oid, null, datasource, engineType, dsType, origin,
-                Rows.str(body, "question"));
+        long chatId = chatRepository.insertChat(uid, oid, null, datasource,
+                ds == null ? null : Rows.str(ds, "type_name"),
+                ds == null ? null : Rows.str(ds, "type"), origin, Rows.str(body, "question"));
         // A17：首条 first_chat 空记录（对齐 SQLBot create_chat）；recommended_config==2 时
         // 预填该数据源配置的推荐问题，前端首问引导直接可用
         long firstRecordId = chatRepository.insertFirstChatRecord(chatId, uid, oid, datasource);
@@ -147,6 +135,69 @@ public class ChatService {
             chatRepository.updateRecordField(firstRecordId, "recommended_question", questions);
         }
         return get(chatId, false);
+    }
+
+    /**
+     * MCP 会话创建（A6 / D7）：只创建 {@code chat}，不创建 {@code first_chat=TRUE} 的空记录；
+     * {@code brief} 为问题去空白后的前 20 个字符，无问题时为当前时间。
+     *
+     * <p>Web {@code /chat/start} 继续走 {@link #start(Map)}，保留首条空记录。</p>
+     */
+    @AuditLog(module = AuditModule.CHAT, operation = AuditOperationType.CREATE, resourceId = "#result['id']")
+    public Map<String, Object> startForMcp(Map<String, Object> body) {
+        Map<String, Object> user = currentUserService.currentUser();
+        long uid = currentUserService.uid();
+        long oid = currentUserService.oidOf(user);
+        Map<String, Object> ds = resolveStartDatasource(body, user, uid, oid);
+        Long datasource = ds == null ? null : Rows.lng(ds, "id", 0L);
+        String question = Rows.str(body, "question");
+        String brief = mcpBrief(question);
+        long chatId = chatRepository.insertChat(uid, oid, brief, datasource,
+                ds == null ? null : Rows.str(ds, "type_name"),
+                ds == null ? null : Rows.str(ds, "type"), Rows.intg(body, "origin", 1), question);
+        return Rows.of("id", chatId, "brief", brief);
+    }
+
+    /**
+     * mcp_assistant 合成助手会话（A4 / D3）：当前用户由请求级 AuthContext 提供
+     * （id=-1 / account=sqlbot-mcp-assistant / oid=1），不创建 {@code first_chat} 空记录。
+     */
+    @AuditLog(module = AuditModule.CHAT, operation = AuditOperationType.CREATE, resourceId = "#result['id']")
+    public Map<String, Object> startForMcpAssistant(String question) {
+        Map<String, Object> user = currentUserService.currentUser();
+        long uid = currentUserService.uid();
+        long oid = currentUserService.oidOf(user);
+        String brief = mcpBrief(question);
+        long chatId = chatRepository.insertChat(uid, oid, brief, null, null, null, 1, question);
+        return Rows.of("id", chatId, "brief", brief);
+    }
+
+    /** MCP brief：问题去空白后前 20 字符；无问题时为当前时间 {@code yyyy-MM-dd HH:mm:ss}。 */
+    static String mcpBrief(String question) {
+        if (question != null && !question.trim().isEmpty()) {
+            String text = question.trim().replaceAll("\\s+", " ");
+            return text.length() <= 20 ? text : text.substring(0, 20);
+        }
+        return java.time.LocalDateTime.now()
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+    }
+
+    /** 校验并解析建会话数据源（含工作空间归属与资源级使用授权）。 */
+    private Map<String, Object> resolveStartDatasource(Map<String, Object> body, Map<String, Object> user,
+                                                       long uid, long oid) {
+        Long datasource = Rows.lngOrNull(body, "datasource");
+        if (datasource == null) {
+            return null;
+        }
+        Map<String, Object> ds = datasourceRepository.findById(datasource)
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("ds.not.found", datasource)));
+        if (!currentUserService.isAdmin(user) && Rows.lng(ds, "oid", 0L) != oid) {
+            throw new BadRequestException(messageResolver.get("ds.not.found", datasource));
+        }
+        // 资源级使用授权（对齐 SQLBot @require_permissions(type='ds')）：白名单覆盖语义，
+        // 该数据源存在授权记录时未授权成员拒绝建会话
+        dsGrantService.checkUsable(oid, uid, currentUserService.isAdmin(user), datasource);
+        return ds;
     }
 
     /** POST /chat/rename：{@code brief} 为空时保留原名（对齐 SQLBot rename_chat）。 */

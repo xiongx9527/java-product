@@ -183,19 +183,22 @@ public class AuditRecorder {
     }
 
     protected Long currentUid() {
+        // 支线通道（API Key / 嵌入助手 token / SQLBot mcp_assistant 合成用户）优先使用
+        // AuthContext 中的当前用户；合成用户 id=-1 也必须落审计（A4）。
+        Map<String, Object> user = AuthContext.currentUser();
+        if (user != null) {
+            try {
+                long id = Rows.lng(user, "id", 0L);
+                if (id != 0L) {
+                    return id;
+                }
+            } catch (RuntimeException ignored) {
+                // 非法 id 退回 Sa-Token
+            }
+        }
         try {
             return StpUtil.getLoginIdAsLong();
         } catch (Exception e) {
-            // F-06：Sa-Token 会话外的支线通道（API Key / 嵌入助手 token / 平台 SSO 回调）
-            // 由 AuthChannelFilter 写入 AuthContext；这些请求的审计此前 uid 恒 NULL。
-            Map<String, Object> user = AuthContext.currentUser();
-            if (user != null) {
-                try {
-                    return Rows.lng(user, "id", 0L) > 0 ? Rows.lng(user, "id", 0L) : null;
-                } catch (RuntimeException ignored) {
-                    return null;
-                }
-            }
             return null;
         }
     }

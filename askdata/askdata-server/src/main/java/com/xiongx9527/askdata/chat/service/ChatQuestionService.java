@@ -18,6 +18,7 @@ import com.xiongx9527.askdata.chart.server.ChartImageService;
 import com.xiongx9527.askdata.embedded.AssistantRepository;
 import com.xiongx9527.askdata.embedded.DynamicDatasource;
 import com.xiongx9527.askdata.embedded.DynamicDatasourceResolver;
+import com.xiongx9527.askdata.permission.DsGrantService;
 import com.xiongx9527.askdata.permission.PermissionEnforcer;
 import com.xiongx9527.askdata.system.repository.SysArgRepository;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
@@ -139,6 +140,8 @@ public class ChatQuestionService {
 
     private final SysArgRepository sysArgRepository;
 
+    private final DsGrantService dsGrantService;
+
     public ChatQuestionService(ChatRepository chatRepository,
                                RecommendedQuestionRepository recommendedQuestionRepository,
                                DatasourceRepository datasourceRepository, DatasourceService datasourceService,
@@ -150,6 +153,7 @@ public class ChatQuestionService {
                                AssistantRepository assistantRepository,
                                ChartImageService chartImageService,
                                SysArgRepository sysArgRepository,
+                               DsGrantService dsGrantService,
                                com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver) {
         this.chatRepository = chatRepository;
         this.recommendedQuestionRepository = recommendedQuestionRepository;
@@ -167,6 +171,7 @@ public class ChatQuestionService {
         this.assistantRepository = assistantRepository;
         this.chartImageService = chartImageService;
         this.sysArgRepository = sysArgRepository;
+        this.dsGrantService = dsGrantService;
         this.messageResolver = messageResolver;
     }
 
@@ -184,12 +189,24 @@ public class ChatQuestionService {
      * @param response 原始响应（写 {@code text/event-stream}）
      */
     public void streamQuestion(Map<String, Object> body, HttpServletResponse response) throws IOException {
+        try (FrameWriter writer = new FrameWriter(response, objectMapper)) {
+            streamQuestion(body, writer);
+        }
+    }
+
+    /**
+     * 流式问数（可注入 {@link FrameWriter}）：HTTP 流式端点与非流式 {@link #ask(Map)}
+     * 共用同一管线，避免两套 SQL/权限/落库逻辑分叉。
+     */
+    public void streamQuestion(Map<String, Object> body, FrameWriter writer) throws IOException {
         Map<String, Object> user = currentUserService.currentUser();
         long uid = Rows.lng(user, "id", 0L);
         long oid = currentUserService.oidOf(user);
         long chatId = Rows.lng(body, "chat_id", 0L);
         String question = Rows.str(body, "question");
         long started = System.currentTimeMillis();
+        boolean queryDataOnly = "QUERY_DATA".equalsIgnoreCase(Rows.str(body, "finish_step"));
+        boolean returnImage = Rows.bool(body, "return_img", true);
 
         Map<String, Object> chat = chatRepository.findChat(chatId)
                 .orElseThrow(() -> new BadRequestException(messageResolver.get("chat.not.found", chatId)));
@@ -211,13 +228,17 @@ public class ChatQuestionService {
             question = findBaseQuestion(target);
         }
 
-        try (FrameWriter writer = new FrameWriter(response, objectMapper)) {
-            AtomicLong totalTokens = new AtomicLong(0L);
+        AtomicLong totalTokens = new AtomicLong(0L);
             AtomicLong currentRecordId = new AtomicLong(0L);
             try {
-                Optional<ModelRef> model = modelRouter.defaultChatModel();
+                // A3/D9：custom_model 在流式与非流式均生效；不可用时明确报错，不回退默认模型
+                Long customModelId = Rows.lngOrNull(body, "custom_model");
+                Optional<ModelRef> model = customModelId == null
+                        ? modelRouter.defaultChatModel() : modelRouter.chatModelById(customModelId);
                 if (!model.isPresent() || !model.get().usable()) {
-                    emitError(writer, messageResolver.get("scheduled.no.default.model"));
+                    emitError(writer, customModelId == null
+                            ? messageResolver.get("scheduled.no.default.model")
+                            : messageResolver.get("mcp.error.custom.model.unavailable", customModelId));
                     return;
                 }
                 ModelRef aiModel = model.get();
@@ -234,7 +255,8 @@ public class ChatQuestionService {
                     // A8：高级应用按请求从宿主拉取动态数据源（不落库，dsId 为空）
                     dsId = null;
                 } else {
-                    dsId = resolveDatasource(chat, oid, question, writer);
+                    // A5/M2：会话已绑定优先；未绑定时才采用请求 datasource_id；否则 RAG 选库
+                    dsId = resolveDatasource(chat, oid, question, Rows.lngOrNull(body, "datasource_id"), writer);
                     if (dsId == null) {
                         emitError(writer, messageResolver.get("chat.no.datasource"));
                         return;
@@ -268,6 +290,17 @@ public class ChatQuestionService {
                     emit(writer, Rows.of("type", "regenerate_record_id", "regenerate_record_id", regenerateRecordId));
                 }
                 emit(writer, Rows.of("type", "question", "question", question));
+                // A9/M6：对最终数据源复检资源级使用授权（含已绑定会话），拒绝时不生成/执行 SQL。
+                // 记录已创建，错误结果可带 record_id。
+                if (dsId != null) {
+                    try {
+                        dsGrantService.checkUsable(oid, uid, currentUserService.isAdmin(user), dsId);
+                    } catch (RuntimeException e) {
+                        chatRepository.saveError(recordId, e.getMessage());
+                        emitError(writer, e.getMessage(), ERROR_TYPE_PERMISSION, stackTraceOf(e));
+                        return;
+                    }
+                }
                 // -- A26：生成 SQL 前先做连通性检查（对齐 SQLBot check_connection），
                 // 连接不可用直接报 db-connection-err，不等生成完 SQL 才失败
                 if (dsId != null) {
@@ -446,46 +479,52 @@ public class ChatQuestionService {
                 emit(writer, Rows.of("type", "info", "msg", "sql executed"));
                 emit(writer, Rows.of("type", "sql-data", "content", "execute-success"));
 
-                // -- 图表生成
-                emit(writer, Rows.of("type", "info", "msg", "chart generating"));
-                long chartStart = System.currentTimeMillis();
-                // A10：图表生成携带 <sql> 与 <m-schema> 上下文（对齐 SQLBot llm.py:1085-1130）
-                String chartMSchema = dynamic != null
-                        ? schemaContextBuilder.mSchemaOfConf(dynamic.getType(), dynamic.getConf(),
-                                dynamic.getTableSqlTemplates())
-                        : schemaContextBuilder.mSchemaOf(dsId);
-                ChartOutcome chartOutcome = generateChart(writer, aiModel, question, result, totalTokens,
-                        sql, chartMSchema);
-                String chartJson = chartOutcome.chart;
-                logOperation(recordId, oid, uid, OPERATE_GENERATE_CHART, chartStart, totalTokens.get(), false, null);
-                // A4：服务端出图（SSR）图片 URL——对齐 SQLBot g2-ssr，供非交互/MCP/导出场景直接引用
-                String imageUrl = null;
-                try {
-                    imageUrl = chartImageService.renderFromResult(result, question);
-                } catch (Exception e) {
-                    log.debug("SSR 出图失败（降级无图）: {}", e.getMessage());
-                }
-                // A26：chart_answer 存模型原始思考（reasoning/content），不是 SSR 图片 URL
-                chatRepository.saveChart(recordId, chartJson, chartOutcome.answer);
-                emit(writer, Rows.of("type", "info", "msg", "chart generated"));
-                emit(writer, Rows.of("type", "chart", "content", chartJson));
-                if (imageUrl != null) {
-                    emit(writer, Rows.of("type", "imageUrl", "content", imageUrl));
-                }
+                // -- 图表生成（A4/D4：finish_step=QUERY_DATA 时只到数据为止）
+                if (!queryDataOnly) {
+                    emit(writer, Rows.of("type", "info", "msg", "chart generating"));
+                    long chartStart = System.currentTimeMillis();
+                    // A10：图表生成携带 <sql> 与 <m-schema> 上下文（对齐 SQLBot llm.py:1085-1130）
+                    String chartMSchema = dynamic != null
+                            ? schemaContextBuilder.mSchemaOfConf(dynamic.getType(), dynamic.getConf(),
+                            dynamic.getTableSqlTemplates())
+                            : schemaContextBuilder.mSchemaOf(dsId);
+                    ChartOutcome chartOutcome = generateChart(writer, aiModel, question, result, totalTokens,
+                            sql, chartMSchema);
+                    String chartJson = chartOutcome.chart;
+                    logOperation(recordId, oid, uid, OPERATE_GENERATE_CHART, chartStart, totalTokens.get(),
+                            false, null);
+                    // A3：return_img=false 时不渲染图片、不发 imageUrl 帧（图表配置仍生成）
+                    String imageUrl = null;
+                    if (returnImage) {
+                        // A4：服务端出图（SSR）图片 URL——对齐 SQLBot g2-ssr，供非交互/MCP/导出场景直接引用
+                        try {
+                            imageUrl = chartImageService.renderFromResult(result, question);
+                        } catch (Exception e) {
+                            log.debug("SSR 出图失败（降级无图）: {}", e.getMessage());
+                        }
+                    }
+                    // A26：chart_answer 存模型原始思考（reasoning/content），不是 SSR 图片 URL
+                    chatRepository.saveChart(recordId, chartJson, chartOutcome.answer);
+                    emit(writer, Rows.of("type", "info", "msg", "chart generated"));
+                    emit(writer, Rows.of("type", "chart", "content", chartJson));
+                    if (imageUrl != null) {
+                        emit(writer, Rows.of("type", "imageUrl", "content", imageUrl));
+                    }
 
-                // -- 推荐问题（仅在真的产出时才发帧：前端空数组会渲染为「获取失败」）
-                if (dynamic != null || recommendedEnabled(ds)) {
-                    long recommendStart = System.currentTimeMillis();
-                    TokenUsage recommendUsage = new TokenUsage();
-                    List<String> recommended = recommendQuestions(aiModel, question, DEFAULT_ARTICLES_NUMBER,
-                            null, null, recommendUsage);
-                    logOperation(recordId, oid, uid, OPERATE_RECOMMEND_QUESTIONS, recommendStart,
-                            recommendUsage, false, null);
-                    if (!recommended.isEmpty()) {
-                        String json = chatRepository.writeJson(recommended);
-                        chatRepository.saveRecommendedQuestion(recordId, json);
-                        recommendedQuestionRepository.replaceByChat(chatId, recommended);
-                        emit(writer, Rows.of("type", "recommended_question", "content", json));
+                    // -- 推荐问题（仅在真的产出时才发帧：前端空数组会渲染为「获取失败」）
+                    if (dynamic != null || recommendedEnabled(ds)) {
+                        long recommendStart = System.currentTimeMillis();
+                        TokenUsage recommendUsage = new TokenUsage();
+                        List<String> recommended = recommendQuestions(aiModel, question, DEFAULT_ARTICLES_NUMBER,
+                                null, null, recommendUsage);
+                        logOperation(recordId, oid, uid, OPERATE_RECOMMEND_QUESTIONS, recommendStart,
+                                recommendUsage, false, null);
+                        if (!recommended.isEmpty()) {
+                            String json = chatRepository.writeJson(recommended);
+                            chatRepository.saveRecommendedQuestion(recordId, json);
+                            recommendedQuestionRepository.replaceByChat(chatId, recommended);
+                            emit(writer, Rows.of("type", "recommended_question", "content", json));
+                        }
                     }
                 }
 
@@ -498,6 +537,112 @@ public class ChatQuestionService {
                     chatRepository.saveError(currentRecordId.get(), String.valueOf(e.getMessage()));
                 }
             }
+    }
+
+    /**
+     * 非流式问数（A1/L3）：复用同一流式管线，捕获帧后组装 SQLBot JSON
+     * {@code {success,record_id,sql,data,chart,image_url?}}。
+     *
+     * <p>数据与图表从本次记录落库内容读取，保证响应与后续 Web 端读取一致；
+     * 管线内的业务错误以 {@code success=false} 返回，由 HTTP 兼容层映射为 500。</p>
+     */
+    public Map<String, Object> ask(Map<String, Object> body) throws IOException {
+        List<Map<String, Object>> frames = new ArrayList<>();
+        try (FrameWriter writer = FrameWriter.capturing(objectMapper, frames::add)) {
+            streamQuestion(body, writer);
+        }
+        return assembleAskResult(body, frames);
+    }
+
+    private Map<String, Object> assembleAskResult(Map<String, Object> body,
+                                                  List<Map<String, Object>> frames) {
+        long recordId = 0L;
+        String error = null;
+        String imageUrl = null;
+        for (Map<String, Object> frame : frames) {
+            String type = Rows.str(frame, "type");
+            if ("id".equals(type)) {
+                recordId = Rows.lng(frame, "id", recordId);
+            } else if ("error".equals(type)) {
+                error = errorMessageOf(frame);
+            } else if ("imageUrl".equals(type)) {
+                imageUrl = Rows.str(frame, "content");
+            }
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (error != null) {
+            result.put("success", false);
+            result.put("message", error);
+            if (recordId > 0L) {
+                result.put("record_id", recordId);
+            }
+            return result;
+        }
+        if (recordId <= 0L) {
+            result.put("success", false);
+            result.put("message", messageResolver.get("mcp.error.tool.failed", "mcp_question", "no record"));
+            return result;
+        }
+
+        Map<String, Object> record = chatRepository.findRecord(recordId).orElse(null);
+        result.put("success", true);
+        result.put("record_id", recordId);
+        result.put("sql", record == null ? null : Rows.str(record, "sql"));
+        result.put("data", dataObjectOf(record));
+        if (!"QUERY_DATA".equalsIgnoreCase(Rows.str(body, "finish_step"))) {
+            result.put("chart", chartObjectOf(record));
+        }
+        if (imageUrl != null && Rows.bool(body, "return_img", true)) {
+            result.put("image_url", imageUrl);
+        }
+        return result;
+    }
+
+    /** 记录落库的 data 对象（含 fields/data/datasource/limit），与 Web 端读取一致。 */
+    private Map<String, Object> dataObjectOf(Map<String, Object> record) {
+        String json = record == null ? null : Rows.str(record, "data");
+        if (json != null && !json.isEmpty() && !"null".equals(json)) {
+            try {
+                Map<String, Object> data = objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {
+                });
+                if (data != null) {
+                    return data;
+                }
+            } catch (Exception ignored) {
+                // 落库异常时回退空表格，不影响 success 语义
+            }
+        }
+        return Rows.of("fields", new ArrayList<>(), "data", new ArrayList<>());
+    }
+
+    /** 记录落库的图表配置；未生成时为 null。 */
+    private Object chartObjectOf(Map<String, Object> record) {
+        String json = record == null ? null : Rows.str(record, "chart");
+        if (json == null || json.isEmpty() || "null".equals(json)) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(json, Object.class);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    /** 错误帧 content 为 JSON（message/traceback/type）；解析失败时按原文返回。 */
+    private String errorMessageOf(Map<String, Object> frame) {
+        String content = Rows.str(frame, "content");
+        if (content == null || content.isEmpty()) {
+            return "";
+        }
+        try {
+            Map<String, Object> payload = objectMapper.readValue(content,
+                    new TypeReference<Map<String, Object>>() {
+                    });
+            Object message = payload.get("message");
+            return message == null ? content : String.valueOf(message);
+        } catch (Exception ignored) {
+            return content;
         }
     }
 
@@ -789,12 +934,29 @@ public class ChatQuestionService {
         return row.isPresent() ? Boolean.parseBoolean(Rows.str(row.get(), "pval")) : def;
     }
 
-    /** 数据源解析：会话已绑定则直接用，否则 RAG 选库（并回写会话）。 */
-    private Long resolveDatasource(Map<String, Object> chat, long oid, String question, FrameWriter writer)
-            throws IOException {
+    /**
+     * 数据源解析（A5/M2/D5）：会话已绑定 &gt; 请求显式 {@code datasource_id} &gt; RAG 选库。
+     * 显式数据源仍校验存在性与工作空间归属，最终数据源在记录创建后统一做使用授权复检。
+     */
+    private Long resolveDatasource(Map<String, Object> chat, long oid, String question,
+                                   Long requestedDatasourceId, FrameWriter writer) throws IOException {
         long bound = Rows.lng(chat, "datasource", 0L);
         if (bound > 0L) {
+            // 已绑定会话忽略请求 datasource_id（不校验、不改绑）
             return bound;
+        }
+        if (requestedDatasourceId != null && requestedDatasourceId > 0L) {
+            Map<String, Object> requested = datasourceRepository.findById(requestedDatasourceId)
+                    .orElseThrow(() -> new BadRequestException(
+                            messageResolver.get("ds.not.found", requestedDatasourceId)));
+            Map<String, Object> user = currentUserService.currentUser();
+            if (!currentUserService.isAdmin(user) && Rows.lng(requested, "oid", 0L) != oid) {
+                throw new BadRequestException(messageResolver.get("ds.not.found", requestedDatasourceId));
+            }
+            emit(writer, Rows.of("type", "datasource-result",
+                    "content", "selected datasource " + requestedDatasourceId,
+                    "reasoning_content", ""));
+            return requestedDatasourceId;
         }
         Long dsId = schemaContextBuilder.selectDatasource(oid, question);
         if (dsId != null) {
@@ -856,6 +1018,10 @@ public class ChatQuestionService {
         Object raw = body.get("dynamic_datasource");
         if (raw == null) {
             return null;
+        }
+        // mcp_assistant 已在请求上下文中解析出宿主数据源，直接复用（不按 assistant_id 再解析）
+        if (raw instanceof DynamicDatasource) {
+            return (DynamicDatasource) raw;
         }
         // 宿主 URL 形态（对齐 SQLBot AssistantOutDsFactory 主动拉取）：{"host_url": "...", "host_headers"?}
         // ——askdata 实时 GET 宿主 API（10s 超时），宿主侧数据源动态变化无需随请求重复下发

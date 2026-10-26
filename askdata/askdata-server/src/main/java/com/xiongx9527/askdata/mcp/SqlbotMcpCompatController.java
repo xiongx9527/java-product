@@ -3,11 +3,11 @@ package com.xiongx9527.askdata.mcp;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.fw.plus.common.util.SpringUtils;
-import com.xiongx9527.askdata.chat.repository.ChatRepository;
+import com.xiongx9527.askdata.chat.service.ChatModelClient.FrameWriter;
 import com.xiongx9527.askdata.chat.service.ChatQuestionService;
+import com.xiongx9527.askdata.common.i18n.I18n;
 import com.xiongx9527.askdata.common.util.Rows;
-import com.xiongx9527.askdata.datasource.repository.DatasourceRepository;
-import com.xiongx9527.askdata.system.service.CurrentUserService;
+import com.xiongx9527.askdata.common.web.BadRequestException;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.i18n.LocaleContextHolder;
@@ -45,18 +45,27 @@ public class SqlbotMcpCompatController {
     private final ObjectMapper mapper;
     private final Supplier<AskdataMcpTools> tools;
     private final Supplier<ChatQuestionService> streamer;
+    private final Supplier<McpAssistantSupport> assistantSupport;
 
     @Autowired
     public SqlbotMcpCompatController(ObjectMapper mapper) {
         this(mapper, () -> SpringUtils.getBean(AskdataMcpTools.class),
-                () -> SpringUtils.getBean(ChatQuestionService.class));
+                () -> SpringUtils.getBean(ChatQuestionService.class),
+                () -> SpringUtils.getBean(McpAssistantSupport.class));
     }
 
     SqlbotMcpCompatController(ObjectMapper mapper, Supplier<AskdataMcpTools> tools,
                               Supplier<ChatQuestionService> streamer) {
+        this(mapper, tools, streamer, () -> SpringUtils.getBean(McpAssistantSupport.class));
+    }
+
+    SqlbotMcpCompatController(ObjectMapper mapper, Supplier<AskdataMcpTools> tools,
+                              Supplier<ChatQuestionService> streamer,
+                              Supplier<McpAssistantSupport> assistantSupport) {
         this.mapper = mapper;
         this.tools = tools;
         this.streamer = streamer;
+        this.assistantSupport = assistantSupport;
     }
 
     /** POST /access_token：body ChatToken{username,password} → {access_token, token, tokenName}。 */
@@ -85,42 +94,50 @@ public class SqlbotMcpCompatController {
         return respond(tools.get().mcp_datasource_list(text(body, "token"), longOrNull(body, "oid")));
     }
 
-    /** POST /mcp_model_list：body WsMcp{oid} → 模型数组。 */
+    /** POST /mcp_model_list：body WsMcp{token?,oid} → 模型数组；token 非法时按 A8 返回 403。 */
     @PostMapping("/mcp_model_list")
     public ResponseEntity<String> modelList(@RequestBody(required = false) JsonNode body) throws Exception {
-        return respond(tools.get().mcp_model_list(longOrNull(body, "oid")));
+        return respond(tools.get().mcp_model_list(text(body, "token"), longOrNull(body, "oid")));
     }
 
     /**
      * POST /mcp_question：body McpQuestion{token, chat_id?, question, datasource_id?, custom_model?, lang?, stream?, return_img?}。
      *
-     * <p>{@code stream=true} 且带 {@code chat_id} 时按 SQLBot 语义返回 {@code text/event-stream}
-     * （委托 {@link ChatQuestionService#streamQuestion}，帧格式与前端 ChartAnswer 一致）；
-     * 缺少 {@code chat_id} 或指定了 {@code custom_model}（流式链路不支持按次选模型）时退回同步 JSON。</p>
+     * <p>{@code stream} 缺省/true 返回 {@code text/event-stream}（A2）；显式 false 返回 SQLBot JSON，
+     * 运行期错误映射为 500 {@code {success:false,message}}（A8）。{@code custom_model}/{@code return_img}
+     * 在流式路径同样生效（A3）。</p>
      */
     @PostMapping("/mcp_question")
     public void mcpQuestion(@RequestBody(required = false) JsonNode body, HttpServletResponse response)
             throws Exception {
-        if (Boolean.TRUE.equals(boolOrNull(body, "stream")) && streamQuestion(body, response)) {
+        if (!Boolean.FALSE.equals(boolOrNull(body, "stream"))) {
+            try {
+                streamQuestion(body, response);
+            } catch (BadRequestException e) {
+                write(response, detail(HttpStatus.BAD_REQUEST, e.getMessage()));
+            }
             return;
         }
-        write(response, respond(tools.get().mcp_question(text(body, "token"),
+        String json = tools.get().mcp_question(text(body, "token"),
                 intStrArg(body, "chat_id"), text(body, "question"),
                 intStrArg(body, "datasource_id"), intStrArg(body, "custom_model"),
-                text(body, "lang"), boolOrNull(body, "stream"), boolOrNull(body, "return_img"))));
+                text(body, "lang"), Boolean.FALSE, boolOrNull(body, "return_img"));
+        write(response, respondQuestion(json));
     }
 
-    /** 流式问数：返回 true 表示已写出 SSE 响应，false 表示条件不满足需退回同步 JSON。 */
-    private boolean streamQuestion(JsonNode body, HttpServletResponse response) throws Exception {
+    /** 流式问数：身份绑定、会话创建等前置动作全部在打开 SSE 之前完成。 */
+    private void streamQuestion(JsonNode body, HttpServletResponse response) throws Exception {
         Long chatId = longOrNull(body, "chat_id");
+        Long customModel = longOrNull(body, "custom_model");
+        Long datasourceId = longOrNull(body, "datasource_id");
         String question = text(body, "question");
-        if (chatId == null || chatId <= 0L || question == null || question.trim().isEmpty()
-                || longOrNull(body, "custom_model") != null) {
-            return false;
+        if (question == null || question.trim().isEmpty()) {
+            throw new BadRequestException(I18n.msg("i18n_miss_args", "question"));
         }
         // 身份绑定必须在打开 SSE 之前完成，否则异常发生在响应提交后无法回写状态码
         tools.get().bindTokenStrict(text(body, "token"));
-        bindChatDatasource(chatId, longOrNull(body, "datasource_id"));
+        // A1/D2：无 chat_id 时创建 MCP 会话（不建 first_chat 空记录）
+        chatId = tools.get().resolveChatForQuestion(chatId, question);
         String lang = text(body, "lang");
         Locale previous = LocaleContextHolder.getLocale();
         try {
@@ -130,38 +147,37 @@ public class SqlbotMcpCompatController {
             Map<String, Object> request = new LinkedHashMap<String, Object>();
             request.put("chat_id", chatId);
             request.put("question", question);
-            streamer.get().streamQuestion(request, response);
-            return true;
+            if (datasourceId != null) {
+                request.put("datasource_id", datasourceId);
+            }
+            if (customModel != null) {
+                request.put("custom_model", customModel);
+            }
+            Boolean returnImg = boolOrNull(body, "return_img");
+            if (returnImg != null) {
+                request.put("return_img", returnImg);
+            }
+            try {
+                streamer.get().streamQuestion(request, response);
+            } catch (BadRequestException e) {
+                // A8：SSE 已建立后的运行期业务错误（如会话不存在）不改成 4xx/5xx，
+                // 仍以 error + finish 帧结束；参数/身份校验仍在上方以 400/403 返回。
+                writeStreamError(response, e.getMessage());
+            }
         } finally {
             LocaleContextHolder.setLocale(previous);
         }
     }
 
-    /**
-     * SQLBot mcp_question.datasource_id：会话尚未绑定数据源时先绑定，供流式链路复用。
-     *
-     * <p>写库前先做会话归属校验（与 {@link ChatQuestionService} 的 requireOwner 同口径），
-     * 归属不符时不落库，由随后的流式调用抛出业务拒绝，避免越权改写他人会话的数据源。</p>
-     */
-    private void bindChatDatasource(long chatId, Long datasourceId) {
-        if (datasourceId == null || datasourceId <= 0L) {
-            return;
-        }
-        ChatRepository chats = SpringUtils.getBean(ChatRepository.class);
-        Map<String, Object> chat = chats.findChat(chatId).orElse(null);
-        if (chat == null || Rows.lng(chat, "datasource", 0L) > 0L) {
-            return;
-        }
-        CurrentUserService users = SpringUtils.getBean(CurrentUserService.class);
-        Map<String, Object> user = users.currentUser();
-        if (!users.isAdmin(user)
-                && (Rows.lng(chat, "oid", 0L) != users.oidOf(user)
-                || Rows.lng(chat, "create_by", 0L) != Rows.lng(user, "id", 0L))) {
-            return;
-        }
-        Map<String, Object> ds = SpringUtils.getBean(DatasourceRepository.class).findById(datasourceId).orElse(null);
-        if (ds != null) {
-            chats.setChatDatasource(chatId, datasourceId, Rows.str(ds, "type_name"), Rows.str(ds, "type"));
+    /** 流式问数的运行期业务错误帧，格式与 {@code ChatQuestionService} 的 error 帧一致。 */
+    private void writeStreamError(HttpServletResponse response, String message) throws IOException {
+        try (FrameWriter writer = new FrameWriter(response, mapper)) {
+            Map<String, Object> payload = new LinkedHashMap<String, Object>();
+            payload.put("message", message == null ? "" : message);
+            payload.put("traceback", "");
+            payload.put("type", "exec-sql");
+            writer.write(Rows.of("type", "error", "content", mapper.writeValueAsString(payload)));
+            writer.write(Rows.of("type", "finish"));
         }
     }
 
@@ -177,12 +193,24 @@ public class SqlbotMcpCompatController {
         }
     }
 
-    /** POST /mcp_assistant：body McpAssistant{question, url?, authorization?, stream?, datasourceId?} → 问数结果。 */
+    /**
+     * POST /mcp_assistant：body McpAssistant{question, url, authorization, stream?, datasourceId?}。
+     *
+     * <p>{@code stream} 缺省/true 返回 SSE（A2），false 返回 JSON。url/authorization 必填，
+     * 以合成身份创建会话与真实记录（A4）。</p>
+     */
     @PostMapping("/mcp_assistant")
-    public ResponseEntity<String> mcpAssistant(@RequestBody(required = false) JsonNode body) throws Exception {
-        return respond(tools.get().mcp_assistant(text(body, "question"), text(body, "url"),
-                text(body, "authorization"), boolOrNull(body, "stream"), text(body, "message"),
-                longOrNull(body, "datasourceId")));
+    public void mcpAssistant(@RequestBody(required = false) JsonNode body, HttpServletResponse response)
+            throws Exception {
+        if (!Boolean.FALSE.equals(boolOrNull(body, "stream"))) {
+            assistantSupport.get().stream(text(body, "question"), text(body, "url"),
+                    text(body, "authorization"), longOrNull(body, "datasourceId"), response);
+            return;
+        }
+        String json = tools.get().mcp_assistant(text(body, "question"), text(body, "url"),
+                text(body, "authorization"), Boolean.FALSE, text(body, "message"),
+                longOrNull(body, "datasourceId"));
+        write(response, respond(json));
     }
 
     /** 工具 JSON → HTTP 响应：含 error 键转 400 {"detail"}（镜像 SQLBot HTTPException），否则 200 原样。 */
@@ -191,16 +219,45 @@ public class SqlbotMcpCompatController {
             JsonNode node = mapper.readTree(toolJson);
             JsonNode err = node == null ? null : node.get("error");
             if (err != null && !err.isNull() && !err.asText().isBlank()) {
-                Map<String, Object> detail = new HashMap<String, Object>();
-                detail.put("detail", err.asText());
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(mapper.writeValueAsString(detail));
+                return detail(HttpStatus.BAD_REQUEST, err.asText());
             }
         } catch (Exception ignored) {
             // 非 JSON 工具输出：按 200 原样返回
         }
         return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(toolJson);
+    }
+
+    /**
+     * 非流式 mcp_question 响应（A8）：{@code success=false} 的运行期错误返回 500，
+     * 保持工具层的 {@code {success:false,message,record_id?}} 结构。
+     */
+    private ResponseEntity<String> respondQuestion(String toolJson) {
+        try {
+            JsonNode node = mapper.readTree(toolJson);
+            if (node != null && node.has("success") && !node.get("success").asBoolean()) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(toolJson);
+            }
+        } catch (Exception ignored) {
+            // 非 JSON 输出按常规错误映射处理
+        }
+        return respond(toolJson);
+    }
+
+    /** MCP 错误体：{@code {"detail":...}}。 */
+    private ResponseEntity<String> detail(HttpStatus status, String message) {
+        Map<String, Object> detail = new HashMap<String, Object>();
+        detail.put("detail", message == null ? "" : message);
+        try {
+            return ResponseEntity.status(status)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(mapper.writeValueAsString(detail));
+        } catch (Exception e) {
+            return ResponseEntity.status(status)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body("{\"detail\":\"\"}");
+        }
     }
 
     private static String text(JsonNode body, String field) {
@@ -219,11 +276,23 @@ public class SqlbotMcpCompatController {
         if (v == null || v.isNull()) {
             return null;
         }
+        if (v.isContainerNode()) {
+            // SQLBot 的 int|str 联合类型不接受对象/数组：不能静默当作缺省值，按格式非法 400
+            throw new BadRequestException(I18n.msg("mcp.error.invalid.id"));
+        }
         if (v.isNumber()) {
             return v.longValue();
         }
         String s = v.asText().trim();
-        return s.isEmpty() ? null : Long.parseLong(s);
+        if (s.isEmpty()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(s);
+        } catch (NumberFormatException e) {
+            // A8：字段格式非法按 SQLBot 校验口径 400，不进入问数执行
+            throw new BadRequestException(I18n.msg("mcp.error.invalid.id"));
+        }
     }
 
     /** SQLBot int|str 联合类型参数：数值转 Long、文本原样（空串由底层归一为 null），避免 JsonNode.toString 带引号。 */
@@ -234,6 +303,10 @@ public class SqlbotMcpCompatController {
         JsonNode v = body.get(field);
         if (v == null || v.isNull()) {
             return null;
+        }
+        if (v.isContainerNode()) {
+            // 对象/数组不满足 int|str 联合类型：直接 400，避免 asText() 退化为空串后当作缺省值
+            throw new BadRequestException(I18n.msg("mcp.error.invalid.id"));
         }
         if (v.isNumber()) {
             return v.longValue();
