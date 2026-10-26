@@ -1,0 +1,149 @@
+schema: comet.native.v4
+name: authz
+language: zh-CN
+phase: archive
+status: done
+state_version: 1
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/supervisor/askdata-sqlbot-p0-parity/authz
+  target_branch: main
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A6
+    source: brief.md
+    text: A6 数据源端点授权：表关系 save/get 与推荐问题 list/base/save 要求 ws_admin 且数据源
+      `type='ds'`/资源授权，未授权用户被拒绝；`POST /datasource/execSql/{id}` 保留但要求
+      ws_admin，并在执行前应用 `hiddenColumnsFor` 与 `rowFilterWhereFor`，非 ws_admin
+      无法绕过行列权限。
+    result: passed
+    reason:
+      text: TableRelationService.checkAuthorized(50-66) 与
+        RecommendedProblemService.checkAuthorized(62-74) 在
+        save/get/list/base/save 入口调 requireWsAdmin +
+        dsGrantService.checkUsable（资源授权 type='ds'）；DatasourceController.execSql
+        改调 execSqlAuthorized(148-150)，先 requireWsAdmin 再经
+        PermissionEnforcer.enforce 注入行权限并 applyHiddenColumns
+        后执行。DatasourceEndpointAuthzTest 覆盖非 ws_admin 拒绝、资源未授权拒绝、授权放行、execSql
+        强制链路。
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: A7 权限硬化：行权限按 varType 校验值域并对 kv 做 key→value 映射，越界值被拒绝；只读 SQL 校验基于 AST
+      函数节点而不是原文正则，字符串字面量中的 `version(` 不误拒、真实危险函数被拒；列权限在构造
+      schema/提示词/样例行之前剔除无权字段。
+    result: passed
+    reason:
+      text: SqlSafety 改为 jsqlparser AST 遍历 Function 节点收集函数名，字符串字面量 version( 不再误判而真实
+        version()/current_user() 被拒；DsPermissionQueryService.parseKv +
+        buildUserVariableWhereValue 越界 kv 抛
+        IllegalArgumentException(fail-closed)
+        合法值映射真实列；SchemaContextBuilder.hiddenColumnsFor 构造
+        schema/提示词前剔除无权限列。测试覆盖双方向与列剔除。
+      truncated: false
+builder_handoff:
+  candidate_id: 33cd9663f74a3f1763abd4c6a1f4d41e8a1fea59
+  identity_provider: skill-coordinated
+  builder_execution_ref: native-subagent-authz-20261026-01
+  iteration: 1
+  summary:
+    text: A6 三个端点(表关系 save/get、推荐问题 list/base/save、execSql)加 ws_admin+资源授权校验,execSql
+      执行前强制行/列权限;A7 只读 SQL 校验改为 AST 函数节点识别(修复字符串内 version( 误判),真实危险函数仍拒),行权限 kv
+      变量按值域校验并 key→value 映射(越界 fail-closed),列权限在 schema 提示词构造前剔除无权限字段。
+    truncated: false
+  addressed_acceptance_ids:
+    - A6
+    - A7
+  checks:
+    - name:
+        text: DatasourceEndpointAuthzTest (A6 端点授权与 execSql 权限强制)
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: RowColumnPermissionHardeningTest (A7 AST 函数检测/kv 值域/列剔除)
+        truncated: false
+      result: passed
+      note: null
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-10-26T13:09:26.315Z
+blockers: []
+verification:
+  candidate_id: 33cd9663f74a3f1763abd4c6a1f4d41e8a1fea59
+  identity_provider: skill-coordinated
+  verifier_execution_ref: native-subagent-authz-verifier-20261026-03
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: vc-authz-a6
+      name:
+        text: DatasourceEndpointAuthzTest (A6 端点授权与 execSql 权限强制)
+        truncated: false
+      argv_display:
+        - text: -Dmaven.test.skip=false
+          truncated: false
+        - text: -Dtest=DatasourceEndpointAuthzTest
+          truncated: false
+        - text: test
+          truncated: false
+      argv_truncated: false
+      cwd_ref: askdata/askdata-server
+      status: passed
+      exit_code: 0
+      duration_ms: 25637
+    - id: vc-authz-a7
+      name:
+        text: RowColumnPermissionHardeningTest (A7 AST 函数检测/kv 值域/列剔除)
+        truncated: false
+      argv_display:
+        - text: -Dmaven.test.skip=false
+          truncated: false
+        - text: -Dtest=RowColumnPermissionHardeningTest
+          truncated: false
+        - text: test
+          truncated: false
+      argv_truncated: false
+      cwd_ref: askdata/askdata-server
+      status: passed
+      exit_code: 0
+      duration_ms: 26746
+  summary:
+    text: 独立复核候选 33cd966：A6 端点授权与 A7 权限硬化均真实实现，Runtime 检查 vc-authz-a6/vc-authz-a7
+      绑定该候选且通过。
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-10-26T13:23:39.695Z
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-10-26T13:09:26.315Z
