@@ -744,20 +744,30 @@ class ChatPipelineTest {
         assertTrue(types.contains("analysis"), types.toString());
         assertTrue(types.contains("analysis_thinking"), types.toString());
 
-        // 落库到基础记录（前端从 records[].analysis 回放）
+        // A2：分析结果落在 child 记录；基础记录保持不变，两个外键保持 NULL
         Map<String, Object> chat = chatService.get(chatId, true);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> records = (List<Map<String, Object>>) chat.get("records");
-        // A17：records[0] 是 first_chat 空记录，基础记录在 records[1]
-        assertEquals("PAID 与 NEW 两个状态的订单分布如下。", records.get(1).get("analysis"));
-        // 子记录不单独出现在会话记录列表（first_chat 空记录 + 基础记录）
-        assertEquals(2, records.size());
-        // A4：外键只写 child → base；基础记录自身两个外键保持 NULL，
-        // 否则前端 index.vue 不渲染基础气泡的 ChartAnswer（刷新后 SQL/数据/图表全丢）
-        assertNull(records.get(1).get("analysis_record_id"));
-        assertNull(records.get(1).get("predict_record_id"));
-        // 子记录指向基础记录
-        assertTrue(analysisChildPointsToBase(recordId), "子记录应指向基础记录");
+        // A17/A2：records[0] 是 first_chat 空记录，records[1] 基础记录，records[2] 分析子记录
+        assertEquals(3, records.size());
+        Map<String, Object> baseRecord = records.get(1);
+        assertNull(baseRecord.get("analysis"));
+        assertNull(baseRecord.get("analysis_record_id"));
+        assertNull(baseRecord.get("predict_record_id"));
+        assertNotNull(baseRecord.get("chart"));
+        assertNotNull(baseRecord.get("data"));
+
+        // 子记录通过 analysis_record_id 指向基础记录，并复制 chart/data 供刷新回放
+        long childRecordId = childRecordId("analysis_record_id", recordId);
+        Map<String, Object> child = recordOf(records, childRecordId);
+        assertEquals("PAID 与 NEW 两个状态的订单分布如下。", child.get("analysis"));
+        assertEquals(recordId, ((Number) child.get("analysis_record_id")).longValue());
+        assertNull(child.get("predict_record_id"));
+        assertEquals(baseRecord.get("chart"), child.get("chart"));
+        assertNotNull(child.get("data"));
+        assertEquals(2, ((List<?>) ((Map<?, ?>) child.get("data")).get("data")).size());
+        // 子记录不再被导出/记录列表跳过：同一数据快照可直接导出
+        assertFalse(chatService.exportExcel(childRecordId).content.length == 0);
         assertTrue(stubCalls.contains("analysis"), stubCalls.toString());
     }
 
@@ -779,8 +789,30 @@ class ChatPipelineTest {
         assertTrue(types.contains("predict_data"), types.toString());
         assertTrue(types.contains("predict_content"), types.toString());
 
-        // 预测数据落库并可由端点读取
-        List<Object> predictData = chatService.recordPredictData(recordId);
+        // A2：预测结果落在 child 记录；基础记录保持不变
+        Map<String, Object> chat = chatService.get(chatId, true);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> records = (List<Map<String, Object>>) chat.get("records");
+        // A17/A2：first_chat 空记录 + 基础记录 + 预测子记录
+        assertEquals(3, records.size());
+        Map<String, Object> baseRecord = records.get(1);
+        assertNull(baseRecord.get("analysis_record_id"));
+        assertNull(baseRecord.get("predict_record_id"));
+        assertNull(baseRecord.get("predict"));
+        assertNull(baseRecord.get("predict_content"));
+
+        // 预测数据落库到子记录并可由端点读取
+        long childRecordId = childRecordId("predict_record_id", recordId);
+        Map<String, Object> child = recordOf(records, childRecordId);
+        assertEquals(recordId, ((Number) child.get("predict_record_id")).longValue());
+        assertNull(child.get("analysis_record_id"));
+        assertEquals("FORECAST", ((Map<?, ?>) ((List<?>) child.get("predict_data")).get(0)).get("status"));
+        // 子记录复制基础记录的 chart/data，导出不跳过预测子记录
+        assertEquals(baseRecord.get("chart"), child.get("chart"));
+        assertNotNull(child.get("data"));
+        assertFalse(chatService.exportExcel(childRecordId).content.length == 0);
+
+        List<Object> predictData = chatService.recordPredictData(childRecordId);
         assertEquals(1, predictData.size());
         @SuppressWarnings("unchecked")
         Map<String, Object> row = (Map<String, Object>) predictData.get(0);
@@ -1158,13 +1190,24 @@ class ChatPipelineTest {
     }
 
     /**
-     * A4：子记录的 analysis_record_id 指向基础记录（child → base）。
+     * A2：按外键查询 analysis/predict 子记录 ID（child → base）。
      *
-     * <p>子记录不出现在会话记录列表（前端只渲染基础记录），因此直接查库校验外键方向。</p>
+     * <p>外键只写 child → base，故基础记录自身两个外键仍为 NULL（由调用方断言）。</p>
      */
-    boolean analysisChildPointsToBase(long baseRecordId) {
+    long childRecordId(String linkColumn, long baseRecordId) {
         List<Map<String, Object>> children = appJdbc.queryForList(
-                "SELECT id FROM chat_record WHERE analysis_record_id = ?", baseRecordId);
-        return children.size() == 1;
+                "SELECT id FROM chat_record WHERE " + linkColumn + " = ?", baseRecordId);
+        assertEquals(1, children.size(), "应存在唯一子记录: " + linkColumn);
+        return Rows.lng(children.get(0), "id", 0L);
+    }
+
+    /** 从会话记录列表中按 ID 取记录。 */
+    static Map<String, Object> recordOf(List<Map<String, Object>> records, long id) {
+        for (Map<String, Object> record : records) {
+            if (((Number) record.get("id")).longValue() == id) {
+                return record;
+            }
+        }
+        throw new AssertionError("缺少记录: " + id);
     }
 }
