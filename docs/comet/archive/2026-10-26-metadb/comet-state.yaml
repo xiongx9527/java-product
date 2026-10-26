@@ -1,0 +1,113 @@
+schema: comet.native.v4
+name: metadb
+language: zh-CN
+phase: archive
+status: done
+state_version: 1
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/supervisor/askdata-sqlbot-p0-parity/metadb
+  target_branch: main
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A9
+    source: brief.md
+    text: A9 元数据库迁移：元数据库由 Flyway 版本化迁移管理，H2/PostgreSQL/MySQL
+      均可从空库启动并写入种子数据；`schema.sql` 不再由 `spring.sql.init` 执行；PostgreSQL 用
+      embedded-postgres 真库测试，MySQL 有方言单测；切换元数据库只需改连接配置并完成迁移。
+    result: passed
+    reason:
+      text: pom.xml:370-379 引入 flyway-core/postgresql/mysql；application.yaml:42-52 配置
+        locations=common+{vendor}、baseline-on-migrate、baseline-version=2、sql.init.mode=never；schema.sql
+        已删除并重命名为 db/migration/h2/V1__baseline.sql，种子在
+        db/migration/common/V2__seed.sql；h2/postgresql/mysql 三份 baseline 各 35
+        张表且旧 ALTER
+        列已并入；H2MetadbMigrationTest.java:25-51、PostgresMetadbMigrationTest.java:59-159（EmbeddedPostgres
+        真库 + 真实登录问数）、MysqlMetadbDialectTest.java:38-58
+        覆盖三条路径；application-postgresql.yaml 与 application-mysql.yaml 仅覆盖连接配置即可切换。
+      truncated: false
+builder_handoff:
+  candidate_id: 2d116f4a13947db8609cbc4b3294fd55cf320e33
+  identity_provider: skill-coordinated
+  builder_execution_ref: native-host-repair-metadb-20261026-01
+  iteration: 1
+  summary:
+    text: 候选提交保持 2d116f4（本轮无代码改动）：仅因上一轮 Runtime 检查证据随 worktree 构建产物变化而失效，按 repair
+      重新提交同一候选，由 Runtime 重跑 metadb-a9-tests 后交新 Verifier 独立验收。
+    truncated: false
+  addressed_acceptance_ids:
+    - A9
+  checks:
+    - name:
+        text: A9 元数据库迁移聚焦测试（H2/MySQL/PostgreSQL）
+        truncated: false
+      result: passed
+      note: null
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-10-26T11:37:23.392Z
+blockers: []
+verification:
+  candidate_id: 2d116f4a13947db8609cbc4b3294fd55cf320e33
+  identity_provider: skill-coordinated
+  verifier_execution_ref: native-subagent-metadb-verifier-20261026-02
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: metadb-a9-tests
+      name:
+        text: A9 元数据库迁移聚焦测试（H2/MySQL/PostgreSQL）
+        truncated: false
+      argv_display:
+        - text: -c
+          truncated: false
+        - text: export JAVA_HOME=$(/usr/libexec/java_home -v 17); exec mvn
+            -Dmaven.test.skip=false
+            -Dtest=H2MetadbMigrationTest,MysqlMetadbDialectTest,PostgresMetadbMigrationTest,NoHardcodedSecretsTest,RemainingFidelityTest
+            test
+          truncated: false
+      argv_truncated: false
+      cwd_ref: askdata/askdata-server
+      status: passed
+      exit_code: 0
+      duration_ms: 48099
+  summary:
+    text: 独立复核候选 2d116f4（repair 后新检查 action 21 已重跑并通过）：Flyway 三方言 baseline + common
+      种子接管元数据库，schema.sql 删除且 sql.init=never，PG 用 embedded-postgres 真库、MySQL
+      有方言单测。
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-10-26T11:45:52.436Z
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-10-26T11:37:23.392Z
