@@ -334,6 +334,8 @@ public class DsPermissionQueryService {
             return null;
         }
         String varType = Rows.str(sysVar, "type");
+        // A7：kv 类型变量——按 varType 校验值域并做 key→value 映射；越界值被拒绝。
+        Map<String, String> kv = parseKv(Rows.get(sysVar, "value"));
         if ("system".equals(varType)) {
             List<Object> value = (List<Object>) sysVar.getOrDefault("value", Collections.emptyList());
             String attr = value.isEmpty() ? null : String.valueOf(value.get(0));
@@ -346,11 +348,38 @@ public class DsPermissionQueryService {
                     || variableId.equals(Rows.lngOrNull(uv, "variable_id"))) {
                 List<Object> values = (List<Object>) uv.getOrDefault("variableValues",
                         uv.getOrDefault("variable_values", Collections.emptyList()));
-                return buildUserVariableWhereValue(term, Rows.str(sysVar, "var_type"), values,
-                        dtype, fieldTypeStr);
+                return buildUserVariableWhereValue(term, kv, values, dtype, fieldTypeStr);
             }
         }
         return null;
+    }
+
+    /**
+     * A7：解析 kv 变量的枚举定义（value 为 [{key, value, ...}, ...]）。
+     * 仅当每一项都是含 {@code key} 的 Map 时才视为 kv 枚举；否则返回空集合（不启用值域校验）。
+     */
+    @SuppressWarnings("unchecked")
+    private static Map<String, String> parseKv(Object value) {
+        if (!(value instanceof List)) {
+            return Collections.emptyMap();
+        }
+        List<Object> list = (List<Object>) value;
+        if (list.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<String, String> kv = new LinkedHashMap<>();
+        for (Object o : list) {
+            if (!(o instanceof Map)) {
+                return Collections.emptyMap();
+            }
+            Map<String, Object> item = (Map<String, Object>) o;
+            String key = Rows.str(item, "key");
+            if (key == null || key.isEmpty()) {
+                return Collections.emptyMap();
+            }
+            kv.put(key, Rows.str(item, "value"));
+        }
+        return kv;
     }
 
     private String resolveSystemAttr(String attr) {
@@ -409,7 +438,7 @@ public class DsPermissionQueryService {
         return quotedValue(v, dtype, fieldTypeStr);
     }
 
-    private String buildUserVariableWhereValue(String term, String varType, List<Object> values,
+    private String buildUserVariableWhereValue(String term, Map<String, String> kv, List<Object> values,
                                               DatasourceType dtype, String fieldTypeStr) {
         if (values == null || values.isEmpty()) {
             return null;
@@ -422,7 +451,17 @@ public class DsPermissionQueryService {
         }
         List<String> stringValues = new ArrayList<>();
         for (Object o : values) {
-            stringValues.add(String.valueOf(o));
+            String key = String.valueOf(o);
+            // A7：kv 变量按 varType 校验值域；越界值（不在允许 key 集合内）直接拒绝（fail-closed）。
+            if (kv != null && !kv.isEmpty()) {
+                if (!kv.containsKey(key)) {
+                    throw new IllegalArgumentException(
+                            "row permission variable value out of allowed range: " + key);
+                }
+                stringValues.add(kv.get(key));
+            } else {
+                stringValues.add(key);
+            }
         }
         if ("in".equals(term) || "not in".equals(term)) {
             List<String> escaped = new ArrayList<>();

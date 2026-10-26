@@ -2,9 +2,26 @@ package com.xiongx9527.askdata.datasource.engine;
 
 import com.xiongx9527.askdata.datasource.DatasourceException;
 import net.sf.jsqlparser.JSQLParserException;
+import net.sf.jsqlparser.expression.BinaryExpression;
+import net.sf.jsqlparser.expression.CaseExpression;
+import net.sf.jsqlparser.expression.CastExpression;
+import net.sf.jsqlparser.expression.Expression;
+import net.sf.jsqlparser.expression.Function;
+import net.sf.jsqlparser.expression.NotExpression;
+import net.sf.jsqlparser.expression.Parenthesis;
+import net.sf.jsqlparser.expression.WhenClause;
+import net.sf.jsqlparser.expression.operators.relational.Between;
+import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
+import net.sf.jsqlparser.expression.operators.relational.InExpression;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.statement.Statement;
+import net.sf.jsqlparser.statement.select.FromItem;
+import net.sf.jsqlparser.statement.select.Join;
+import net.sf.jsqlparser.statement.select.OrderByElement;
+import net.sf.jsqlparser.statement.select.ParenthesedSelect;
+import net.sf.jsqlparser.statement.select.PlainSelect;
 import net.sf.jsqlparser.statement.select.Select;
+import net.sf.jsqlparser.statement.select.SelectItem;
 import net.sf.jsqlparser.statement.select.SetOperationList;
 import net.sf.jsqlparser.statement.select.WithItem;
 
@@ -40,11 +57,6 @@ public final class SqlSafety {
 
     private static final Set<String> COMMON_DANGEROUS_FUNCTIONS =
             new HashSet<>(Arrays.asList("version", "current_user", "user", "database"));
-
-    // 函数调用：标识符（含下划线，对齐 SQLBot 函数名 current_user/load_file 等）后跟 '('。
-    // 用 (?i) 忽略大小写 + 负向回顾断言保证函数名不被嵌入到更长标识符中；用 Pattern.quote 避免源码字面量反斜杠。
-    private static final Pattern FUNCTION_CALL =
-            Pattern.compile("(?i)(?<![A-Za-z0-9_])" + "([A-Za-z_][A-Za-z0-9_]*)[ ]*" + Pattern.quote("("));
 
     private SqlSafety() {
     }
@@ -86,13 +98,180 @@ public final class SqlSafety {
                     "SQL can only contain read operations: Write operation is not allowed");
         }
         Set<String> dangerousFunctions = dangerousFunctions(dsType);
-        java.util.regex.Matcher matcher = FUNCTION_CALL.matcher(normalized);
-        while (matcher.find()) {
-            if (dangerousFunctions.contains(matcher.group(1).toLowerCase(Locale.ROOT))) {
+        // A7：基于 SQL AST 函数节点（而非原文正则）识别危险函数调用。
+        // 字符串字面量中的 "version(" 不会被误判为函数调用，而真正的函数调用（如 version()）会被识别。
+        for (String fn : collectFunctionNames(statements.get(0))) {
+            if (dangerousFunctions.contains(fn)) {
                 throw new DatasourceException(
-                        "SQL can only contain read operations: SQL contains dangerous function: "
-                                + matcher.group(1));
+                        "SQL can only contain read operations: SQL contains dangerous function: " + fn);
             }
+        }
+    }
+
+    /**
+     * 遍历解析后的语句 AST，收集所有函数调用的名称（小写）。基于 {@link net.sf.jsqlparser.expression.Function}
+     * 节点识别，因此字符串字面量（如 {@code 'version(x)'}) 不会被当成函数调用。
+     */
+    /**
+     * 遍历解析后的语句 AST，收集所有函数调用的名称（小写）。基于 Function 节点识别，
+     * 因此字符串字面量（如 version(x)）不会被当成函数调用。
+     */
+    private static Set<String> collectFunctionNames(Statement stmt) {
+        Set<String> names = new HashSet<>();
+        if (stmt instanceof Select s) {
+            collectSelect(s, names);
+        } else if (stmt instanceof SetOperationList sol) {
+            if (sol.getWithItemsList() != null) {
+                for (WithItem<?> w : sol.getWithItemsList()) {
+                    collectSelect(w.getSelect(), names);
+                }
+            }
+            for (Select sel : sol.getSelects()) {
+                collectSelect(sel, names);
+            }
+        }
+        return names;
+    }
+
+    /** 递归遍历 SELECT（覆盖 CTE / UNION / FROM-JOIN / 子查询）中的表达式，收集函数名。 */
+    private static void collectSelect(Select select, Set<String> out) {
+        if (select.getWithItemsList() != null) {
+            for (WithItem<?> w : select.getWithItemsList()) {
+                collectSelect(w.getSelect(), out);
+            }
+        }
+        SetOperationList setOp = null;
+        try {
+            setOp = select.getSetOperationList();
+        } catch (ClassCastException ignore) {
+            setOp = null;
+        }
+        if (setOp != null) {
+            if (setOp.getWithItemsList() != null) {
+                for (WithItem<?> w : setOp.getWithItemsList()) {
+                    collectSelect(w.getSelect(), out);
+                }
+            }
+            for (Select sel : setOp.getSelects()) {
+                collectSelect(sel, out);
+            }
+            return;
+        }
+        PlainSelect ps = select.getPlainSelect();
+        if (ps == null) {
+            return;
+        }
+        if (ps.getSelectItems() != null) {
+            for (SelectItem<?> si : ps.getSelectItems()) {
+                Expression e = si.getExpression();
+                if (e != null) {
+                    collectExpr(e, out);
+                }
+            }
+        }
+        if (ps.getWhere() != null) {
+            collectExpr(ps.getWhere(), out);
+        }
+        if (ps.getHaving() != null) {
+            collectExpr(ps.getHaving(), out);
+        }
+        if (ps.getFromItem() != null) {
+            collectFromItem(ps.getFromItem(), out);
+        }
+        if (ps.getJoins() != null) {
+            for (Join join : ps.getJoins()) {
+                collectFromItem(join.getRightItem(), out);
+                if (join.getOnExpression() != null) {
+                    collectExpr(join.getOnExpression(), out);
+                }
+            }
+        }
+        if (ps.getGroupBy() != null && ps.getGroupBy().getGroupByExpressions() != null) {
+            for (Object o : ps.getGroupBy().getGroupByExpressions()) {
+                if (o instanceof Expression e) {
+                    collectExpr(e, out);
+                }
+            }
+        }
+        if (ps.getOrderByElements() != null) {
+            for (OrderByElement o : ps.getOrderByElements()) {
+                collectExpr(o.getExpression(), out);
+            }
+        }
+    }
+
+    private static void collectFromItem(FromItem item, Set<String> out) {
+        if (item instanceof ParenthesedSelect ps) {
+            collectSelect(ps.getSelect(), out);
+        }
+    }
+
+    /** 递归遍历表达式树，收集 Function 节点名称；对常见容器节点继续向下遍历。 */
+    private static void collectExpr(Expression e, Set<String> out) {
+        if (e == null) {
+            return;
+        }
+        if (e instanceof Function f) {
+            String name = f.getName();
+            if (name != null) {
+                out.add(name.toLowerCase(Locale.ROOT));
+            }
+            ExpressionList<?> params = f.getParameters();
+            if (params != null) {
+                for (Object p : params.getExpressions()) {
+                    if (p instanceof Expression ex) {
+                        collectExpr(ex, out);
+                    }
+                }
+            }
+            Object attr = f.getAttribute();
+            if (attr instanceof Expression ex) {
+                collectExpr(ex, out);
+            }
+            return;
+        }
+        if (e instanceof BinaryExpression be) {
+            collectExpr(be.getLeftExpression(), out);
+            collectExpr(be.getRightExpression(), out);
+            return;
+        }
+        if (e instanceof Parenthesis p) {
+            collectExpr(p.getExpression(), out);
+            return;
+        }
+        if (e instanceof CastExpression ce) {
+            collectExpr(ce.getLeftExpression(Expression.class), out);
+            return;
+        }
+        if (e instanceof CaseExpression c) {
+            if (c.getSwitchExpression() != null) {
+                collectExpr(c.getSwitchExpression(), out);
+            }
+            if (c.getWhenClauses() != null) {
+                for (WhenClause w : c.getWhenClauses()) {
+                    collectExpr(w.getWhenExpression(), out);
+                    collectExpr(w.getThenExpression(), out);
+                }
+            }
+            if (c.getElseExpression() != null) {
+                collectExpr(c.getElseExpression(), out);
+            }
+            return;
+        }
+        if (e instanceof NotExpression ne) {
+            collectExpr(ne.getExpression(), out);
+            return;
+        }
+        if (e instanceof Between bt) {
+            collectExpr(bt.getLeftExpression(), out);
+            collectExpr(bt.getBetweenExpressionStart(), out);
+            collectExpr(bt.getBetweenExpressionEnd(), out);
+            return;
+        }
+        if (e instanceof InExpression ie) {
+            collectExpr(ie.getLeftExpression(), out);
+            collectExpr(ie.getRightExpression(), out);
+            return;
         }
     }
 

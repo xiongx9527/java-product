@@ -15,6 +15,8 @@ import com.xiongx9527.askdata.datasource.engine.DatasourceConf;
 import com.xiongx9527.askdata.datasource.engine.DatasourceType;
 import com.xiongx9527.askdata.datasource.engine.TableSchema;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
+import com.xiongx9527.askdata.permission.DsPermissionQueryService;
+import com.xiongx9527.askdata.system.service.CurrentUserService;
 import com.xiongx9527.askdata.system.repository.SysArgRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +33,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /**
@@ -95,6 +98,37 @@ public class SchemaContextBuilder {
     @Autowired(required = false)
     public void setPromptTemplates(SqlPromptTemplates promptTemplates) {
         this.promptTemplates = promptTemplates;
+    }
+
+    /**
+     * A7：列权限查询服务（构造 schema/提示词前剔除无权限字段）。setter 注入（required=false）：
+     * 未注入时退化为不裁剪，保持既有行为。
+     */
+    private DsPermissionQueryService permissionQuery;
+
+    private CurrentUserService currentUserService;
+
+    @Autowired(required = false)
+    public void setPermissionQuery(DsPermissionQueryService permissionQuery) {
+        this.permissionQuery = permissionQuery;
+    }
+
+    @Autowired(required = false)
+    public void setCurrentUserService(CurrentUserService currentUserService) {
+        this.currentUserService = currentUserService;
+    }
+
+    /** A7：当前用户在该表上无权限（enable=false）的列名集合；管理员/未注入时为空白。 */
+    private Set<String> hiddenColumnsFor(long dsId, String tableName) {
+        if (permissionQuery == null || currentUserService == null) {
+            return Collections.emptySet();
+        }
+        Map<String, Object> user = currentUserService.currentUser();
+        if (currentUserService.isAdmin(user)) {
+            return Collections.emptySet();
+        }
+        return permissionQuery.hiddenColumns(currentUserService.oidOf(user), Rows.lng(user, "id", 0L), dsId,
+                tableName);
     }
 
     @Autowired
@@ -994,11 +1028,16 @@ public class SchemaContextBuilder {
             sb.append(" (").append(tableComment).append(")");
         }
         sb.append(":\n");
+        // A7：构造 schema 提示词前剔除当前用户无权限（列权限 enable=false）的字段
+        Set<String> hidden = hiddenColumnsFor(dsId, tableName);
         for (Map<String, Object> field : fieldRepository.listByTableId(Rows.lng(table, "id", 0L))) {
             if (!Rows.bool(field, "checked", true)) {
                 continue;
             }
             String fieldName = Rows.str(field, "field_name");
+            if (hidden.contains(fieldName)) {
+                continue;
+            }
             String fieldType = Rows.str(field, "field_type");
             String fieldComment = firstNonEmpty(Rows.str(field, "custom_comment"),
                     Rows.str(field, "field_comment"));
