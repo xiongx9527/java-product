@@ -10,12 +10,10 @@ import org.springframework.stereotype.Repository;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * 对话域表（chat / chat_record / chat_log）JDBC 访问层。
@@ -50,21 +48,31 @@ public class ChatRepository {
     // chat
     // ------------------------------------------------------------------
 
-    /** GET /chat/list：当前用户工作空间下的会话（按最近活跃时间倒序）。 */
-    public List<Map<String, Object>> listChats(long oid) {
-        return jdbc.queryForList("SELECT " + CHAT_COLUMNS + " FROM chat WHERE oid = ? AND deleted = 0 "
-                + "ORDER BY latest_record_time DESC, create_time DESC", oid);
+    /**
+     * GET /chat/list：当前用户在当前工作空间创建的会话（按最近活跃时间倒序）。
+     *
+     * <p>A1：归属按 {@code create_by + oid} 双过滤，管理员不能用同一工作空间的
+     * 身份读取他人会话。</p>
+     */
+    public List<Map<String, Object>> listChats(long createBy, long oid) {
+        return jdbc.queryForList("SELECT " + CHAT_COLUMNS
+                        + " FROM chat WHERE create_by = ? AND oid = ? AND deleted = 0 "
+                        + "ORDER BY latest_record_time DESC, create_time DESC",
+                createBy, oid);
     }
 
-    /** 会话分页（{@code /chat/question/pager/{page}/{size}}，SQLBot 保留路由）。 */
-    public List<Map<String, Object>> pageChats(long oid, int page, int size) {
-        return jdbc.queryForList("SELECT " + CHAT_COLUMNS + " FROM chat WHERE oid = ? AND deleted = 0 "
+    /** 会话分页（{@code /chat/question/pager/{page}/{size}}，SQLBot 保留路由；A1 双过滤）。 */
+    public List<Map<String, Object>> pageChats(long createBy, long oid, int page, int size) {
+        return jdbc.queryForList("SELECT " + CHAT_COLUMNS
+                        + " FROM chat WHERE create_by = ? AND oid = ? AND deleted = 0 "
                         + "ORDER BY latest_record_time DESC, create_time DESC LIMIT ? OFFSET ?",
-                oid, size, Math.max(0, page - 1) * size);
+                createBy, oid, size, Math.max(0, page - 1) * size);
     }
 
-    public long countChats(long oid) {
-        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM chat WHERE oid = ? AND deleted = 0", Long.class, oid);
+    public long countChats(long createBy, long oid) {
+        Long count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM chat WHERE create_by = ? AND oid = ? AND deleted = 0",
+                Long.class, createBy, oid);
         return count == null ? 0L : count;
     }
 
@@ -237,24 +245,25 @@ public class ChatRepository {
     }
 
     /**
-     * 记录级 analysis/predict 子记录：独立新增一条子记录，外键只写 child → base。
+     * 记录级 analysis/predict 子记录：独立新增一条子记录，外键只写 child → base，
+     * 并把基础记录的 chart/data 复制到子记录（A2）。
      *
      * <p>对齐 SQLBot {@code curd/chat.py:841-865}：基础记录的 analysis_record_id /
-     * predict_record_id 保持 NULL。前端 index.vue 要求基础气泡两个外键为 NULL 才渲染
-     * ChartAnswer；若反向回写基础记录，刷新后基础气泡的 SQL/数据/图表全部丢失。</p>
+     * predict_record_id 保持 NULL。基础气泡与子气泡各自持有可回放的数据快照，
+     * 刷新后子记录仍能展示图表与预测数据。</p>
      *
      * @param actionType analysis 或 predict
      */
     public long insertSubRecord(long chatId, String question, long createBy, long oid, Long datasource,
-                                String actionType, long baseRecordId) {
+                                String actionType, long baseRecordId, String chart, String data) {
         long id = idGenerator.nextId();
         Timestamp now = new Timestamp(System.currentTimeMillis());
         boolean analysis = "analysis".equals(actionType);
         String linkColumn = analysis ? "analysis_record_id" : "predict_record_id";
         jdbc.update("INSERT INTO chat_record (id, chat_id, question, create_by, oid, create_time, update_time, "
-                        + "datasource, finish, first_chat, " + linkColumn + ") "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE, ?)",
-                id, chatId, question, createBy, oid, now, now, datasource, baseRecordId);
+                        + "datasource, finish, first_chat, " + linkColumn + ", chart, data) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE, ?, ?, ?)",
+                id, chatId, question, createBy, oid, now, now, datasource, baseRecordId, chart, data);
         return id;
     }
 
@@ -320,23 +329,13 @@ public class ChatRepository {
     /**
      * chat_record 行列表 → 前端 ChatRecord 列表。
      *
-     * <p>analysis/predict 子记录不单独渲染为对话气泡：子记录与其基础记录互链
-     * （基础记录指向子记录，子记录反指基础记录，与 SQLBot
-     * {@code save_analysis_predict_record} 一致），故按创建顺序判定——
-     * 链接目标已出现在前面的记录即为子记录，予以跳过。</p>
+     * <p>A2：analysis/predict 子记录必须随会话详情一起返回，刷新后前端才能根据
+     * 子记录的 {@code analysis_record_id}/{@code predict_record_id} 重新渲染分析/预测气泡。
+     * 基础记录保持两个外键为 NULL，继续由 ChartAnswer 渲染。</p>
      */
     public List<Map<String, Object>> toRecordList(List<Map<String, Object>> rows, boolean withData) {
         List<Map<String, Object>> records = new ArrayList<>();
-        Set<Long> seen = new HashSet<>();
         for (Map<String, Object> row : rows) {
-            long analysisLink = Rows.lng(row, "analysis_record_id", 0L);
-            long predictLink = Rows.lng(row, "predict_record_id", 0L);
-            boolean isChild = (analysisLink > 0L && seen.contains(analysisLink))
-                    || (predictLink > 0L && seen.contains(predictLink));
-            seen.add(Rows.lng(row, "id", 0L));
-            if (isChild) {
-                continue;
-            }
             records.add(toRecord(row, withData));
         }
         return records;

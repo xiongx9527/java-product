@@ -28,7 +28,8 @@ import java.util.Map;
  * 最近问题、Excel 导出。
  *
  * <p>归属判定与 SQLBot {@code get_chat_with_records} 一致：会话须属于当前工作空间
- * （oid 相同）且由当前用户创建，管理员不受此限。</p>
+ * （oid 相同）且由当前用户创建；A1 起管理员不再享有隐式 owner 豁免，只有专门的系统管理
+ * 端点可以显式跨用户操作。</p>
  */
 @Service
 public class ChatService {
@@ -81,20 +82,23 @@ public class ChatService {
     // 会话
     // ------------------------------------------------------------------
 
-    /** GET /chat/list：当前工作空间会话（按最近活跃倒序）。 */
+    /** GET /chat/list：当前用户在当前工作空间创建的会话（按最近活跃倒序）。 */
     public List<Map<String, Object>> list() {
         Map<String, Object> user = currentUserService.currentUser();
-        return toChatItems(chatRepository.listChats(currentUserService.oidOf(user)));
+        long uid = currentUserService.uid();
+        return toChatItems(chatRepository.listChats(uid, currentUserService.oidOf(user)));
     }
 
     /**
      * GET /chat/question/pager/{page}/{size}：会话分页（SQLBot 保留路由，A6「会话分页」）。
+     * A1：分页与总数都按 {@code create_by + oid} 双过滤。
      */
     public PageResult<Map<String, Object>> pager(int page, int size) {
         Map<String, Object> user = currentUserService.currentUser();
+        long uid = currentUserService.uid();
         long oid = currentUserService.oidOf(user);
-        long total = chatRepository.countChats(oid);
-        return new PageResult<>(toChatItems(chatRepository.pageChats(oid, page, size)), total, page, size);
+        long total = chatRepository.countChats(uid, oid);
+        return new PageResult<>(toChatItems(chatRepository.pageChats(uid, oid, page, size)), total, page, size);
     }
 
     /** GET /chat/{id} 与 /chat/{id}/with_data：会话详情（含记录）。 */
@@ -318,8 +322,12 @@ public class ChatService {
     // 推荐 / 最近问题
     // ------------------------------------------------------------------
 
-    /** GET /chat/recent_questions/{ds}：该数据源下最近的提问（去重、倒序、限 20 条）；
-     *  按当前用户工作空间过滤（对齐 SQLBot recent_questions 的可见范围，防跨工作空间读历史提问）。 */
+    /**
+     * GET /chat/recent_questions/{ds}：该数据源下当前用户最近的提问（去重、倒序、限 10 条）。
+     *
+     * <p>A1：按 {@code create_by + oid} 双过滤，同一工作空间的其他用户（包括管理员）
+     * 都不会读到本用户的提问历史。</p>
+     */
     public List<String> recentQuestions(long datasourceId) {
         Map<String, Object> user = currentUserService.currentUser();
         Map<String, Object> ds = datasourceRepository.findById(datasourceId)
@@ -327,7 +335,8 @@ public class ChatService {
         if (!currentUserService.isAdmin(user) && Rows.lng(ds, "oid", 0L) != currentUserService.oidOf(user)) {
             throw new BadRequestException(messageResolver.get("ds.not.found", datasourceId));
         }
-        return recommendedQuestionRepository.recentByDatasource(datasourceId, currentUserService.oidOf(user), 20);
+        return recommendedQuestionRepository.recentByDatasource(datasourceId, currentUserService.uid(),
+                currentUserService.oidOf(user), 10);
     }
 
     // ------------------------------------------------------------------
@@ -358,10 +367,12 @@ public class ChatService {
         return record;
     }
 
+    /**
+     * 会话/记录归属校验：必须同时属于当前工作空间且由当前用户创建。
+     *
+     * <p>A1：管理员不再有隐式 owner 豁免；跨用户访问必须走专门的系统管理端点。</p>
+     */
     private void requireOwner(Map<String, Object> chat, Map<String, Object> user, String label) {
-        if (currentUserService.isAdmin(user)) {
-            return;
-        }
         long id = Rows.lng(chat, "id", 0L);
         if (Rows.lng(chat, "oid", 0L) != currentUserService.oidOf(user)) {
             throw new BadRequestException(messageResolver.get("chat.not.belong.workspace", label, id));

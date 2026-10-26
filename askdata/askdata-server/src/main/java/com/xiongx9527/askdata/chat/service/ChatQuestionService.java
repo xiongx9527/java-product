@@ -684,8 +684,12 @@ public class ChatQuestionService {
                     return;
                 }
                 Long dsId = Rows.lngOrNull(base, "datasource");
+                // A2：子记录指向基础记录，并复制基础记录的 chart/data；基础记录的两个外键保持 NULL
+                String baseChart = Rows.str(base, "chart");
+                String baseData = Rows.str(base, "data");
                 long recordId = chatRepository.insertSubRecord(Rows.lng(base, "chat_id", 0L),
-                        Rows.str(base, "question"), uid, oid, dsId, actionType, baseRecordId);
+                        Rows.str(base, "question"), uid, oid, dsId, actionType, baseRecordId,
+                        baseChart, baseData);
                 emit(writer, Rows.of("type", "id", "id", recordId));
 
                 String question = Rows.str(base, "question");
@@ -706,18 +710,19 @@ public class ChatQuestionService {
                         analysis ? "analysis-result" : "predict-result", totalTokens);
 
                 if (analysis) {
-                    chatRepository.saveAnalysis(baseRecordId, full, "");
+                    // A2：分析结果落在子记录，基础记录保持原问题气泡内容不变
+                    chatRepository.saveAnalysis(recordId, full, "");
                     // spec §2.3 命名（analysis / analysis_thinking）
                     emit(writer, Rows.of("type", "analysis", "content", full));
                     emit(writer, Rows.of("type", "analysis_thinking", "content", ""));
                     emit(writer, Rows.of("type", "info", "msg", "analysis generated"));
                     emit(writer, Rows.of("type", "analysis_finish"));
                 } else {
-                    chatRepository.savePredictContent(baseRecordId, full, "");
+                    chatRepository.savePredictContent(recordId, full, "");
                     List<Map<String, Object>> predictData = extractJsonArray(full);
                     boolean hasData = !predictData.isEmpty();
                     if (hasData) {
-                        chatRepository.savePredictData(baseRecordId, chatRepository.writeJson(predictData));
+                        chatRepository.savePredictData(recordId, chatRepository.writeJson(predictData));
                     }
                     emit(writer, Rows.of("type", "predict", "content", full));
                     emit(writer, Rows.of("type", "predict_content", "content", full));
@@ -732,10 +737,10 @@ public class ChatQuestionService {
                     emit(writer, Rows.of("type", "predict_finish"));
                 }
                 long duration = System.currentTimeMillis() - started;
-                logOperation(baseRecordId, oid, uid, analysis ? OPERATE_ANALYSIS : OPERATE_PREDICT,
-                        started, totalTokens.get(), false, Rows.of("record_id", recordId));
+                logOperation(recordId, oid, uid, analysis ? OPERATE_ANALYSIS : OPERATE_PREDICT,
+                        started, totalTokens.get(), false, Rows.of("record_id", recordId,
+                                "base_record_id", baseRecordId));
                 chatRepository.finishRecord(recordId, duration, totalTokens.get());
-                chatRepository.finishRecord(baseRecordId, duration, totalTokens.get());
             } catch (Exception e) {
                 log.warn("分析/预测链路异常: {}", e.getMessage());
                 emitError(writer, e.getMessage() == null ? e.toString() : e.getMessage());
@@ -759,10 +764,12 @@ public class ChatQuestionService {
                 return;
             }
             Map<String, Object> chat = chatRepository.findChat(Rows.lng(record, "chat_id", 0L)).orElse(null);
-            if (chat == null || (!currentUserService.isAdmin(user) && Rows.lng(chat, "oid", 0L) != oid)) {
+            if (chat == null) {
                 emit(writer, Rows.of("type", "recommended_question", "content", "[]"));
                 return;
             }
+            // A1：推荐问题同样按当前用户归属校验，管理员不再拥有隐式跨用户读取权限
+            requireOwner(chat, user, "ChatRecord");
             Optional<ModelRef> model = modelRouter.defaultChatModel();
             if (!model.isPresent() || !model.get().usable()) {
                 emit(writer, Rows.of("type", "recommended_question", "content", "[]"));
@@ -1599,10 +1606,12 @@ public class ChatQuestionService {
         return ds == null ? null : Rows.str(ds, "type");
     }
 
+    /**
+     * 会话/记录归属校验：同时校验工作空间与创建人。
+     *
+     * <p>A1：管理员没有隐式 owner 豁免；跨用户操作只能走专门的系统管理端点。</p>
+     */
     private void requireOwner(Map<String, Object> chat, Map<String, Object> user, String label) {
-        if (currentUserService.isAdmin(user)) {
-            return;
-        }
         long id = Rows.lng(chat, "id", 0L);
         if (Rows.lng(chat, "oid", 0L) != currentUserService.oidOf(user)) {
             throw new BadRequestException(label + " with id " + id + " does not belong to current workspace");
