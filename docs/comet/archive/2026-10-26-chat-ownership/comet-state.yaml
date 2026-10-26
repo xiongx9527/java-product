@@ -1,0 +1,124 @@
+schema: comet.native.v4
+name: chat-ownership
+language: zh-CN
+phase: archive
+status: done
+state_version: 1
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/supervisor/askdata-sqlbot-p0-parity/chat-ownership
+  target_branch: main
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1 会话归属与最近问题：同一工作空间内用户 A/B 的会话列表、分页、计数和最近问题只返回各自的会话/提问（`create_by + oid`
+      双过滤，最近问题限 10 条）；管理员读取他人会话或 `/chat/record/{rid}/data|log|usage|excel`
+      时同样被拒绝，不再有管理员 owner 豁免。
+    result: passed
+    reason:
+      text: ChatRepository.java:57-72 三处查询均为 create_by+oid 双过滤；ChatService.java:86-101
+        传 uid+oid；RecommendedQuestionRepository.java:51-76 与
+        ChatService.java:338 最近问题按 create_by+oid 过滤并截断 10
+        条；ChatService.java:375-386 与 ChatQuestionService.java:1614-1623 的
+        requireOwner 已无 isAdmin 早返回；recordData/log/usage/exportExcel 均经
+        requireOwnedRecord（ChatService.java:229-300）；ChatOwnershipParityTest.java:85-175
+        以 H2 实库断言 A/B/管理员隔离、total 与最近问题 10 条上限及他人子资源访问被拒。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2 分析/预测落库：对基础记录发起分析/预测后，新子记录的 `analysis_record_id`/`predict_record_id`
+      指向基础记录，基础记录两个外键保持 NULL；子记录复制基础记录的 chart/data，`/chat/{id}`
+      返回全部分析/预测子记录，刷新后气泡与预测数据仍可见。
+    result: passed
+    reason:
+      text: ChatRepository.java:257-268 insertSubRecord 仅写 child→base 并复制
+        chart/data；ChatQuestionService.java:684-745 分析/预测结果写子记录且不再回写 base 或
+        finish base；ChatRepository.java:336-343
+        会话详情返回全部记录；ChatPipelineTest.java:729-820 断言 base 外键为 NULL、子记录外键指向
+        base、chart/data 一致、predict_data 可读、子记录可导出。
+      truncated: false
+builder_handoff:
+  candidate_id: 6f7df1366325839db509e6f84c05e648d23e433a
+  identity_provider: skill-coordinated
+  builder_execution_ref: native-host-repair-chat-ownership-20261026-01
+  iteration: 1
+  summary:
+    text: 候选提交保持 6f7df13（本轮无代码改动）：仅因上一轮 Runtime 检查证据随 worktree 构建产物变化而失效，按 repair
+      重新提交同一候选，由 Runtime 重跑 vc-chat-ownership-pipeline 后交新 Verifier 独立验收。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+  checks:
+    - name:
+        text: Chat ownership and analysis/predict child parity tests
+        truncated: false
+      result: passed
+      note: null
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-10-26T11:35:35.471Z
+blockers: []
+verification:
+  candidate_id: 6f7df1366325839db509e6f84c05e648d23e433a
+  identity_provider: skill-coordinated
+  verifier_execution_ref: native-subagent-chat-ownership-verifier-20261026-02
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: vc-chat-ownership-pipeline
+      name:
+        text: Chat ownership and analysis/predict child parity tests
+        truncated: false
+      argv_display:
+        - text: -Dmaven.test.skip=false
+          truncated: false
+        - text: -Dtest=ChatOwnershipParityTest,ChatPipelineTest
+          truncated: false
+        - text: test
+          truncated: false
+      argv_truncated: false
+      cwd_ref: askdata/askdata-server
+      status: passed
+      exit_code: 0
+      duration_ms: 36247
+  summary:
+    text: 独立复核候选 6f7df13（repair 后新检查 action 20 已重跑并通过）：A1 归属双过滤与管理员豁免移除、A2 子记录外键方向与
+      chart/data 复制均有代码与 H2 实库测试证据。
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-10-26T11:44:09.482Z
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-10-26T11:35:35.471Z
