@@ -117,7 +117,10 @@ public class DynamicDatasourceResolver {
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("endpoint", String.valueOf(endpoint).trim());
-        result.put("headers", certificateHeaders(config.get("certificate")));
+        CertificateRequests certificate = certificateRequests(config.get("certificate"));
+        result.put("headers", certificate.headers);
+        result.put("cookies", certificate.cookies);
+        result.put("params", certificate.params);
         int timeout = 10;
         Object timeoutRaw = config.get("timeout");
         if (timeoutRaw instanceof Number) {
@@ -133,28 +136,73 @@ public class DynamicDatasourceResolver {
         return result;
     }
 
-    /** A23：把 certificate 列表中的 header 项收集为请求头（cookie/param 项本实现不使用）。 */
+    /**
+     * A17：宿主凭证位（对齐 SQLBot certificate 契约）：{@code target} 支持
+     * {@code header}/{@code cookie}/{@code param} 三类，分别落到请求头、Cookie 头与查询参数。
+     *
+     * <p>凭证值支持 AES 传输加密：条目带 {@code encrypted=true}（或值以 {@code aes:} 前缀给出）时
+     * 先用 SQLBot 兼容的 AES-ECB 解密，解密失败按宿主契约错误拒绝，绝不把密文当明文发出去。</p>
+     */
     @SuppressWarnings("unchecked")
-    private static Map<String, String> certificateHeaders(Object certificate) {
-        Map<String, String> headers = new LinkedHashMap<>();
+    private static CertificateRequests certificateRequests(Object certificate) {
+        CertificateRequests requests = new CertificateRequests();
         if (!(certificate instanceof List)) {
-            return headers;
+            return requests;
         }
         for (Object item : (List<Object>) certificate) {
             if (!(item instanceof Map)) {
                 continue;
             }
             Map<String, Object> entry = (Map<String, Object>) item;
-            if (!"header".equals(String.valueOf(entry.get("target")))) {
-                continue;
-            }
             Object key = entry.get("key");
             Object value = entry.get("value");
-            if (key != null && value != null) {
-                headers.put(String.valueOf(key), String.valueOf(value));
+            if (key == null || value == null) {
+                continue;
+            }
+            String target = String.valueOf(entry.get("target"));
+            String plain = decryptIfNeeded(value, entry.get("encrypted"));
+            if ("cookie".equals(target)) {
+                requests.cookies.put(String.valueOf(key), plain);
+            } else if ("param".equals(target)) {
+                requests.params.put(String.valueOf(key), plain);
+            } else if ("header".equals(target)) {
+                requests.headers.put(String.valueOf(key), plain);
             }
         }
-        return headers;
+        return requests;
+    }
+
+    /**
+     * 凭证/连接密钥解密：{@code encrypted=true} 或值以 {@code aes:} 前缀给出时解密。
+     * 未标记加密的值原样返回（兼容宿主直传明文）。
+     */
+    private static String decryptIfNeeded(Object value, Object encryptedFlag) {
+        String text = String.valueOf(value);
+        boolean encrypted = Boolean.TRUE.equals(encryptedFlag)
+                || "true".equalsIgnoreCase(String.valueOf(encryptedFlag));
+        String cipher = text;
+        if (text.startsWith(AES_PREFIX)) {
+            encrypted = true;
+            cipher = text.substring(AES_PREFIX.length());
+        }
+        if (!encrypted) {
+            return text;
+        }
+        String plain = com.xiongx9527.askdata.system.auth.CryptoUtil.decryptSqlbot(cipher);
+        if (plain == null) {
+            throw new BadRequestException("host credential is encrypted but cannot be decrypted");
+        }
+        return plain;
+    }
+
+    /** AES 传输密文前缀（宿主显式标注，便于与明文凭证区分）。 */
+    static final String AES_PREFIX = "aes:";
+
+    /** 宿主凭证三类落点。 */
+    private static final class CertificateRequests {
+        private final Map<String, String> headers = new LinkedHashMap<>();
+        private final Map<String, String> cookies = new LinkedHashMap<>();
+        private final Map<String, String> params = new LinkedHashMap<>();
     }
 
     @SuppressWarnings("unchecked")
@@ -260,6 +308,14 @@ public class DynamicDatasourceResolver {
                 "datasource " + datasourceId + " is not found in host response"));
     }
 
+    /**
+     * A17：实时拉取宿主数据源列表（高级应用 {@code /ds} 的 {@code ds_list} 来源）。
+     * 宿主不可达/契约不符时抛 {@link BadRequestException}，调用方不得回退到本地助手数据源。
+     */
+    public List<Map<String, Object>> listFromHost(int assistantType, Map<String, Object> hostEndpoint) {
+        return fetchHostDatasources(assistantType, hostEndpoint);
+    }
+
     /** 拉取宿主数据源列表（高级应用类型与端点校验 + code/data 契约校验）。 */
     private List<Map<String, Object>> fetchHostDatasources(int assistantType, Map<String, Object> hostEndpoint) {
         if (!isAdvancedApplication(assistantType)) {
@@ -272,7 +328,9 @@ public class DynamicDatasourceResolver {
         }
         String endpoint = String.valueOf(hostEndpoint.get("endpoint"));
         Map<String, String> headers = castStringMap(hostEndpoint.get("headers"));
-        String body = fetchFromHost(endpoint, headers);
+        Map<String, String> cookies = castStringMap(hostEndpoint.get("cookies"));
+        Map<String, String> params = castStringMap(hostEndpoint.get("params"));
+        String body = fetchFromHost(endpoint, headers, params, cookies);
         try {
             Map<String, Object> payload = objectMapper.readValue(body,
                     new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
@@ -303,9 +361,19 @@ public class DynamicDatasourceResolver {
 
     /** GET 宿主 API（10s 连接/读取超时，对齐 SQLBot requests.get(..., timeout=10)）；非 2xx 或 IO 异常均报错。 */
     private String fetchFromHost(String hostUrl, Map<String, String> headers) {
+        return fetchFromHost(hostUrl, headers, null, null);
+    }
+
+    /**
+     * GET 宿主 API，支持三类凭证位：{@code param} 拼查询串、{@code cookie} 合并进 Cookie 头、
+     * {@code header} 逐项设置（A17）。
+     */
+    private String fetchFromHost(String hostUrl, Map<String, String> headers,
+                                 Map<String, String> params, Map<String, String> cookies) {
         try {
+            String url = appendQuery(hostUrl, params);
             java.net.HttpURLConnection conn =
-                    (java.net.HttpURLConnection) new java.net.URL(hostUrl).openConnection();
+                    (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(HOST_FETCH_TIMEOUT_MS);
             conn.setReadTimeout(HOST_FETCH_TIMEOUT_MS);
@@ -315,6 +383,21 @@ public class DynamicDatasourceResolver {
                     if (h.getKey() != null && h.getValue() != null) {
                         conn.setRequestProperty(h.getKey(), h.getValue());
                     }
+                }
+            }
+            if (cookies != null && !cookies.isEmpty()) {
+                StringBuilder cookie = new StringBuilder();
+                for (Map.Entry<String, String> c : cookies.entrySet()) {
+                    if (c.getKey() == null || c.getValue() == null) {
+                        continue;
+                    }
+                    if (cookie.length() > 0) {
+                        cookie.append("; ");
+                    }
+                    cookie.append(c.getKey()).append('=').append(c.getValue());
+                }
+                if (cookie.length() > 0) {
+                    conn.setRequestProperty("Cookie", cookie.toString());
                 }
             }
             int code = conn.getResponseCode();
@@ -364,6 +447,7 @@ public class DynamicDatasourceResolver {
             throw new BadRequestException(messageResolver.get("ds.type.not.support", typeText));
         }
         DatasourceConf conf = parseConf(configurationOf(hostConfig));
+        decryptPasswordIfNeeded(conf, hostConfig);
         // §2.4: 宿主可下发表级 SQL 模板（dynamic_sql：表名 → 子查询模板），用于二次 LLM 改写后作为子查询/CTE。
         Map<String, String> tableSqlTemplates = parseTableSqlTemplates(hostConfig.get("dynamic_sql"));
         // A18: 宿主可下发表级行规则（table_rule：表名 → WHERE 条件片段），执行前注入过滤 SQL
@@ -378,6 +462,63 @@ public class DynamicDatasourceResolver {
             }
         }
         return new DynamicDatasource(type, conf, Rows.str(hostConfig, "name"), tableSqlTemplates, tableRules);
+    }
+
+    /**
+     * A17：宿主下发的数据源密码支持 AES 传输加密（{@code password_encrypted=true} 或
+     * {@code password} 以 {@code aes:} 前缀给出），解析后立即解密为明文连接参数；
+     * 解密失败直接拒绝，避免把密文当密码去连库。
+     */
+    @SuppressWarnings("unchecked")
+    private static void decryptPasswordIfNeeded(DatasourceConf conf, Map<String, Object> hostConfig) {
+        Object flag = hostConfig.get("password_encrypted");
+        Object nested = hostConfig.get("configuration");
+        if (nested instanceof Map) {
+            Map<String, Object> inner = (Map<String, Object>) nested;
+            if (flag == null) {
+                flag = inner.get("password_encrypted");
+            }
+        }
+        String password = conf.getPassword();
+        if (password == null) {
+            return;
+        }
+        boolean encrypted = Boolean.TRUE.equals(flag)
+                || "true".equalsIgnoreCase(String.valueOf(flag))
+                || password.startsWith(AES_PREFIX);
+        if (!encrypted) {
+            return;
+        }
+        String cipher = password.startsWith(AES_PREFIX) ? password.substring(AES_PREFIX.length()) : password;
+        String plain = com.xiongx9527.askdata.system.auth.CryptoUtil.decryptSqlbot(cipher);
+        if (plain == null) {
+            throw new BadRequestException("host datasource password is encrypted but cannot be decrypted");
+        }
+        conf.setPassword(plain);
+    }
+
+    /** 追加查询参数（param 凭证位）；无参数时原样返回。 */
+    private static String appendQuery(String url, Map<String, String> params) {
+        if (params == null || params.isEmpty()) {
+            return url;
+        }
+        StringBuilder query = new StringBuilder();
+        for (Map.Entry<String, String> entry : params.entrySet()) {
+            if (entry.getKey() == null || entry.getValue() == null) {
+                continue;
+            }
+            if (query.length() > 0) {
+                query.append('&');
+            }
+            query.append(java.net.URLEncoder.encode(entry.getKey(), java.nio.charset.StandardCharsets.UTF_8))
+                    .append('=')
+                    .append(java.net.URLEncoder.encode(entry.getValue(),
+                            java.nio.charset.StandardCharsets.UTF_8));
+        }
+        if (query.length() == 0) {
+            return url;
+        }
+        return url + (url.contains("?") ? "&" : "?") + query;
     }
 
     /** §2.4: 解析 dynamic_sql（表名 → 子查询模板）；非法/空返回空 Map。 */

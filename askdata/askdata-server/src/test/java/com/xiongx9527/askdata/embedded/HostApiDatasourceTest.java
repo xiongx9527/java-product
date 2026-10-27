@@ -34,6 +34,8 @@ class HostApiDatasourceTest {
 
     private String lastAuth;
 
+    private String lastCookie;
+
     private DynamicDatasourceResolver resolver;
 
     @BeforeEach
@@ -42,7 +44,20 @@ class HostApiDatasourceTest {
         server.createContext("/api/ds", exchange -> {
             lastPath = exchange.getRequestURI().toString();
             lastAuth = exchange.getRequestHeaders().getFirst("Authorization");
+            lastCookie = exchange.getRequestHeaders().getFirst("Cookie");
             byte[] body = responseBody().getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(body);
+            }
+        });
+        server.createContext("/api/ds-enc", exchange -> {
+            String cipher = com.xiongx9527.askdata.system.auth.CryptoUtil.encryptSqlbot("pw-secret");
+            byte[] body = ("{\"code\":0,\"data\":[{\"id\":1003,\"name\":\"enc\",\"type\":\"mysql\","
+                    + "\"configuration\":{\"host\":\"h\",\"port\":3306,\"username\":\"u\","
+                    + "\"password\":\"" + cipher + "\",\"password_encrypted\":true}}]}")
+                    .getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, body.length);
             try (OutputStream out = exchange.getResponseBody()) {
@@ -137,6 +152,53 @@ class HostApiDatasourceTest {
                 10)));
         resolver.resolveFromHostList(1, endpoint, 1002L);
         assertEquals("Bearer host-token", lastAuth);
+    }
+
+    @Test
+    void cookieAndParamCredentialsAreSent() {
+        Map<String, Object> endpoint = resolver.hostEndpointOf(assistant(configJson(
+                baseUrl + "/api/ds",
+                "[{\"target\":\"cookie\",\"key\":\"sid\",\"value\":\"s-1\"},"
+                        + "{\"target\":\"param\",\"key\":\"tenant\",\"value\":\"t 1\"}]",
+                10)));
+        resolver.resolveFromHostList(1, endpoint, 1001L);
+
+        assertEquals("sid=s-1", lastCookie);
+        assertTrue(lastPath.contains("tenant=t+1") || lastPath.contains("tenant=t%201"),
+                "param 凭证必须拼进查询串: " + lastPath);
+    }
+
+    @Test
+    void encryptedCertificateValueIsDecrypted() {
+        String cipher = com.xiongx9527.askdata.system.auth.CryptoUtil.encryptSqlbot("Bearer plain-token");
+        Map<String, Object> endpoint = resolver.hostEndpointOf(assistant(configJson(
+                baseUrl + "/api/ds",
+                "[{\"target\":\"header\",\"key\":\"Authorization\","
+                        + "\"value\":\"aes:" + cipher + "\",\"encrypted\":true}]",
+                10)));
+        resolver.resolveFromHostList(1, endpoint, 1001L);
+
+        assertEquals("Bearer plain-token", lastAuth);
+    }
+
+    @Test
+    void encryptedDatasourcePasswordIsDecrypted() {
+        Map<String, Object> endpoint = resolver.hostEndpointOf(assistant(configJson(
+                baseUrl + "/api/ds-enc", "[]", 10)));
+        DynamicDatasource ds = resolver.resolveFromHostList(1, endpoint, 1003L);
+
+        assertEquals("pw-secret", ds.getConf().getPassword());
+        assertEquals("h", ds.getConf().getHost());
+    }
+
+    @Test
+    void undecryptableCredentialIsRejected() {
+        Map<String, Object> config = assistant(configJson(
+                baseUrl + "/api/ds",
+                "[{\"target\":\"header\",\"key\":\"Authorization\","
+                        + "\"value\":\"aes:not-a-cipher\",\"encrypted\":true}]",
+                10));
+        assertThrows(RuntimeException.class, () -> resolver.hostEndpointOf(config));
     }
 
     @Test
