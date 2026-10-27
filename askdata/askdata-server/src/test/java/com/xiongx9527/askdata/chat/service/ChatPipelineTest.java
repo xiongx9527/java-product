@@ -87,6 +87,8 @@ class ChatPipelineTest {
     private static final String STUB_SQL =
             "SELECT \"status\", COUNT(*) AS \"cnt\" FROM \"orders\" GROUP BY \"status\" ORDER BY \"cnt\" DESC";
 
+    private static final String STUB_SQL_JSON = "{\"success\": true, \"sql\": \"SELECT \\\"status\\\", COUNT(*) AS \\\"cnt\\\" FROM \\\"orders\\\" GROUP BY \\\"status\\\" ORDER BY \\\"cnt\\\" DESC\", \"brief\": \"每个状态的订单数\", \"chart-type\": \"column\", \"tables\": [\"orders\"]}";
+
     private static final String STUB_CHART = "{\"type\":\"column\",\"title\":\"各状态订单数\","
             + "\"columns\":[{\"name\":\"status\",\"value\":\"status\"},{\"name\":\"cnt\",\"value\":\"cnt\"}],"
             + "\"axis\":{\"x\":{\"name\":\"status\",\"value\":\"status\"},"
@@ -676,6 +678,18 @@ class ChatPipelineTest {
         assertTrue(steps.stream().anyMatch(step -> "GENERATE_SQL".equals(step.get("operate"))), steps.toString());
         assertTrue(steps.stream().anyMatch(step -> "EXECUTE_SQL".equals(step.get("operate"))), steps.toString());
         assertTrue(steps.stream().anyMatch(step -> "GENERATE_CHART".equals(step.get("operate"))), steps.toString());
+        // A14：14 类 operate 词汇（含 5 个新增）全部落 chat_log，供 ExecutionDetails 渲染步骤
+        for (String op : new String[] {"CHOOSE_DATASOURCE", "CHOOSE_TABLE", "GENERATE_SQL", "EXECUTE_SQL",
+                "GENERATE_DYNAMIC_SQL", "GENERATE_SQL_WITH_PERMISSIONS", "GENERATE_CHART", "GENERATE_PICTURE",
+                "GENERATE_RECOMMENDED_QUESTIONS", "EXTRACT_KEYWORDS", "FILTER_TERMS", "FILTER_SQL_EXAMPLE",
+                "FILTER_CUSTOM_PROMPT"}) {
+            assertTrue(steps.stream().anyMatch(step -> op.equals(step.get("operate"))),
+                    "缺失 operate=" + op + " : " + steps);
+        }
+        // A14：新增步骤携带结构化 message（含 pid 字段，便于 ExecutionDetails 关联父记录）
+        Map<String, Object> chooseDs = steps.stream()
+                .filter(s -> "CHOOSE_DATASOURCE".equals(s.get("operate"))).findFirst().orElseThrow();
+        assertNotNull(chooseDs.get("message"), "CHOOSE_DATASOURCE 应携带 message");
         assertNotNull(chatService.recordLog(recordId, true));
         assertTrue(chatService.recentQuestions(dsId).contains("每个状态的订单数"));
 
@@ -1068,11 +1082,11 @@ class ChatPipelineTest {
     private List<String> chunksFor(String prompt) {
         if (prompt.contains("请修正后只输出一条正确的 SQL")) {
             stubCalls.add("sql_fix");
-            return Arrays.asList("```sql\n", STUB_SQL, "\n```");
+            return Arrays.asList(STUB_SQL_JSON);
         }
         if (prompt.contains("请只输出 SQL")) {
             stubCalls.add("sql");
-            return Arrays.asList("```sql\n", STUB_SQL, "\n```");
+            return Arrays.asList(STUB_SQL_JSON);
         }
         if (prompt.contains("请只输出一个 G2 图表配置 JSON")) {
             stubCalls.add("chart");

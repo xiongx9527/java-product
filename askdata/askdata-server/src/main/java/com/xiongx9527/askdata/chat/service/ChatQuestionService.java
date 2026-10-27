@@ -98,6 +98,13 @@ public class ChatQuestionService {
 
     private static final String OPERATE_FILTER_CUSTOM_PROMPT = "FILTER_CUSTOM_PROMPT";
 
+    // A14：SQLBot OperationEnum 对齐的 5 个新增操作类型（选表/出图/选数据源/动态 SQL/权限加固 SQL）
+    private static final String OPERATE_CHOOSE_TABLE = "CHOOSE_TABLE";
+    private static final String OPERATE_GENERATE_PICTURE = "GENERATE_PICTURE";
+    private static final String OPERATE_CHOOSE_DATASOURCE = "CHOOSE_DATASOURCE";
+    private static final String OPERATE_GENERATE_DYNAMIC_SQL = "GENERATE_DYNAMIC_SQL";
+    private static final String OPERATE_GENERATE_SQL_WITH_PERMISSIONS = "GENERATE_SQL_WITH_PERMISSIONS";
+
     /**
      * {@code /regenerate} 后可跟记录 id；命令必须独占整个提问
      * （对齐 SQLBot {@code parse_quick_command}：命令不在串尾时按普通提问处理的语义）。
@@ -228,6 +235,12 @@ public class ChatQuestionService {
             question = findBaseQuestion(target);
         }
 
+        // A16：空提问在调用 LLM 前拒绝，不产生记录与模型费用
+        if (question == null || question.trim().isEmpty()) {
+            emitError(writer, messageResolver.get("chat.question.empty"));
+            return;
+        }
+
         AtomicLong totalTokens = new AtomicLong(0L);
             AtomicLong currentRecordId = new AtomicLong(0L);
             try {
@@ -286,6 +299,10 @@ public class ChatQuestionService {
                 currentRecordId.set(recordId);
 
                 emit(writer, Rows.of("type", "id", "id", recordId));
+                // A14：记录选数据源步骤（含普通数据源 id 与动态数据源名称）
+                logOperation(recordId, oid, uid, OPERATE_CHOOSE_DATASOURCE, System.currentTimeMillis(), 0L, false,
+                        Rows.of("datasource_id", dsId, "datasource_name", dsName, "engine_type", dsTypeName),
+                        regenerateRecordId);
                 if (regenerateRecordId != null) {
                     emit(writer, Rows.of("type", "regenerate_record_id", "regenerate_record_id", regenerateRecordId));
                 }
@@ -355,11 +372,36 @@ public class ChatQuestionService {
                                 : schemaContextBuilder.buildSqlMessages(question, dsId, knowledge.getTerminologyText(),
                                         customPromptText, knowledge.getSqlExamples(), historyText, matchText),
                         "sql-result", totalTokens, sqlUsage);
-                String sql = sqlText == null ? null : extractSql(sqlText);
-                if (sql == null) {
-                    // 一次修复：把「未输出 SQL」的语义错误回喂
-                    sqlText = regenerateSql(aiModel, question, dsId, dynamic, sqlText, messageResolver.get("scheduled.no.sql"), writer);
-                    sql = sqlText == null ? null : extractSql(sqlText);
+                // A12：解析结构化 SQL JSON 协议（success,sql,brief,chart-type,tables），不再用正则抠 SQL
+                SqlJsonResult sqlJson = parseSqlJson(sqlText);
+                if (sqlJson == null || !sqlJson.success || sqlJson.sql == null || sqlJson.sql.isEmpty()) {
+                    // 一次修复：把「未输出合法 JSON/SQL」的语义错误回喂，仍走 JSON 协议
+                    String reason = sqlJson == null ? "模型未返回可解析的 JSON"
+                            : (sqlJson.message == null ? "SQL 生成失败" : sqlJson.message);
+                    String repaired = regenerateSql(aiModel, question, dsId, dynamic, sqlText, reason, writer);
+                    SqlJsonResult repairedJson = parseSqlJson(repaired);
+                    if (repairedJson != null && repairedJson.success && repairedJson.sql != null
+                            && !repairedJson.sql.isEmpty()) {
+                        sqlJson = repairedJson;
+                    } else {
+                        // 非法 JSON / success=false：返回明确错误，不执行 SQL、不截断标题
+                        emitError(writer, reason);
+                        return;
+                    }
+                }
+                String sql = sqlJson.sql;
+                String chartType = sqlJson.chartType;
+                String sessionBrief = sqlJson.brief;
+                // A14：记录选表步骤（模型在 SQL JSON 中给出的 FROM 表范围）
+                logOperation(recordId, oid, uid, OPERATE_CHOOSE_TABLE, sqlStart, 0L, false,
+                        Rows.of("tables", sqlJson.tables), regenerateRecordId);
+                // A12：用 tables 限制 FROM 表范围（防止模型幻觉到未列出的表）
+                if (sqlJson.tables != null && !sqlJson.tables.isEmpty()) {
+                    String tableErr = validateTables(sql, sqlJson.tables);
+                    if (tableErr != null) {
+                        emitError(writer, tableErr);
+                        return;
+                    }
                 }
                 // §2.4: 动态数据源表级 SQL 占位符闭环（brief D2）：先查直接物理表引用，再确定性替换占位符；
                 // 替换/引用违规都走既有的错误回喂修复轮，不执行未替换 SQL
@@ -369,8 +411,8 @@ public class ChatQuestionService {
                     if (directErr == null) {
                         sql = DynamicDatasource.replaceSubSqlPlaceholders(sql, dynamic.getTableSqlTemplates());
                     } else {
-                        sqlText = regenerateSql(aiModel, question, dsId, dynamic, sql, directErr, writer);
-                        String fixedSql = sqlText == null ? null : extractSql(sqlText);
+                        String fixedText = regenerateSql(aiModel, question, dsId, dynamic, sql, directErr, writer);
+                        String fixedSql = parseSqlJson(fixedText).sql;
                         if (fixedSql != null
                                 && DynamicDatasource.directTableReferenceError(fixedSql, dynamic.getTableSqlTemplates(),
                                         ChatQuestionService::usedTables) == null) {
@@ -395,7 +437,7 @@ public class ChatQuestionService {
                         : (sql == null ? "模型未输出可执行的 SQL" : validateSql(sql, dsType, dsId, dynamic));
                 if (validation != null) {
                     String fixed = regenerateSql(aiModel, question, dsId, dynamic, sql == null ? "" : sql, validation, writer);
-                    String fixedSql = fixed == null ? null : extractSql(fixed);
+                    String fixedSql = parseSqlJson(fixed).sql;
                     if (fixedSql != null && dynamic != null && !dynamic.getTableSqlTemplates().isEmpty()
                             && DynamicDatasource.directTableReferenceError(fixedSql, dynamic.getTableSqlTemplates(),
                                     ChatQuestionService::usedTables) == null) {
@@ -422,6 +464,10 @@ public class ChatQuestionService {
                     emitError(writer, validation);
                     return;
                 }
+                // A14：动态 SQL 构建完成（含动态数据源模板/行规则/表范围替换、只读校验）
+                logOperation(recordId, oid, uid, OPERATE_GENERATE_DYNAMIC_SQL, sqlStart, 0L, false,
+                        Rows.of("sql", sql), regenerateRecordId);
+                long permStart = System.currentTimeMillis();
                 // -- 行/列权限强制（A3）：普通用户注入行过滤、隐藏无权限列；管理员/白名单跳过
                 PermissionEnforcer.EnforcedQuery enforced;
                 try {
@@ -439,11 +485,17 @@ public class ChatQuestionService {
                     sql = enforced.getSql();
                 }
                 chatRepository.saveSql(recordId, sql, sqlText);
+                // A14：行/列权限加固后的 SQL 生成（enforced=true 表示注入了行过滤/隐藏列）
+                logOperation(recordId, oid, uid, OPERATE_GENERATE_SQL_WITH_PERMISSIONS, permStart, 0L, false,
+                        Rows.of("sql", sql, "enforced", enforced != null,
+                                "hidden_columns", enforced == null ? null : enforced.getHiddenColumns()),
+                        regenerateRecordId);
                 emit(writer, Rows.of("type", "sql", "content", formatSql(sql)));
 
                 // -- 首问时生成会话摘要（对齐 SQLBot change_title 语义）
                 if (isFirstRecord) {
-                    String brief = briefOf(question);
+                    // A12：优先使用 SQL 生成 JSON 返回的 brief 重命名会话；缺失时回退完整问题（不截断前 20 字）
+                    String brief = (sessionBrief != null && !sessionBrief.isEmpty()) ? sessionBrief : fullBrief(question);
                     chatRepository.renameChat(chatId, brief);
                     emit(writer, Rows.of("type", "brief", "brief", brief));
                 }
@@ -489,7 +541,7 @@ public class ChatQuestionService {
                             dynamic.getTableSqlTemplates())
                             : schemaContextBuilder.mSchemaOf(dsId);
                     ChartOutcome chartOutcome = generateChart(writer, aiModel, question, result, totalTokens,
-                            sql, chartMSchema);
+                            sql, chartMSchema, chartType);
                     String chartJson = chartOutcome.chart;
                     logOperation(recordId, oid, uid, OPERATE_GENERATE_CHART, chartStart, totalTokens.get(),
                             false, null);
@@ -510,6 +562,10 @@ public class ChatQuestionService {
                     if (imageUrl != null) {
                         emit(writer, Rows.of("type", "imageUrl", "content", imageUrl));
                     }
+                    // A14：出图步骤（图表配置 + SSR 图片 URL，rendered 标记是否实际产出图片）
+                    logOperation(recordId, oid, uid, OPERATE_GENERATE_PICTURE, chartStart, 0L, false,
+                            Rows.of("chart_type", chartType, "image_url", imageUrl,
+                                    "rendered", imageUrl != null), regenerateRecordId);
 
                     // -- 推荐问题（仅在真的产出时才发帧：前端空数组会渲染为「获取失败」）
                     if (dynamic != null || recommendedEnabled(ds)) {
@@ -533,7 +589,8 @@ public class ChatQuestionService {
             } catch (Exception e) {
                 log.warn("提问链路异常: {}", e.getMessage());
                 emitError(writer, e.getMessage() == null ? e.toString() : e.getMessage());
-                if (currentRecordId.get() > 0L) {
+                // A16：仅真实执行错误才落 saveError；客户端断连（IOException）不视为业务错误
+                if (currentRecordId.get() > 0L && !(e instanceof IOException)) {
                     chatRepository.saveError(currentRecordId.get(), String.valueOf(e.getMessage()));
                 }
             }
@@ -1314,6 +1371,87 @@ public class ChatQuestionService {
         long total;
     }
 
+    /**
+     * A12：SQL 生成结果的结构化 JSON 解析载体（{success,sql,brief,chart-type,tables}）。
+     * 当 {@link #success} 为 false 或解析失败时，{@link #message} 携带明确错误原因。
+     */
+    static final class SqlJsonResult {
+        boolean success;
+        String sql;
+        String brief;
+        String chartType;
+        List<String> tables = new ArrayList<>();
+        String message;
+    }
+
+    /** 实例入口：使用本服务注入的 ObjectMapper。 */
+    private SqlJsonResult parseSqlJson(String text) {
+        return parseSqlJson(text, objectMapper);
+    }
+
+    /**
+     * 静态入口（便于单测）：从 LLM 输出中解析结构化 SQL JSON。
+     * 解析失败、非 JSON 或 success=false 时返回非 success 结果（调用方据此返回明确错误，
+     * 不回退正则抠 SQL、不把标题截断前 20 字）。
+     */
+    static SqlJsonResult parseSqlJson(String text, ObjectMapper mapper) {
+        SqlJsonResult result = new SqlJsonResult();
+        if (text == null || text.trim().isEmpty()) {
+            result.message = "模型未返回任何内容";
+            return result;
+        }
+        String json = extractJsonObject(text);
+        if (json == null) {
+            result.message = "模型输出不是合法的 JSON";
+            return result;
+        }
+        try {
+            Map<String, Object> map = mapper.readValue(json, new TypeReference<Map<String, Object>>() {
+            });
+            Object success = map.get("success");
+            if (success instanceof Boolean) {
+                result.success = (Boolean) success;
+            } else if (success != null) {
+                result.success = Boolean.parseBoolean(String.valueOf(success));
+            }
+            Object sql = map.get("sql");
+            result.sql = sql == null ? null : String.valueOf(sql).trim();
+            Object brief = map.get("brief");
+            result.brief = brief == null ? null : String.valueOf(brief).trim();
+            Object chartType = map.get("chart-type");
+            result.chartType = chartType == null ? null : String.valueOf(chartType).trim();
+            Object tables = map.get("tables");
+            if (tables instanceof List) {
+                for (Object t : (List<?>) tables) {
+                    if (t != null) {
+                        String name = String.valueOf(t).trim();
+                        if (!name.isEmpty()) {
+                            result.tables.add(name);
+                        }
+                    }
+                }
+            }
+            if (!result.success) {
+                Object msg = map.get("message");
+                result.message = msg == null ? "SQL 生成失败（success=false）" : String.valueOf(msg);
+            }
+        } catch (Exception e) {
+            result.message = "JSON 解析失败: " + e.getMessage();
+        }
+        return result;
+    }
+
+    /** 从自由文本中提取一个 JSON 对象（容忍 Markdown 代码块与前后说明文字）。 */
+    private static String extractJsonObject(String text) {
+        String t = text.trim();
+        int start = t.indexOf('{');
+        int end = t.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+            return t.substring(start, end + 1);
+        }
+        return null;
+    }
+
     /** SQL 排版（对齐 SQLBot {@code sqlparse.format(reindent=True)} 的观感）。 */
     static String formatSql(String sql) {
         String text = sql.replaceAll("\\s+", " ").trim();
@@ -1349,12 +1487,12 @@ public class ChatQuestionService {
 
     private ChartOutcome generateChart(FrameWriter writer, ModelRef aiModel, String question,
                                        Map<String, Object> result, AtomicLong totalTokens,
-                                       String sql, String mSchema) throws IOException {
+                                       String sql, String mSchema, String chartType) throws IOException {
         String dataJson = chatRepository.writeJson(
                 Rows.of("fields", result.get("fields"), "data", sampleRows(result.get("data"))));
         StringBuilder reasoning = new StringBuilder();
         String text = generateText(writer, aiModel,
-                schemaContextBuilder.buildChartMessages(question, dataJson, sql, mSchema),
+                schemaContextBuilder.buildChartMessages(question, dataJson, sql, mSchema, chartType),
                 "chart-result", totalTokens, null, reasoning);
         Map<String, Object> chart = null;
         if (text != null) {
@@ -1429,6 +1567,10 @@ public class ChatQuestionService {
         final StringBuilder content = new StringBuilder();
         final StringBuilder reasoning = new StringBuilder();
         final AtomicReference<String> error = new AtomicReference<>(null);
+        // A16: token 统计以最后一次 usage 为准，不逐帧累加。
+        // 单条流内可能多次回调 usage（逐帧），这里只保留最后一次，待 onComplete 时一次性累加，
+        // 避免逐帧求和导致 token 数虚高；跨步骤（SQL/图表/分析等）的 totals 仍各自累加。
+        final AtomicReference<long[]> lastUsage = new AtomicReference<>(null);
         // §2.3: protocol（1=openai 兼容 / 2=vllm）随模型解析下发，端点形态（含 Azure）在 client 内分发
         modelClient.streamCompletion(aiModel.apiDomain, aiModel.apiKey, aiModel.baseModel, messages,
                 aiModel.params, aiModel.protocol, new TokenHandler() {
@@ -1453,27 +1595,33 @@ public class ChatQuestionService {
                     }
 
                     @Override
-                    public void onComplete() {
-                        // no-op
-                    }
-
-                    @Override
                     public void onError(String message) {
                         error.set(message);
                     }
 
                     @Override
                     public void onUsage(long tokens) {
-                        totalTokens.addAndGet(tokens);
+                        // A16: 单值 usage 记为最后一次，不逐帧累加
+                        lastUsage.set(new long[] { tokens, tokens, tokens });
                     }
 
                     @Override
                     public void onUsageDetail(long inputTokens, long outputTokens, long total) {
-                        totalTokens.addAndGet(total);
+                        // A16: 以最后一次 usage 为准，不逐帧累加
+                        lastUsage.set(new long[] { inputTokens, outputTokens, total });
                         if (stepUsage != null) {
-                            stepUsage.input += inputTokens;
-                            stepUsage.output += outputTokens;
-                            stepUsage.total += total;
+                            stepUsage.input = inputTokens;
+                            stepUsage.output = outputTokens;
+                            stepUsage.total = total;
+                        }
+                    }
+
+                    @Override
+                    public void onComplete() {
+                        // A16: 流结束时按最后一次 usage 一次性累加（避免逐帧求和）
+                        long[] u = lastUsage.get();
+                        if (u != null && u[2] > 0) {
+                            totalTokens.addAndGet(u[2]);
                         }
                     }
                 });
@@ -1498,6 +1646,18 @@ public class ChatQuestionService {
         }
         String text = question.trim().replaceAll("\\s+", " ");
         return text.length() <= 20 ? text : text.substring(0, 20);
+    }
+
+    /**
+     * A12：会话标题回退值（当 SQL 生成 JSON 未给出 brief 时使用）。
+     * 与 {@link #briefOf} 不同，这里保留完整问题、不做前 20 字截断。
+     */
+    static String fullBrief(String question) {
+        if (question == null || question.trim().isEmpty()) {
+            return "新会话";
+        }
+        String text = question.trim().replaceAll("\\s+", " ");
+        return text.length() <= 50 ? text : text.substring(0, 50);
     }
 
     private boolean recommendedEnabled(Map<String, Object> ds) {
@@ -1601,6 +1761,30 @@ public class ChatQuestionService {
         } catch (Exception e) {
             log.info("对话日志写入失败（忽略）: {}", e.getMessage());
         }
+    }
+
+    /**
+     * A14：带父记录 pid 的操作日志（pid 写入 message，便于 ExecutionDetails 关联步骤）。
+     * 现有调用方均使用不带 pid 的重载，保持兼容。
+     */
+    private void logOperation(long recordId, long oid, long uid, String operate, long startMillis,
+                              long totalTokens, boolean error, Map<String, Object> message, Long pid) {
+        logOperation(recordId, oid, uid, operate, startMillis,
+                totalTokens <= 0L ? null : usageOf(0L, 0L, totalTokens), error, message, pid);
+    }
+
+    /** A14：带 pid 的 TokenUsage 重载（pid 合并进 message 落库）。 */
+    private void logOperation(long recordId, long oid, long uid, String operate, long startMillis,
+                              TokenUsage usage, boolean error, Map<String, Object> message, Long pid) {
+        if (pid != null) {
+            Map<String, Object> withPid = new LinkedHashMap<String, Object>();
+            if (message != null) {
+                withPid.putAll(message);
+            }
+            withPid.put("pid", pid);
+            message = withPid;
+        }
+        logOperation(recordId, oid, uid, operate, startMillis, usage, error, message);
     }
 
     private static TokenUsage usageOf(long input, long output, long total) {

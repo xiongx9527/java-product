@@ -462,8 +462,14 @@ public class ChatModelClient {
             if (listener != null) {
                 listener.onFrame(frame);
             }
-            writer.write("data:" + objectMapper.writeValueAsString(frame) + "\n\n");
-            writer.flush();
+            try {
+                writer.write("data:" + objectMapper.writeValueAsString(frame) + "\n\n");
+                writer.flush();
+            } catch (IOException e) {
+                // A16：客户端已断开连接时静默忽略，后端继续完成 SQL 执行、图表生成与落库，
+                // 不把断连当成业务错误（真实执行错误仍会由调用方以异常形式抛出并 saveError）
+                log.info("流式写出失败（客户端可能已断开）: {}", e.getMessage());
+            }
         }
 
         @Override
