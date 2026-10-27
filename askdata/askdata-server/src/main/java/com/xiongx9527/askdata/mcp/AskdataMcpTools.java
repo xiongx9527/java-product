@@ -36,6 +36,7 @@ import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -345,7 +346,8 @@ public class AskdataMcpTools {
         } catch (Exception e) {
             log.warn("MCP question_answer 出图失败（降级无图）: {}", e.getMessage());
         }
-        return mapper.writeValueAsString(result);
+        // A15：非交互问答直接返回自包含 Markdown（记录 ID + 结果表格 + 图片行），与 Web SSE JSON 帧解耦
+        return toMarkdownAnswer(result, question);
     }
 
     /**
@@ -354,6 +356,98 @@ public class AskdataMcpTools {
      */
     static boolean shouldReturnImage(Boolean returnImg) {
         return returnImg == null || returnImg;
+    }
+
+    /**
+     * A15：MCP 非交互问答的自包含 Markdown 输出——与 Web SSE JSON 帧完全解耦。
+     * 包含记录 ID、结果 Markdown 表格（兼容 {@code data{fields,data}} 与 {@code rows:List<Map>} 两种形态），
+     * 以及（当存在图表图片 URL 时）Markdown 图片行；无图表时省略图片行。
+     */
+    static String toMarkdownAnswer(Map<String, Object> result, String question) {
+        StringBuilder sb = new StringBuilder();
+        if (question != null && !question.isEmpty()) {
+            sb.append("**问**：").append(question).append("\n\n");
+        }
+        Object rid = result.get("recordId");
+        if (rid == null) {
+            rid = result.get("record_id");
+        }
+        if (rid != null) {
+            sb.append("**记录 ID**：").append(rid).append("\n\n");
+        }
+        Object sql = result.get("sql");
+        if (sql != null) {
+            sb.append("**SQL**：`").append(sql).append("`\n\n");
+        }
+        List<String> columns = new ArrayList<String>();
+        List<List<Object>> tableRows = new ArrayList<List<Object>>();
+        Object data = result.get("data");
+        if (data instanceof Map) {
+            Object fields = ((Map<?, ?>) data).get("fields");
+            Object rowsData = ((Map<?, ?>) data).get("data");
+            if (fields instanceof List) {
+                for (Object f : (List<?>) fields) {
+                    columns.add(String.valueOf(f));
+                }
+            }
+            if (rowsData instanceof List) {
+                for (Object r : (List<?>) rowsData) {
+                    if (r instanceof List) {
+                        List<Object> row = new ArrayList<Object>();
+                        for (Object c : (List<?>) r) {
+                            row.add(c);
+                        }
+                        tableRows.add(row);
+                    }
+                }
+            }
+        } else {
+            Object rows = result.get("rows");
+            if (rows instanceof List) {
+                for (Object r : (List<?>) rows) {
+                    if (r instanceof Map) {
+                        Map<?, ?> rowMap = (Map<?, ?>) r;
+                        if (columns.isEmpty() && !rowMap.isEmpty()) {
+                            for (Object k : rowMap.keySet()) {
+                                columns.add(String.valueOf(k));
+                            }
+                        }
+                        List<Object> row = new ArrayList<Object>();
+                        for (String col : columns) {
+                            row.add(rowMap.get(col));
+                        }
+                        tableRows.add(row);
+                    }
+                }
+            }
+        }
+        if (!columns.isEmpty()) {
+            sb.append("| ");
+            for (String col : columns) {
+                sb.append(col).append(" | ");
+            }
+            sb.append("\n| ");
+            for (int ci = 0; ci < columns.size(); ci++) {
+                sb.append("--- | ");
+            }
+            sb.append("\n");
+            for (List<Object> row : tableRows) {
+                sb.append("| ");
+                for (Object cell : row) {
+                    sb.append(cell == null ? "" : cell).append(" | ");
+                }
+                sb.append("\n");
+            }
+            sb.append("\n");
+        }
+        Object img = result.get("imageUrl");
+        if (img == null) {
+            img = result.get("image_url");
+        }
+        if (img != null && !String.valueOf(img).isEmpty()) {
+            sb.append("![](").append(img).append(")\n\n");
+        }
+        return sb.toString();
     }
 
     /** 会话归属校验（对齐 ChatQuestionService.requireOwner）：管理员放行；否则须同工作空间且为创建者。 */
@@ -627,6 +721,8 @@ public class AskdataMcpTools {
                 body.put("return_img", returnImg);
             }
             Map<String, Object> result = SpringUtils.getBean(ChatQuestionService.class).ask(body);
+            // A15：非交互问答在 JSON 中附带自包含 Markdown（记录 ID + 结果表格 + 图片行），与 SSE 帧解耦
+            result.put("markdown", toMarkdownAnswer(result, question));
             return mapper.writeValueAsString(result);
         } catch (ForbiddenException e) {
             throw e;

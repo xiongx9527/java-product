@@ -358,8 +358,18 @@ public class SchemaContextBuilder {
         if (historyText != null && !historyText.isEmpty()) {
             user.append("\n\n【前文问答（追问请优先引用其中已出现的表名、列名与实体）】\n").append(historyText);
         }
-        user.append("\n\n【用户问题】\n").append(question)
-                .append("\n\n请只输出 SQL，使用 ```sql 代码块包裹。");
+        user.append("\n\n【用户问题】\n").append(question);
+        // A12：SQL 生成必须输出结构化 JSON（禁止用正则从自然语言抠 SQL）。
+        // 保留「请只输出 SQL」作为桩/调试可识别的语义标记，但要求以 JSON 对象呈现。
+        user.append("\n\n请只输出 SQL 对应的结构化 JSON 对象（不要使用 Markdown 代码块），字段如下：\n")
+                .append("{\n")
+                .append("success\": true 或 false（无法生成 SQL 时为 false），\n")
+                .append("sql\": 生成的只读 SELECT 语句字符串（success 为 false 时为空字符串），\n")
+                .append("brief\": 一句话会话标题（中文，不超过 20 字，用于重命名本次会话），\n")
+                .append("chart-type\": 推荐图表类型，取值 table/column/bar/line/pie 之一，\n")
+                .append("tables\": 本次查询实际用到的表名数组（必须与 FROM/JOIN 中的表一致）\n")
+                .append("}\n")
+                .append("注意：sql 字段必须是一条完整、可执行的 SQL，不得包含解释性文字。");
         messages.add(new ModelMessage("user", user.toString()));
         return messages;
     }
@@ -373,7 +383,7 @@ public class SchemaContextBuilder {
                         + "\n\n【用户问题】\n" + question
                         + "\n\n【上次生成的 SQL】\n" + brokenSql
                         + "\n\n【错误】\n" + error
-                        + "\n\n请修正后只输出一条正确的 SQL，使用 ```sql 代码块包裹。"));
+                        + "\n\n请修正后只输出一条正确的 SQL：以结构化 JSON 对象返回（字段与首次生成一致：success/sql/brief/chart-type/tables），不得包含解释性文字或 Markdown 代码块。"));
         return messages;
     }
 
@@ -414,7 +424,7 @@ public class SchemaContextBuilder {
     }
 
     public List<ModelMessage> buildChartMessages(String question, String dataJson) {
-        return buildChartMessages(question, dataJson, null, null);
+        return buildChartMessages(question, dataJson, null, null, null);
     }
 
     /**
@@ -424,7 +434,8 @@ public class SchemaContextBuilder {
      * {@code <m-schema>}（数据源的 mini schema，供模型判断字段语义与多指标）、
      * {@code <chart-type>}（结果暗示的图表类型）。缺省传 null 时相应段省略，行为与旧版一致。</p>
      */
-    public List<ModelMessage> buildChartMessages(String question, String dataJson, String sql, String mSchema) {
+    public List<ModelMessage> buildChartMessages(String question, String dataJson, String sql, String mSchema,
+                                                String chartType) {
         List<ModelMessage> messages = new ArrayList<>();
         messages.add(new ModelMessage("system", chartSystemPrompt()));
         StringBuilder user = new StringBuilder();
@@ -434,6 +445,9 @@ public class SchemaContextBuilder {
         }
         if (mSchema != null && !mSchema.trim().isEmpty()) {
             user.append("\n\n<m-schema>\n").append(mSchema.trim()).append("\n</m-schema>");
+        }
+        if (chartType != null && !chartType.trim().isEmpty()) {
+            user.append("\n\n<chart-type>\n").append(chartType.trim()).append("\n</chart-type>");
         }
         user.append("\n\n【查询结果（JSON，最多 20 行）】\n").append(dataJson);
         user.append("\n\n请只输出一个 G2 图表配置 JSON（不要 Markdown 代码块）。");
@@ -942,7 +956,8 @@ public class SchemaContextBuilder {
             user.append("\n\n【前文问答（追问请优先引用其中已出现的表名、列名与实体）】\n").append(historyText);
         }
         user.append("\n\n【用户问题】\n").append(question)
-                .append("\n\n请只输出 SQL，使用 sql 代码块包裹。");
+                .append("\n\n请只输出 SQL 对应的结构化 JSON 对象（不要使用 Markdown 代码块），字段同静态数据源：")
+                .append("success/sql/brief/chart-type/tables，sql 为完整可执行的只读 SELECT。");
         messages.add(new ModelMessage("user", user.toString()));
         return messages;
     }
@@ -974,7 +989,7 @@ public class SchemaContextBuilder {
         user.append("\n\n【用户问题】\n").append(question)
                 .append("\n\n【上次生成的 SQL】\n").append(brokenSql)
                 .append("\n\n【错误】\n").append(error)
-                .append("\n\n请修正后只输出一条正确的 SQL，使用 sql 代码块包裹。");
+                .append("\n\n请修正后只输出一条正确的 SQL：以结构化 JSON 对象返回（字段与首次生成一致：success/sql/brief/chart-type/tables），不得包含解释性文字或 Markdown 代码块。");
         messages.add(new ModelMessage("user", user.toString()));
         return messages;
     }
@@ -1365,16 +1380,49 @@ public class SchemaContextBuilder {
     }
 
 
-    private static String analysisSystemPrompt() {
+    private String analysisSystemPrompt() {
+        if (promptTemplates != null) {
+            try {
+                String ported = promptTemplates.analysisSystemPrompt(
+                        chatArg("chat.sqlbot_name", "SQLBot"), chatArg("chat.lang", "zh-CN"), "");
+                if (ported != null && !ported.trim().isEmpty()) {
+                    return ported;
+                }
+            } catch (RuntimeException e) {
+                log.info("分析提示词模板读取失败，退化为内置提示词: {}", e.getMessage());
+            }
+        }
         return "你是数据分析专家。基于查询结果与图表，输出简洁的分析结论（使用中文 Markdown，可含要点列表）。";
     }
 
-    private static String predictSystemPrompt() {
+    private String predictSystemPrompt() {
+        if (promptTemplates != null) {
+            try {
+                String ported = promptTemplates.predictSystemPrompt(
+                        chatArg("chat.sqlbot_name", "SQLBot"), chatArg("chat.lang", "zh-CN"), "");
+                if (ported != null && !ported.trim().isEmpty()) {
+                    return ported;
+                }
+            } catch (RuntimeException e) {
+                log.info("预测提示词模板读取失败，退化为内置提示词: {}", e.getMessage());
+            }
+        }
         return "你是数据预测专家。基于历史数据输出合理的趋势预测："
                 + "先给出中文结论，再输出一个 JSON 数组作为预测数据（字段与查询结果一致）。";
     }
 
-    private static String recommendSystemPrompt() {
+    private String recommendSystemPrompt() {
+        if (promptTemplates != null) {
+            try {
+                String ported = promptTemplates.guessSystemPrompt(
+                        chatArg("chat.sqlbot_name", "SQLBot"), chatArg("chat.lang", "zh-CN"));
+                if (ported != null && !ported.trim().isEmpty()) {
+                    return ported;
+                }
+            } catch (RuntimeException e) {
+                log.info("推荐问题提示词模板读取失败，退化为内置提示词: {}", e.getMessage());
+            }
+        }
         return "你是问答助手。基于用户原问题（及可选的图表类型与历史提问），生成若干相关的、"
                 + "可继续追问的自然语言问题，尽量结合可视化分析角度；"
                 + "只输出一个 JSON 数组，不要编号、不要解释。";

@@ -163,6 +163,52 @@ public class SqlPromptTemplates {
         return unescapeBraces(body.replace("{lang}", lang));
     }
 
+    /**
+     * 分析提示词（A13：加载基础模板 analysis 段，注入 {lang} 与业务术语）。
+     * 模板缺失时抛明确配置错误，不静默回退硬编码串。
+     */
+    @SuppressWarnings("unchecked")
+    public String analysisSystemPrompt(String sqlbotName, String lang, String terminologies) {
+        return sectionPrompt("analysis", sqlbotName, lang, terminologies);
+    }
+
+    /**
+     * 预测提示词（A13：加载基础模板 predict 段，注入 {lang} 与业务术语）。
+     * 预测段要求至少 2 个周期，并在无法预测时明确说明原因（见 template.yaml）。
+     */
+    @SuppressWarnings("unchecked")
+    public String predictSystemPrompt(String sqlbotName, String lang, String terminologies) {
+        return sectionPrompt("predict", sqlbotName, lang, terminologies);
+    }
+
+    /**
+     * 推荐问题提示词（A13：加载基础模板 guess 段，注入 {lang}）。
+     */
+    @SuppressWarnings("unchecked")
+    public String guessSystemPrompt(String sqlbotName, String lang) {
+        return sectionPrompt("guess", sqlbotName, lang, "");
+    }
+
+    /**
+     * 通用三段提示词装配（A13）：读取 template.&lt;section&gt; 的 system + generate_rules，
+     * 注入 {sqlbot_name} / {lang} / {terminologies}。
+     *
+     * @throws IllegalStateException 模板段缺失时（明确配置错误，不静默回退）
+     */
+    @SuppressWarnings("unchecked")
+    private String sectionPrompt(String section, String sqlbotName, String lang, String terminologies) {
+        Map<String, Object> block = (Map<String, Object>) baseTemplate().get(section);
+        if (block == null) {
+            throw new IllegalStateException("prompt/template.yaml missing template." + section + " section");
+        }
+        String system = text(block.get("system")).replace("{sqlbot_name}", sqlbotName);
+        String rules = text(block.get("generate_rules"));
+        String body = system + "\n\n" + rules;
+        body = body.replace("{lang}", lang == null ? "简体中文" : lang);
+        body = body.replace("{terminologies}", terminologies == null ? "" : terminologies);
+        return unescapeBraces(body);
+    }
+
     private static String exampleAnswer(Map<String, Object> base, Map<String, Object> dialect,
                                         int index, boolean rowLimit) {
         String key = "example_answer_" + index + (rowLimit ? "_with_limit" : "");
