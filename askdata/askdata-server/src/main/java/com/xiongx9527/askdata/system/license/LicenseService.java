@@ -10,7 +10,6 @@ import org.springframework.stereotype.Service;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -19,63 +18,53 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * 许可证管理（A28；对齐 SQLBot xpack {@code /system/license} 的对外契约）。
+ * 许可证管理（A3 License 校验与门控；对齐 SQLBot xpack /system/license 的对外契约）。
  *
- * <p>前端契约（{@code web/src/api/license.ts} 逐字一致）：</p>
- * <ul>
- *   <li>{@code GET /system/license}：{@code {status, license:{corporation, expired, count, version,
- *       edition, serialNo, remark, isv}}}；无许可证时 {@code {status:"community", license:null}}；</li>
- *   <li>{@code POST /system/license}：ws admin 上传 {@code {license_key}}，返回同上（失败带
- *       {@code message}）；</li>
- *   <li>{@code GET /system/license/version}：真实版本号（有许可证取许可证版本，否则取产品版本）。</li>
- * </ul>
+ * 前端契约（web/src/api/license.ts 逐字一致）：
+ *  - GET /system/license：{status, enforcement, enterprise, license:{corporation, expired,
+ *    count, version, edition, serialNo, remark, isv}}；无许可证时 {status:"community", license:null}；
+ *  - POST /system/license：ws admin 上传 {license_key}，返回同上（失败带 message）；
+ *  - GET /system/license/version：真实版本号（有许可证取许可证版本，否则取产品版本）。
  *
- * <p>许可证为自描述 JSON：{@code {product, edition, version, corporation, count, serialNo, remark,
- * isv, expires_at, signature}}，其中 {@code signature} 是对其余字段（按 key 排序的规范化 JSON）
- * 的 HMAC-SHA256。签名密钥来自配置 {@code askdata.license.sign-key}；未配置时首次上传时生成
- * 随机密钥并持久化（{@code sys_arg}），保证同一安装内可校验、重启不失效。</p>
+ * 许可证为自描述 JSON：{product, edition, version, corporation, count, serialNo, remark,
+ * isv, expires_at, signature}，signature 是对其余字段（按 key 排序的规范化 JSON）的 HMAC-SHA256，
+ * 密钥来自配置 askdata.license.sign-key。
+ *
+ * 门控：askdata.license.enforcement 默认 bypass（企业能力保持可用）；设为 enforce 后，仅当许可证
+ * 状态为 valid（未过期、未失效）时企业能力才可用。签名密钥未配置时校验链 fail-closed：上传直接返回
+ * invalid 并给出可读配置提示，不再生成随机密钥掩盖问题。
  */
 @Service
 public class LicenseService {
 
-    /** sys_license 固定行 id（仅保留最新一条）。 */
     private static final long ROW_ID = 1L;
-
-    private static final String SIGN_KEY_ARG = "license.sign_key";
 
     private static final DateTimeFormatter EXPIRED_FORMAT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
 
     private final JdbcTemplate jdbc;
-
     private final ObjectMapper objectMapper;
-
     private final CurrentUserService currentUserService;
-
     private final String appVersion;
-
     private final String configuredSignKey;
+    private final String enforcement;
+    private final long maxCount;
 
     public LicenseService(JdbcTemplate jdbc, ObjectMapper objectMapper,
                           CurrentUserService currentUserService,
                           @Value("${askdata.app.version:1.0.0}") String appVersion,
-                          @Value("${askdata.license.sign-key:}") String configuredSignKey) {
+                          @Value("${askdata.license.sign-key:}") String configuredSignKey,
+                          @Value("${askdata.license.enforcement:bypass}") String enforcement,
+                          @Value("${askdata.license.max-count:1000000}") long maxCount) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.currentUserService = currentUserService;
         this.appVersion = appVersion;
         this.configuredSignKey = configuredSignKey;
+        this.enforcement = enforcement == null ? "bypass" : enforcement.trim();
+        this.maxCount = maxCount;
     }
 
-    // ------------------------------------------------------------------
-    // 上传 / 状态
-    // ------------------------------------------------------------------
-
-    /**
-     * 上传许可证（ws admin）。解析 + 验签 + 判定期限后持久化，返回与 GET 一致的视图。
-     *
-     * @param licenseKey 许可证原文（JSON）
-     */
     public Map<String, Object> upload(String licenseKey) {
         currentUserService.requireWsAdmin();
         if (licenseKey == null || licenseKey.trim().isEmpty()) {
@@ -84,8 +73,7 @@ public class LicenseService {
         Map<String, Object> license;
         try {
             license = objectMapper.readValue(licenseKey,
-                    new TypeReference<TreeMap<String, Object>>() {
-                    });
+                    new TypeReference<TreeMap<String, Object>>() {});
         } catch (Exception e) {
             return invalid("license is not valid JSON");
         }
@@ -93,8 +81,25 @@ public class LicenseService {
         if (signature == null) {
             return invalid("license signature is missing");
         }
-        if (!String.valueOf(signature).equalsIgnoreCase(sign(canonical(license)))) {
+        String expected;
+        try {
+            expected = sign(canonical(license));
+        } catch (IllegalStateException signKeyMissing) {
+            return invalid(signKeyMissing.getMessage());
+        }
+        if (!String.valueOf(signature).equalsIgnoreCase(expected)) {
             return invalid("license signature does not match");
+        }
+        String licenseVersion = text(license, "version");
+        if (licenseVersion == null || licenseVersion.trim().isEmpty()) {
+            return invalid("license version is missing");
+        }
+        if (!licenseVersion.trim().equals(appVersion.trim())) {
+            return invalid("license version " + licenseVersion + " does not match product version " + appVersion);
+        }
+        int count = intOf(license.get("count"), 0);
+        if (count > maxCount) {
+            return invalid("license authorized count " + count + " exceeds maximum allowed " + maxCount);
         }
         long expireAt = longOf(license.get("expires_at"), 0L);
         String status = expireAt > 0 && expireAt * 1000L < System.currentTimeMillis() ? "expired" : "valid";
@@ -102,22 +107,25 @@ public class LicenseService {
         return view(status, license, null);
     }
 
-    /** GET /system/license：当前许可证状态。 */
     public Map<String, Object> status() {
         Map<String, Object> row = findRow();
         if (row == null) {
             Map<String, Object> community = new LinkedHashMap<>();
             community.put("status", "community");
             community.put("license", null);
+            community.put("enforcement", enforcement);
+            community.put("enterprise", enterpriseEnabled());
             return community;
         }
         String status = String.valueOf(row.get("status"));
         Map<String, Object> license = parseLicense(row.get("license"));
         String failReason = row.get("fail_reason") == null ? null : String.valueOf(row.get("fail_reason"));
-        return view(status, license, failReason);
+        Map<String, Object> out = view(status, license, failReason);
+        out.put("enforcement", enforcement);
+        out.put("enterprise", enterpriseEnabled());
+        return out;
     }
 
-    /** GET /system/license/version：真实版本（许可证版本优先，否则产品版本）。 */
     public String version() {
         Map<String, Object> row = findRow();
         if (row != null) {
@@ -129,9 +137,16 @@ public class LicenseService {
         return appVersion;
     }
 
-    // ------------------------------------------------------------------
-    // 内部
-    // ------------------------------------------------------------------
+    public boolean enterpriseEnabled() {
+        if (!"enforce".equalsIgnoreCase(enforcement)) {
+            return true;
+        }
+        Map<String, Object> row = findRow();
+        if (row == null) {
+            return false;
+        }
+        return "valid".equals(String.valueOf(row.get("status")));
+    }
 
     private Map<String, Object> invalid(String reason) {
         Map<String, Object> out = new LinkedHashMap<>();
@@ -202,14 +217,12 @@ public class LicenseService {
         }
         try {
             return objectMapper.readValue(String.valueOf(raw),
-                    new TypeReference<TreeMap<String, Object>>() {
-                    });
+                    new TypeReference<TreeMap<String, Object>>() {});
         } catch (Exception e) {
             return null;
         }
     }
 
-    /** 规范化 JSON（按 key 排序，无空白；签名字段已移除）。 */
     private String canonical(Map<String, Object> license) {
         try {
             return objectMapper.writeValueAsString(license);
@@ -218,7 +231,6 @@ public class LicenseService {
         }
     }
 
-    /** HMAC-SHA256(key, canonical) 的 hex。 */
     private String sign(String canonical) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
@@ -229,22 +241,12 @@ public class LicenseService {
         }
     }
 
-    /** 签名密钥：配置优先；否则取持久化的随机密钥（首次生成）。 */
     private String signKey() {
-        if (configuredSignKey != null && !configuredSignKey.trim().isEmpty()) {
-            return configuredSignKey.trim();
+        if (configuredSignKey == null || configuredSignKey.trim().isEmpty()) {
+            throw new IllegalStateException("askdata.license.sign-key is not configured; "
+                    + "set it to issue and verify licenses (verification is disabled / fail-closed)");
         }
-        try {
-            return jdbc.queryForObject("SELECT pval FROM sys_arg WHERE pkey = ?", String.class, SIGN_KEY_ARG);
-        } catch (Exception ignored) {
-            // 尚未生成
-        }
-        byte[] random = new byte[32];
-        new SecureRandom().nextBytes(random);
-        String key = hex(random);
-        jdbc.update("INSERT INTO sys_arg (id, pkey, pval, ptype, sort_no) VALUES (?, ?, ?, 'str', 999)",
-                System.currentTimeMillis(), SIGN_KEY_ARG, key);
-        return key;
+        return configuredSignKey.trim();
     }
 
     private static final char[] HEX = "0123456789abcdef".toCharArray();
