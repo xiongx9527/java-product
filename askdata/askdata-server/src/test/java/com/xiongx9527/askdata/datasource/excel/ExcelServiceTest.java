@@ -240,6 +240,102 @@ class ExcelServiceTest {
         assertTrue(json.contains("first"), json);
     }
 
+    /**
+     * A8：多 sheet 每个 sheet 的表头只出现一次，第 2..N 个 sheet 的首行是数据而非表头；
+     * 单/多 sheet 均保持列顺序、列名与类型一致。
+     */
+    @Test
+    void multiSheetKeepsHeaderOnceAndPreservesColumns() throws Exception {
+        MockMultipartFile file = xlsx("multi.xlsx",
+                new String[]{"订单", "id,名称,金额", "1,键盘,99.5", "2,鼠标,12"},
+                new String[]{"退货", "id,名称,金额", "10,显示器,1500.5", "11,耳机,88"});
+        Map<String, Object> parsed = excelService.parseExcel(file);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> data = (List<Map<String, Object>>) parsed.get("data");
+        assertEquals(2, data.size());
+        for (Map<String, Object> sheet : data) {
+            assertEquals(2, sheet.get("rows"), "每个 sheet 的表头不应计入数据行");
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> fields = (List<Map<String, Object>>) sheet.get("fields");
+            assertEquals(Arrays.asList("id", "名称", "金额"),
+                    Arrays.asList(fields.get(0).get("fieldName"), fields.get(1).get("fieldName"),
+                            fields.get(2).get("fieldName")));
+            assertEquals("int", fields.get(0).get("fieldType"));
+            assertEquals("string", fields.get(1).get("fieldType"));
+            assertEquals("float", fields.get(2).get("fieldType"));
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> preview = (List<Map<String, Object>>) sheet.get("data");
+            // 首行必须是数据行（不是表头）
+            assertTrue(((Number) preview.get(0).get("id")).longValue() >= 1);
+        }
+
+        List<Map<String, Object>> sheets = new ArrayList<>();
+        for (Map<String, Object> sheet : data) {
+            sheets.add(Rows.of("sheetName", sheet.get("sheetName"), "fields", sheet.get("fields")));
+        }
+        Map<String, Object> imported = excelService.importToDb(Rows.str(parsed, "filePath"), sheets);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> created = (List<Map<String, Object>>) imported.get("sheets");
+        assertEquals(2, created.size());
+        for (Map<String, Object> sheet : created) {
+            String tableName = Rows.str(sheet, "tableName");
+            assertEquals(2L, appJdbc.queryForObject("SELECT COUNT(*) FROM \"" + tableName + "\"", Long.class));
+        }
+        // 第二个 sheet 的首行数据（id=10）被写入，未被当成表头丢弃
+        String secondTable = Rows.str(created.get(1), "tableName");
+        Long secondId = appJdbc.queryForObject(
+                "SELECT MIN(\"" + engine.appIdentifier("id") + "\") FROM \"" + secondTable + "\"", Long.class);
+        assertEquals(10L, secondId);
+    }
+
+    /**
+     * A19：类型推断全量扫描（不再只采样前 100 行），靠后出现的小数必须保留 float 语义。
+     */
+    @Test
+    void typeInferenceScansAllRowsAndKeepsFloat() throws Exception {
+        String[] rows = new String[152];
+        rows[0] = "Sheet1";
+        rows[1] = "id,amount";
+        for (int i = 1; i <= 150; i++) {
+            rows[i + 1] = i + "," + (i <= 120 ? String.valueOf(i) : i + ".5");
+        }
+        MockMultipartFile file = xlsx("long.xlsx", rows);
+        Map<String, Object> parsed = excelService.parseExcel(file);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> fields = (List<Map<String, Object>>)
+                ((List<Map<String, Object>>) parsed.get("data")).get(0).get("fields");
+        assertEquals("int", fields.get(0).get("fieldType"));
+        assertEquals("float", fields.get(1).get("fieldType"), "第 121 行后的小数必须让列保持 float");
+
+        Map<String, Object> result = excelService.importToDb(Rows.str(parsed, "filePath"),
+                Collections.singletonList(Rows.of("sheetName", "Sheet1", "fields", fields)));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> created = (List<Map<String, Object>>) result.get("sheets");
+        String tableName = Rows.str(created.get(0), "tableName");
+        Object last = appJdbc.queryForObject("SELECT MAX(\"" + engine.appIdentifier("amount") + "\") FROM \""
+                + tableName + "\"", Object.class);
+        assertEquals(150.5, ((Number) last).doubleValue(), 0.0001, "浮点值不得被取整或转文本");
+    }
+
+    /**
+     * A19：请求未给出字段类型时使用文件推断结果，数字列不会被强制写成文本。
+     */
+    @Test
+    void importWithoutExplicitFieldTypesKeepsInferredTypes() throws Exception {
+        MockMultipartFile file = xlsx("infer.xlsx", new String[]{"t", "id,amount", "1,9.5", "2,8"});
+        Map<String, Object> parsed = excelService.parseExcel(file);
+        Map<String, Object> result = excelService.importToDb(Rows.str(parsed, "filePath"),
+                Collections.singletonList(Rows.of("sheetName", "t", "fields", Collections.emptyList())));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> created = (List<Map<String, Object>>) result.get("sheets");
+        String tableName = Rows.str(created.get(0), "tableName");
+        List<com.xiongx9527.askdata.datasource.engine.ColumnSchema> columns =
+                engine.fields(DatasourceType.EXCEL, new DatasourceConf(), tableName);
+        assertEquals(2, columns.size());
+        assertTrue(columns.get(0).getFieldType().toUpperCase().contains("BIGINT"), columns.get(0).getFieldType());
+        assertTrue(columns.get(1).getFieldType().toUpperCase().contains("DOUBLE"), columns.get(1).getFieldType());
+    }
+
     @Test
     void csvParsedAndImported() throws Exception {
         String csv = "id,name,amount\n1,键盘,99.5\n2,鼠标,12\n";

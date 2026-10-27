@@ -90,7 +90,8 @@ class JdbcEngineDriverAvailabilityTest {
                 engine.buildJdbcUrl(DatasourceType.SQLSERVER, conf("db.host", 1433, "master")));
         assertEquals("jdbc:ch://ck.host:8123/default",
                 engine.buildJdbcUrl(DatasourceType.CK, conf("ck.host", 8123, "default")));
-        assertEquals("jdbc:hive2://hive.host:10000/warehouse",
+        // A18：Hive 配置密码时追加 LDAP 认证参数
+        assertEquals("jdbc:hive2://hive.host:10000/warehouse;auth=LDAP;user=u",
                 engine.buildJdbcUrl(DatasourceType.HIVE, conf("hive.host", 10000, "warehouse")));
         assertEquals("jdbc:kingbase8://kb.host:54321/test",
                 engine.buildJdbcUrl(DatasourceType.KINGBASE, conf("kb.host", 54321, "test")));

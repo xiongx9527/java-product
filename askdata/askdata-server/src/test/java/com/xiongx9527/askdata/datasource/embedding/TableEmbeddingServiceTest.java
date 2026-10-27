@@ -3,6 +3,8 @@ package com.xiongx9527.askdata.datasource.embedding;
 import com.xiongx9527.askdata.support.MetadbMigration;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.xiongx9527.askdata.ai.EmbeddingService;
+import com.xiongx9527.askdata.ai.LocalEmbeddingModel;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -236,6 +238,54 @@ class TableEmbeddingServiceTest {
         service.backfill(DS);
         assertEquals("not-a-json", tableRepository.findEmbedding(601));
         assertNull(tableRepository.findEmbedding(602));
+    }
+
+    /**
+     * A20：远程 embedding 不可用时回退到与 EmbeddingService 相同的本地模型路径，
+     * 而不是直接退化为词法；本地也不可用时才词法降级。
+     */
+    @Test
+    void remoteFailureFallsBackToLocalEmbeddingBeforeLexical() {
+        LocalEmbeddingModel local = new LocalEmbeddingModel("/nonexistent-model-path") {
+            @Override
+            public double[] embed(String text) {
+                return new double[] {1D, 0D};
+            }
+
+            @Override
+            public boolean available() {
+                return true;
+            }
+        };
+        service.setEmbeddingService(new EmbeddingService(local, modelRouter, modelClient, appJdbc, objectMapper));
+        // 远程端点不可达：必须回退本地模型而不是直接返回 null
+        new AiModelRepository(appJdbc, ids).insert(ids.nextId(), "", "http://127.0.0.1:1", 1, 0,
+                "stub-bge-m3", 1, "bge-m3", false, "[]", 1, System.currentTimeMillis());
+        double[] vector = service.embed("订单金额");
+        assertNotNull(vector, "远程失败后应回退本地 embedding");
+        assertEquals(2, vector.length);
+        assertEquals(1D, vector[0], 0.0001);
+    }
+
+    @Test
+    void localEmbeddingUnavailableDegradesToLexical() {
+        LocalEmbeddingModel unavailable = new LocalEmbeddingModel("/nonexistent-model-path") {
+            @Override
+            public double[] embed(String text) {
+                return null;
+            }
+
+            @Override
+            public boolean available() {
+                return false;
+            }
+        };
+        service.setEmbeddingService(new EmbeddingService(unavailable, modelRouter, modelClient, appJdbc, objectMapper));
+        assertNull(service.embed("订单金额"));
+        table(621, "orders", "订单表", null);
+        table(622, "users", "用户表", null);
+        // 仍能按提及排序（词法降级，不抛错）
+        assertEquals(622L, service.rankTables(DS, "统计 users 的数量").get(0).longValue());
     }
 
     @Test

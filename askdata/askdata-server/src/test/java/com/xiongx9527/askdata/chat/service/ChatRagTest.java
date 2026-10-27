@@ -166,6 +166,29 @@ class ChatRagTest {
         assertTrue(SchemaContextBuilder.tokenize("orders_ds").contains("orders_ds"));
     }
 
+    /**
+     * A18：问数 schema 上下文最多包含 MAX_TABLES=10 张表。
+     */
+    @Test
+    void schemaContextIncludesAtMostTenTables() {
+        long ds = newDs("大库", "big_db");
+        for (int i = 1; i <= 12; i++) {
+            appJdbc.update("INSERT INTO core_table (id, ds_id, checked, table_name, table_comment, custom_comment) "
+                    + "VALUES (?, ?, TRUE, ?, ?, ?)", 8000L + i, ds, "t" + i, "表" + i, "表" + i);
+            appJdbc.update("INSERT INTO core_field (id, ds_id, table_id, checked, field_name, field_type, "
+                    + "field_comment, custom_comment, field_index) VALUES (?, ?, ?, TRUE, 'id', 'bigint', "
+                    + "'主键', '主键', 0)", 8100L + i, ds, 8000L + i);
+        }
+        String text = schemaContextBuilder.buildSchemaText(ds);
+        int count = 0;
+        int from = 0;
+        while ((from = text.indexOf("Table ", from)) >= 0) {
+            count++;
+            from += 6;
+        }
+        assertEquals(10, count, text);
+    }
+
     // ------------------------------------------------------------------
     // 表结构提示词
     // ------------------------------------------------------------------

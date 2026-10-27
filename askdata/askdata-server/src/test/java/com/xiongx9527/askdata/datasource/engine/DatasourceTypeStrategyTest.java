@@ -50,6 +50,10 @@ class DatasourceTypeStrategyTest {
     @Test
     void jdbcUrlsPerType() {
         DatasourceConf my = conf("127.0.0.1", 3306, "root", "p@ss", "db1", "");
+        // A18：allowPublicKeyRetrieval 默认不追加
+        assertEquals("jdbc:mysql://127.0.0.1:3306/db1?useUnicode=true&characterEncoding=utf8&useSSL=false",
+                url(DatasourceType.MYSQL, my));
+        my.setAllowPublicKeyRetrieval(true);
         assertEquals("jdbc:mysql://127.0.0.1:3306/db1?useUnicode=true&characterEncoding=utf8&useSSL=false"
                 + "&allowPublicKeyRetrieval=true", url(DatasourceType.MYSQL, my));
 
@@ -58,12 +62,23 @@ class DatasourceTypeStrategyTest {
 
         DatasourceConf ss = conf("ss.host", 1433, "u", "p", "db1", "dbo");
         assertEquals("jdbc:sqlserver://ss.host:1433;databaseName=db1;encrypt=false", url(DatasourceType.SQLSERVER, ss));
+        // A18：lowVersion 追加旧版服务器兼容参数（URL 与驱动参数均不同）
+        ss.setLowVersion(true);
+        String lowVersionUrl = url(DatasourceType.SQLSERVER, ss);
+        assertTrue(lowVersionUrl.contains(";encrypt=false"), lowVersionUrl);
+        assertTrue(lowVersionUrl.contains(";trustServerCertificate=true"), lowVersionUrl);
+        assertTrue(lowVersionUrl.contains(";sendStringParametersAsUnicode=false"), lowVersionUrl);
 
         DatasourceConf oracleService = conf("o.host", 1521, "u", "p", "ORCL", "");
         oracleService.setMode("service_name");
         assertEquals("jdbc:oracle:thin:@//o.host:1521/ORCL", url(DatasourceType.ORACLE, oracleService));
         oracleService.setMode("sid");
         assertEquals("jdbc:oracle:thin:@o.host:1521:ORCL", url(DatasourceType.ORACLE, oracleService));
+        // A18：thick（OCI）模式按配置启用
+        oracleService.setThick(true);
+        assertEquals("jdbc:oracle:oci:@o.host:1521:ORCL", url(DatasourceType.ORACLE, oracleService));
+        oracleService.setMode("service_name");
+        assertEquals("jdbc:oracle:oci:@//o.host:1521/ORCL", url(DatasourceType.ORACLE, oracleService));
 
         DatasourceConf ck = conf("ck.host", 8123, "u", "p", "default", "");
         assertEquals("jdbc:ch://ck.host:8123/default", url(DatasourceType.CK, ck));
@@ -75,7 +90,11 @@ class DatasourceTypeStrategyTest {
         assertEquals("jdbc:postgresql://rs.host:5439/db1?currentSchema=public",
                 url(DatasourceType.REDSHIFT, conf("rs.host", 5439, "u", "p", "db1", "public")));
         assertEquals("jdbc:dm://dm.host:5236?schema=SCHEMA", url(DatasourceType.DM, conf("dm.host", 5236, "u", "p", "", "SCHEMA")));
-        assertEquals("jdbc:hive2://h.host:10000/db1", url(DatasourceType.HIVE, conf("h.host", 10000, "u", "p", "db1", "")));
+        // A18：Hive 配置密码即启用 LDAP（auth=LDAP + user 连接属性）
+        assertEquals("jdbc:hive2://h.host:10000/db1;auth=LDAP;user=u",
+                url(DatasourceType.HIVE, conf("h.host", 10000, "u", "p", "db1", "")));
+        assertEquals("jdbc:hive2://h.host:10000/db1",
+                url(DatasourceType.HIVE, conf("h.host", 10000, "u", "", "db1", "")));
 
         DatasourceConf h2File = conf("", 0, "sa", "", "testdb", "");
         assertEquals("jdbc:h2:file:./data/testdb", url(DatasourceType.H2, h2File));
@@ -87,12 +106,32 @@ class DatasourceTypeStrategyTest {
         assertEquals("jdbc:sqlite:/tmp/demo.db", url(DatasourceType.SQLITE, sqlite));
     }
 
+    /**
+     * A8：Excel 元数据查询使用固定默认 schema（PG public / H2 PUBLIC / SQL Server dbo），
+     * 不再向元数据 SQL 绑定空 schema。
+     */
+    @Test
+    void excelMetadataUsesFixedDefaultSchema() {
+        JdbcEngine engine = new JdbcEngine(null, new com.fasterxml.jackson.databind.ObjectMapper());
+        assertEquals("public", engine.defaultAppSchema(DatasourceType.PG));
+        assertEquals("PUBLIC", engine.defaultAppSchema(DatasourceType.H2));
+        assertEquals("dbo", engine.defaultAppSchema(DatasourceType.SQLSERVER));
+
+        DatasourceConf pg = new DatasourceConf();
+        DatasourceConf withSchema = pg.withDefaultSchema(engine.defaultAppSchema(DatasourceType.PG));
+        assertEquals("public", withSchema.getDbSchema());
+        assertEquals("public", DatasourceType.PG.fieldSql(withSchema, "excel_t").getArgs()[0]);
+        assertEquals("public", DatasourceType.PG.tableSql(withSchema, "").getArgs()[0]);
+        // 原配置不被修改
+        assertEquals("", pg.getDbSchema());
+    }
+
     @Test
     void extraJdbcAppendedAndValidated() {
         DatasourceConf conf = conf("h", 3306, "u", "p", "db", "");
         conf.setExtraJdbc("useSSL=true&connectTimeout=5000");
         assertEquals("jdbc:mysql://h:3306/db?useUnicode=true&characterEncoding=utf8&useSSL=false"
-                + "&allowPublicKeyRetrieval=true&useSSL=true&connectTimeout=5000", url(DatasourceType.MYSQL, conf));
+                + "&useSSL=true&connectTimeout=5000", url(DatasourceType.MYSQL, conf));
         conf.setExtraJdbc("broken");
         assertThrows(DatasourceException.class, () -> url(DatasourceType.MYSQL, conf));
     }

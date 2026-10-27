@@ -105,7 +105,7 @@ public final class ChatExcel {
                 for (int i = 0; i < normalizedFields.size(); i++) {
                     Object value = row == null ? null
                             : resolveColumnValue(row, String.valueOf(normalizedFields.get(i).get("value")));
-                    sheetRow.createCell(i).setCellValue(cellText(value));
+                    writeCell(sheetRow.createCell(i), value);
                 }
             }
             workbook.write(buffer);
@@ -166,12 +166,18 @@ public final class ChatExcel {
         return '"' + value.replace("\"", "\"\"") + '"';
     }
 
-    /** 字段归一：name 缺省回落 value；null 项剔除。 */
+    /**
+     * 字段归一：name 缺省回落 value；null 项剔除。
+     *
+     * <p>A19：重复列名（大小写不敏感）按出现顺序追加 {@code (2)}、{@code (3)} 后缀，
+     * 保证导出表头稳定且 Excel 不会出现两个同名度量列。</p>
+     */
     private static List<Map<String, Object>> normalizeFields(List<Map<String, Object>> fields) {
         List<Map<String, Object>> result = new ArrayList<>();
         if (fields == null) {
             return result;
         }
+        java.util.Map<String, Integer> seen = new LinkedHashMap<>();
         for (Map<String, Object> field : fields) {
             if (field == null) {
                 continue;
@@ -184,6 +190,11 @@ public final class ChatExcel {
                 continue;
             }
             String fieldName = name == null || String.valueOf(name).isEmpty() ? fieldValue : String.valueOf(name);
+            String key = fieldName.toLowerCase(java.util.Locale.ROOT);
+            int occurrence = seen.merge(key, 1, Integer::sum);
+            if (occurrence > 1) {
+                fieldName = fieldName + " (" + occurrence + ")";
+            }
             Map<String, Object> normalized = new LinkedHashMap<>();
             normalized.put("name", fieldName);
             normalized.put("value", fieldValue);
@@ -205,6 +216,11 @@ public final class ChatExcel {
         if (row.containsKey(value)) {
             return row.get(value);
         }
+        // A19：结果列名大小写不敏感（驱动可能返回 AMOUNT，图表配置写 amount）
+        Object caseInsensitive = caseInsensitiveValue(row, value);
+        if (caseInsensitive != null) {
+            return caseInsensitive;
+        }
         int dot = value.lastIndexOf('.');
         if (dot < 0) {
             String suffix = "." + value;
@@ -219,9 +235,26 @@ public final class ChatExcel {
         if (!shortName.isEmpty() && row.containsKey(shortName)) {
             return row.get(shortName);
         }
+        Object shortCaseInsensitive = caseInsensitiveValue(row, shortName);
+        if (shortCaseInsensitive != null) {
+            return shortCaseInsensitive;
+        }
         String suffix = "." + shortName;
         for (Map.Entry<String, Object> entry : row.entrySet()) {
             if (entry.getKey() != null && entry.getKey().endsWith(suffix)) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    /** 大小写不敏感取列值（精确同名优先由调用方处理）；无匹配返回 null。 */
+    private static Object caseInsensitiveValue(Map<String, Object> row, String column) {
+        if (column == null || column.isEmpty()) {
+            return null;
+        }
+        for (Map.Entry<String, Object> entry : row.entrySet()) {
+            if (entry.getKey() != null && entry.getKey().equalsIgnoreCase(column)) {
                 return entry.getValue();
             }
         }
@@ -239,5 +272,22 @@ public final class ChatExcel {
             return "";
         }
         return String.valueOf(value);
+    }
+
+    /**
+     * 写入单元格（A19）：数值写为数值单元格（Excel 可直接求和），布尔写布尔，
+     * 其余保持文本。大数已在 {@link DataFormatUtil#convertLargeNumbers} 转为字符串，
+     * 仍按文本写入以免丢失精度。
+     */
+    private static void writeCell(Cell cell, Object value) {
+        if (value == null) {
+            cell.setBlank();
+        } else if (value instanceof Boolean) {
+            cell.setCellValue((Boolean) value);
+        } else if (value instanceof Number) {
+            cell.setCellValue(((Number) value).doubleValue());
+        } else {
+            cell.setCellValue(String.valueOf(value));
+        }
     }
 }
