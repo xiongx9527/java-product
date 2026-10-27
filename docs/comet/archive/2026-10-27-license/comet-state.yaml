@@ -1,0 +1,130 @@
+schema: comet.native.v4
+name: license
+language: zh-CN
+phase: archive
+status: done
+state_version: 1
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/supervisor/askdata-sqlbot-p0-parity/license
+  target_branch: main
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A3
+    source: brief.md
+    text: A3 License 校验与门控：用 `scripts/issue-license.sh` 与配置的 HMAC sign-key 签发
+      license；上传合法 license 返回 valid，篡改签名/过期/超量/版本不符返回 invalid/expired
+      并说明原因；`askdata.license.enforcement` 默认 bypass（企业能力可用），设为 enforce
+      后才拦截；前端企业入口读取真实状态与 enforcement，不再恒定隐藏。
+    result: passed
+    reason:
+      text: issue-license.sh + HMAC sign-key issuance verified
+        (issuedByScriptIsAccepted); valid->valid and
+        tampered/expired/over-quota/version-mismatch->invalid/expired with
+        reasons covered by LicenseServiceTest; fail-closed on missing sign-key;
+        enforcement bypass/enforce gating covered; GET /system/license returns
+        real status+enforcement+enterprise for the frontend.
+      truncated: false
+builder_handoff:
+  candidate_id: 5a71b290557d2734e0aed7a8e29587bf46c20165
+  identity_provider: skill-coordinated
+  builder_execution_ref: hy3-supervisor-continue-20261026-2145
+  iteration: 1
+  summary:
+    text: Independently reviewed candidate 5a71b29 for A3. scripts/issue-license.sh
+      issues an HMAC-SHA256 signed license using the configured
+      askdata.license.sign-key; LicenseService.upload verifies the signature and
+      rejects tampered/expired/over-quota/version-mismatch licenses with
+      reasons; an unconfigured sign-key now fails closed with a readable hint
+      (random-key fallback removed); askdata.license.enforcement
+      (bypass|enforce) gates enterpriseEnabled() and status() exposes
+      enforcement+enterprise. LicenseServiceTest (14 tests incl.
+      issuedByScriptIsAccepted) passed via the Runtime license-checks executor
+      (exitCode 0).
+    truncated: false
+  addressed_acceptance_ids:
+    - A3
+  checks:
+    - name:
+        text: askdata-server license A3 tests
+        truncated: false
+      result: passed
+      note: null
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-10-27T02:08:10.532Z
+blockers: []
+verification:
+  candidate_id: 5a71b290557d2734e0aed7a8e29587bf46c20165
+  identity_provider: skill-coordinated
+  verifier_execution_ref: hy3-verifier-license-20261027-01
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: license-checks
+      name:
+        text: askdata-server license A3 tests
+        truncated: false
+      argv_display:
+        - text: -pl
+          truncated: false
+        - text: askdata/askdata-server
+          truncated: false
+        - text: test
+          truncated: false
+        - text: -Dmaven.test.skip=false
+          truncated: false
+        - text: -Dtest=LicenseServiceTest
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 26524
+  summary:
+    text: Independently reviewed candidate 5a71b29 for A3. scripts/issue-license.sh
+      issues an HMAC-SHA256 signed license using the configured
+      askdata.license.sign-key; LicenseService.upload verifies the signature and
+      rejects tampered/expired/over-quota/version-mismatch licenses with
+      reasons; an unconfigured sign-key now fails closed with a readable hint
+      (random-key fallback removed); askdata.license.enforcement
+      (bypass|enforce) gates enterpriseEnabled() and status() exposes
+      enforcement+enterprise. LicenseServiceTest (14 tests incl.
+      issuedByScriptIsAccepted) passed via the Runtime license-checks executor
+      (exitCode 0).
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-10-27T02:11:38.847Z
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-10-27T02:08:10.532Z
