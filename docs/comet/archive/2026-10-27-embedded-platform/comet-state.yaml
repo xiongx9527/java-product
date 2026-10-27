@@ -1,0 +1,141 @@
+schema: comet.native.v4
+name: embedded-platform
+language: zh-CN
+phase: archive
+status: done
+state_version: 1
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/supervisor/askdata-sqlbot-p0-parity/embedded-platform
+  target_branch: main
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A10
+    source: brief.md
+    text: A10 平台同步安全：平台同步请求缺少 origin 或 origin=0 时被拒绝并给出明确错误；同步新建用户不再写
+      `md5("")`，默认口令随机/不可用；origin≠0 的同步用户无法用空口令本地登录。
+    result: passed
+    reason:
+      text: PlatformSyncService 对缺失/空白/0 origin 抛 BadRequestException 且不落库；新建用户写入随机
+        UUID 口令哈希（测试断言非 md5("")）；LoginController 对 origin!=0 用户拒绝空口令登录。
+      truncated: false
+  - id: A11
+    source: brief.md
+    text: A11 嵌入签名协议：嵌入签名使用 SQLBot AES
+      信封（`assistant_id/target/sign_time/webdriver/user_agent/timezone`），校验
+      Origin 相等、±10s 窗口、UA 逐字、时区一致；AES key 可配置；旧 `id.timestamp.hmac`
+      仅由显式兼容开关启用，默认关闭。
+    result: passed
+    reason:
+      text: EmbeddedSignatureVerifier 校验 AES 信封 target==origin、±10s、UA/时区逐字、webdriver
+        拒绝；askdata.embedded.aes-key 可配置，未配置时报可读错误；legacy-hmac-enabled 默认 false，旧
+        id.timestamp.hmac 仅显式开启时生效。
+      truncated: false
+  - id: A17
+    source: brief.md
+    text: A17 嵌入助手与动态数据源：嵌入页按 token 中的 `assistant_id` 取助手；type=1 高级应用实时请求宿主 API 获取
+      `ds_list`，失败时不回退到“当前用户第一个 type=0 助手”；`X-SQLBOT-ASSISTANT-ONLINE`
+      运行时在线/离线通道生效；宿主下发数据源支持 AES 解密与 cookie/param 凭证位。
+    result: passed
+    reason:
+      text: datasources 优先使用 AuthContext 中 token 的 assistant_id；type=1 在线实时拉取宿主
+        ds_list，宿主失败直接报错不回退；X-SQLBOT-ASSISTANT-ONLINE 覆盖 online 通道；宿主
+        certificate 支持 header/cookie/param，加密凭证与密码用 AES 解密。
+      truncated: false
+builder_handoff:
+  candidate_id: a2a806ede16857656df549c14c083783686f05b0
+  identity_provider: skill-coordinated
+  builder_execution_ref: hy3-supervisor-repair-embedded-20261027-01
+  iteration: 1
+  summary:
+    text: 独立只读复核 a2a806e 源码与 Runtime 检查结果：A11 AES-GCM 信封校验 origin/target、±10s
+      窗口、UA/时区逐字、webdriver 拒绝，密钥缺失可读报错，旧 HMAC 默认关闭；A10 平台同步拒绝缺失/0 origin
+      且新建用户写随机不可用口令；A17 按 token assistant_id 解析助手、type=1 在线实时取宿主 ds_list
+      且失败不回退、X-SQLBOT-ASSISTANT-ONLINE 切换通道、宿主凭证 header/cookie/param 与 AES
+      解密。Runtime embedded-platform-checks 全部通过。
+    truncated: false
+  addressed_acceptance_ids:
+    - A10
+    - A11
+    - A17
+  checks:
+    - name:
+        text: askdata-server embedded platform (A10/A11/A17) tests
+        truncated: false
+      result: passed
+      note: null
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-10-27T02:45:23.643Z
+blockers: []
+verification:
+  candidate_id: a2a806ede16857656df549c14c083783686f05b0
+  identity_provider: skill-coordinated
+  verifier_execution_ref: hy3-verifier-embedded-20261027-02
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: embedded-platform-checks
+      name:
+        text: askdata-server embedded platform (A10/A11/A17) tests
+        truncated: false
+      argv_display:
+        - text: -pl
+          truncated: false
+        - text: askdata/askdata-server
+          truncated: false
+        - text: test
+          truncated: false
+        - text: -Dmaven.test.skip=false
+          truncated: false
+        - text: -Dtest=EmbeddedSignatureVerifierTest,PlatformSyncServiceTest,HostApiDatasourceTest,EmbeddedAssistantDsChannelTest,AssistantDsEndpointTest,EmbeddedTokenAuthenticatorTest
+          truncated: false
+        - text: -DfailIfNoTests=false
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 42486
+  summary:
+    text: 独立只读复核 a2a806e 源码与 Runtime 检查结果：A11 AES-GCM 信封校验 origin/target、±10s
+      窗口、UA/时区逐字、webdriver 拒绝，密钥缺失可读报错，旧 HMAC 默认关闭；A10 平台同步拒绝缺失/0 origin
+      且新建用户写随机不可用口令；A17 按 token assistant_id 解析助手、type=1 在线实时取宿主 ds_list
+      且失败不回退、X-SQLBOT-ASSISTANT-ONLINE 切换通道、宿主凭证 header/cookie/param 与 AES
+      解密。Runtime embedded-platform-checks 全部通过。
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-10-27T02:47:40.282Z
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-10-27T02:45:23.643Z
