@@ -54,11 +54,16 @@ public class EmbeddedTokenAuthenticator {
     /** 错误文案统一走消息包（A4 / F-15）。 */
     private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
 
+    /** 管理员判定（A24：按角色，与 CurrentUserService 同一口径）。 */
+    private final com.xiongx9527.askdata.system.service.CurrentUserService currentUserService;
+
     public EmbeddedTokenAuthenticator(HotCacheService hotCacheService,
                                       @Value("${askdata.secret.key:}") String secretKey,
-                                      com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver) {
+                                      com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver,
+                                      com.xiongx9527.askdata.system.service.CurrentUserService currentUserService) {
         this.hotCacheService = hotCacheService;
         this.messageResolver = messageResolver;
+        this.currentUserService = currentUserService;
         // 验收 A5：优先使用 askdata.secret.key（与主密钥配置一致）；未配置时才回退到运行期随机密钥
         this.secretKey = (secretKey == null || secretKey.isEmpty())
                 ? java.util.UUID.randomUUID().toString() : secretKey;
@@ -173,7 +178,7 @@ public class EmbeddedTokenAuthenticator {
                     java.util.Map.of("msg", account)));
         }
         // 安全红线：管理员账号不允许通过 embedded token 使用。
-        if (isAdmin(user)) {
+        if (currentUserService.isAdmin(user)) {
             throw new AuthFailureException(messageResolver.get("i18n_embedded.admin_not_allowed"));
         }
         // F-08：SQLBot 语义——assistant.oid = user.oid 回写（对齐 get_assistant_user 分支，
@@ -218,11 +223,6 @@ public class EmbeddedTokenAuthenticator {
         } catch (RuntimeException e) {
             return -1L;
         }
-    }
-
-    /** 管理员判定（与 CurrentUserService.isAdmin 逐字一致：id==1 且 account=='admin'）。 */
-    private static boolean isAdmin(Map<String, Object> user) {
-        return Rows.lng(user, "id", 0L) == 1L && "admin".equals(Rows.str(user, "account"));
     }
 
     private static long toLong(Object value, long fallback) {

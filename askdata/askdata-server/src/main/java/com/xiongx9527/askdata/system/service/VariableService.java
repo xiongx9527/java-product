@@ -80,17 +80,19 @@ public class VariableService {
         return true;
     }
 
+    /**
+     * 删除系统变量（A24）。
+     *
+     * <p>对齐 SQLBot {@code crud/system_variable.py delete}：按 id 直接删除，<b>不区分</b>
+     * 内置（system）与自定义（custom）。内置变量被删除后 {@code /system/variable/list} 不再返回该项，
+     * 依赖该变量的问数流程按「未绑定」处理（与 SQLBot 一致）。</p>
+     */
     public void delete(List<Long> ids) {
         currentUserService.requireAdmin();
-        // 内置（system）变量不可删除（对齐 SQLBot 前端 selectable 与后端约定）
-        List<Long> customIds = new ArrayList<>();
-        for (Long id : ids) {
-            Optional<Map<String, Object>> row = variableRepository.findById(id);
-            if (row.isPresent() && !"system".equals(Rows.str(row.get(), "type"))) {
-                customIds.add(id);
-            }
+        if (ids == null || ids.isEmpty()) {
+            return;
         }
-        variableRepository.delete(customIds);
+        variableRepository.delete(new ArrayList<>(ids));
     }
 
     private List<Map<String, Object>> toItems(List<Map<String, Object>> rows) {

@@ -156,6 +156,44 @@ public class Saml2SsoClient implements SsoClient {
     /** 从 IdP 元数据 XML 中读出 SingleSignOnService 的 Location。 */
     private String readSsoEndpoint(String idpMetaUrl) {
         try {
+            return parseEndpoint(fetchMetadata(idpMetaUrl), "SingleSignOnService");
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException("Unable to read IdP metadata: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * A24：从 IdP 元数据读出 SingleLogoutService 的 Location（SLO 端点），
+     * 供 SSO 登出联动 IdP 登出使用。元数据不可读或未声明 SLO 时返回 null（登出仍清本地会话）。
+     */
+    public String logoutEndpointFromMetadata(String idpMetaUrl) {
+        if (idpMetaUrl == null || idpMetaUrl.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return parseEndpoint(fetchMetadata(idpMetaUrl.trim()), "SingleLogoutService");
+        } catch (Exception e) {
+            log.warn("Unable to read SAML2 IdP SingleLogoutService: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 拉取 IdP 元数据 XML 文本（失败抛 IllegalStateException，信息可直接展示给管理员）。
+     * 供 SAML2 设置页的校验端点复用。
+     */
+    public String metadata(String idpMetaUrl) {
+        if (idpMetaUrl == null || idpMetaUrl.trim().isEmpty()) {
+            throw new IllegalStateException("Empty IdP metadata url");
+        }
+        return fetchMetadata(idpMetaUrl.trim());
+    }
+
+    /** 拉取 IdP 元数据 XML 文本（失败抛 IllegalStateException，信息可直接展示）。 */
+    private String fetchMetadata(String idpMetaUrl) {
+        try {
             java.net.HttpURLConnection connection =
                     (java.net.HttpURLConnection) new java.net.URL(idpMetaUrl).openConnection();
             connection.setConnectTimeout(10000);
@@ -169,11 +207,31 @@ public class Saml2SsoClient implements SsoClient {
                 }
             }
             connection.disconnect();
+            return sb.toString();
+        } catch (Exception e) {
+            throw new IllegalStateException("Unable to read IdP metadata: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 从元数据 XML 中解析指定元素的 {@code Location}（纯解析，便于离线校验与单测）。
+     *
+     * @param tagName 元素名（{@code SingleSignOnService} / {@code SingleLogoutService}）
+     * @return Location；未声明时返回 null
+     * @throws IllegalStateException XML 无法解析
+     */
+    public static String parseEndpoint(String metadataXml, String tagName) {
+        if (metadataXml == null || metadataXml.trim().isEmpty()) {
+            throw new IllegalStateException("Empty IdP metadata");
+        }
+        try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             factory.setNamespaceAware(true);
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
             DocumentBuilder builder = factory.newDocumentBuilder();
-            Document document = builder.parse(new ByteArrayInputStream(sb.toString().getBytes(StandardCharsets.UTF_8)));
-            NodeList nodes = document.getElementsByTagNameNS("*", "SingleSignOnService");
+            Document document = builder.parse(new ByteArrayInputStream(
+                    metadataXml.getBytes(StandardCharsets.UTF_8)));
+            NodeList nodes = document.getElementsByTagNameNS("*", tagName);
             for (int i = 0; i < nodes.getLength(); i++) {
                 Element element = (Element) nodes.item(i);
                 String location = element.getAttribute("Location");
@@ -181,10 +239,12 @@ public class Saml2SsoClient implements SsoClient {
                     return location;
                 }
             }
+            return null;
+        } catch (IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
-            throw new IllegalStateException("Unable to read IdP metadata: " + e.getMessage(), e);
+            throw new IllegalStateException("Invalid IdP metadata: " + e.getMessage(), e);
         }
-        return null;
     }
 
     private Map<String, Object> config(String nameId) {

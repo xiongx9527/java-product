@@ -53,14 +53,18 @@ public class UserController {
 
     private final UserImportService userImportService;
 
+    private final com.xiongx9527.askdata.system.service.CurrentUserService currentUserService;
+
     private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
 
     public UserController(UserRepository userRepository, UserService userService,
                           UserImportService userImportService,
+                          com.xiongx9527.askdata.system.service.CurrentUserService currentUserService,
                           com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver) {
         this.userRepository = userRepository;
         this.userService = userService;
         this.userImportService = userImportService;
+        this.currentUserService = currentUserService;
         this.messageResolver = messageResolver;
     }
 
@@ -245,7 +249,8 @@ public class UserController {
         vo.setWeight(userRepository.weightOf(id, oid));
         vo.setExp(exp);
         vo.setTime(now);
-        vo.setIsAdmin(id == 1L && "admin".equals(account));
+        // A24：管理员判定按角色（默认工作空间的管理员角色），不再用 id==1 && account=='admin'
+        vo.setIsAdmin(currentUserService.isAdmin(user));
         return vo;
     }
 

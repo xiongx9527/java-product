@@ -38,17 +38,22 @@ class EmbeddedTokenAuthenticatorTest {
 
     private AssistantRepository assistantRepository;
     private UserRepository userRepository;
+    private com.xiongx9527.askdata.system.repository.UserWsRepository userWsRepository;
     private EmbeddedTokenAuthenticator authenticator;
 
     @BeforeEach
     void setUp() {
         assistantRepository = Mockito.mock(AssistantRepository.class);
         userRepository = Mockito.mock(UserRepository.class);
+        userWsRepository = Mockito.mock(com.xiongx9527.askdata.system.repository.UserWsRepository.class);
+        // A24：管理员按角色判定——种子管理员在默认工作空间（oid=1）持有管理员角色（weight>0）
+        when(userWsRepository.weightOf(1L, 1L)).thenReturn(100);
         authenticator = new EmbeddedTokenAuthenticator(
                 new com.xiongx9527.askdata.common.cache.HotCacheService(userRepository,
                         Mockito.mock(com.xiongx9527.askdata.system.repository.ApiKeyRepository.class),
                         assistantRepository), SECRET,
-                com.xiongx9527.askdata.common.i18n.TestMessageResolver.create());
+                com.xiongx9527.askdata.common.i18n.TestMessageResolver.create(),
+                new com.xiongx9527.askdata.system.service.CurrentUserService(userRepository, userWsRepository));
         org.springframework.context.i18n.LocaleContextHolder.setLocale(java.util.Locale.ENGLISH);
     }
 

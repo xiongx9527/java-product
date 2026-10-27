@@ -15,7 +15,9 @@ import java.util.Map;
 
 /**
  * 当前登录用户上下文与权限判定（移植 SQLBot apps/system/schemas/permission.py 语义）：
- * - isAdmin：{@code id==1 && account=='admin'}；
+ * - isAdmin（A24）：按<b>角色</b>判定——用户在默认工作空间（种子数据 id=1）持有管理员角色
+ *   （{@code sys_user_ws.weight > 0}）即为系统管理员，不再依赖 {@code id==1 && account=='admin'}
+ *   的身份硬编码；账号改名/迁移后管理员身份仍由角色数据决定；
  * - ws_admin：isAdmin 或当前工作空间 weight > 0；
  * - 管理员专属接口非管理员调用时拒绝（HTTP 400 + 文本，前端直接展示）。
  *
@@ -94,8 +96,22 @@ public class CurrentUserService {
         }
     }
 
+    /** 系统默认工作空间 id（种子数据）：该工作空间的管理员角色即系统管理员角色。 */
+    private static final long DEFAULT_WORKSPACE_ID = 1L;
+
+    /**
+     * A24：管理员判定按角色而非身份硬编码。
+     *
+     * <p>角色数据来自 {@code sys_user_ws.weight}（0=普通成员，>0=管理员）；系统管理员即
+     * 在<b>默认工作空间</b>持有管理员角色的用户。种子管理员（weight=100）仍为管理员，
+     * 而普通工作空间管理员不会因此获得系统管理员权限（保持原有权限边界不扩大）。</p>
+     */
     public boolean isAdmin(Map<String, Object> user) {
-        return Rows.lng(user, "id", 0L) == 1L && "admin".equals(Rows.str(user, "account"));
+        long uid = Rows.lng(user, "id", 0L);
+        if (uid <= 0L) {
+            return false;
+        }
+        return userWsRepository.weightOf(uid, DEFAULT_WORKSPACE_ID) > 0;
     }
 
     public long oidOf(Map<String, Object> user) {

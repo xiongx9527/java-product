@@ -77,17 +77,70 @@ public class UserRepository {
     public List<Map<String, Object>> pagerRows(String keyword, Integer status, List<Integer> origins,
                                                List<Integer> oidlist, String orderBy, boolean desc,
                                                int offset, int size) {
-        StringBuilder sql = new StringBuilder(
-                "SELECT DISTINCT u.id, u.account, u.name, u.email, u.status, u.create_time, u.language, "
-                        + "u.origin, u.oid, u.system_variables "
-                        + "FROM sys_user u LEFT JOIN sys_user_ws w ON u.id = w.uid WHERE u.id <> 1");
+        boolean withKeyword = keyword != null && !keyword.trim().isEmpty();
+        StringBuilder sql = new StringBuilder();
         List<Object> args = new ArrayList<>();
+        if (withKeyword) {
+            // A24：带关键字时保留相关性排序（对齐 SQLBot apps/system/api/user.py pager）：
+            // match_count（命中字段数）降序 → total_score（精确 0/前缀 1/包含 2/未命中 3 之和）升序
+            // → 用户选择的排序字段。派生表让 ORDER BY 能引用计算列，同时保留 DISTINCT。
+            String kw = keyword.trim().toLowerCase(java.util.Locale.ROOT);
+            sql.append("SELECT t.id, t.account, t.name, t.email, t.status, t.create_time, t.language, ")
+                    .append("t.origin, t.oid, t.system_variables FROM (SELECT DISTINCT ")
+                    .append("u.id AS id, u.account AS account, u.name AS name, u.email AS email, ")
+                    .append("u.status AS status, u.create_time AS create_time, u.language AS language, ")
+                    .append("u.origin AS origin, u.oid AS oid, u.system_variables AS system_variables, ")
+                    .append("(").append(matchFlag("u.account")).append(" + ").append(matchFlag("u.name"))
+                    .append(" + ").append(matchFlag("u.email")).append(") AS match_count, ")
+                    .append("(").append(score("u.account")).append(" + ").append(score("u.name"))
+                    .append(" + ").append(score("u.email")).append(") AS total_score ")
+                    .append("FROM sys_user u LEFT JOIN sys_user_ws w ON u.id = w.uid WHERE u.id <> 1");
+            appendFilters(sql, args, keyword, status, origins, oidlist);
+            sql.append(") t ORDER BY t.match_count DESC, t.total_score ASC, t.")
+                    .append(sortColumnName(orderBy)).append(desc ? " DESC" : " ASC");
+            sql.append(" LIMIT ? OFFSET ?");
+            // 计算列参数按 SQL 中出现顺序：先 3 个 matchFlag（包含匹配），再每个字段 3 个 score 参数
+            String contains = "%" + escapeLike(kw) + "%";
+            List<Object> scoreArgs = new ArrayList<>();
+            for (int i = 0; i < 3; i++) {
+                scoreArgs.add(contains);
+            }
+            for (int i = 0; i < 3; i++) {
+                scoreArgs.add(kw);
+                scoreArgs.add(escapeLike(kw) + "%");
+                scoreArgs.add(contains);
+            }
+            List<Object> all = new ArrayList<>();
+            all.addAll(scoreArgs);
+            all.addAll(args);
+            all.add(size);
+            all.add(offset);
+            return jdbc.queryForList(sql.toString(), all.toArray());
+        }
+        sql.append("SELECT DISTINCT u.id, u.account, u.name, u.email, u.status, u.create_time, u.language, ")
+                .append("u.origin, u.oid, u.system_variables ")
+                .append("FROM sys_user u LEFT JOIN sys_user_ws w ON u.id = w.uid WHERE u.id <> 1");
         appendFilters(sql, args, keyword, status, origins, oidlist);
         sql.append(" ORDER BY ").append(sortColumn(orderBy)).append(desc ? " DESC" : " ASC");
         sql.append(" LIMIT ? OFFSET ?");
         args.add(size);
         args.add(offset);
         return jdbc.queryForList(sql.toString(), args.toArray());
+    }
+
+    /**
+     * 相关性分数表达式（0=精确、1=前缀、2=包含、3=未命中），参数依次为
+     * {@code keyword / keyword% / %keyword%}（均小写）。
+     */
+    private static String score(String column) {
+        return "(CASE WHEN LOWER(" + column + ") = ? THEN 0 "
+                + "WHEN LOWER(" + column + ") LIKE ? ESCAPE '\\' THEN 1 "
+                + "WHEN LOWER(" + column + ") LIKE ? ESCAPE '\\' THEN 2 ELSE 3 END)";
+    }
+
+    /** 命中标记表达式（1=该字段命中关键字），参数同 {@link #score(String)}。 */
+    private static String matchFlag(String column) {
+        return "(CASE WHEN LOWER(" + column + ") LIKE ? ESCAPE '\\' THEN 1 ELSE 0 END)";
     }
 
     public long pagerCount(String keyword, Integer status, List<Integer> origins, List<Integer> oidlist) {
@@ -204,6 +257,12 @@ public class UserRepository {
 
     private static String sortColumn(String orderBy) {
         return SORT_COLUMNS.getOrDefault(orderBy == null ? "" : orderBy, "u.account");
+    }
+
+    /** 相关性排序派生表外层的排序列（不带表别名）。 */
+    private static String sortColumnName(String orderBy) {
+        String column = sortColumn(orderBy);
+        return column.startsWith("u.") ? column.substring(2) : column;
     }
 
     static String placeholders(int count) {

@@ -232,8 +232,9 @@ sa-token:
   # 仅走 Header 携带 token（与前端一致，不使用 Cookie）
   is-read-header: true
   is-read-cookie: false
-  # 30 天有效，允许同账号多端登录
-  timeout: 2592000
+  # A24：访问 token 默认 8 天（SQLBot ACCESS_TOKEN_EXPIRE_MINUTES = 60*24*8），
+  # 单位秒，可通过 ASKDATA_TOKEN_TIMEOUT 调整；过期后前端按 401 重新登录。
+  timeout: ${ASKDATA_TOKEN_TIMEOUT:691200}
   is-concurrent: true
   is-share: false
   token-style: uuid
