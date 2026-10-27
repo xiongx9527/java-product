@@ -1,0 +1,125 @@
+schema: comet.native.v4
+name: i18n-config
+language: zh-CN
+phase: archive
+status: done
+state_version: 1
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/supervisor/askdata-sqlbot-p0-parity/i18n-config
+  target_branch: main
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A26
+    source: brief.md
+    text: A26 i18n 五语种：`zh-CN`/`en`/`zh-TW`/`ko-KR`/`th-TH` 五个 locale
+      的键集合与使用点一致，四语种不再回退中文/英文；工作空间名等 Java 新增文案全部有对应翻译，缺失键有自动检查。
+    result: passed
+    reason:
+      text: zh-CN/en/zh-TW/ko-KR/th-TH 与缺省包键集合一致（392 键）；新增 I18nBundleKeyParityTest
+        按文件比对并断言英文不再等于中文；I18nA9Test(7)/I18nMessageConvergenceTest(3) 通过，硬编码文案归零。
+      truncated: false
+  - id: A27
+    source: brief.md
+    text: A27 配置项补齐：`application.yaml`
+      补齐向量召回阈值、`SAMPLE_DATA_ENABLED`、`ALLOW_METADATA_QUERIES`、token 有效期、图表图片
+      TTL/清理、许可证/嵌入签名开关等配置项，均有默认值与文档；未配置时行为与默认值一致。
+    result: passed
+    reason:
+      text: application.yaml 声明
+        askdata.vector.recall-threshold=0.4、prompt.sample-data-enabled=true、sql.allow-metadata-queries=false、chart.image-ttl-ms/cleanup-interval-ms/token-store-dir、license.enforcement/sign-key/max-count、embedded.aes-key/legacy-hmac-enabled
+        与 sa-token.timeout=691200；SqlSafety 缺省拒绝系统目录查询，SqlSafetySettings
+        启动期注入；A27ConfigCompletenessTest(4) 覆盖默认值与读取点。
+      truncated: false
+builder_handoff:
+  candidate_id: 7e6a6d6855d14ee1de623edc1fe7d4c8518cdddb
+  identity_provider: skill-coordinated
+  builder_execution_ref: sess-i18n-config-builder
+  iteration: 1
+  summary:
+    text: A26：六份消息包键集合对齐至 392 键，补齐 30 个缺失键与 2 个嵌入解密错误键，DynamicDatasourceResolver
+      两处硬编码异常改走 MessageResolver，新增 I18nBundleKeyParityTest
+      按文件比对键集合。A27：application.yaml 补齐向量召回阈值/样例行开关/元数据查询开关/图表 TTL
+      与清理间隔/许可证与嵌入签名开关，SqlSafety 缺省拒绝系统目录查询并由 SqlSafetySettings 注入，新增
+      A27ConfigCompletenessTest 校验默认值与读取点。
+    truncated: false
+  addressed_acceptance_ids:
+    - A26
+    - A27
+  checks:
+    - name:
+        text: i18n 键集合与 A27 配置项聚焦测试
+        truncated: false
+      result: passed
+      note: null
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-10-27T03:57:03.491Z
+blockers: []
+verification:
+  candidate_id: 7e6a6d6855d14ee1de623edc1fe7d4c8518cdddb
+  identity_provider: skill-coordinated
+  verifier_execution_ref: sess-i18n-config-verifier
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: i18n-config-checks
+      name:
+        text: i18n 键集合与 A27 配置项聚焦测试
+        truncated: false
+      argv_display:
+        - text: -Dmaven.test.skip=false
+          truncated: false
+        - text: -Dtest=I18nA9Test,I18nMessageConvergenceTest,I18nBundleKeyParityTest,A27ConfigCompletenessTest,SqlSafetyTest,SqlSafetyParserTest
+          truncated: false
+        - text: -DfailIfNoTests=false
+          truncated: false
+        - text: test
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 20562
+  summary:
+    text: 独立复核 i18n-config：六份消息包键集合已对齐（各 392 键，无缺失/多余），I18nBundleKeyParityTest
+      直接按文件比对可防止父包回退假绿；DynamicDatasourceResolver 两处硬编码异常已改走 MessageResolver 且
+      I18nMessageConvergenceTest 通过；A27 配置项（向量阈值、样例行开关、元数据查询开关、图表
+      TTL/清理、许可证与嵌入签名）均已声明默认值并有代码读取点，A27ConfigCompletenessTest
+      覆盖。i18n-config-checks 全绿（exit 0，20.5s）。
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-10-27T03:59:02.029Z
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-10-27T03:57:03.491Z
