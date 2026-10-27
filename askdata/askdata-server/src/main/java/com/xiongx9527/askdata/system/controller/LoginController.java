@@ -48,12 +48,17 @@ public class LoginController {
 
     private final UserService userService;
 
+    /** A24：SSO 登出联动 IdP 登出端点。 */
+    private final com.xiongx9527.askdata.system.authentication.SsoLogoutUrlResolver ssoLogoutUrlResolver;
+
     public LoginController(UserRepository userRepository, MessageResolver messages,
-                           AuditRecorder auditRecorder, UserService userService) {
+                           AuditRecorder auditRecorder, UserService userService,
+                           com.xiongx9527.askdata.system.authentication.SsoLogoutUrlResolver ssoLogoutUrlResolver) {
         this.userRepository = userRepository;
         this.messages = messages;
         this.auditRecorder = auditRecorder;
         this.userService = userService;
+        this.ssoLogoutUrlResolver = ssoLogoutUrlResolver;
     }
 
     @PostMapping({"/login/access-token"})
@@ -149,20 +154,20 @@ public class LoginController {
     }
 
     /**
-     * 登出：本地来源仅清本地 Sa-Token；非本地（SSO 回调 origin != 0）按 SQLBot logout 语义
-     * 先走平台层登出（AuthContext 只保存本地通道，此处仅做本地清理，origin 语义留给平台 SSO
-     * 会话管理，避免假 500）。
+     * 登出（A24）：本地来源仅清本地 Sa-Token；非本地来源（SSO 登录 origin != 0）在清理本地会话后
+     * <b>返回 IdP 登出地址</b>，前端 {@code stores/user.ts} 拿到字符串即跳转，
+     * 由 IdP 终止单点会话（对齐 SQLBot {@code xpack_logout}，不再只是清理本地会话）。
+     *
+     * @return data = IdP 登出地址（无联动端点或本地登录时为 null）
      */
     @PostMapping({"/login/logout"})
-    public Result<Void> logout(@RequestBody(required = false) LogoutRequest dto) {
-        if (dto != null && toLong(dto.getOrigin()) != 0L) {
-            // F-11：SSO 来源的登出走平台分支：忽略 dto.origin == 0 之外的本地注销（平台 SSO
-            // 回调通道不带 Sa-Token 会话），返回成功以对齐 SQLBot xpack_logout 的「静默成功」。
-            StpUtil.logout();
-            return Result.ok();
-        }
+    public Result<String> logout(@RequestBody(required = false) LogoutRequest dto) {
+        long origin = dto == null ? 0L : toLong(dto.getOrigin());
         StpUtil.logout();
-        return Result.ok();
+        if (origin != 0L) {
+            return Result.ok(ssoLogoutUrlResolver.resolve(origin));
+        }
+        return Result.ok((String) null);
     }
 
     @GetMapping({"/login/health"})

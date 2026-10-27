@@ -255,18 +255,58 @@ public class AiModelService {
                 emitError(writer, messageResolver.get("aimodel.api_domain.required"));
                 return;
             }
-            // A23：config_list 的推理参数（temperature / top_p / max_tokens / 厂商自定义）参与连通检查；
-            // Azure 专有域名走 deployment URL + api-key 头（与 ChatModelClient 同一套规则）
+            // A23/A24：config_list 的推理参数（temperature / top_p / max_tokens / 厂商自定义）与
+            // protocol 参与连通检查；Azure 专有域名走 deployment URL + api-key 头（与 ChatModelClient 同一套规则）
             Map<String, Object> params = modelParams(body);
+            int protocol = Rows.intg(body, "protocol", 1);
             boolean azure = com.xiongx9527.askdata.chat.service.ChatModelClient.isAzureEndpoint(apiDomain);
-            String url = com.xiongx9527.askdata.chat.service.ChatModelClient.chatCompletionsUrl(
-                    apiDomain, baseModel, params);
+            String url = connectivityUrl(apiDomain, baseModel, params, protocol);
             checkModel(url, apiKey, baseModel, params, azure, writer);
         } catch (Exception e) {
             emitError(writer, e.getMessage() == null ? e.toString() : e.getMessage());
         } finally {
             writer.flush();
         }
+    }
+
+    /**
+     * A24：连通检查的目标端点（对齐 SQLBot {@code check_llm} 的 {@code protocol} 分支）。
+     *
+     * <ul>
+     *   <li>Azure 专有域名：{@code {base}/openai/deployments/{deployment}/chat/completions?api-version={v}}，
+     *       deployment/api-version 取 config_list 的 {@code deployment_name} / {@code api_version}；</li>
+     *   <li>{@code protocol == 1}（OpenAI）：按 api_domain 原样规范化（可带 {@code /v1} 或自定义前缀）；</li>
+     *   <li>{@code protocol != 1}（vLLM）：api_domain 视为服务根地址，端点固定在 {@code /v1} 下
+     *       （vLLM 的 OpenAI 兼容层始终暴露 {@code /v1/chat/completions}）。</li>
+     * </ul>
+     */
+    public static String connectivityUrl(String apiDomain, String baseModel, Map<String, Object> params,
+                                         int protocol) {
+        if (com.xiongx9527.askdata.chat.service.ChatModelClient.isAzureEndpoint(apiDomain)) {
+            return com.xiongx9527.askdata.chat.service.ChatModelClient.chatCompletionsUrl(
+                    apiDomain, baseModel, params);
+        }
+        if (protocol == 1) {
+            return com.xiongx9527.askdata.chat.service.ChatModelClient.chatCompletionsUrl(
+                    apiDomain, baseModel, params);
+        }
+        String base = apiDomain.trim();
+        while (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        if (base.endsWith("/chat/completions")) {
+            return base;
+        }
+        String path;
+        try {
+            path = new URL(base).getPath();
+        } catch (Exception e) {
+            return base + "/v1/chat/completions";
+        }
+        if (path != null && path.endsWith("/v1")) {
+            return base + "/chat/completions";
+        }
+        return base + "/v1/chat/completions";
     }
 
     /**

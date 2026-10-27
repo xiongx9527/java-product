@@ -121,9 +121,11 @@ class UserBatchImportTest {
 
         List<String[]> rows = readAll(content);
         assertFalse(rows.isEmpty());
-        // F-17：模板列集与 SQLBot get_i18n_head_list() 一致（8 列）
-        assertTrue(Arrays.asList("account", "name", "email", "workspace", "role", "status", "origin",
-                "platform_user_id").equals(Arrays.asList(rows.get(0))), Arrays.toString(rows.get(0)));
+        // F-17 / A23：模板列集与 SQLBot get_i18n_head_list() 一致（8 列），表头按 locale 本地化
+        // （英文 locale 下为 i18n_user.* 的英文文案）
+        assertTrue(Arrays.asList("Account", "Name", "Email", "Workspace", "Role", "User Status", "User Source",
+                "External User Unique Identifier").equals(Arrays.asList(rows.get(0))),
+                Arrays.toString(rows.get(0)));
         // 示例行（对齐 SQLBot downTemplate 的两行样例）
         assertTrue(rows.size() >= 3, "template should contain sample rows");
         assertEquals("sqlbot1", rows.get(1)[0]);
@@ -138,10 +140,10 @@ class UserBatchImportTest {
                 row("batchuser2", "Batch User 2", "batchuser2@askdata.com"));
 
         Map<String, Object> result = userImportService.batchImport(file);
-        assertEquals(2, result.get("total"));
-        assertEquals(2, result.get("success"));
-        assertEquals(0, result.get("failed"));
-        assertNull(result.get("fileId"), "no failure means no error record");
+        // A23：返回字段与 SQLBot UploadResultDTO 一致
+        assertEquals(2, result.get("successCount"));
+        assertEquals(0, result.get("errorCount"));
+        assertNull(result.get("dataKey"), "no failure means no error record");
 
         Optional<Map<String, Object>> user = userRepository.findByAccount("batchuser1");
         assertTrue(user.isPresent(), "imported user should exist");
@@ -166,28 +168,27 @@ class UserBatchImportTest {
         // 先建一个账号，用于制造“重复账号”失败行
         Map<String, Object> first = userImportService.batchImport(importFile(
                 row("dupuser", "Dup User", "dupuser@askdata.com")));
-        assertEquals(1, first.get("success"));
+        assertEquals(1, first.get("successCount"));
 
         Map<String, Object> result = userImportService.batchImport(importFile(
                 row("dupuser", "Dup User", "dupuser@askdata.com"),   // 重复账号
                 row("bademail", "Bad Email", "not-an-email"),        // 邮箱格式错误
                 row("noname", "", "noname@askdata.com"),             // 必填缺失
                 row("gooduser", "Good User", "gooduser@askdata.com")));
-        assertEquals(4, result.get("total"));
-        assertEquals(1, result.get("success"));
-        assertEquals(3, result.get("failed"));
-        String fileId = String.valueOf(result.get("fileId"));
+        assertEquals(1, result.get("successCount"));
+        assertEquals(3, result.get("errorCount"));
+        String fileId = String.valueOf(result.get("dataKey"));
         assertNotNull(fileId);
         assertTrue(userRepository.findByAccount("gooduser").isPresent());
 
         byte[] errorBytes = userImportService.errorRecord(fileId);
         assertTrue(errorBytes.length > 0);
         List<String[]> errorRows = readAll(errorBytes);
-        // 表头：行号 + 原文八列 + 失败原因
-        assertEquals("row", errorRows.get(0)[0]);
-        assertEquals("account", errorRows.get(0)[1]);
-        assertEquals("platform_user_id", errorRows.get(0)[8]);
-        assertEquals("reason", errorRows.get(0)[9]);
+        // 表头：行号 + 原文八列（本地化）+ 失败原因
+        assertEquals("Row", errorRows.get(0)[0]);
+        assertEquals("Account", errorRows.get(0)[1]);
+        assertEquals("External User Unique Identifier", errorRows.get(0)[8]);
+        assertEquals("Reason", errorRows.get(0)[9]);
         assertTrue(hasError(errorRows, "dupuser", "already exists"));
         assertTrue(hasError(errorRows, "bademail", "Invalid email format"));
         assertTrue(hasError(errorRows, "noname", "Missing name parameter"));
@@ -203,7 +204,7 @@ class UserBatchImportTest {
 
         Map<String, Object> result = userImportService.batchImport(importFile(new String[] {
                 "wsuser2", "Ws User 2", "wsuser2@askdata.com", "分析空间", "ws_admin", "0", "3", "p-42"}));
-        assertEquals(1, result.get("success"), String.valueOf(result));
+        assertEquals(1, result.get("successCount"), String.valueOf(result));
 
         Map<String, Object> user = userRepository.findByAccount("wsuser2").orElseThrow();
         long uid = ((Number) user.get("id")).longValue();
@@ -220,10 +221,10 @@ class UserBatchImportTest {
         Map<String, Object> result = userImportService.batchImport(importFile(
                 new String[] {"badws", "Bad Ws", "badws@askdata.com", "不存在的空间", "user", "1", "0", ""},
                 new String[] {"badrole", "Bad Role", "badrole@askdata.com", "", "root", "1", "0", ""}));
-        assertEquals(0, result.get("success"));
-        assertEquals(2, result.get("failed"));
+        assertEquals(0, result.get("successCount"));
+        assertEquals(2, result.get("errorCount"));
 
-        List<String[]> rows = readAll(userImportService.errorRecord(String.valueOf(result.get("fileId"))));
+        List<String[]> rows = readAll(userImportService.errorRecord(String.valueOf(result.get("dataKey"))));
         assertTrue(hasError(rows, "badws", "Workspace does not exist"));
         assertTrue(hasError(rows, "badrole", "Invalid role"));
     }
@@ -247,11 +248,11 @@ class UserBatchImportTest {
 
         Map<String, Object> imported = assertDoesNotThrow(() -> userController.batchImport(importFile(
                 row("wsuser", "Ws User", "wsuser@askdata.com")))).getData();
-        assertEquals(1, imported.get("success"));
+        assertEquals(1, imported.get("successCount"));
 
         Map<String, Object> failed = userController.batchImport(importFile(
                 row("badmail2", "Bad Mail", "nope"))).getData();
-        String fileId = String.valueOf(failed.get("fileId"));
+        String fileId = String.valueOf(failed.get("dataKey"));
         assertNotNull(fileId);
 
         ResponseEntity<ByteArrayResource> errorRecord =

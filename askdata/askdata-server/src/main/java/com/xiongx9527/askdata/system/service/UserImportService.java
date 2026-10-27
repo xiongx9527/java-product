@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.system.service;
 
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.common.util.ExcelUtils;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.web.BadRequestException;
@@ -24,8 +25,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -38,43 +41,55 @@ import java.util.regex.Pattern;
  * 用户 Excel 批量导入（对齐 SQLBot apps/system/crud/user_excel.py 的
  * downTemplate/batchUpload/generate_error_file/download_error_file）。
  *
- * <p><b>列集（F-17）</b>：与 SQLBot {@code get_i18n_head_list()} 一致的 8 列
- * {@code account / name / email / workspace / role / status / origin / platform_user_id}，
- * 因此 SQLBot 导出的模板可直接导入。额外容忍可选的<b>第 9 列 {@code password}</b>
- * （askdata 扩展）：不提供时使用配置 {@code askdata.user.default-password} 建号，
- * 未配置该参数则退化为运行期随机口令（对齐 F-04「无可预测默认口令」）。</p>
+ * <p><b>列集（F-17 / A23）</b>：与 SQLBot {@code get_i18n_head_list()} 一致的 8 列
+ * {@code account / name / email / workspace / role / status / origin / platform_user_id}。
+ * SQLBot 的模板表头是<b>本地化文案</b>（{@code trans('i18n_user.account')} 等），
+ * 因此这里同样按请求 locale 从消息包取 {@code i18n_user.*} 文案作为表头，
+ * 解析时同时接受 5 个 locale 的本地化表头与英文列名（历史模板可继续导入）。
+ * 额外容忍可选的<b>第 9 列 {@code password}</b>（askdata 扩展）：不提供时使用配置
+ * {@code askdata.user.default-password} 建号，未配置该参数则退化为运行期随机口令
+ * （对齐 F-04「无可预测默认口令」）。</p>
  *
  * <ul>
- *   <li>workspace：按名称解析工作空间；为空时归属调用管理员的工作空间，并写入 sys_user_ws 绑定；</li>
- *   <li>role：{@code admin}/{@code ws_admin}/{@code 1} → 该工作空间 weight=1；{@code user}/{@code 0}/空 → weight=0；</li>
- *   <li>status：{@code 1}/{@code enabled}/{@code true} → 启用，{@code 0}/{@code disabled}/{@code false}/空 → 停用/默认启用；</li>
- *   <li>origin：整数来源标识（0=本地）；非 0 时要求 platform_user_id，并写入 sys_user_platform 绑定；</li>
+ *   <li>workspace：按名称解析工作空间；为空或填写「默认工作空间」本地化文案时归属调用管理员的工作空间，
+ *       并写入 sys_user_ws 绑定；</li>
+ *   <li>role：本地化「管理员/普通成员」（及 {@code admin}/{@code ws_admin}/{@code 1}、
+ *       {@code user}/{@code 0}/空）→ 工作空间 weight 1/0；</li>
+ *   <li>status：本地化「已启用/已禁用」（及 {@code 1}/{@code enabled}/{@code true}、
+ *       {@code 0}/{@code disabled}/{@code false}）→ 1/0，空值按启用；</li>
+ *   <li>origin：本地化「本地创建」（及 {@code 0}/{@code local}）→ 0；非 0 整数来源要求
+ *       platform_user_id，并写入 sys_user_platform 绑定；</li>
  *   <li>失败行（重复账号/邮箱格式错误/必填缺失/工作空间或角色或状态或来源非法）收集行号+原因+原文，
- *       生成失败记录 Excel 经通用文件存储落地，返回 fileId 供下载。</li>
+ *       生成失败记录 Excel 经通用文件存储落地，返回 dataKey 供下载。</li>
  * </ul>
- * 三个端点均仅管理员可调（对齐 SQLBot SqlbotPermission(role=['admin'])）。
+ *
+ * <p><b>返回契约（A23）</b>：{@code {successCount, errorCount, dataKey}}——与 SQLBot
+ * {@code UploadResultDTO} 逐字一致，前端 {@code UserImport.vue} / {@code User.vue} 直接消费。</p>
+ *
+ * <p>三个端点均仅管理员可调（对齐 SQLBot SqlbotPermission(role=['admin'])）。</p>
  */
 @Service
 public class UserImportService {
 
-    /** 导入表头（与 SQLBot 用户导入模板一致，大小写不敏感）。 */
-    static final List<String> IMPORT_HEADERS = Arrays.asList(
-            "account", "name", "email", "workspace", "role", "status", "origin", "platform_user_id");
+    /** 表头消息键（顺序即列序，对齐 SQLBot {@code get_i18n_head_list()}）。 */
+    public static final List<String> IMPORT_HEADER_KEYS = Collections.unmodifiableList(Arrays.asList(
+            "i18n_user.account", "i18n_user.name", "i18n_user.email", "i18n_user.workspace",
+            "i18n_user.role", "i18n_user.status", "i18n_user.origin", "i18n_user.platform_user_id"));
+
+    /** 历史（英文列名）表头：askdata 早期模板与 SQLBot 之外的直连脚本继续可导入。 */
+    private static final List<String> LEGACY_HEADERS = Collections.unmodifiableList(Arrays.asList(
+            "account", "name", "email", "workspace", "role", "status", "origin", "platform_user_id"));
 
     /** askdata 扩展：可选第 9 列，显式口令（缺省时用默认口令）。 */
     static final String OPTIONAL_PASSWORD_HEADER = "password";
 
-    private static final List<ExcelUtils.Column> TEMPLATE_COLUMNS = Arrays.asList(
-            new ExcelUtils.Column("account", "account"),
-            new ExcelUtils.Column("name", "name"),
-            new ExcelUtils.Column("email", "email"),
-            new ExcelUtils.Column("workspace", "workspace"),
-            new ExcelUtils.Column("role", "role"),
-            new ExcelUtils.Column("status", "status"),
-            new ExcelUtils.Column("origin", "origin"),
-            new ExcelUtils.Column("platform_user_id", "platform_user_id"));
+    /** 支持的语言（模板与枚举文案覆盖这 5 个 locale）。 */
+    private static final List<Locale> SUPPORTED_LOCALES = Collections.unmodifiableList(Arrays.asList(
+            Locale.SIMPLIFIED_CHINESE, Locale.ENGLISH, Locale.TRADITIONAL_CHINESE, Locale.KOREAN,
+            new Locale("th", "TH")));
 
-    private static final List<ExcelUtils.Column> ERROR_COLUMNS = buildErrorColumns();
+    /** 本地化「默认工作空间」文案（模板示例行使用；解析时映射为调用者的工作空间）。 */
+    private static final String DEFAULT_WORKSPACE_KEY = "i18n_default_workspace";
 
     private static final String ERROR_FILE_PREFIX = "user_import_error_";
 
@@ -109,13 +124,13 @@ public class UserImportService {
     /** fileId -> 写入时间戳（毫秒），用于 TTL 清理。 */
     private final Map<String, Long> errorFileTimes = new ConcurrentHashMap<>();
 
-    private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
+    private final MessageResolver messageResolver;
 
     public UserImportService(UserRepository userRepository, UserWsRepository userWsRepository,
                              WorkspaceRepository workspaceRepository, PlatformRepository platformRepository,
                              CurrentUserService currentUserService, UserService userService,
                              IdGenerator idGenerator, AskdataFileStorage fileStorage,
-                             com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver) {
+                             MessageResolver messageResolver) {
         this.userRepository = userRepository;
         this.userWsRepository = userWsRepository;
         this.workspaceRepository = workspaceRepository;
@@ -131,14 +146,28 @@ public class UserImportService {
     // GET /user/template
     // ------------------------------------------------------------------
 
-    /** 生成用户导入模板（8 列 SQLBot 列集 + 两行示例）。 */
+    /**
+     * 生成用户导入模板（8 列本地化表头 + 两行本地化示例）。
+     *
+     * <p>对齐 SQLBot {@code downTemplate}：表头与示例值都走 {@code trans()}，
+     * 因此中文环境下载到「账号/姓名/…」与「管理员/普通成员」「已启用/已禁用」「本地创建」，
+     * 直接回传导入即可通过校验。</p>
+     */
     public byte[] importTemplate() {
         currentUserService.requireAdmin();
+        String admin = label("i18n_user.administrator");
+        String member = label("i18n_user.ordinary_member");
+        String enabled = label("i18n_user.status_enabled");
+        String disabled = label("i18n_user.status_disabled");
+        String local = label("i18n_user.local_creation");
+        String defaultWorkspace = label(DEFAULT_WORKSPACE_KEY);
         List<ExcelUtils.MapStringArray> rows = Arrays.asList(
-                sampleRow("sqlbot1", "sqlbot_employee1", "employee1@sqlbot.com", "", "user", "1", "0", ""),
-                sampleRow("sqlbot2", "sqlbot_employee2", "employee2@sqlbot.com", "", "ws_admin", "1", "0", ""));
+                sampleRow("sqlbot1", "sqlbot_employee1", "employee1@sqlbot.com", defaultWorkspace, member,
+                        enabled, local, ""),
+                sampleRow("sqlbot2", "sqlbot_employee2", "employee2@sqlbot.com", defaultWorkspace, admin,
+                        disabled, local, ""));
         try {
-            return ExcelUtils.writeXlsx(TEMPLATE_COLUMNS, rows);
+            return ExcelUtils.writeXlsx(templateColumns(), rows);
         } catch (IOException e) {
             throw new BadRequestException(messageResolver.get("user.import.template.failed", e.getMessage()));
         }
@@ -150,8 +179,8 @@ public class UserImportService {
 
     /**
      * 解析上传 Excel 并逐行建号。
-     * 返回 {@code {fileId, total, success, failed}}；存在失败行时 fileId 为非空字符串
-     * （失败记录已落盘），无失败行时 fileId 为 null。
+     * 返回 {@code {successCount, errorCount, dataKey}}（对齐 SQLBot UploadResultDTO）；
+     * 存在失败行时 dataKey 为非空字符串（失败记录已落盘），无失败行时 dataKey 为 null。
      */
     public Map<String, Object> batchImport(MultipartFile file) {
         currentUserService.requireAdmin();
@@ -169,18 +198,16 @@ public class UserImportService {
             throw new BadRequestException(messageResolver.get("user.import.read.failed", e.getMessage()));
         }
         if (rows.isEmpty() || !headerMatches(rows.get(0))) {
-            throw new BadRequestException(messageResolver.get("i18n_excel_import.col_num_not_match"));
+            throw new BadRequestException(messageResolver.get("i18n_excel_col_num_not_match"));
         }
-        boolean withPasswordColumn = rows.get(0).length > IMPORT_HEADERS.size();
+        boolean withPasswordColumn = rows.get(0).length > IMPORT_HEADER_KEYS.size();
 
         long defaultOid = currentUserService.oidOf(currentUserService.currentUser());
         Set<String> batchAccounts = new HashSet<>();
         List<ErrorRow> errorRows = new ArrayList<>();
         int success = 0;
-        int total = 0;
         for (int index = 1; index < rows.size(); index++) {
             String[] row = rows.get(index);
-            total++;
             String account = cell(row, 0);
             String name = cell(row, 1);
             String email = cell(row, 2);
@@ -189,7 +216,7 @@ public class UserImportService {
             String statusText = cell(row, 5);
             String originText = cell(row, 6);
             String platformUid = cell(row, 7);
-            String password = withPasswordColumn ? cell(row, IMPORT_HEADERS.size()) : "";
+            String password = withPasswordColumn ? cell(row, IMPORT_HEADER_KEYS.size()) : "";
             String reason = validateRow(account, name, email, workspaceName, role, statusText, originText,
                     platformUid, batchAccounts);
             if (reason != null) {
@@ -207,15 +234,11 @@ public class UserImportService {
             }
         }
 
-        String fileId = null;
-        if (!errorRows.isEmpty()) {
-            fileId = writeErrorRecord(errorRows);
-        }
+        String dataKey = errorRows.isEmpty() ? null : writeErrorRecord(errorRows);
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("fileId", fileId);
-        result.put("total", total);
-        result.put("success", success);
-        result.put("failed", errorRows.size());
+        result.put("successCount", success);
+        result.put("errorCount", errorRows.size());
+        result.put("dataKey", dataKey);
         return result;
     }
 
@@ -223,7 +246,7 @@ public class UserImportService {
     // GET /user/errorRecord/{fileId}
     // ------------------------------------------------------------------
 
-    /** 按 fileId 读取失败记录 Excel 字节；文件不存在时抛 BadRequestException。 */
+    /** 按 dataKey（失败记录 fileId）读取失败记录 Excel 字节；文件不存在时抛 BadRequestException。 */
     public byte[] errorRecord(String fileId) {
         currentUserService.requireAdmin();
         if (fileId == null || !FILE_ID_REGEX.matcher(fileId).matches()) {
@@ -238,6 +261,67 @@ public class UserImportService {
         } catch (RuntimeException e) {
             throw new BadRequestException(messageResolver.get("user.import.error_file.not_found", fileId));
         }
+    }
+
+    // ------------------------------------------------------------------
+    // 表头 / 枚举本地化
+    // ------------------------------------------------------------------
+
+    /** 当前 locale 的模板表头。 */
+    private List<String> localizedHeaders() {
+        List<String> headers = new ArrayList<>();
+        for (String key : IMPORT_HEADER_KEYS) {
+            headers.add(label(key));
+        }
+        return headers;
+    }
+
+    private List<ExcelUtils.Column> templateColumns() {
+        List<String> headers = localizedHeaders();
+        List<ExcelUtils.Column> columns = new ArrayList<>();
+        for (int i = 0; i < headers.size(); i++) {
+            columns.add(new ExcelUtils.Column(headers.get(i), LEGACY_HEADERS.get(i)));
+        }
+        return columns;
+    }
+
+    /**
+     * 表头校验：逐列匹配本地化表头（当前 locale / 其余 4 个 locale）或英文列名；
+     * 可选第 9 列必须是 password。对齐 SQLBot {@code validate_head} 的「表头必须逐列对上」语义，
+     * 但放宽到 5 个 locale（前端语言与模板下载语言不一致时不至于整体失败）。
+     */
+    private boolean headerMatches(String[] header) {
+        if (header.length < IMPORT_HEADER_KEYS.size()) {
+            return false;
+        }
+        for (int i = 0; i < IMPORT_HEADER_KEYS.size(); i++) {
+            if (!acceptedHeaderLabels(i).contains(normalize(cell(header, i)))) {
+                return false;
+            }
+        }
+        if (header.length > IMPORT_HEADER_KEYS.size()) {
+            return OPTIONAL_PASSWORD_HEADER.equalsIgnoreCase(cell(header, IMPORT_HEADER_KEYS.size()));
+        }
+        return true;
+    }
+
+    /** 第 i 列可接受的表头文案（5 个 locale 的本地化文案 + 英文列名）。 */
+    private Set<String> acceptedHeaderLabels(int index) {
+        Set<String> labels = new LinkedHashSet<>();
+        labels.add(normalize(LEGACY_HEADERS.get(index)));
+        for (Locale locale : SUPPORTED_LOCALES) {
+            labels.add(normalize(messageResolver.get(IMPORT_HEADER_KEYS.get(index), locale)));
+        }
+        return labels;
+    }
+
+    /** 按当前 locale 取消息包文案。 */
+    private String label(String key) {
+        return messageResolver.get(key);
+    }
+
+    private static String normalize(String text) {
+        return text == null ? "" : text.trim().toLowerCase(Locale.ROOT);
     }
 
     // ------------------------------------------------------------------
@@ -275,7 +359,8 @@ public class UserImportService {
         if (!EMAIL_REGEX.matcher(email).matches()) {
             return messageResolver.get("user.email.invalid", email);
         }
-        if (!workspaceName.isEmpty() && !workspaceRepository.findByName(workspaceName).isPresent()) {
+        if (!isDefaultWorkspaceLabel(workspaceName) && !workspaceName.isEmpty()
+                && !workspaceRepository.findByName(workspaceName).isPresent()) {
             return messageResolver.get("workspace.not.found", workspaceName);
         }
         if (!isKnownRole(role)) {
@@ -297,8 +382,26 @@ public class UserImportService {
         return null;
     }
 
-    private long resolveWorkspaceOid(String workspaceName, long defaultOid) {
+    /**
+     * workspace 单元格是否为「默认工作空间」的本地化文案（SQLBot 模板示例行的取值）。
+     * 该文案不是库中真实工作空间名，按「使用调用者工作空间」处理。
+     */
+    private boolean isDefaultWorkspaceLabel(String workspaceName) {
         if (workspaceName == null || workspaceName.isEmpty()) {
+            return false;
+        }
+        String value = normalize(workspaceName);
+        for (Locale locale : SUPPORTED_LOCALES) {
+            if (value.equals(normalize(messageResolver.get(DEFAULT_WORKSPACE_KEY, locale)))) {
+                return true;
+            }
+        }
+        // 库里默认工作空间存的是消息键本身（展示时再本地化）
+        return value.equals(normalize(DEFAULT_WORKSPACE_KEY));
+    }
+
+    private long resolveWorkspaceOid(String workspaceName, long defaultOid) {
+        if (workspaceName == null || workspaceName.isEmpty() || isDefaultWorkspaceLabel(workspaceName)) {
             return defaultOid;
         }
         return workspaceRepository.findByName(workspaceName)
@@ -306,42 +409,54 @@ public class UserImportService {
                 .orElse(defaultOid);
     }
 
-    private static boolean isKnownRole(String role) {
-        if (role == null || role.isEmpty()) {
-            return true;
-        }
-        String value = role.trim().toLowerCase(Locale.ROOT);
-        return "admin".equals(value) || "ws_admin".equals(value) || "1".equals(value)
-                || "user".equals(value) || "member".equals(value) || "0".equals(value);
+    /** 角色合法值：本地化「管理员/普通成员」+ admin/ws_admin/user/member + 1/0 + 空。 */
+    private boolean isKnownRole(String role) {
+        return role == null || role.isEmpty() || roleWeight(role) >= 0;
     }
 
-    private static int roleWeight(String role) {
+    /**
+     * 角色 → 工作空间 weight：管理员 = 1，普通成员 = 0，非法 = -1。
+     * 本地化文案从消息包 {@code i18n_user.administrator} / {@code i18n_user.ordinary_member} 取
+     * （5 个 locale 都接受，对齐 SQLBot 模板示例值）。
+     */
+    private int roleWeight(String role) {
         if (role == null || role.isEmpty()) {
             return 0;
         }
-        String value = role.trim().toLowerCase(Locale.ROOT);
-        return "admin".equals(value) || "ws_admin".equals(value) || "1".equals(value) ? 1 : 0;
-    }
-
-    private static boolean isKnownStatus(String status) {
-        if (status == null || status.isEmpty()) {
-            return true;
+        if (matchesAny(role, "i18n_user.administrator") || matchesAny(role, "admin", "ws_admin", "1")) {
+            return 1;
         }
-        String value = status.trim().toLowerCase(Locale.ROOT);
-        return "1".equals(value) || "0".equals(value) || "enabled".equals(value) || "disabled".equals(value)
-                || "true".equals(value) || "false".equals(value);
+        if (matchesAny(role, "i18n_user.ordinary_member") || matchesAny(role, "user", "member", "0")) {
+            return 0;
+        }
+        return -1;
     }
 
-    private static int statusOf(String status) {
+    /** 状态合法值：本地化「已启用/已禁用」+ 1/0/enabled/disabled/true/false + 空。 */
+    private boolean isKnownStatus(String status) {
+        return status == null || status.isEmpty() || statusOf(status) >= 0;
+    }
+
+    /** 状态 → 1/0（空值按启用），非法返回 -1。 */
+    private int statusOf(String status) {
         if (status == null || status.isEmpty()) {
             return 1;
         }
-        String value = status.trim().toLowerCase(Locale.ROOT);
-        return "0".equals(value) || "disabled".equals(value) || "false".equals(value) ? 0 : 1;
+        if (matchesAny(status, "i18n_user.status_enabled") || matchesAny(status, "1", "enabled", "true")) {
+            return 1;
+        }
+        if (matchesAny(status, "i18n_user.status_disabled") || matchesAny(status, "0", "disabled", "false")) {
+            return 0;
+        }
+        return -1;
     }
 
-    private static boolean isKnownOrigin(String origin) {
+    /** 来源合法值：本地化「本地创建」+ 0/local + 非负整数。 */
+    private boolean isKnownOrigin(String origin) {
         if (origin == null || origin.isEmpty()) {
+            return true;
+        }
+        if (matchesAny(origin, "i18n_user.local_creation") || matchesAny(origin, "local", "0")) {
             return true;
         }
         try {
@@ -351,11 +466,42 @@ public class UserImportService {
         }
     }
 
-    private static int originOf(String origin) {
+    private int originOf(String origin) {
         if (origin == null || origin.isEmpty()) {
             return 0;
         }
-        return Integer.parseInt(origin.trim());
+        if (matchesAny(origin, "i18n_user.local_creation") || matchesAny(origin, "local", "0")) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(origin.trim());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /** 单元格文案是否命中消息键在任一 locale 的本地化文案，或给定的字面量之一。 */
+    private boolean matchesAny(String cellValue, String messageKey) {
+        if (cellValue == null) {
+            return false;
+        }
+        String value = normalize(cellValue);
+        for (Locale locale : SUPPORTED_LOCALES) {
+            if (value.equals(normalize(messageResolver.get(messageKey, locale)))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean matchesAny(String cellValue, String... literals) {
+        String value = normalize(cellValue);
+        for (String literal : literals) {
+            if (value.equals(normalize(literal))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String writeErrorRecord(List<ErrorRow> errorRows) {
@@ -369,13 +515,13 @@ public class UserImportService {
                 if ("reason".equals(key)) {
                     return errorRow.reason == null ? "" : errorRow.reason;
                 }
-                int column = IMPORT_HEADERS.indexOf(key);
+                int column = LEGACY_HEADERS.indexOf(key);
                 return column < 0 ? "" : cell(errorRow.rawRow, column);
             });
         }
         byte[] content;
         try {
-            content = ExcelUtils.writeXlsx(ERROR_COLUMNS, rows);
+            content = ExcelUtils.writeXlsx(errorColumns(), rows);
         } catch (IOException e) {
             throw new BadRequestException(messageResolver.get("user.import.generate_error.failed", e.getMessage()));
         }
@@ -391,13 +537,15 @@ public class UserImportService {
         return fileId;
     }
 
-    private static List<ExcelUtils.Column> buildErrorColumns() {
+    /** 失败记录列：行号 + 本地化表头八列 + 原因（表头随 locale 变化）。 */
+    private List<ExcelUtils.Column> errorColumns() {
         List<ExcelUtils.Column> columns = new ArrayList<>();
-        columns.add(new ExcelUtils.Column("row", "row"));
-        for (String header : IMPORT_HEADERS) {
-            columns.add(new ExcelUtils.Column(header, header));
+        columns.add(new ExcelUtils.Column(messageResolver.get("user.import.error.row"), "row"));
+        List<String> headers = localizedHeaders();
+        for (int i = 0; i < headers.size(); i++) {
+            columns.add(new ExcelUtils.Column(headers.get(i), LEGACY_HEADERS.get(i)));
         }
-        columns.add(new ExcelUtils.Column("reason", "reason"));
+        columns.add(new ExcelUtils.Column(messageResolver.get("user.import.error.reason"), "reason"));
         return columns;
     }
 
@@ -412,22 +560,6 @@ public class UserImportService {
                 }
             }
         }
-    }
-
-    /** 表头校验：前 8 列必须逐字匹配 SQLBot 列集；可选第 9 列必须是 password。 */
-    private static boolean headerMatches(String[] header) {
-        if (header.length < IMPORT_HEADERS.size()) {
-            return false;
-        }
-        for (int i = 0; i < IMPORT_HEADERS.size(); i++) {
-            if (!IMPORT_HEADERS.get(i).equalsIgnoreCase(cell(header, i))) {
-                return false;
-            }
-        }
-        if (header.length > IMPORT_HEADERS.size()) {
-            return OPTIONAL_PASSWORD_HEADER.equalsIgnoreCase(cell(header, IMPORT_HEADERS.size()));
-        }
-        return true;
     }
 
     /** 读取首个工作表全部行为字符串矩阵（跳过整行空白，xls/xlsx 均可）。 */
