@@ -1,0 +1,138 @@
+schema: comet.native.v4
+name: system-account
+language: zh-CN
+phase: archive
+status: done
+state_version: 1
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/supervisor/askdata-sqlbot-p0-parity/system-account
+  target_branch: main
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A23
+    source: brief.md
+    text: A23 用户导入兼容：用户导入模板与解析使用本地化表头及“已启用/已禁用/本地创建”等枚举，兼容 SQLBot 模板；导入返回字段名与 SQLBot
+      一致，中文枚举值不再被判非法。
+    result: passed
+    reason:
+      text: UserImportService 使用 5 种语言本地化表头与已启用/已禁用/本地创建枚举，返回
+        successCount/errorCount/dataKey 与 SQLBot
+        一致；UserImportLocalizedTest/UserBatchImportTest 覆盖。
+      truncated: false
+  - id: A24
+    source: brief.md
+    text: A24 会话与系统细节：访问 token 默认 8 天且可配置；SSO 登出联动
+      IdP；用户搜索保留相关性排序；内置系统变量可删除；助手图片校验类型与大小；模型连通性测试使用 protocol/Azure 等配置；isAdmin
+      按角色而非 `id==1 && account=='admin'`。
+    result: passed
+    reason:
+      text: sa-token.timeout 默认 691200 且可用 ASKDATA_TOKEN_TIMEOUT
+        覆盖；SsoLogoutUrlResolver 让登出返回 IdP URL；UserRepository
+        相关性排序；内置系统变量可删；AiModelService 按 protocol/Azure 生成连通性 URL；isAdmin 按默认空间
+        sys_user_ws.weight>0 判定。
+      truncated: false
+  - id: A25
+    source: brief.md
+    text: A25 SAML2 配置端点：补齐前端调用的
+      `/setting/authentication/info/saml`、`/setting/authentication/save/saml`、`/setting/authentication/validate/saml2`
+      三个端点，读写 SAML2 配置并校验证书/元数据，配置缺失时返回可读错误。
+    result: passed
+    reason:
+      text: Saml2SettingsService/Controller 补齐
+        /setting/authentication/{info/saml,save/saml,validate/saml2}，校验证书与元数据，缺失时返回可读错误；Saml2SettingsTest
+        覆盖。
+      truncated: false
+builder_handoff:
+  candidate_id: 157a5a5c20e7c311fb812fb2639270cacb0d8d84
+  identity_provider: skill-coordinated
+  builder_execution_ref: hy3-supervisor-system-20261027-01
+  iteration: 1
+  summary:
+    text: 独立复核 system-account 子任务：导入本地化表头/枚举与返回字段、token 默认 8 天可配置、SSO 登出联动
+      IdP、用户搜索相关性、内置变量可删除、模型连通性 protocol/Azure、isAdmin 角色判定、SAML2
+      三个配置端点均已实现；system-account-checks 全绿（exit 0，68s）。
+    truncated: false
+  addressed_acceptance_ids:
+    - A23
+    - A24
+    - A25
+  checks:
+    - name:
+        text: askdata-server system account (A23/A24/A25) tests
+        truncated: false
+      result: passed
+      note: null
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-10-27T03:38:39.602Z
+blockers: []
+verification:
+  candidate_id: 157a5a5c20e7c311fb812fb2639270cacb0d8d84
+  identity_provider: skill-coordinated
+  verifier_execution_ref: sess-system-account-verifier
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: system-account-checks
+      name:
+        text: askdata-server system account (A23/A24/A25) tests
+        truncated: false
+      argv_display:
+        - text: -pl
+          truncated: false
+        - text: askdata/askdata-server
+          truncated: false
+        - text: test
+          truncated: false
+        - text: -Dmaven.test.skip=false
+          truncated: false
+        - text: -Dtest=UserImportLocalizedTest,SystemDetailsTest,Saml2SettingsTest,UserBatchImportTest,EmbeddedTokenAuthenticatorTest,RemainingFidelityTest,AuthenticationSsoLoginTest,AuthenticationServiceAdminGuardTest,PasswordStrengthAndSessionTest,LoginParameterRoundTripTest
+          truncated: false
+        - text: -DfailIfNoTests=false
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 68015
+  summary:
+    text: 独立复核 system-account 子任务：导入本地化表头/枚举与返回字段、token 默认 8 天可配置、SSO 登出联动
+      IdP、用户搜索相关性、内置变量可删除、模型连通性 protocol/Azure、isAdmin 角色判定、SAML2
+      三个配置端点均已实现；system-account-checks 全绿（exit 0，68s）。
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-10-27T03:45:08.959Z
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-10-27T03:38:39.602Z
