@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.system.platform;
 
+import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
@@ -57,7 +58,17 @@ public class PlatformSyncService {
     @Transactional
     public Map<String, Object> sync(Map<String, Object> body) {
         currentUserService.requireAdmin();
-        int origin = intOf(body.get("origin"), 0);
+        if (body == null) {
+            throw new BadRequestException("request body is required");
+        }
+        Object originValue = body.get("origin");
+        if (originValue == null || String.valueOf(originValue).trim().isEmpty()) {
+            throw new BadRequestException("origin is required");
+        }
+        int origin = intOf(originValue, 0);
+        if (origin == 0) {
+            throw new BadRequestException("origin must not be 0");
+        }
         boolean cover = boolOf(body.get("cover"), false);
         List<Map<String, Object>> userList = Rows.mapList(body.get("user_list"));
         long oid = currentUserService.oidOf(currentUserService.currentUser());
@@ -91,7 +102,9 @@ public class PlatformSyncService {
 
             if (localUser == null) {
                 long uid = idGenerator.nextId();
-                userRepository.insert(uid, account, account, CryptoUtil.md5Hex(""), email, oid, 1,
+                // A10：同步新建用户不再写 md5("")（空口令即可登录），改为随机不可用口令。
+                String randomPassword = java.util.UUID.randomUUID() + "-" + java.util.UUID.randomUUID();
+                userRepository.insert(uid, account, account, CryptoUtil.md5Hex(randomPassword), email, oid, 1,
                         System.currentTimeMillis(), "zh-CN", origin, null);
                 localUser = userRepository.findById(uid).orElse(null);
                 platformRepository.upsertBinding(idGenerator.nextId(), uid, origin, platformUid);

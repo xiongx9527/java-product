@@ -1,10 +1,12 @@
 package com.xiongx9527.askdata.system.platform;
 
+import com.xiongx9527.askdata.system.auth.CryptoUtil;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.system.repository.UserRepository;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -158,6 +160,43 @@ class PlatformSyncServiceTest {
         service.sync(body("6", false, "u1", "王五", "w@a.com"));
         verify(userRepository, times(1)).updateProfile(anyLong(), anyString(), anyString(),
                 anyInt(), anyInt(), org.mockito.ArgumentMatchers.isNull());
+    }
+
+    @Test
+    void missingOriginIsRejected() {
+        Map<String, Object> payload = body("6", false, "u1", "张三", "z@a.com");
+        payload.remove("origin");
+
+        com.xiongx9527.askdata.common.web.BadRequestException error = assertThrows(
+                com.xiongx9527.askdata.common.web.BadRequestException.class, () -> service.sync(payload));
+        assertTrue(error.getMessage().contains("origin"), "错误信息需点明 origin: " + error.getMessage());
+        assertTrue(users.isEmpty(), "origin 缺失时不得落库");
+    }
+
+    @Test
+    void zeroOriginIsRejected() {
+        com.xiongx9527.askdata.common.web.BadRequestException error = assertThrows(
+                com.xiongx9527.askdata.common.web.BadRequestException.class,
+                () -> service.sync(body("0", false, "u1", "张三", "z@a.com")));
+        assertTrue(error.getMessage().contains("origin"), "错误信息需点明 origin: " + error.getMessage());
+        assertTrue(users.isEmpty(), "origin=0 时不得落库");
+
+        assertThrows(com.xiongx9527.askdata.common.web.BadRequestException.class,
+                () -> service.sync(body(" ", false, "u1", "张三", "z@a.com")));
+        assertTrue(users.isEmpty(), "origin 空白时不得落库");
+    }
+
+    @Test
+    void syncedUserNeverGetsEmptyPasswordHash() {
+        service.sync(body("6", false, "u1", "张三", "z@a.com"));
+
+        ArgumentCaptor<String> password = ArgumentCaptor.forClass(String.class);
+        verify(userRepository).insert(anyLong(), anyString(), anyString(), password.capture(), anyString(),
+                anyLong(), anyInt(), anyLong(), anyString(), anyInt(), org.mockito.ArgumentMatchers.isNull());
+
+        String hash = password.getValue();
+        assertTrue(hash != null && !hash.trim().isEmpty(), "同步用户密码哈希不得为空");
+        assertEquals(false, CryptoUtil.md5Hex("").equals(hash), "同步用户不得写入 md5(\"\")");
     }
 
     @Test

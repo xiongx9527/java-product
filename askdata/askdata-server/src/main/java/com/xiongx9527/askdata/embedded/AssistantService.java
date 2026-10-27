@@ -123,6 +123,17 @@ public class AssistantService {
      * 此处从 configuration(JSON) 读取 {@code online}，缺失时默认 true（返回该 oid 全部数据源）。
      */
     public List<Map<String, Object>> datasources(Long assistantId) {
+        return datasources(assistantId, null);
+    }
+
+    /**
+     * A17：嵌入页按 token 中的 {@code assistant_id} 加载助手；{@code X-SQLBOT-ASSISTANT-ONLINE}
+     * 在运行时切换在线/离线通道（覆盖助手配置的 {@code online}）。
+     *
+     * <p>高级应用（type 1/3）在线时实时向宿主 API 取 {@code ds_list}；宿主失败直接抛错，
+     * 绝不回退到「当前用户第一个 type=0 助手」。</p>
+     */
+    public List<Map<String, Object>> datasources(Long assistantId, String onlineHeader) {
         // A24：嵌入页取数据源只要求登录（对齐 SQLBot GET /system/assistant/ds 无 ws_admin 限制）
         currentUserService.currentUser();
         Map<String, Object> assistant;
@@ -130,11 +141,14 @@ public class AssistantService {
             assistant = assistantRepository.findById(assistantId)
                     .orElseThrow(() -> new BadRequestException("Assistant with id " + assistantId + " not found"));
         } else {
-            // 默认：当前用户的第一个普通助手（type=0）
-            long oid = currentUserService.oidOf(currentUserService.currentUser());
-            assistant = assistantRepository.list(oid).stream()
-                    .filter(row -> Rows.intg(row, "type", 0) == 0)
-                    .findFirst().orElse(null);
+            // A17：优先使用嵌入 token 中的 assistant_id，而不是当前用户第一个助手
+            assistant = com.xiongx9527.askdata.common.web.AuthContext.currentAssistant();
+            if (assistant == null) {
+                long oid = currentUserService.oidOf(currentUserService.currentUser());
+                assistant = assistantRepository.list(oid).stream()
+                        .filter(row -> Rows.intg(row, "type", 0) == 0)
+                        .findFirst().orElse(null);
+            }
             if (assistant == null) {
                 return new ArrayList<>();
             }
@@ -142,8 +156,8 @@ public class AssistantService {
         int type = Rows.intg(assistant, "type", 0);
         Map<String, Object> config = parseConfig(Rows.str(assistant, "configuration"));
         long oid = Rows.lng(config, "oid", 0L);
-        // sys_assistant 无 online 列；从 configuration 读取，默认 true
-        boolean online = Rows.bool(config, "online", true);
+        // sys_assistant 无 online 列；从 configuration 读取，默认 true；请求头可运行时覆盖（A17）
+        boolean online = onlineOverride(onlineHeader, Rows.bool(config, "online", true));
         List<Long> publicList = Rows.longList(config.get("public_list"));
 
         List<Map<String, Object>> all = datasourceRepository.listByOid(oid);
@@ -165,13 +179,69 @@ public class AssistantService {
                 result.add(datasourceView(ds));
             }
             return result;
-        } else if (type == 1) {
+        }
+        if (DynamicDatasourceResolver.isAdvancedApplication(type)) {
+            if (online) {
+                Map<String, Object> endpoint = dynamicDatasourceResolver.hostEndpointOf(assistant);
+                if (endpoint != null) {
+                    // A17：在线通道实时向宿主取 ds_list；失败由 resolver 抛明确错误，不回退其他助手
+                    return hostDatasourceViews(
+                            dynamicDatasourceResolver.listFromHost(type, endpoint));
+                }
+            }
             for (Map<String, Object> ds : all) {
                 result.add(datasourceView(ds));
             }
             return result;
         }
         return result;
+    }
+
+    /** A17：在线/离线通道头解析；无法识别时沿用助手配置。 */
+    private static boolean onlineOverride(String header, boolean configured) {
+        if (header == null || header.trim().isEmpty()) {
+            return configured;
+        }
+        String value = header.trim().toLowerCase(java.util.Locale.ROOT);
+        if ("true".equals(value) || "1".equals(value) || "online".equals(value) || "yes".equals(value)) {
+            return true;
+        }
+        if ("false".equals(value) || "0".equals(value) || "offline".equals(value) || "no".equals(value)) {
+            return false;
+        }
+        return configured;
+    }
+
+    /** A17：宿主 ds_list 条目 → 前端数据源视图（缺 type_name 时按类型补全）。 */
+    private List<Map<String, Object>> hostDatasourceViews(List<Map<String, Object>> items) {
+        List<Map<String, Object>> views = new ArrayList<>();
+        for (Map<String, Object> item : items) {
+            Map<String, Object> view = new LinkedHashMap<>();
+            view.put("id", Rows.lng(item, "id", 0L));
+            view.put("name", Rows.str(item, "name"));
+            view.put("description", Rows.str(item, "description"));
+            String type = Rows.str(item, "type");
+            view.put("type", type);
+            String typeName = Rows.str(item, "type_name");
+            if (typeName == null || typeName.isEmpty()) {
+                typeName = typeNameOf(type);
+            }
+            view.put("type_name", typeName);
+            view.put("num", Rows.str(item, "num"));
+            views.add(view);
+        }
+        return views;
+    }
+
+    private static String typeNameOf(String type) {
+        if (type == null || type.trim().isEmpty()) {
+            return "";
+        }
+        try {
+            return com.xiongx9527.askdata.datasource.engine.DatasourceType.fromType(type.trim()).getDbName();
+        } catch (RuntimeException e) {
+            return "";
+        }
     }
 
     /**

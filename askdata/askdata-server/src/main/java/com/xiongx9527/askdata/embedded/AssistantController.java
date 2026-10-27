@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -51,10 +52,22 @@ public class AssistantController {
         return Result.ok(assistantService.advancedApplications());
     }
 
-    /** Current assistant available datasources (aligns SQLBot GET /system/assistant/ds). */
+    /**
+     * Current assistant available datasources (aligns SQLBot GET /system/assistant/ds).
+     *
+     * <p>A17：{@code X-SQLBOT-ASSISTANT-ONLINE} 在运行时切换在线/离线通道；缺省 id 时按
+     * 嵌入 token 的 {@code assistant_id} 解析助手。</p>
+     */
     @GetMapping({"/system/assistant/ds"})
-    public Result<List<Map<String, Object>>> datasources(@RequestParam(value = "id", required = false) Long id) {
-        return Result.ok(assistantService.datasources(id));
+    public Result<List<Map<String, Object>>> datasources(
+            @RequestParam(value = "id", required = false) Long id,
+            @RequestHeader(value = "X-SQLBOT-ASSISTANT-ONLINE", required = false) String online) {
+        return Result.ok(assistantService.datasources(id, online));
+    }
+
+    /** 兼容既有调用方（无在线/离线通道头）。 */
+    public Result<List<Map<String, Object>>> datasources(Long id) {
+        return datasources(id, null);
     }
 
     /**

@@ -41,9 +41,13 @@ public class AssistantPublicController {
 
     private final String secretKey;
 
+    private final EmbeddedSignatureVerifier signatureVerifier;
+
     public AssistantPublicController(AssistantRepository assistantRepository,
-                                     @Value("${askdata.secret.key:}") String secretKey) {
+                                     @Value("${askdata.secret.key:}") String secretKey,
+                                     EmbeddedSignatureVerifier signatureVerifier) {
         this.assistantRepository = assistantRepository;
+        this.signatureVerifier = signatureVerifier;
         // 验收 A5：优先使用 askdata.secret.key（与主密钥配置一致）；未配置时才回退到运行期随机密钥
         this.secretKey = (secretKey == null || secretKey.isEmpty())
                 ? java.util.UUID.randomUUID().toString() : secretKey;
@@ -64,7 +68,7 @@ public class AssistantPublicController {
         Map<String, Object> assistant = assistantRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("assistant application not exist"));
         String origin = requireMatchedOrigin(request, assistant);
-        requireEmbeddedSign(request, assistant, id);
+        requireEmbeddedAuth(request, assistant, id, origin);
 
         long assistantOid = 1L;
         if (Rows.intg(assistant, "type", 0) == 0) {
@@ -126,7 +130,18 @@ public class AssistantPublicController {
      * <p>签名密钥为助手的 {@code app_secret}；未配置 app_secret 的助手视为未开放嵌入，
      * 直接拒绝。</p>
      */
-    private void requireEmbeddedSign(HttpServletRequest request, Map<String, Object> assistant, long assistantId) {
+    private void requireEmbeddedAuth(HttpServletRequest request, Map<String, Object> assistant,
+                                     long assistantId, String origin) {
+        String token = request.getHeader(EmbeddedSignatureVerifier.TOKEN_HEADER);
+        if (token != null && !token.trim().isEmpty()) {
+            signatureVerifier.verify(token, origin, request.getHeader("User-Agent"),
+                    request.getHeader("X-SQLBOT-TIMEZONE"), System.currentTimeMillis() / 1000L);
+            return;
+        }
+        if (!signatureVerifier.legacyHmacEnabled()) {
+            throw new IllegalArgumentException(
+                    "embedded token is required; legacy embedded sign is disabled by default");
+        }
         String appSecret = Rows.str(assistant, "app_secret");
         if (appSecret == null || appSecret.isEmpty()) {
             throw new IllegalArgumentException("embedded sign is not available for this assistant");
