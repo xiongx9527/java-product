@@ -1,0 +1,153 @@
+schema: comet.native.v4
+name: datasource-details
+language: zh-CN
+phase: archive
+status: done
+state_version: 1
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/supervisor/askdata-sqlbot-p0-parity/datasource-details
+  target_branch: main
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A18
+    source: brief.md
+    text: A18 数据源类型细节：Hive 支持 LDAP 认证参数；SQL Server `lowVersion` 配置影响 URL/驱动参数；ES
+      表/字段同步保留 `_meta.description` 注释；MySQL `allowPublicKeyRetrieval`
+      仅在配置开启时追加；Oracle 可按配置启用 thick 模式；连接池按配置 recycle；`MAX_TABLES=10`。
+    result: passed
+    reason:
+      text: MySQL allowPublicKeyRetrieval 仅显式开启时追加；SQL Server lowVersion 追加旧版兼容参数；Hive
+        有口令时拼 auth=LDAP/user；Oracle 支持 oci thick URL；PoolSettings 增加 recycleMs
+        并在借出时回收超龄空闲连接；SchemaContextBuilder MAX_TABLES=10；ES 同步读取
+        _meta.description 作注释。
+      truncated: false
+  - id: A19
+    source: brief.md
+    text: A19 Excel 导出与类型推断：Excel 导出数字列写为数值单元格而非文本，可求和；类型推断不再只采样 100 行且保留 float
+      语义；结果列名按大小写不敏感归一；上述行为有导出/导入回归测试。
+    result: passed
+    reason:
+      text: ChatExcel 数字/布尔写为原生单元格，列名大小写不敏感归一且重复列名追加序号；ExcelService 类型推断全量扫描并保留
+        float；ExcelServiceTest/ChatExcelTest/ChatExportParityTest 覆盖。
+      truncated: false
+  - id: A20
+    source: brief.md
+    text: A20 表级向量召回：表级向量召回在远程 embedding 不可用时回退到本地 embedding（与 EmbeddingService
+      相同的本地模型路径），仍不可用才退化为词法；命中远程时优先远程向量。
+    result: passed
+    reason:
+      text: TableEmbeddingService 注入 EmbeddingService，embed
+        先远程、失败回退同一本地模型、再不可用才词法并记录降级原因；rankTables 三路径统一返回 List<Long>。
+      truncated: false
+  - id: A8
+    source: brief.md
+    text: A8 Excel 数据源与多 sheet：PostgreSQL/MySQL 元数据库下 Excel 数据源字段同步使用固定默认
+      schema（不再用空 `db_schema`），`core_field` 有完整列；多 sheet Excel 每个 sheet
+      的表头只出现一次，第 2..N 个 sheet 的数据行不被当成表头。
+    result: passed
+    reason:
+      text: JdbcEngine.metadataConf 对应用库类型补固定默认 schema（defaultAppSchema 按方言），Excel
+        字段/表同步使用该配置；ExcelService 按 sheet 独立读取表头，ExcelServiceTest 覆盖多 sheet
+        表头只一次与列序/类型一致。
+      truncated: false
+builder_handoff:
+  candidate_id: 69f1b1a598ead5e020ecd8bf00475aab4bcc2f69
+  identity_provider: skill-coordinated
+  builder_execution_ref: hy3-supervisor-datasource-20261027-01
+  iteration: 1
+  summary:
+    text: 独立只读复核 69f1b1a 的 diff 与 Runtime 检查结果：A8 Excel 元数据查询使用固定默认 schema（PG
+      public/H2 PUBLIC/SQL Server dbo/MySQL catalog），多 sheet 独立表头并有回归；A18 MySQL
+      allowPublicKeyRetrieval 改为按配置、SQL Server lowVersion 兼容参数、Hive LDAP、Oracle
+      oci thick、连接池 recycle、MAX_TABLES=10、ES _meta.description；A19
+      数值单元格/全量类型推断保留 float/列名大小写归一；A20 远程→本地→词法回退且结构一致。Runtime
+      datasource-details-checks 全部通过。
+    truncated: false
+  addressed_acceptance_ids:
+    - A18
+    - A19
+    - A20
+    - A8
+  checks:
+    - name:
+        text: askdata-server datasource details (A8/A18/A19/A20) tests
+        truncated: false
+      result: passed
+      note: null
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-10-27T03:13:25.566Z
+blockers: []
+verification:
+  candidate_id: 69f1b1a598ead5e020ecd8bf00475aab4bcc2f69
+  identity_provider: skill-coordinated
+  verifier_execution_ref: hy3-verifier-datasource-20261027-01
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: datasource-details-checks
+      name:
+        text: askdata-server datasource details (A8/A18/A19/A20) tests
+        truncated: false
+      argv_display:
+        - text: -pl
+          truncated: false
+        - text: askdata/askdata-server
+          truncated: false
+        - text: test
+          truncated: false
+        - text: -Dmaven.test.skip=false
+          truncated: false
+        - text: -Dtest=DatasourceTypeStrategyTest,ConnectionPoolSettingsTest,ConnectionPoolManagerTest,EsEngineTest,ExcelServiceTest,ChatExcelTest,ChatExcelCsvTest,TableEmbeddingServiceTest,ChatRagTest,JdbcEngineParameterizedTest,JdbcEngineSmokeTest,JdbcEngineDriverAvailabilityTest,DatasourceServiceSmokeTest,ChatExportParityTest
+          truncated: false
+        - text: -DfailIfNoTests=false
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 45381
+  summary:
+    text: 独立只读复核 69f1b1a 的 diff 与 Runtime 检查结果：A8 Excel 元数据查询使用固定默认 schema（PG
+      public/H2 PUBLIC/SQL Server dbo/MySQL catalog），多 sheet 独立表头并有回归；A18 MySQL
+      allowPublicKeyRetrieval 改为按配置、SQL Server lowVersion 兼容参数、Hive LDAP、Oracle
+      oci thick、连接池 recycle、MAX_TABLES=10、ES _meta.description；A19
+      数值单元格/全量类型推断保留 float/列名大小写归一；A20 远程→本地→词法回退且结构一致。Runtime
+      datasource-details-checks 全部通过。
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-10-27T03:16:29.619Z
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-10-27T03:13:25.566Z
