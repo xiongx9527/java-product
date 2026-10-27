@@ -30,7 +30,8 @@ public class AuditLogRepository {
                                           Long timeFrom, Long timeTo) {
         StringBuilder sql = new StringBuilder(
                 "SELECT id, operation_type, operation_detail, user_id, user_name, operation_status, oid, "
-                        + "ip_address, create_time, module, remark, resource_id, resource_name, error_message "
+                        + "ip_address, create_time, module, remark, resource_id, resource_name, error_message, "
+                        + "request_method, request_path "
                         + "FROM sys_logs WHERE 1 = 1");
         List<Object> args = new ArrayList<>();
         if (name != null && !name.isEmpty()) {
@@ -108,7 +109,8 @@ public class AuditLogRepository {
                                          List<String> oidList, String logStatus, Long timeFrom, Long timeTo) {
         StringBuilder sql = new StringBuilder(
                 "SELECT id, operation_type, operation_detail, user_id, user_name, operation_status, oid, "
-                        + "ip_address, create_time, module, remark, resource_id, resource_name, error_message "
+                        + "ip_address, create_time, module, remark, resource_id, resource_name, error_message, "
+                        + "request_method, request_path "
                         + "FROM sys_logs WHERE 1 = 1");
         List<Object> args = new ArrayList<>();
         if (name != null && !name.isEmpty()) {

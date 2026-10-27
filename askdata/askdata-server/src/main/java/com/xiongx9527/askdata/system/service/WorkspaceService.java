@@ -138,17 +138,19 @@ public class WorkspaceService {
         workspaceRepository.findById(id)
                 .orElseThrow(() -> new BadRequestException(messageResolver.get("workspace.not.found", id)));
 
-        Map<String, Object> current = currentUserService.currentUser();
-        if (Rows.lng(current, "oid", 0L) == id) {
-            userRepository.updateOid(Rows.lng(current, "id", 0L), 1L);
-        }
-        for (Long uid : userWsRepository.uidsOfWorkspace(id)) {
-            java.util.Optional<Map<String, Object>> user = userRepository.findById(uid);
-            if (user.isPresent() && Rows.lng(user.get(), "oid", 0L) == id) {
-                userRepository.updateOid(uid, 1L);
-            }
-        }
+        // A21：删除空间后，用户 oid 重新选择其仍所属的空间（按空间名序取第一个），
+        // 不再有归属时置 0；此前一律改成 1 会让用户落到默认空间，权限与数据归属失真。
+        java.util.Set<Long> affectedUids = new java.util.LinkedHashSet<>(userWsRepository.uidsOfWorkspace(id));
+        affectedUids.addAll(userRepository.uidsByOid(id));
         userWsRepository.deleteAllForWorkspace(id);
+        for (Long uid : affectedUids) {
+            java.util.Optional<Map<String, Object>> user = userRepository.findById(uid);
+            if (user.isEmpty() || Rows.lng(user.get(), "oid", 0L) != id) {
+                continue;
+            }
+            List<Long> remaining = userRepository.oidListOf(uid);
+            userRepository.updateOid(uid, remaining.isEmpty() ? 0L : remaining.get(0));
+        }
         workspaceRepository.delete(id);
     }
 

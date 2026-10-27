@@ -61,9 +61,9 @@ public class DashboardService {
     public List<Map<String, Object>> listResource(Map<String, Object> body) {
         Map<String, Object> user = currentUserService.currentUser();
         String workspaceId = String.valueOf(currentUserService.oidOf(user));
-        String createBy = String.valueOf(Rows.lng(user, "id", 0L));
         String nodeType = Rows.str(body, "node_type");
-        List<Map<String, Object>> nodes = dashboardRepository.list(workspaceId, createBy, nodeType);
+        // A21：同工作空间可见即可见，不再要求 create_by=当前用户
+        List<Map<String, Object>> nodes = dashboardRepository.list(workspaceId, nodeType);
         return buildTree(nodes);
     }
 
@@ -104,13 +104,8 @@ public class DashboardService {
      */
     public Map<String, Object> loadResource(Map<String, Object> body) {
         Map<String, Object> user = currentUserService.currentUser();
-        String uid = String.valueOf(Rows.lng(user, "id", 0L));
         String id = Rows.str(body, "id");
-        Map<String, Object> row = dashboardRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException(messageResolver.get("dashboard.resource.not.exist", id)));
-        if (!uid.equals(Rows.str(row, "create_by"))) {
-            throw new BadRequestException(messageResolver.get("dashboard.resource.not.owned", id));
-        }
+        Map<String, Object> row = requireVisible(id, user);
         Map<String, Object> result = new LinkedHashMap<>();
         // 逐字段输出小写键名（H2 可能返回大写列名；前端按 SQLBot 字段名消费）
         result.put("id", Rows.str(row, "id"));
@@ -212,7 +207,7 @@ public class DashboardService {
     public Map<String, Object> updateResource(Map<String, Object> body) {
         Map<String, Object> user = currentUserService.currentUser();
         String id = Rows.str(body, "id");
-        requireOwned(id, user);
+        requireVisible(id, user);
         long now = System.currentTimeMillis() / 1000;
         dashboardRepository.updateName(id, requiredText(body, "name"),
                 String.valueOf(Rows.lng(user, "id", 0L)), now);
@@ -240,7 +235,7 @@ public class DashboardService {
     public Map<String, Object> updateCanvas(Map<String, Object> body) {
         Map<String, Object> user = currentUserService.currentUser();
         String id = Rows.str(body, "id");
-        requireOwned(id, user);
+        requireVisible(id, user);
         long now = System.currentTimeMillis() / 1000;
         dashboardRepository.updateCanvas(id, requiredText(body, "name"), Rows.str(body, "component_data"),
                 Rows.str(body, "canvas_style_data"), Rows.str(body, "canvas_view_info"),
@@ -256,17 +251,16 @@ public class DashboardService {
             throw new BadRequestException(messageResolver.get("dashboard.opt.required"));
         }
         String workspaceId = String.valueOf(currentUserService.oidOf(user));
-        String uid = String.valueOf(Rows.lng(user, "id", 0L));
         String name = Rows.str(body, "name");
         String id = Rows.str(body, "id");
         if ("newLeaf".equals(opt) || "newFolder".equals(opt)) {
-            return dashboardRepository.countByName(workspaceId, uid, name, null) == 0;
+            return dashboardRepository.countByName(workspaceId, name, null) == 0;
         }
         if ("updateLeaf".equals(opt) || "updateFolder".equals(opt) || "rename".equals(opt) || "move".equals(opt)) {
             if (id == null || id.isEmpty()) {
                 throw new BadRequestException(messageResolver.get("dashboard.id.required.update"));
             }
-            return dashboardRepository.countByName(workspaceId, uid, name, id) == 0;
+            return dashboardRepository.countByName(workspaceId, name, id) == 0;
         }
         throw new BadRequestException(messageResolver.get("dashboard.opt.invalid", opt));
     }
@@ -276,11 +270,7 @@ public class DashboardService {
     @AuditLog(module = AuditModule.DASHBOARD, operation = AuditOperationType.DELETE)
     public boolean deleteResource(String resourceId) {
         Map<String, Object> user = currentUserService.currentUser();
-        Map<String, Object> row = dashboardRepository.findById(resourceId)
-                .orElseThrow(() -> new BadRequestException(messageResolver.get("dashboard.resource.not.exist", resourceId)));
-        if (!String.valueOf(Rows.lng(user, "id", 0L)).equals(Rows.str(row, "create_by"))) {
-            throw new BadRequestException(messageResolver.get("dashboard.resource.not.owned", resourceId));
-        }
+        requireVisible(resourceId, user);
         dashboardRepository.deleteById(resourceId);
         return true;
     }
@@ -290,7 +280,7 @@ public class DashboardService {
     @AuditLog(module = AuditModule.DASHBOARD, operation = AuditOperationType.UPDATE)
     public void moveResource(String id, Map<String, Object> body) {
         Map<String, Object> user = currentUserService.currentUser();
-        requireOwned(id, user);
+        requireVisible(id, user);
         String pid = Rows.str(body, "pid");
         if (pid == null || pid.isEmpty()) {
             throw new BadRequestException(messageResolver.get("dashboard.pid.required"));
@@ -303,12 +293,17 @@ public class DashboardService {
     // 内部工具
     // ------------------------------------------------------------------
 
-    private void requireOwned(String id, Map<String, Object> user) {
+    /**
+     * A21：仪表盘按工作空间可见性授权——同工作空间内可见即可操作，不再要求
+     * {@code create_by=当前用户}。跨空间访问与资源不存在返回同一提示，避免泄露名称/配置。
+     */
+    private Map<String, Object> requireVisible(String id, Map<String, Object> user) {
         Map<String, Object> row = dashboardRepository.findById(id)
                 .orElseThrow(() -> new BadRequestException(messageResolver.get("dashboard.resource.not.exist", id)));
-        if (!String.valueOf(Rows.lng(user, "id", 0L)).equals(Rows.str(row, "create_by"))) {
-            throw new BadRequestException(messageResolver.get("dashboard.resource.not.owned", id));
+        if (Rows.lng(row, "workspace_id", 0L) != currentUserService.oidOf(user)) {
+            throw new BadRequestException(messageResolver.get("dashboard.resource.not.exist", id));
         }
+        return row;
     }
 
     /** BaseDashboard 响应（对齐 SQLBot dashboard_model.BaseDashboard）。 */

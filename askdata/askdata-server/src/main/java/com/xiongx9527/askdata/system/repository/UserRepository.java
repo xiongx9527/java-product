@@ -130,6 +130,11 @@ public class UserRepository {
                         + "WHERE w.uid = ? ORDER BY s.name, s.create_time", Long.class, uid);
     }
 
+    /** 当前 oid 指向该空间的用户（删除空间后需要重新选择/置 0）。 */
+    public List<Long> uidsByOid(long oid) {
+        return jdbc.queryForList("SELECT id FROM sys_user WHERE oid = ?", Long.class, oid);
+    }
+
     /** 批量取 uid → oid 绑定（/user/pager 组装 oid_list）。 */
     public List<Map<String, Object>> oidBindingsOf(List<Long> uids) {
         if (uids == null || uids.isEmpty()) {

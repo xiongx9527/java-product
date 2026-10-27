@@ -172,6 +172,7 @@ public class TrainingService {
         if (datasource == null && advancedApplication == null) {
             throw new BadRequestException(messageResolver.get("i18n_data_training.datasource_cannot_be_none"));
         }
+        requireDatasourceInWorkspace(oid, datasource);
         Long id = Rows.lngOrNull(body, "id");
         if (id != null) {
             return update(oid, id, question, description, datasource, advancedApplication, enabled);
@@ -316,7 +317,7 @@ public class TrainingService {
             Long datasource = null;
             Long advancedApplication = null;
             if (!datasourceName.isEmpty()) {
-                datasource = datasourceNameLookup.idByName(datasourceName);
+                datasource = datasourceNameLookup.idByName(datasourceName, oid);
                 if (datasource == null) {
                     errors.add(messageResolver.get("i18n_data_training.datasource_name_not_found",
                             java.util.Map.of("name", datasourceName)));
@@ -366,6 +367,24 @@ public class TrainingService {
         result.put("error_excel_filename", failed.isEmpty() ? null
                 : writeErrorExcel(filename, failed));
         return result;
+    }
+
+    /**
+     * A21：训练示例的数据源必须属于当前工作空间；跨空间数据源直接拒绝，
+     * 避免示例 SQL 在其他空间的数据源上被召回执行。
+     */
+    private void requireDatasourceInWorkspace(long oid, Long datasource) {
+        if (datasource == null) {
+            return;
+        }
+        List<Long> invalid = datasourceNameLookup.idsNotInWorkspace(
+                java.util.Collections.singletonList(datasource), oid);
+        if (invalid.isEmpty()) {
+            return;
+        }
+        String name = datasourceNameLookup.namesOf(invalid).get(datasource);
+        throw new BadRequestException(messageResolver.get("i18n_datasource.not_in_workspace",
+                java.util.Map.of("name", name == null ? String.valueOf(datasource) : name)));
     }
 
     private Long resolveAssistantByName(long oid, String name) {

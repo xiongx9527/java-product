@@ -185,6 +185,7 @@ public class TerminologyService {
         if (specificDs && datasourceIds.isEmpty() && advancedApplication == null) {
             throw new BadRequestException(messageResolver.get("i18n_terminology.datasource_cannot_be_none"));
         }
+        requireDatasourcesInWorkspace(oid, datasourceIds);
         Long id = Rows.lngOrNull(body, "id");
         if (id != null) {
             return update(oid, id, word, description, specificDs, datasourceIds, otherWords, enabled,
@@ -363,7 +364,7 @@ public class TerminologyService {
             Long advancedApplication = null;
             if (specificDs) {
                 for (String dsName : datasourceNames) {
-                    Long dsId = datasourceNameLookup.idByName(dsName);
+                    Long dsId = datasourceNameLookup.idByName(dsName, oid);
                     if (dsId == null) {
                         errors.add(messageResolver.get("i18n_terminology.datasource_name_not_found",
                                 java.util.Map.of("name", dsName)));
@@ -408,6 +409,21 @@ public class TerminologyService {
         result.put("original_count", originalCount);
         result.put("error_excel_filename", failed.isEmpty() ? null : writeErrorExcel(filename, failed));
         return result;
+    }
+
+    /**
+     * A21：术语生效数据源必须属于当前工作空间；跨空间数据源直接拒绝，
+     * 避免通过术语把其他空间的数据源带入本空间的问数上下文。
+     */
+    private void requireDatasourcesInWorkspace(long oid, List<Long> datasourceIds) {
+        List<Long> invalid = datasourceNameLookup.idsNotInWorkspace(datasourceIds, oid);
+        if (invalid.isEmpty()) {
+            return;
+        }
+        Long invalidId = invalid.get(0);
+        String name = datasourceNameLookup.namesOf(invalid).get(invalidId);
+        throw new BadRequestException(messageResolver.get("i18n_datasource.not_in_workspace",
+                java.util.Map.of("name", name == null ? String.valueOf(invalidId) : name)));
     }
 
     private Long resolveAssistantByName(long oid, String name) {
