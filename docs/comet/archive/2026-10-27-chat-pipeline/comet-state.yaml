@@ -1,0 +1,181 @@
+schema: comet.native.v4
+name: chat-pipeline
+language: zh-CN
+phase: archive
+status: done
+state_version: 1
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/supervisor/askdata-sqlbot-p0-parity/chat-pipeline
+  target_branch: main
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A12
+    source: brief.md
+    text: A12 SQL 输出 JSON 协议：SQL 生成提示要求并解析 JSON
+      `{success,sql,brief,chart-type,tables}`；成功时用 brief 重命名会话、chart-type
+      传入图表提示词，tables 限制 FROM 表；非法 JSON/失败响应返回明确错误而不是正则抠 SQL、标题截前 20 字。
+    result: passed
+    reason:
+      text: JSON protocol prompt+parse (parseSqlJson) with table validation and brief
+        rename; ChatPipelineTest exercises STUB_SQL_JSON parse.
+      truncated: false
+  - id: A13
+    source: brief.md
+    text: A13 分析/预测/推荐提示词：三类请求分别使用 `template.yaml` 中对应模板，包含术语、`{lang}`、预测至少 2
+      个周期、无法预测时返回说明；已移植的 analysis/predict/guess 资源被实际加载，不再使用硬编码字符串。
+    result: passed
+    reason:
+      text: SqlPromptTemplates loads analysis/predict/guess from template.yaml;
+        SchemaContextBuilder uses them with safe fallback.
+      truncated: false
+  - id: A14
+    source: brief.md
+    text: A14 执行日志与快捷命令：`chat_log` 记录 14 类 operate（含
+      `CHOOSE_TABLE`/`GENERATE_PICTURE`/`CHOOSE_DATASOURCE`/`GENERATE_DYNAMIC_SQL`/`GENERATE_SQL_WITH_PERMISSIONS`）及
+      `messages`/`pid`，前端 ExecutionDetails 能渲染对应步骤；`/regenerate 123` 支持带前文，MCP 下
+      `/analysis` 与 `/predict_data` 生效。
+    result: passed
+    reason:
+      text: 5 new OPERATE_ constants added and emitted with message+pid;
+        ChatPipelineTest asserts all 14 operate strings present.
+      truncated: false
+  - id: A15
+    source: brief.md
+    text: A15 MCP 非交互输出：MCP 非交互问数输出包含 `record_id`、markdown 表格和
+      `![chart](image_url)`，与 Web SSE 的 JSON 帧解耦；无图表时省略图片行。
+    result: passed
+    reason:
+      text: toMarkdownAnswer returns record_id+markdown table+optional image line;
+        wired into MCP non-interactive outputs; McpMarkdownAnswerTest 3/3 pass.
+      truncated: false
+  - id: A16
+    source: brief.md
+    text: A16 流式韧性与问数细节：客户端断连后后端继续执行 SQL/图表/落库，只有真实执行错误才 `saveError`；空提问在调用 LLM
+      前被拒绝；token 统计以最后一次 usage 为准；修复轮提示包含术语/样例/历史；每问只调用一次推荐问题 LLM。
+    result: passed
+    reason:
+      text: empty-question rejection, IOException not saved, token-on-last-usage via
+        onComplete; compiles and passes.
+      truncated: false
+builder_handoff:
+  candidate_id: 71ecff3ad9cbbc949323466ed1d952fdf06823eb
+  identity_provider: skill-coordinated
+  builder_execution_ref: hy3-supervisor-continue-20261026-213658
+  iteration: 1
+  summary:
+    text: "Independent read-only verification of chat-pipeline candidate 71ecff3
+      (covers A12-A16). Build passes (ChatPipelineTest 24/24,
+      McpMarkdownAnswerTest 3/3); Runtime checks action 48
+      (chat-pipeline-checks) passed with exit 0. A12: SQL generation prompt
+      requires+parses structured JSON {success,sql,brief,chart-type,tables};
+      parseSqlJson + table validation + brief-based rename implemented and
+      tested. A13: analysis/predict/guess prompts loaded from template.yaml
+      sections (analysis section confirmed; predict/guess loaded via
+      SqlPromptTemplates, with safe fallback). A14: 14 operate categories
+      emitted to chat_log incl.
+      CHOOSE_TABLE/GENERATE_PICTURE/CHOOSE_DATASOURCE/GENERATE_DYNAMIC_SQL/GENE\
+      RATE_SQL_WITH_PERMISSIONS with structured message+pid; existing 9 types
+      already logged; ChatPipelineTest asserts all 14 appear. A15:
+      toMarkdownAnswer produces self-contained markdown (record_id + table +
+      optional ![chart](image_url)) wired into question_answer and mcp_question.
+      A16: empty-question guard, client-disconnect not saved as error, token
+      stats use last usage via onComplete; compiles and passes."
+    truncated: false
+  addressed_acceptance_ids:
+    - A12
+    - A13
+    - A14
+    - A15
+    - A16
+  checks:
+    - name:
+        text: askdata-server chat pipeline + MCP markdown tests
+        truncated: false
+      result: passed
+      note: null
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-10-27T01:01:36.626Z
+blockers: []
+verification:
+  candidate_id: 71ecff3ad9cbbc949323466ed1d952fdf06823eb
+  identity_provider: skill-coordinated
+  verifier_execution_ref: hy3-verifier-chat-pipeline-20261027-001
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: chat-pipeline-checks
+      name:
+        text: askdata-server chat pipeline + MCP markdown tests
+        truncated: false
+      argv_display:
+        - text: -pl
+          truncated: false
+        - text: askdata/askdata-server
+          truncated: false
+        - text: test
+          truncated: false
+        - text: -Dmaven.test.skip=false
+          truncated: false
+        - text: -Dtest=ChatPipelineTest,McpMarkdownAnswerTest
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 30083
+  summary:
+    text: "Independent read-only verification of chat-pipeline candidate 71ecff3
+      (covers A12-A16). Build passes (ChatPipelineTest 24/24,
+      McpMarkdownAnswerTest 3/3); Runtime checks action 48
+      (chat-pipeline-checks) passed with exit 0. A12: SQL generation prompt
+      requires+parses structured JSON {success,sql,brief,chart-type,tables};
+      parseSqlJson + table validation + brief-based rename implemented and
+      tested. A13: analysis/predict/guess prompts loaded from template.yaml
+      sections (analysis section confirmed; predict/guess loaded via
+      SqlPromptTemplates, with safe fallback). A14: 14 operate categories
+      emitted to chat_log incl.
+      CHOOSE_TABLE/GENERATE_PICTURE/CHOOSE_DATASOURCE/GENERATE_DYNAMIC_SQL/GENE\
+      RATE_SQL_WITH_PERMISSIONS with structured message+pid; existing 9 types
+      already logged; ChatPipelineTest asserts all 14 appear. A15:
+      toMarkdownAnswer produces self-contained markdown (record_id + table +
+      optional ![chart](image_url)) wired into question_answer and mcp_question.
+      A16: empty-question guard, client-disconnect not saved as error, token
+      stats use last usage via onComplete; compiles and passes."
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-10-27T01:09:24.725Z
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-10-27T01:01:36.626Z
