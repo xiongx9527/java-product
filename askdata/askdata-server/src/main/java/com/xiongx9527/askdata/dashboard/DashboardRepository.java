@@ -29,13 +29,12 @@ public class DashboardRepository {
             + "sort, create_time, create_by, update_time, update_by, remark, source, delete_flag, delete_time, "
             + "delete_by, version, content_id, check_version";
 
-    /** 资源树列表（对齐 SQLBot list_resource：按工作空间+创建人过滤）。 */
-    public List<Map<String, Object>> list(String workspaceId, String createBy, String nodeType) {
+    /** 资源树列表（A21：同工作空间可见，不再按创建人过滤）。 */
+    public List<Map<String, Object>> list(String workspaceId, String nodeType) {
         StringBuilder sql = new StringBuilder("SELECT " + LIST_COLUMNS + " FROM core_dashboard WHERE "
-                + "workspace_id = ? AND create_by = ?");
+                + "workspace_id = ?");
         List<Object> args = new ArrayList<>();
         args.add(workspaceId);
-        args.add(createBy);
         if (nodeType != null && !nodeType.isEmpty()) {
             sql.append(" AND node_type = ?");
             args.add(nodeType);
@@ -48,13 +47,12 @@ public class DashboardRepository {
         return jdbc.queryForList("SELECT " + COLUMNS + " FROM core_dashboard WHERE id = ?", id).stream().findFirst();
     }
 
-    /** 名称查重（对齐 SQLBot validate_name）。 */
-    public long countByName(String workspaceId, String createBy, String name, String excludeId) {
+    /** 名称查重（A21：同工作空间内可见即需唯一，不再按创建人过滤）。 */
+    public long countByName(String workspaceId, String name, String excludeId) {
         StringBuilder sql = new StringBuilder(
-                "SELECT COUNT(*) FROM core_dashboard WHERE workspace_id = ? AND create_by = ? AND name = ?");
+                "SELECT COUNT(*) FROM core_dashboard WHERE workspace_id = ? AND name = ?");
         List<Object> args = new ArrayList<>();
         args.add(workspaceId);
-        args.add(createBy);
         args.add(name);
         if (excludeId != null && !excludeId.isEmpty()) {
             sql.append(" AND id <> ?");

@@ -3,9 +3,11 @@ package com.xiongx9527.askdata.common.datasource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -50,12 +52,22 @@ public class DatasourceNameLookup {
 
     /** 按名称解析数据源 id（Excel 导入用；表缺失时返回 null）。 */
     public Long idByName(String name) {
+        return idByName(name, null);
+    }
+
+    /**
+     * 按名称在指定工作空间内解析数据源 id（A21：术语/训练导入不得命中其他空间的数据源）。
+     * {@code oid} 为 null 时不限定空间；表缺失时返回 null。
+     */
+    public Long idByName(String name, Long oid) {
         if (name == null || name.isEmpty() || !tableExists("core_datasource")) {
             return null;
         }
         try {
-            List<Map<String, Object>> rows = jdbc.queryForList(
-                    "SELECT id, name FROM core_datasource WHERE name = ?", name);
+            List<Map<String, Object>> rows = oid == null
+                    ? jdbc.queryForList("SELECT id, name FROM core_datasource WHERE name = ?", name)
+                    : jdbc.queryForList("SELECT id, name FROM core_datasource WHERE name = ? AND oid = ?",
+                            name, oid);
             for (Map<String, Object> row : rows) {
                 Object id = row.get("id");
                 if (id instanceof Number) {
@@ -66,6 +78,40 @@ public class DatasourceNameLookup {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /**
+     * 返回不属于指定工作空间的数据源 id（A21：术语/训练的 {@code datasource_ids} 必须属于当前空间）。
+     *
+     * <p>表缺失（未集成数据源模块）时不做限制，返回空列表，保持既有防御式语义。</p>
+     */
+    public List<Long> idsNotInWorkspace(Collection<Long> ids, long oid) {
+        List<Long> notInWorkspace = new ArrayList<>();
+        if (ids == null || ids.isEmpty()) {
+            return notInWorkspace;
+        }
+        if (!tableExists("core_datasource")) {
+            return notInWorkspace;
+        }
+        StringBuilder sql = new StringBuilder("SELECT id FROM core_datasource WHERE oid = ? AND id IN (");
+        for (int i = 0; i < ids.size(); i++) {
+            sql.append(i > 0 ? ",?" : "?");
+        }
+        sql.append(")");
+        List<Object> args = new ArrayList<>();
+        args.add(oid);
+        args.addAll(ids);
+        try {
+            List<Long> found = jdbc.queryForList(sql.toString(), Long.class, args.toArray());
+            for (Long id : new LinkedHashSet<>(ids)) {
+                if (!found.contains(id)) {
+                    notInWorkspace.add(id);
+                }
+            }
+        } catch (Exception e) {
+            return notInWorkspace;
+        }
+        return notInWorkspace;
     }
 
     private boolean tableExists(String table) {

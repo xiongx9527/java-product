@@ -46,6 +46,26 @@ public class WorkspaceRepository {
                 .stream().findFirst();
     }
 
+    /** 批量取工作空间 id → 名称（审计 oid_name 展示用）。 */
+    public Map<Long, String> namesOf(java.util.Collection<Long> ids) {
+        Map<Long, String> result = new java.util.HashMap<>();
+        if (ids == null || ids.isEmpty()) {
+            return result;
+        }
+        StringBuilder sql = new StringBuilder("SELECT id, name FROM sys_workspace WHERE id IN (");
+        for (int i = 0; i < ids.size(); i++) {
+            sql.append(i > 0 ? ",?" : "?");
+        }
+        sql.append(")");
+        for (Map<String, Object> row : jdbc.queryForList(sql.toString(), ids.toArray())) {
+            Object id = row.get("id");
+            if (id instanceof Number) {
+                result.put(((Number) id).longValue(), row.get("name") == null ? null : String.valueOf(row.get("name")));
+            }
+        }
+        return result;
+    }
+
     public Optional<Map<String, Object>> findById(long id) {
         return jdbc.queryForList("SELECT " + COLUMNS + " FROM sys_workspace WHERE id = ?", id).stream().findFirst();
     }

@@ -6,7 +6,9 @@ import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.common.util.ExcelUtils;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.PagerResult;
+import com.xiongx9527.askdata.system.repository.WorkspaceRepository;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
+import com.xiongx9527.askdata.system.service.WorkspaceService;
 import org.springframework.stereotype.Service;
 
 import jakarta.servlet.http.HttpServletResponse;
@@ -33,9 +35,13 @@ public class AuditLogService {
 
     private final CurrentUserService currentUserService;
 
-    public AuditLogService(AuditLogRepository auditLogRepository, CurrentUserService currentUserService) {
+    private final WorkspaceRepository workspaceRepository;
+
+    public AuditLogService(AuditLogRepository auditLogRepository, CurrentUserService currentUserService,
+                           WorkspaceRepository workspaceRepository) {
         this.auditLogRepository = auditLogRepository;
         this.currentUserService = currentUserService;
+        this.workspaceRepository = workspaceRepository;
     }
 
     /** GET /system/audit/page/{current_page}/{page_size}。 */
@@ -62,26 +68,38 @@ public class AuditLogService {
         return result;
     }
 
+    /**
+     * A22：操作类型返回本地化标签而非 code；未知 code 原样返回（不抛异常，保证列表可展示）。
+     * 标签随请求 locale 变化（经 {@link MessageResolver}），不硬编码。
+     */
     private String typeLabel(String code) {
+        if (code == null || code.isEmpty()) {
+            return null;
+        }
         for (AuditOperationType type : AuditOperationType.values()) {
             if (type.code().equals(code)) {
-                return code;
+                // 复用 SQLBot 对齐的操作类型键 i18n_audit.<code>（五语种齐全）
+                return messageResolver.get("i18n_audit." + code);
             }
         }
         return code;
     }
 
     private List<Map<String, Object>> toResults(List<Map<String, Object>> rows) {
+        Map<Long, String> workspaceNames = workspaceNamesOf(rows);
+        String language = requestLanguage();
         List<Map<String, Object>> result = new ArrayList<>();
         for (Map<String, Object> row : rows) {
             String status = Rows.str(row, "operation_status");
+            long oid = Rows.lng(row, "oid", 0L);
+            String workspaceName = oid == 0L ? null : workspaceNames.get(oid);
             result.add(Rows.of(
                     "id", String.valueOf(Rows.lng(row, "id", 0L)),
                     "operation_type", Rows.str(row, "operation_type"),
-                    "operation_type_name", Rows.str(row, "operation_type"),
-                    "operation_detail_info", Rows.str(row, "operation_detail"),
+                    "operation_type_name", typeLabel(Rows.str(row, "operation_type")),
+                    "operation_detail_info", detailInfo(row),
                     "user_name", Rows.str(row, "user_name"),
-                    "oid_name", Rows.str(row, "oid"),
+                    "oid_name", WorkspaceService.localizeWorkspaceName(workspaceName, language),
                     "operation_status", status,
                     "operation_status_name", "success".equals(status) ? messageResolver.get("audit.status.success") : messageResolver.get("audit.status.fail"),
                     "ip_address", Rows.str(row, "ip_address"),
@@ -92,6 +110,55 @@ public class AuditLogService {
                     "error_message", Rows.str(row, "error_message")));
         }
         return result;
+    }
+
+    /**
+     * A22：操作详情列必须是真实详情。优先取写入侧记录的 {@code operation_detail}；
+     * 历史行为空时按「本地化操作类型 + 资源名」组合，再退化为真实请求方法与路径，
+     * 不返回空值或占位符。
+     */
+    private String detailInfo(Map<String, Object> row) {
+        String detail = Rows.str(row, "operation_detail");
+        if (hasText(detail)) {
+            return detail;
+        }
+        String typeName = typeLabel(Rows.str(row, "operation_type"));
+        String resourceName = Rows.str(row, "resource_name");
+        if (hasText(resourceName)) {
+            return typeName == null ? resourceName : typeName + ": " + resourceName;
+        }
+        String path = Rows.str(row, "request_path");
+        if (hasText(path)) {
+            String method = Rows.str(row, "request_method");
+            return hasText(method) ? method + " " + path : path;
+        }
+        return typeName;
+    }
+
+    /** 批量解析本页日志的 oid → 工作空间名称（A22：oid_name 不返回数字 id）。 */
+    private Map<Long, String> workspaceNamesOf(List<Map<String, Object>> rows) {
+        java.util.Set<Long> oids = new java.util.LinkedHashSet<>();
+        for (Map<String, Object> row : rows) {
+            long oid = Rows.lng(row, "oid", 0L);
+            if (oid != 0L) {
+                oids.add(oid);
+            }
+        }
+        return workspaceRepository.namesOf(oids);
+    }
+
+    /** 当前请求语言（用于工作空间内置名本地化）；locale 不可用时回退用户设置。 */
+    private String requestLanguage() {
+        java.util.Locale locale = org.springframework.context.i18n.LocaleContextHolder.getLocale();
+        String tag = locale == null ? "" : locale.toLanguageTag();
+        if (tag.isEmpty() || "und".equals(tag)) {
+            return Rows.str(currentUserService.currentUser(), "language");
+        }
+        return tag;
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
     }
 
     /** GET /system/audit/export（xlsx 流）。 */
