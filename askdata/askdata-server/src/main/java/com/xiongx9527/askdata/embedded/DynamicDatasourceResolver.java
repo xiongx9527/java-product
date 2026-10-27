@@ -144,7 +144,7 @@ public class DynamicDatasourceResolver {
      * 先用 SQLBot 兼容的 AES-ECB 解密，解密失败按宿主契约错误拒绝，绝不把密文当明文发出去。</p>
      */
     @SuppressWarnings("unchecked")
-    private static CertificateRequests certificateRequests(Object certificate) {
+    private CertificateRequests certificateRequests(Object certificate) {
         CertificateRequests requests = new CertificateRequests();
         if (!(certificate instanceof List)) {
             return requests;
@@ -176,7 +176,7 @@ public class DynamicDatasourceResolver {
      * 凭证/连接密钥解密：{@code encrypted=true} 或值以 {@code aes:} 前缀给出时解密。
      * 未标记加密的值原样返回（兼容宿主直传明文）。
      */
-    private static String decryptIfNeeded(Object value, Object encryptedFlag) {
+    private String decryptIfNeeded(Object value, Object encryptedFlag) {
         String text = String.valueOf(value);
         boolean encrypted = Boolean.TRUE.equals(encryptedFlag)
                 || "true".equalsIgnoreCase(String.valueOf(encryptedFlag));
@@ -190,7 +190,8 @@ public class DynamicDatasourceResolver {
         }
         String plain = com.xiongx9527.askdata.system.auth.CryptoUtil.decryptSqlbot(cipher);
         if (plain == null) {
-            throw new BadRequestException("host credential is encrypted but cannot be decrypted");
+            throw new BadRequestException(
+                    messageResolver.get("i18n_embedded.credential_decrypt_failed"));
         }
         return plain;
     }
@@ -470,7 +471,7 @@ public class DynamicDatasourceResolver {
      * 解密失败直接拒绝，避免把密文当密码去连库。
      */
     @SuppressWarnings("unchecked")
-    private static void decryptPasswordIfNeeded(DatasourceConf conf, Map<String, Object> hostConfig) {
+    private void decryptPasswordIfNeeded(DatasourceConf conf, Map<String, Object> hostConfig) {
         Object flag = hostConfig.get("password_encrypted");
         Object nested = hostConfig.get("configuration");
         if (nested instanceof Map) {
@@ -492,7 +493,8 @@ public class DynamicDatasourceResolver {
         String cipher = password.startsWith(AES_PREFIX) ? password.substring(AES_PREFIX.length()) : password;
         String plain = com.xiongx9527.askdata.system.auth.CryptoUtil.decryptSqlbot(cipher);
         if (plain == null) {
-            throw new BadRequestException("host datasource password is encrypted but cannot be decrypted");
+            throw new BadRequestException(
+                    messageResolver.get("i18n_embedded.password_decrypt_failed"));
         }
         conf.setPassword(plain);
     }

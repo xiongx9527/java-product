@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 
 /**
  * 对话上下文构建（对齐 SQLBot {@code apps/chat/task/llm.py} 的
@@ -59,6 +60,15 @@ public class SchemaContextBuilder {
 
     /** 每张表进入提示词的样例行数。 */
     private static final int SAMPLE_ROWS = 3;
+
+    /**
+     * A27：样例行开关（{@code askdata.prompt.sample-data-enabled}，缺省 true）。
+     *
+     * <p>关闭后 schema 提示词只含表/字段结构，不再查样例行（大库或敏感数据场景可减少
+     * 数据外泄面与预览查询开销）；字段缺省值保持既有行为，单测手工构造实例时同样为 true。</p>
+     */
+    @Value("${askdata.prompt.sample-data-enabled:true}")
+    private boolean sampleDataEnabled = true;
 
     private static final int TRAINING_LIMIT = 3;
 
@@ -881,7 +891,7 @@ public class SchemaContextBuilder {
 
     private String sampleRowsTextForConf(DatasourceType type, DatasourceConf conf, String tableName,
                                          List<String> fieldNames) {
-        if (fieldNames.isEmpty()) {
+        if (!sampleDataEnabled || fieldNames.isEmpty()) {
             return "";
         }
         try {
@@ -1222,6 +1232,9 @@ public class SchemaContextBuilder {
 
     /** 表样例行文本（复用 datasource-engine 的 previewData，失败时静默跳过）。 */
     private String sampleRowsText(long dsId, long tableId) {
+        if (!sampleDataEnabled) {
+            return "";
+        }
         try {
             Map<String, Object> preview = datasourceService.previewData(dsId,
                     Rows.of("table", Rows.of("id", tableId)));

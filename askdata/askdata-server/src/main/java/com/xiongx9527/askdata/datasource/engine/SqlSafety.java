@@ -58,7 +58,29 @@ public final class SqlSafety {
     private static final Set<String> COMMON_DANGEROUS_FUNCTIONS =
             new HashSet<>(Arrays.asList("version", "current_user", "user", "database"));
 
+    /** 系统目录（元数据）查询特征：命中即视为 metadata query。 */
+    private static final Pattern METADATA_QUERY = Pattern.compile(
+            "(?i)\\b(?:information_schema|pg_catalog|performance_schema|mysql\\.|sys\\.)");
+
+    /**
+     * A27：是否允许元数据（系统目录）查询，缺省 false（对齐 SQLBot {@code ALLOW_METADATA_QUERIES=False}）。
+     *
+     * <p>由 {@code askdata.sql.allow-metadata-queries} 在启动时写入；缺省拒绝，避免模型探测
+     * {@code information_schema}/{@code pg_catalog} 等系统目录。未配置时行为与缺省值一致。</p>
+     */
+    private static volatile boolean allowMetadataQueries = false;
+
     private SqlSafety() {
+    }
+
+    /** 设置是否允许元数据查询（由 Spring 配置在启动时调用；缺省 false）。 */
+    public static void setAllowMetadataQueries(boolean allow) {
+        allowMetadataQueries = allow;
+    }
+
+    /** 当前是否允许元数据查询。 */
+    public static boolean isAllowMetadataQueries() {
+        return allowMetadataQueries;
     }
 
     /**
@@ -80,6 +102,10 @@ public final class SqlSafety {
                 throw new DatasourceException(
                         "SQL can only contain read operations: SQL contains dangerous pattern");
             }
+        }
+        if (!allowMetadataQueries && METADATA_QUERY.matcher(normalized).find()) {
+            throw new DatasourceException(
+                    "SQL can only contain read operations: Metadata queries are not allowed");
         }
         List<Statement> statements;
         try {

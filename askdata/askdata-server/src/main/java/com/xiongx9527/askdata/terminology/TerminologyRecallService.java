@@ -4,6 +4,7 @@ import com.xiongx9527.askdata.ai.EmbeddingService;
 import com.xiongx9527.askdata.common.util.Rows;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -26,8 +27,16 @@ public class TerminologyRecallService {
 
     private static final Logger log = LoggerFactory.getLogger(TerminologyRecallService.class);
 
-    /** 术语向量相似度阈值（对齐 SQLBot EMBEDDING_TERMINOLOGY_SIMILARITY=0.4）。 */
+    /** 术语向量相似度阈值缺省值（对齐 SQLBot EMBEDDING_TERMINOLOGY_SIMILARITY=0.4）。 */
     public static final double SIMILARITY_THRESHOLD = 0.4D;
+
+    /**
+     * A27：术语向量召回阈值（{@code askdata.vector.recall-threshold}，缺省 0.4）。
+     *
+     * <p>缺省值与 {@link #SIMILARITY_THRESHOLD} 一致，未配置时行为不变；调高更严格、调低更宽松。</p>
+     */
+    @Value("${askdata.vector.recall-threshold:0.4}")
+    private double similarityThreshold = SIMILARITY_THRESHOLD;
 
     /** 术语向量召回条数（对齐 SQLBot EMBEDDING_TERMINOLOGY_TOP_COUNT=5）。 */
     public static final int TOP_COUNT = 5;
@@ -189,7 +198,7 @@ public class TerminologyRecallService {
                 return result;
             }
             for (Map<String, Object> hit : embeddingService.recallByVector("terminology", candidates, sentence,
-                    SIMILARITY_THRESHOLD, TOP_COUNT)) {
+                    similarityThreshold, TOP_COUNT)) {
                 result.add(Rows.lng(hit, "id", 0L));
             }
         } catch (Exception e) {
