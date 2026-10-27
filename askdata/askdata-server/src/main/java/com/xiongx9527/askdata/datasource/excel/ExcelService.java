@@ -57,8 +57,6 @@ public class ExcelService {
 
     private static final int PREVIEW_ROWS = 10;
 
-    private static final int TYPE_SAMPLE_ROWS = 100;
-
     private static final int MAX_IDENTIFIER_BYTES = 63;
 
     /** 文本列的 VARCHAR 长度（string 类型的导入列上限）。 */
@@ -128,7 +126,12 @@ public class ExcelService {
             if (table == null) {
                 throw new DatasourceException(messageResolver.get("excel.upload.parse.failed") + ": Sheet [" + sheetName + "] not found");
             }
+            // 先按文件内容推断类型，再用前端选择覆盖：请求未给出某列类型时保留推断结果，
+            // 避免数字列因缺省 "string" 被强制写成文本（A19）。
             Map<String, String> fieldTypes = new LinkedHashMap<>();
+            for (Map<String, Object> field : table.fields()) {
+                fieldTypes.put(Rows.str(field, "fieldName"), Rows.str(field, "fieldType"));
+            }
             for (Map<String, Object> field : Rows.mapList(Rows.get(sheet, "fields"))) {
                 String fieldName = Rows.str(field, "fieldName");
                 String fieldType = Rows.str(field, "fieldType");
@@ -357,10 +360,15 @@ public class ExcelService {
             return result;
         }
 
-        /** 按列推断字段类型（对齐 SQLBot infer_field_type 归类：int/float/datetime/string）。 */
+        /**
+         * 按列推断字段类型（对齐 SQLBot infer_field_type 归类：int/float/datetime/string）。
+         *
+         * <p>A19：全量扫描而非只采样前 100 行，避免小数只出现在靠后行时被误判为 int
+         * 并在导入时被取整；任一非整数数值即保留 float 语义。</p>
+         */
         private List<String> inferTypes() {
             List<String> types = new ArrayList<>();
-            int sample = Math.min(TYPE_SAMPLE_ROWS, dataRows.size());
+            int sample = dataRows.size();
             for (int c = 0; c < headers.size(); c++) {
                 boolean sawDate = false;
                 boolean sawNumber = false;

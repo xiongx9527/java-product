@@ -114,12 +114,13 @@ class ChatExportParityTest {
         // 表格数据行：alias.column 按短列名解析；大数无科学计数法
         assertEquals("PAID", sheet.getRow(1).getCell(0).getStringCellValue());
         assertEquals("北京", sheet.getRow(1).getCell(1).getStringCellValue());
-        assertEquals("2", sheet.getRow(1).getCell(2).getStringCellValue());
+        // A19：数字列写为数值单元格
+        assertEquals(2D, sheet.getRow(1).getCell(2).getNumericCellValue(), 0.0001);
         assertEquals("123000000000000000000", sheet.getRow(1).getCell(3).getStringCellValue());
         // 预测数据按同列序追加（city 短名同样可解析；2.5e11 ≥ 导出阈值 1e11 → 十进制字符串）
         assertEquals("FORECAST", sheet.getRow(2).getCell(0).getStringCellValue());
         assertEquals("上海", sheet.getRow(2).getCell(1).getStringCellValue());
-        assertEquals("3", sheet.getRow(2).getCell(2).getStringCellValue());
+        assertEquals(3D, sheet.getRow(2).getCell(2).getNumericCellValue(), 0.0001);
         assertEquals("250000000000", sheet.getRow(2).getCell(3).getStringCellValue());
     }
 
@@ -167,7 +168,7 @@ class ChatExportParityTest {
         assertEquals("a", sheet.getRow(0).getCell(1).getStringCellValue());
         assertEquals("b", sheet.getRow(0).getCell(2).getStringCellValue());
         assertEquals("1", sheet.getRow(1).getCell(0).getStringCellValue());
-        assertEquals("1", sheet.getRow(1).getCell(1).getStringCellValue());
-        assertEquals("2", sheet.getRow(1).getCell(2).getStringCellValue());
+        assertEquals(1D, sheet.getRow(1).getCell(1).getNumericCellValue(), 0.0001);
+        assertEquals(2D, sheet.getRow(1).getCell(2).getNumericCellValue(), 0.0001);
     }
 }

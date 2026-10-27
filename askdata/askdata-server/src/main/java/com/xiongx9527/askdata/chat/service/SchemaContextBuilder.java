@@ -55,7 +55,7 @@ public class SchemaContextBuilder {
     private static final Logger log = LoggerFactory.getLogger(SchemaContextBuilder.class);
 
     /** 参与提示词与向量召回的表数量上限（避免大库超长提示词）。 */
-    private static final int MAX_TABLES = 8;
+    private static final int MAX_TABLES = 10;
 
     /** 每张表进入提示词的样例行数。 */
     private static final int SAMPLE_ROWS = 3;

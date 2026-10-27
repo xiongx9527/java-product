@@ -1,6 +1,7 @@
 package com.xiongx9527.askdata.datasource.embedding;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xiongx9527.askdata.ai.EmbeddingService;
 import com.xiongx9527.askdata.chat.service.ChatModelClient;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter.ModelRef;
@@ -112,6 +113,12 @@ public class TableEmbeddingService {
      */
     private com.xiongx9527.askdata.ai.vector.VectorStore vectorStore;
 
+    /**
+     * 统一向量服务（A20）：远程不可用时经其回退到与问数一致的本地 ONNX 模型。
+     * Spring 装配注入；离线单测可不注入（退化为仅远程）。
+     */
+    private EmbeddingService embeddingService;
+
     public TableEmbeddingService(TableRepository tableRepository, FieldRepository fieldRepository,
                                  ChatModelRouter modelRouter, ChatModelClient modelClient,
                                  JdbcTemplate jdbc, ObjectMapper objectMapper) {
@@ -128,6 +135,12 @@ public class TableEmbeddingService {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setVectorStore(com.xiongx9527.askdata.ai.vector.VectorStore vectorStore) {
         this.vectorStore = vectorStore;
+    }
+
+    /** Spring 装配：统一向量服务（远程 → 本地模型回退，A20）。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setEmbeddingService(EmbeddingService embeddingService) {
+        this.embeddingService = embeddingService;
     }
 
     // ------------------------------------------------------------------
@@ -169,6 +182,14 @@ public class TableEmbeddingService {
     public double[] embed(String text) {
         if (text == null || text.trim().isEmpty()) {
             return null;
+        }
+        // A20：统一入口保证「远程优先 → 本地模型（与问数一致）→ 词法降级」的同一路径
+        if (embeddingService != null) {
+            double[] vector = embeddingService.embed(text);
+            if (vector == null) {
+                log.warn("表级向量召回降级为词法：远程与本地 embedding 均不可用");
+            }
+            return vector;
         }
         Optional<ModelRef> embedding = modelRouter.embeddingModel();
         if (!embedding.isPresent() || !embedding.get().usable()) {
@@ -221,6 +242,10 @@ public class TableEmbeddingService {
         String q = (matchText == null || matchText.trim().isEmpty())
                 ? (question == null ? "" : question) : matchText;
         double[] questionVector = embed(q);
+        if (questionVector == null) {
+            // A20：远程与本地 embedding 均不可用时才退化为词法，并记录降级原因
+            log.info("表级向量召回降级为词法：远程与本地 embedding 均不可用（ds={}）", dsId);
+        }
         // 向量相似度经统一向量存储后端获取（在线库走 ANN，type=none 走 DB 列 + 应用内余弦）：
         // 表级排序要把向量分与显式提及分混合，故取「不截断、不设阈值」的逐表相似度。
         List<Long> candidateIds = new ArrayList<>(tables.size());

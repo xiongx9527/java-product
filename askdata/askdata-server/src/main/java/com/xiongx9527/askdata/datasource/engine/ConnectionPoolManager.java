@@ -49,6 +49,9 @@ public class ConnectionPoolManager {
     /** A21 默认等待空闲连接超时（毫秒）。 */
     public static final long DEFAULT_POOL_TIMEOUT_MS = 30_000L;
 
+    /** A18 默认连接回收年龄（毫秒，对齐 SQLAlchemy pool_recycle=3600）。 */
+    public static final long DEFAULT_POOL_RECYCLE_MS = 3_600_000L;
+
     private final int maxPools;
 
     private final Object lock = new Object();
@@ -108,7 +111,8 @@ public class ConnectionPoolManager {
             while (true) {
                 PooledConnection pool = pools.get(poolKey);
                 if (pool != null) {
-                    Connection idle = pool.take();
+                    // A18：借出时关闭超过 recycle 年龄的空闲连接（下次借出重建）
+                    Connection idle = pool.take(effective.recycleMs());
                     if (idle != null) {
                         // 命中：LinkedHashMap(accessOrder) 的 get() 已刷新 LRU 位置
                         return wrap(poolKey, pool, idle, effective);
@@ -116,14 +120,14 @@ public class ConnectionPoolManager {
                     if (pool.canCreate(effective)) {
                         // 有空位（coreSize + maxOverflow 之内）：新建并借出
                         Connection created = factory.create();
-                        pool.noteCreated();
+                        pool.noteCreated(created);
                         return wrap(poolKey, pool, created, effective);
                     }
                 } else {
                     // 首个连接：建池后立刻借出
                     Connection created = factory.create();
                     PooledConnection fresh = new PooledConnection();
-                    fresh.noteCreated();
+                    fresh.noteCreated(created);
                     pools.put(poolKey, fresh);
                     evictIfNeeded();
                     return wrap(poolKey, fresh, created, effective);
@@ -400,16 +404,46 @@ public class ConnectionPoolManager {
      */
     private static final class PooledConnection {
 
-        private final List<Connection> idle = new ArrayList<>(2);
+        /** 空闲连接及其创建时间（A18：recycle 判定）。 */
+        private static final class Idle {
+
+            private final Connection connection;
+
+            private final long createdAt;
+
+            private Idle(Connection connection, long createdAt) {
+                this.connection = connection;
+                this.createdAt = createdAt;
+            }
+        }
+
+        private final List<Idle> idle = new ArrayList<>(2);
+
+        /** 连接创建时间（借出中/空闲均保留，归还时用于 recycle 判定）。 */
+        private final Map<Connection, Long> createdAt = new java.util.IdentityHashMap<>();
 
         private int created;
 
-        /** 借出一条空闲连接；无空闲连接返回 null。 */
-        synchronized Connection take() {
-            if (idle.isEmpty()) {
-                return null;
+        /**
+         * 借出一条空闲连接；无空闲连接返回 null。
+         *
+         * <p>A18：超过 {@code recycleMs} 年龄的空闲连接直接关闭并丢弃，下一次循环新建，
+         * 避免长期存活连接被服务端/中间件断开后继续使用。</p>
+         */
+        synchronized Connection take(long recycleMs) {
+            long now = System.currentTimeMillis();
+            while (!idle.isEmpty()) {
+                Idle item = idle.remove(idle.size() - 1);
+                if (recycleMs > 0L && now - item.createdAt >= recycleMs) {
+                    closeQuietly(item.connection);
+                    createdAt.remove(item.connection);
+                    created = Math.max(0, created - 1);
+                    log.info("连接池回收超龄空闲连接（age={}ms）", now - item.createdAt);
+                    continue;
+                }
+                return item.connection;
             }
-            return idle.remove(idle.size() - 1);
+            return null;
         }
 
         /** 是否还能新建连接（created &lt; coreSize + maxOverflow）。 */
@@ -418,8 +452,9 @@ public class ConnectionPoolManager {
         }
 
         /** 记录一次新建。 */
-        synchronized void noteCreated() {
+        synchronized void noteCreated(Connection connection) {
             created++;
+            createdAt.put(connection, System.currentTimeMillis());
         }
 
         /**
@@ -429,11 +464,12 @@ public class ConnectionPoolManager {
          *                 coreSize，则关闭该连接（max_overflow 连接不常驻）。
          */
         synchronized void give(Connection connection, PoolSettings settings) {
-            idle.add(connection);
+            idle.add(new Idle(connection, createdAt.getOrDefault(connection, System.currentTimeMillis())));
             if (settings != null) {
                 while (idle.size() > settings.coreSize()) {
-                    Connection excess = idle.remove(idle.size() - 1);
-                    closeQuietly(excess);
+                    Idle excess = idle.remove(idle.size() - 1);
+                    closeQuietly(excess.connection);
+                    createdAt.remove(excess.connection);
                     created--;
                 }
             }
@@ -446,14 +482,19 @@ public class ConnectionPoolManager {
 
         /** 丢弃一条坏连接（不缓存）。 */
         synchronized void discard(Connection connection) {
-            idle.remove(connection);
+            idle.removeIf(item -> item.connection == connection);
+            createdAt.remove(connection);
             created = Math.max(0, created - 1);
         }
 
         /** 取出并清空全部连接（供关闭时释放）。 */
         synchronized List<Connection> drain() {
-            List<Connection> all = new ArrayList<>(idle);
+            List<Connection> all = new ArrayList<>(idle.size());
+            for (Idle item : idle) {
+                all.add(item.connection);
+            }
             idle.clear();
+            createdAt.clear();
             created = 0;
             return all;
         }
@@ -474,12 +515,19 @@ public class ConnectionPoolManager {
      * @param coreSize   常驻连接数（SQLBot/DatasourceConf 的 {@code poolSize}，默认 5）
      * @param maxOverflow 并发高峰可额外创建的连接数（默认 10）
      * @param timeoutMs  池满时等待空闲连接的最长时间（默认 30000）
+     * @param recycleMs  连接最大存活年龄（A18，默认 3600000；0 表示不回收）
      */
-    public record PoolSettings(int coreSize, int maxOverflow, long timeoutMs) {
+    public record PoolSettings(int coreSize, int maxOverflow, long timeoutMs, long recycleMs) {
+
+        /** 兼容既有三参数构造（recycle 使用默认值）。 */
+        public PoolSettings(int coreSize, int maxOverflow, long timeoutMs) {
+            this(coreSize, maxOverflow, timeoutMs, DEFAULT_POOL_RECYCLE_MS);
+        }
 
         /** 默认参数（未配置数据源池参数时使用）。 */
         public static PoolSettings defaults() {
-            return new PoolSettings(DEFAULT_POOL_SIZE, DEFAULT_MAX_OVERFLOW, DEFAULT_POOL_TIMEOUT_MS);
+            return new PoolSettings(DEFAULT_POOL_SIZE, DEFAULT_MAX_OVERFLOW, DEFAULT_POOL_TIMEOUT_MS,
+                    DEFAULT_POOL_RECYCLE_MS);
         }
 
         /** 由数据源配置派生（缺省/非法值回落默认）。 */
@@ -491,7 +539,9 @@ public class ConnectionPoolManager {
             int overflow = conf.getMaxOverflow() >= 0 ? conf.getMaxOverflow() : DEFAULT_MAX_OVERFLOW;
             long timeout = conf.getPoolTimeout() > 0 ? (long) conf.getPoolTimeout() * 1000L
                     : DEFAULT_POOL_TIMEOUT_MS;
-            return new PoolSettings(core, overflow, timeout);
+            long recycle = conf.getRecycle() > 0 ? (long) conf.getRecycle() * 1000L
+                    : DEFAULT_POOL_RECYCLE_MS;
+            return new PoolSettings(core, overflow, timeout, recycle);
         }
     }
 }

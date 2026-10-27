@@ -65,10 +65,20 @@ class EsEngineTest {
             }
             Map<String, Object> props = new HashMap<>();
             props.put("id", mapOf("type", "long"));
-            props.put("amount", mapOf("type", "double"));
+            props.put("amount", mapOf("type", "double", "_meta", mapOf("description", "订单金额")));
             props.put("status", mapOf("type", "keyword"));
             Map<String, Object> mapping = mapOf("properties", props);
             Map<String, Object> mappings = mapOf("mappings", mapping);
+            send(exchange, 200, objectMapper.writeValueAsString(mapOf("orders", mappings)));
+        });
+        server.createContext("/_mapping", exchange -> {
+            if (!checkAuth(exchange)) {
+                send(exchange, 401, "{}");
+                return;
+            }
+            Map<String, Object> props = mapOf("id", mapOf("type", "long"));
+            Map<String, Object> mappings = mapOf("mappings",
+                    mapOf("_meta", mapOf("description", "订单索引"), "properties", props));
             send(exchange, 200, objectMapper.writeValueAsString(mapOf("orders", mappings)));
         });
         server.createContext("/_sql", exchange -> {
@@ -178,6 +188,17 @@ class EsEngineTest {
         assertEquals("long", byName.get("id").getFieldType());
         assertEquals("double", byName.get("amount").getFieldType());
         assertEquals("keyword", byName.get("status").getFieldType());
+        // A18：字段级 _meta.description 作为字段注释
+        assertEquals("订单金额", byName.get("amount").getFieldComment());
+    }
+
+    @Test
+    void tablesKeepIndexMetaDescriptionAsComment() {
+        // A18：索引级 mappings._meta.description 作为表注释
+        List<TableSchema> tables = engine.tables(DatasourceType.ES, conf());
+        TableSchema orders = tables.stream().filter(t -> "orders".equals(t.getTableName())).findFirst().orElse(null);
+        assertNotNull(orders);
+        assertEquals("订单索引", orders.getTableComment());
     }
 
     @Test

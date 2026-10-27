@@ -37,6 +37,12 @@ public class DatasourceConf {
     private int maxOverflow = 10;
     /** A21：池满时等待空闲连接的超时（秒）。 */
     private int poolTimeout = 30;
+    /** A18：连接池 recycle（秒，SQLAlchemy pool_recycle 语义）；借出超过该年龄的连接会被重建。 */
+    private int recycle = 3600;
+    /** A18：MySQL 允许公钥检索（仅显式开启时拼入 URL，默认不追加）。 */
+    private boolean allowPublicKeyRetrieval;
+    /** A18：Oracle 使用 OCI（thick）模式连接。 */
+    private boolean thick;
     private String engine = "hive";
 
     public String getHost() {
@@ -177,12 +183,74 @@ public class DatasourceConf {
         this.poolTimeout = toInt(value, 30);
     }
 
+    public int getRecycle() {
+        return recycle;
+    }
+
+    @com.fasterxml.jackson.annotation.JsonAlias({"pool_recycle", "poolRecycle"})
+    public void setRecycle(Object value) {
+        this.recycle = toInt(value, 3600);
+    }
+
+    public boolean isAllowPublicKeyRetrieval() {
+        return allowPublicKeyRetrieval;
+    }
+
+    @com.fasterxml.jackson.annotation.JsonAlias({"allow_public_key_retrieval"})
+    public void setAllowPublicKeyRetrieval(Object value) {
+        this.allowPublicKeyRetrieval = toBoolean(value, false);
+    }
+
+    public boolean isThick() {
+        return thick;
+    }
+
+    @com.fasterxml.jackson.annotation.JsonAlias({"thickMode", "useThick"})
+    public void setThick(Object value) {
+        this.thick = toBoolean(value, false);
+    }
+
     public String getEngine() {
         return engine;
     }
 
     public void setEngine(String engine) {
         this.engine = engine == null || engine.isEmpty() ? "hive" : engine;
+    }
+
+    /**
+     * 返回带默认 schema 的配置副本（A8：Excel 元数据查询使用固定默认 schema，
+     * 不再向元数据 SQL 写入空 {@code db_schema}）。原配置不被修改。
+     *
+     * @param schema 默认 schema；空值返回原配置
+     */
+    public DatasourceConf withDefaultSchema(String schema) {
+        if (schema == null || schema.isEmpty()) {
+            return this;
+        }
+        DatasourceConf copy = new DatasourceConf();
+        copy.host = host;
+        copy.port = port;
+        copy.username = username;
+        copy.password = password;
+        copy.database = database == null || database.isEmpty() ? schema : database;
+        copy.driver = driver;
+        copy.extraJdbc = extraJdbc;
+        copy.dbSchema = dbSchema == null || dbSchema.isEmpty() ? schema : dbSchema;
+        copy.filename = filename;
+        copy.sheets = sheets;
+        copy.mode = mode;
+        copy.timeout = timeout;
+        copy.lowVersion = lowVersion;
+        copy.ssl = ssl;
+        copy.poolSize = poolSize;
+        copy.maxOverflow = maxOverflow;
+        copy.poolTimeout = poolTimeout;
+        copy.recycle = recycle;
+        copy.allowPublicKeyRetrieval = allowPublicKeyRetrieval;
+        copy.thick = thick;
+        copy.engine = engine;
+        return copy;
     }
 
     /** schema 缺省时的库/schema 名（SQLBot get_table_obj_by_ds 的语义：dbSchema 优先，退回 database）。 */

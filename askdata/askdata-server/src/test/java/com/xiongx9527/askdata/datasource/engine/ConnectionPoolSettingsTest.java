@@ -135,6 +135,26 @@ class ConnectionPoolSettingsTest {
     }
 
     @Test
+    void recycleClosesExpiredIdleConnectionOnBorrow() throws Exception {
+        ConnectionPoolManager manager = new ConnectionPoolManager();
+        CountingFactory factory = new CountingFactory();
+        // recycle=50ms：归还后等待超过该年龄，下次借出必须重建连接
+        ConnectionPoolManager.PoolSettings settings =
+                new ConnectionPoolManager.PoolSettings(1, 0, 1000L, 50L);
+
+        Connection first = manager.borrow("ds:4", factory, settings);
+        first.close();
+        assertEquals(1, factory.created.get());
+        Thread.sleep(120L);
+
+        Connection recycled = manager.borrow("ds:4", factory, settings);
+        assertNotNull(recycled);
+        assertEquals(2, factory.created.get(), "超龄空闲连接应被关闭并重建");
+        assertEquals(1, factory.closed.get(), "超龄连接应在借出时关闭");
+        recycled.close();
+    }
+
+    @Test
     void settingsDerivedFromDatasourceConf() {
         DatasourceConf conf = new DatasourceConf();
         conf.setPoolSize(3);
@@ -144,6 +164,9 @@ class ConnectionPoolSettingsTest {
         assertEquals(3, settings.coreSize());
         assertEquals(7, settings.maxOverflow());
         assertEquals(12_000L, settings.timeoutMs());
+        assertEquals(3_600_000L, settings.recycleMs());
+        conf.setRecycle(600);
+        assertEquals(600_000L, ConnectionPoolManager.PoolSettings.of(conf).recycleMs());
 
         // 缺省/非法值回落默认
         DatasourceConf empty = new DatasourceConf();

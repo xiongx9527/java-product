@@ -76,7 +76,8 @@ class ChatExcelTest {
                 fields("阈值", "at_threshold", "阈值下", "below_threshold", "大浮点", "big_float"), rows, "t"));
 
         assertEquals("100000000000", sheet.getRow(1).getCell(0).getStringCellValue());
-        assertEquals("99999999999", sheet.getRow(1).getCell(1).getStringCellValue());
+        // A19：阈值以下的数字写为数值单元格（Excel 可直接求和）
+        assertEquals(99999999999D, sheet.getRow(1).getCell(1).getNumericCellValue(), 0.5);
         assertEquals("123000000000000000000", sheet.getRow(1).getCell(2).getStringCellValue());
     }
 
@@ -169,7 +170,54 @@ class ChatExcelTest {
         assertEquals(3, sheet.getPhysicalNumberOfRows());
         Row row2 = sheet.getRow(2);
         assertEquals("NEW", row2.getCell(0).getStringCellValue());
-        assertEquals("1", row2.getCell(1).getStringCellValue());
+        assertEquals(1D, row2.getCell(1).getNumericCellValue(), 0.0001);
+    }
+
+    /**
+     * A19：数字列必须写为数值单元格（可直接 SUM），文本数字保持文本。
+     */
+    @Test
+    void numericValuesAreWrittenAsNumbersAndTextStaysText() throws Exception {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("amount", 12.5);
+        row.put("count", 3L);
+        row.put("code", "00123");
+        rows.add(row);
+
+        Sheet sheet = readSheet(ChatExcel.buildResultWorkbook(
+                fields("金额", "amount", "数量", "count", "编码", "code"), rows, "t"));
+
+        assertEquals(12.5D, sheet.getRow(1).getCell(0).getNumericCellValue(), 0.0001);
+        assertEquals(3D, sheet.getRow(1).getCell(1).getNumericCellValue(), 0.0001);
+        assertEquals("00123", sheet.getRow(1).getCell(2).getStringCellValue());
+    }
+
+    /**
+     * A19：结果列名大小写不敏感归一；重复列名按出现顺序稳定加后缀。
+     */
+    @Test
+    void columnNamesAreCaseInsensitiveAndDuplicatesAreStable() throws Exception {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("AMOUNT", 7.5);
+        rows.add(row);
+
+        List<Map<String, Object>> duplicated = new ArrayList<>();
+        Map<String, Object> first = new LinkedHashMap<>();
+        first.put("name", "金额");
+        first.put("value", "amount");
+        duplicated.add(first);
+        Map<String, Object> second = new LinkedHashMap<>();
+        second.put("name", "金额");
+        second.put("value", "AMOUNT");
+        duplicated.add(second);
+
+        Sheet sheet = readSheet(ChatExcel.buildResultWorkbook(duplicated, rows, "t"));
+        assertEquals("金额", sheet.getRow(0).getCell(0).getStringCellValue());
+        assertEquals("金额 (2)", sheet.getRow(0).getCell(1).getStringCellValue());
+        assertEquals(7.5D, sheet.getRow(1).getCell(0).getNumericCellValue(), 0.0001);
+        assertEquals(7.5D, sheet.getRow(1).getCell(1).getNumericCellValue(), 0.0001);
     }
 
     @Test

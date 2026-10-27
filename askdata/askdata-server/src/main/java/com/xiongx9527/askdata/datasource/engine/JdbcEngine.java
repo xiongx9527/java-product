@@ -176,8 +176,12 @@ public class JdbcEngine {
             case DORIS:
             case STARROCKS:
                 url = "jdbc:mysql://" + host(conf) + ":" + port(conf) + "/" + conf.getDatabase();
-                url = appendParams(url, "?", "&", "useUnicode=true&characterEncoding=utf8&useSSL="
-                        + conf.isSsl() + "&allowPublicKeyRetrieval=true", conf.getExtraJdbc());
+                // A18：allowPublicKeyRetrieval 仅在数据源显式开启时追加（默认不开启）
+                String mysqlParams = "useUnicode=true&characterEncoding=utf8&useSSL=" + conf.isSsl();
+                if (conf.isAllowPublicKeyRetrieval()) {
+                    mysqlParams += "&allowPublicKeyRetrieval=true";
+                }
+                url = appendParams(url, "?", "&", mysqlParams, conf.getExtraJdbc());
                 break;
             case PG:
             case REDSHIFT:
@@ -206,8 +210,14 @@ public class JdbcEngine {
                 url = appendParams(url, url.contains("?") ? "&" : "?", "&", null, conf.getExtraJdbc());
                 break;
             case SQLSERVER:
-                url = "jdbc:sqlserver://" + host(conf) + ":" + port(conf) + ";databaseName=" + conf.getDatabase()
-                        + ";encrypt=false";
+                url = "jdbc:sqlserver://" + host(conf) + ":" + port(conf) + ";databaseName=" + conf.getDatabase();
+                // A18：lowVersion 追加旧版 SQL Server 兼容参数（关闭加密协商、信任服务端证书、
+                // 关闭 Unicode 参数绑定），使 SQL Server 2000/2005 等旧版本可连接。
+                if (conf.isLowVersion()) {
+                    url += ";encrypt=false;trustServerCertificate=true;sendStringParametersAsUnicode=false";
+                } else {
+                    url += ";encrypt=false";
+                }
                 url = appendParams(url, ";", ";", null, conf.getExtraJdbc());
                 break;
             case SQLITE:
@@ -218,11 +228,13 @@ public class JdbcEngine {
                 url = appendParams(url, "?", "&", null, conf.getExtraJdbc());
                 break;
             case ORACLE:
+                // A18：thick（OCI）模式按配置启用；未配置时保持 thin 驱动
+                String oracleProtocol = conf.isThick() ? "jdbc:oracle:oci:@" : "jdbc:oracle:thin:@";
                 if ("service_name".equalsIgnoreCase(conf.getMode()) || "serviceName".equalsIgnoreCase(conf.getMode())
                         || conf.getMode().isEmpty()) {
-                    url = "jdbc:oracle:thin:@//" + host(conf) + ":" + port(conf) + "/" + conf.getDatabase();
+                    url = oracleProtocol + "//" + host(conf) + ":" + port(conf) + "/" + conf.getDatabase();
                 } else {
-                    url = "jdbc:oracle:thin:@" + host(conf) + ":" + port(conf) + ":" + conf.getDatabase();
+                    url = oracleProtocol + host(conf) + ":" + port(conf) + ":" + conf.getDatabase();
                 }
                 url = appendParams(url, "?", "&", null, conf.getExtraJdbc());
                 break;
@@ -241,7 +253,17 @@ public class JdbcEngine {
                 break;
             case HIVE:
                 url = "jdbc:hive2://" + host(conf) + ":" + port(conf) + "/" + conf.getDatabase();
-                url = appendParams(url, "?", "&", null, conf.getExtraJdbc());
+                // A18：配置了密码即启用 LDAP 认证（对齐 SQLBot get_driver_connection：
+                // password 非空时 auth=LDAP，用户名/密码经连接属性传给驱动）。
+                String hiveParams = null;
+                if (conf.getPassword() != null && !conf.getPassword().isEmpty()) {
+                    hiveParams = "auth=LDAP";
+                    if (conf.getUsername() != null && !conf.getUsername().isEmpty()) {
+                        hiveParams += ";user=" + encodeUri(conf.getUsername());
+                    }
+                }
+                // Hive JDBC 的会话参数以分号分隔，extraJdbc 的 k=v&k=v 同样转换后追加
+                url = appendParams(url, ";", ";", hiveParams, conf.getExtraJdbc());
                 break;
             case ES:
                 throw new DatasourceException("datasource type [es] uses http protocol, no jdbc url");
@@ -353,7 +375,8 @@ public class JdbcEngine {
             return esIndices(conf);
         }
         DatasourceType dialect = dialectOf(type);
-        DatasourceType.SqlText sqlText = dialect.tableSql(conf, version(type, conf, datasourceId));
+        DatasourceConf metaConf = metadataConf(type, dialect, conf);
+        DatasourceType.SqlText sqlText = dialect.tableSql(metaConf, version(type, conf, datasourceId));
         // A19：Hive 按 Spark Thrift / HiveServer2 的结果集形态解析（列名不稳定，按位置取）
         if (type == DatasourceType.HIVE) {
             return parseHiveTableRows(queryPositional(type, conf, sqlText.getSql(), datasourceId),
@@ -459,7 +482,8 @@ public class JdbcEngine {
             return esFields(conf, tableName);
         }
         DatasourceType dialect = dialectOf(type);
-        DatasourceType.SqlText sqlText = dialect.fieldSql(conf, tableName);
+        DatasourceConf metaConf = metadataConf(type, dialect, conf);
+        DatasourceType.SqlText sqlText = dialect.fieldSql(metaConf, tableName);
         // A19：Hive 的 DESCRIBE 结果按位置解析（段标题行/表头行/分区列重复）
         if (type == DatasourceType.HIVE) {
             return parseHiveFieldRows(queryPositional(type, conf, sqlText.getSql(), datasourceId),
@@ -496,6 +520,55 @@ public class JdbcEngine {
             }
         }
         return result;
+    }
+
+    /**
+     * A8：Excel 数据源的元数据查询使用固定默认 schema，避免向
+     * {@code information_schema}/{@code pg_namespace} 传空 schema 导致查不到字段。
+     *
+     * <p>仅在配置未给出 schema/库名时补默认值；非应用库类型原样返回。</p>
+     */
+    private DatasourceConf metadataConf(DatasourceType type, DatasourceType dialect, DatasourceConf conf) {
+        if (!type.usesAppDatabase() || conf == null) {
+            return conf;
+        }
+        return conf.withDefaultSchema(defaultAppSchema(dialect));
+    }
+
+    /**
+     * 应用元数据库各产品的默认 schema：PG 系 {@code public}、H2 {@code PUBLIC}、
+     * SQL Server {@code dbo}、MySQL 系取当前连接的 catalog。
+     */
+    String defaultAppSchema(DatasourceType dialect) {
+        switch (dialect) {
+            case H2:
+                return "PUBLIC";
+            case PG:
+            case KINGBASE:
+            case REDSHIFT:
+                return "public";
+            case SQLSERVER:
+                return "dbo";
+            case MYSQL:
+            case DORIS:
+            case STARROCKS:
+                return appDatabaseName();
+            default:
+                return "";
+        }
+    }
+
+    /** 应用元数据库当前库名（MySQL 系 schema 即 database）。 */
+    private String appDatabaseName() {
+        try (Connection connection = appJdbc.getDataSource().getConnection()) {
+            String catalog = connection.getCatalog();
+            if (catalog != null && !catalog.isEmpty()) {
+                return catalog;
+            }
+        } catch (Exception e) {
+            log.debug("读取应用库 catalog 失败: {}", e.getMessage());
+        }
+        return "";
     }
 
     /**
@@ -823,11 +896,13 @@ public class JdbcEngine {
             if (body == null) {
                 return result;
             }
+            Map<String, String> descriptions = esIndexDescriptions(conf);
             for (Map<String, Object> item : objectMapper.readValue(body, new TypeReference<List<Map<String, Object>>>() {
             })) {
                 Object index = item.get("index");
                 if (index != null) {
-                    result.add(new TableSchema(String.valueOf(index), ""));
+                    String name = String.valueOf(index);
+                    result.add(new TableSchema(name, descriptions.getOrDefault(name, "")));
                 }
             }
         } catch (Exception e) {
@@ -836,32 +911,89 @@ public class JdbcEngine {
         return result;
     }
 
-    private List<ColumnSchema> esFields(DatasourceConf conf, String indexName) {
-        List<ColumnSchema> result = new ArrayList<>();
+    /**
+     * A18：索引级 {@code mappings._meta.description}（作为表注释）。
+     * 元数据缺失或集群不支持时返回空表，不影响索引列表。
+     */
+    private Map<String, String> esIndexDescriptions(DatasourceConf conf) {
+        Map<String, String> result = new LinkedHashMap<>();
         try {
-            String body = esGetBody(conf, "/" + encodeUri(indexName == null ? "" : indexName) + "/_mapping");
-            if (body == null) {
+            String body = esGetBody(conf, "/_mapping");
+            if (body == null || body.trim().isEmpty()) {
                 return result;
             }
             Map<String, Object> root = objectMapper.readValue(body,
                     new TypeReference<Map<String, Object>>() {
                     });
             for (Map.Entry<String, Object> entry : root.entrySet()) {
+                if (!(entry.getValue() instanceof Map)) {
+                    continue;
+                }
                 Object mappings = ((Map<?, ?>) entry.getValue()).get("mappings");
                 if (mappings instanceof Map) {
-                    Object properties = ((Map<?, ?>) mappings).get("properties");
-                    if (properties instanceof Map) {
-                        for (Map.Entry<?, ?> field : ((Map<?, ?>) properties).entrySet()) {
-                            Object type = field.getValue() instanceof Map
-                                    ? ((Map<?, ?>) field.getValue()).get("type") : null;
-                            result.add(new ColumnSchema(String.valueOf(field.getKey()),
-                                    type == null ? "" : String.valueOf(type), ""));
+                    Object meta = ((Map<?, ?>) mappings).get("_meta");
+                    if (meta instanceof Map) {
+                        Object description = ((Map<?, ?>) meta).get("description");
+                        if (description != null) {
+                            result.put(entry.getKey(), String.valueOf(description));
                         }
                     }
                 }
             }
         } catch (Exception e) {
+            log.debug("读取 ES 索引描述失败（忽略）: {}", e.getMessage());
+        }
+        return result;
+    }
+
+    private List<ColumnSchema> esFields(DatasourceConf conf, String indexName) {
+        try {
+            String body = esGetBody(conf, "/" + encodeUri(indexName == null ? "" : indexName) + "/_mapping");
+            if (body == null) {
+                return new ArrayList<>();
+            }
+            return parseEsFieldMappings(body);
+        } catch (DatasourceException e) {
+            throw e;
+        } catch (Exception e) {
             throw new DatasourceException("Get es fields failed: " + errorText(e), e);
+        }
+    }
+
+    /**
+     * 解析 ES {@code _mapping} 响应为字段列表；字段级 {@code _meta.description}
+     * 作为字段注释保留（A18）。包级可见以便离线单测。
+     */
+    List<ColumnSchema> parseEsFieldMappings(String body) throws Exception {
+        List<ColumnSchema> result = new ArrayList<>();
+        Map<String, Object> root = objectMapper.readValue(body, new TypeReference<Map<String, Object>>() {
+        });
+        for (Map.Entry<String, Object> entry : root.entrySet()) {
+            if (!(entry.getValue() instanceof Map)) {
+                continue;
+            }
+            Object mappings = ((Map<?, ?>) entry.getValue()).get("mappings");
+            if (!(mappings instanceof Map)) {
+                continue;
+            }
+            Object properties = ((Map<?, ?>) mappings).get("properties");
+            if (!(properties instanceof Map)) {
+                continue;
+            }
+            for (Map.Entry<?, ?> field : ((Map<?, ?>) properties).entrySet()) {
+                Object definition = field.getValue();
+                Object type = definition instanceof Map ? ((Map<?, ?>) definition).get("type") : null;
+                String comment = "";
+                if (definition instanceof Map) {
+                    Object meta = ((Map<?, ?>) definition).get("_meta");
+                    if (meta instanceof Map) {
+                        Object description = ((Map<?, ?>) meta).get("description");
+                        comment = description == null ? "" : String.valueOf(description);
+                    }
+                }
+                result.add(new ColumnSchema(String.valueOf(field.getKey()),
+                        type == null ? "" : String.valueOf(type), comment));
+            }
         }
         return result;
     }
