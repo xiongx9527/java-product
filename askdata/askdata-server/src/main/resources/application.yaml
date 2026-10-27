@@ -208,6 +208,38 @@ askdata:
     export-dir: ./data/exports
     push-timeout-seconds: 10
 
+  # A27：向量召回阈值（术语 / SQL 示例 / 表级召回共用）。
+  # 对齐 SQLBot EMBEDDING_TERMINOLOGY_SIMILARITY=0.4；调高更严格、调低更宽松，缺省 0.4。
+  vector:
+    recall-threshold: ${ASKDATA_VECTOR_RECALL_THRESHOLD:0.4}
+  # A27：提示词样例行开关（对齐 SQLBot SAMPLE_DATA_ENABLED=True）。
+  # 关闭后 schema 提示词只含表/字段结构，不再读取样例行（大库/敏感数据场景）。
+  prompt:
+    sample-data-enabled: ${ASKDATA_SAMPLE_DATA_ENABLED:true}
+  # A27：SQL 只读校验的元数据查询开关（对齐 SQLBot ALLOW_METADATA_QUERIES=False）。
+  # 缺省拒绝 information_schema / pg_catalog / performance_schema / mysql.* / sys.* 查询。
+  sql:
+    allow-metadata-queries: ${ASKDATA_ALLOW_METADATA_QUERIES:false}
+  # A27：服务端出图（A5）图片 URL 基址、token 有效期与持久化目录。
+  # image-ttl-ms 缺省 86400000（24h）；过期图片与 token 由定时清理任务删除（清理间隔可配）。
+  chart:
+    image-base-url: ${ASKDATA_CHART_IMAGE_BASE_URL:/api/chart/image}
+    image-ttl-ms: ${ASKDATA_CHART_IMAGE_TTL_MS:86400000}
+    cleanup-interval-ms: ${ASKDATA_CHART_CLEANUP_INTERVAL_MS:3600000}
+    # token→文件映射的持久化目录；留空则使用默认运行目录（进程重启后仍可打开）。
+    token-store-dir: ${ASKDATA_CHART_TOKEN_STORE_DIR:}
+  # A27：许可证门控（A3）。enforcement=bypass（缺省）时企业能力始终可用；
+  # enforce 时按许可证校验；sign-key 用于 HMAC 签名校验，留空则不校验签名。
+  license:
+    enforcement: ${ASKDATA_LICENSE_ENFORCEMENT:bypass}
+    sign-key: ${ASKDATA_LICENSE_SIGN_KEY:}
+    max-count: ${ASKDATA_LICENSE_MAX_COUNT:1000000}
+  # A27：嵌入签名（A11）。aes-key 为 SQLBot AES 信封密钥，留空时嵌入 token 校验不可用；
+  # legacy-hmac-enabled=true 时才接受旧 id.timestamp.hmac 签名，缺省关闭。
+  embedded:
+    aes-key: ${ASKDATA_EMBEDDED_AES_KEY:}
+    legacy-hmac-enabled: ${ASKDATA_EMBEDDED_LEGACY_HMAC_ENABLED:false}
+
   # 通用文件存储（x-file-storage）本地平台根目录；切 OSS/MinIO 等远端平台时由下方 dromara.x-file-storage 配置。
   file-storage:
     local-path: ./data/files

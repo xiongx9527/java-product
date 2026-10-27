@@ -246,7 +246,7 @@ public class ChartImageService {
     }
 
     /** Periodic cleanup (relies on ScheduledTaskConfig's @EnableScheduling; never breaks main flow). */
-    @Scheduled(fixedDelay = 3_600_000L)
+    @Scheduled(fixedDelayString = "${askdata.chart.cleanup-interval-ms:3600000}")
     public void scheduledCleanup() {
         try {
             cleanupExpired();

@@ -4,6 +4,7 @@ import com.xiongx9527.askdata.ai.EmbeddingService;
 import com.xiongx9527.askdata.common.util.Rows;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -29,6 +30,14 @@ public class TrainingRecallService {
 
     /** SQL 示例向量相似度阈值（对齐 SQLBot EMBEDDING_DATA_TRAINING_SIMILARITY=0.4）。 */
     public static final double SIMILARITY_THRESHOLD = 0.4D;
+
+    /**
+     * A27：SQL 示例向量召回阈值（{@code askdata.vector.recall-threshold}，缺省 0.4）。
+     *
+     * <p>缺省值与 {@link #SIMILARITY_THRESHOLD} 一致，未配置时行为不变。</p>
+     */
+    @Value("${askdata.vector.recall-threshold:0.4}")
+    private double similarityThreshold = SIMILARITY_THRESHOLD;
 
     /** SQL 示例向量召回条数（对齐 SQLBot EMBEDDING_DATA_TRAINING_TOP_COUNT=5）。 */
     public static final int TOP_COUNT = 5;
@@ -117,7 +126,7 @@ public class TrainingRecallService {
                 return new ArrayList<>();
             }
             return embeddingService.recallByVector("data_training", candidates, question,
-                    SIMILARITY_THRESHOLD, TOP_COUNT);
+                    similarityThreshold, TOP_COUNT);
         } catch (Exception e) {
             log.info("SQL 示例向量召回失败（降级为词法）: {}", e.getMessage());
             return new ArrayList<>();
@@ -234,7 +243,7 @@ public class TrainingRecallService {
                 return new ArrayList<>();
             }
             return embeddingService.recallByVector("data_training", candidates, sentence,
-                    SIMILARITY_THRESHOLD, TOP_COUNT);
+                    similarityThreshold, TOP_COUNT);
         } catch (Exception e) {
             log.info("SQL 示例向量召回失败（不影响关键词召回）: {}", e.getMessage());
             return new ArrayList<>();
