@@ -374,11 +374,14 @@ public class ChatService {
      */
     private void requireOwner(Map<String, Object> chat, Map<String, Object> user, String label) {
         long id = Rows.lng(chat, "id", 0L);
+        // A4：跨工作空间/跨用户访问属于越权，返回 403（此前 400 与参数错误混淆）
         if (Rows.lng(chat, "oid", 0L) != currentUserService.oidOf(user)) {
-            throw new BadRequestException(messageResolver.get("chat.not.belong.workspace", label, id));
+            throw new com.xiongx9527.askdata.common.web.ForbiddenException(
+                    messageResolver.get("chat.not.belong.workspace", label, id));
         }
         if (Rows.lng(chat, "create_by", 0L) != Rows.lng(user, "id", 0L)) {
-            throw new BadRequestException(messageResolver.get("chat.not.owned.by.user", label, id));
+            throw new com.xiongx9527.askdata.common.web.ForbiddenException(
+                    messageResolver.get("chat.not.owned.by.user", label, id));
         }
     }
 

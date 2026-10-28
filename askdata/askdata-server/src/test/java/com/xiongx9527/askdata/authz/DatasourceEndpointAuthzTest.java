@@ -11,6 +11,7 @@ import com.xiongx9527.askdata.datasource.service.DatasourceService;
 import com.xiongx9527.askdata.datasource.service.RecommendedProblemService;
 import com.xiongx9527.askdata.datasource.service.TableRelationService;
 import com.xiongx9527.askdata.datasource.support.DatasourceCrypto;
+import com.xiongx9527.askdata.permission.DsGrantRepository;
 import com.xiongx9527.askdata.permission.DsGrantService;
 import com.xiongx9527.askdata.permission.PermissionEnforcer;
 import com.xiongx9527.askdata.support.MetadbMigration;
@@ -97,6 +98,35 @@ class DatasourceEndpointAuthzTest {
 
         assertThrows(BadRequestException.class, () -> service.save(DS_ID, List.of()));
         assertThrows(BadRequestException.class, () -> service.get(DS_ID));
+    }
+
+    @Test
+    void listHidesDatasourceExcludedByGrantWhitelist() {
+        seedDatasource(DS_ID, "{}");
+        CurrentUserService user = mock(CurrentUserService.class);
+        when(user.currentUser()).thenReturn(Map.of("id", 9L, "oid", 1L));
+        when(user.isAdmin(any())).thenReturn(false);
+        when(user.oidOf(any())).thenReturn(1L);
+        when(user.uid()).thenReturn(9L);
+        DatasourceService service = new DatasourceService(datasourceRepository,
+                mock(com.xiongx9527.askdata.datasource.repository.TableRepository.class),
+                mock(com.xiongx9527.askdata.datasource.repository.FieldRepository.class),
+                mock(com.xiongx9527.askdata.datasource.excel.ExcelService.class),
+                mock(JdbcEngine.class), user, new com.fasterxml.jackson.databind.ObjectMapper(), MESSAGE_RESOLVER,
+                mock(com.xiongx9527.askdata.datasource.embedding.TableEmbeddingService.class),
+                new ConnectionPoolManager(), null);
+        DsGrantRepository grants = mock(DsGrantRepository.class);
+        when(grants.hasAnyGrant(1L, DS_ID)).thenReturn(true);
+        when(grants.isGranted(1L, DS_ID, 9L)).thenReturn(false);
+        service.setGrantRepository(grants);
+
+        // 白名单模式且未命中 → 该数据源不可见（基线种子数据源不在白名单范围内，不受影响）
+        assertTrue(service.list(null).stream()
+                .noneMatch(m -> ((Number) m.get("id")).longValue() == DS_ID));
+        // 命中授权 → 可见
+        when(grants.isGranted(1L, DS_ID, 9L)).thenReturn(true);
+        assertTrue(service.list(null).stream()
+                .anyMatch(m -> ((Number) m.get("id")).longValue() == DS_ID));
     }
 
     @Test

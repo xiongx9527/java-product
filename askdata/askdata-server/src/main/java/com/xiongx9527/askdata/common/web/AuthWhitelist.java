@@ -108,6 +108,20 @@ public class AuthWhitelist {
             "/api/chart/image",
             "/api/chart/image/*"));
 
+    /**
+     * 登录前前端启动阶段会读取的只读元数据端点（askdata 侧补充）。
+     *
+     * <p>前端 {@code utils/xpackPatch.ts} 在应用挂载时（含登录页）调用
+     * {@code GET /system/license/version} 展示版本号；该端点若要求登录态会返回 401，
+     * 而前端 401 拦截器会清除 {@code user.token} 并延时刷新——登录页启动探测的 401
+     * 会在用户刚登录后把新 token 清掉，表现为随机被踢回登录页。</p>
+     *
+     * <p>不并入 {@link #DEFAULT_PATHS}：后者与 SQLBot {@code whitelist.py} 逐条等价（35 条），
+     * 语义与 {@link #CHART_IMAGE_PATHS} 相同——单独的 askdata 公共端点清单。</p>
+     */
+    public static final List<String> PUBLIC_METADATA_PATHS = Collections.unmodifiableList(Arrays.asList(
+            "/system/license/version"));
+
     private final List<String> paths;
 
     /** 精确匹配集合（{@link #DEFAULT_PATHS} + {@link #API_DOCS_PATHS} 中的无通配条目）。 */
@@ -128,6 +142,7 @@ public class AuthWhitelist {
         List<String> effective = new ArrayList<>(DEFAULT_PATHS);
         effective.addAll(API_DOCS_PATHS);
         effective.addAll(CHART_IMAGE_PATHS);
+        effective.addAll(PUBLIC_METADATA_PATHS);
         this.compiledPatterns = compile(effective);
         this.exactPaths = new HashSet<>(effective);
     }

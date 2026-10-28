@@ -218,6 +218,23 @@ public class AiModelService {
         return result;
     }
 
+    /**
+     * MCP mcp_model_list 兼容层：按工作空间列模型，未显式绑定时回退到默认模型
+     * （对齐 SQLBot 默认模型对任意工作空间可见的语义，修复 发现-6：default_model=true
+     * 但未绑定工作空间时 mcp_model_list 返回空导致 MCP 客户端取不到可用模型）。
+     */
+    public List<Map<String, Object>> listByWsWithDefault(long oid) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> row : aiModelRepository.listByWorkspace(oid, true)) {
+            result.add(Rows.of(
+                    "id", String.valueOf(Rows.lng(row, "id", 0L)),
+                    "name", Rows.str(row, "name"),
+                    "default_model", Rows.bool(row, "default_model", false),
+                    "supplier", Rows.intg(row, "supplier", 0)));
+        }
+        return result;
+    }
+
     /** /system/aimodel/list/by_ws：当前用户工作空间可用模型（id 为字符串，对齐 SQLBot AiModelBrief）。 */
     public List<Map<String, Object>> listByWs() {
         currentUserService.requireWsAdmin();

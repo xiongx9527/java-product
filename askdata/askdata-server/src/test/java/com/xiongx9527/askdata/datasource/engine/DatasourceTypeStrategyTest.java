@@ -181,6 +181,17 @@ class DatasourceTypeStrategyTest {
         assertTrue(pgFields.getSql().contains("pg_catalog.pg_attribute"));
         assertEquals("public", pgFields.getArgs()[0]);
 
+        // PG 系（pg/kingbase/redshift）驱动会把未加引号的别名折叠成小写，
+        // 而 JdbcEngine 按 "TABLE_NAME"/"COLUMN_NAME" 等大写键取值——别名必须加双引号，
+        // 否则真实 PostgreSQL 数据源的表/字段列表名称为空。
+        DatasourceConf pgConf = conf("h", 5432, "u", "p", "d", "public");
+        assertTrue(DatasourceType.PG.tableSql(pgConf, "").getSql().contains("AS \"TABLE_NAME\""));
+        assertTrue(DatasourceType.PG.tableSql(pgConf, "").getSql().contains("AS \"TABLE_COMMENT\""));
+        assertTrue(DatasourceType.PG.fieldSql(pgConf, "orders").getSql().contains("AS \"COLUMN_NAME\""));
+        assertTrue(DatasourceType.KINGBASE.tableSql(pgConf, "").getSql().contains("AS \"TABLE_NAME\""));
+        assertTrue(DatasourceType.KINGBASE.fieldSql(pgConf, "orders").getSql().contains("AS \"DATA_TYPE\""));
+        assertTrue(DatasourceType.REDSHIFT.tableSql(pgConf, "").getSql().contains("AS \"TABLE_NAME\""));
+
         assertEquals("SHOW TABLES", DatasourceType.HIVE.tableSql(conf, "").getSql());
         assertEquals("DESCRIBE `orders`", DatasourceType.HIVE.fieldSql(conf, "orders").getSql());
 

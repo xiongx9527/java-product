@@ -36,6 +36,13 @@ public class ApiExceptionHandler {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
+    /** 401 来源标记（A13）：前端据此区分「会话失效」与「支线通道凭证失败」。 */
+    static final String AUTH_FAILURE_HEADER = AuthFailureSignal.HEADER;
+
+    static final String AUTH_FAILURE_SESSION = AuthFailureSignal.SESSION;
+
+    static final String AUTH_FAILURE_CHANNEL = AuthFailureSignal.CHANNEL;
+
     /** 错误文案统一走消息包（A4 / F-15）；由 Spring MVC 按 Accept-Language 设定 locale。 */
     private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
 
@@ -62,22 +69,32 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ForbiddenException.class)
     public ResponseEntity<String> forbidden(ForbiddenException e) {
         log.info("禁止访问: {}", e.getMessage());
-        return detail(HttpStatus.FORBIDDEN, e.getMessage());
+        // MCP 兼容层保持 {"detail":...}；Web/管理面返回纯文本错误体（与其它错误处理一致）
+        return isMcpRequest() ? detail(HttpStatus.FORBIDDEN, e.getMessage())
+                : error(HttpStatus.FORBIDDEN, e.getMessage());
     }
 
     @ExceptionHandler(NotLoginException.class)
     public ResponseEntity<String> notLogin(NotLoginException e) {
         log.info("未登录访问: {}", e.getMessage());
-        return error(HttpStatus.UNAUTHORIZED, messageResolver.get("i18n_permission.authenticate_invalid",
-                java.util.Map.of("msg", String.valueOf(e.getMessage()))));
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .header(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, allowedOrigin())
+                .header(AUTH_FAILURE_HEADER, AUTH_FAILURE_SESSION)
+                .header(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, AUTH_FAILURE_HEADER)
+                .body(messageResolver.get("i18n_permission.authenticate_invalid",
+                        java.util.Map.of("msg", String.valueOf(e.getMessage()))));
     }
 
     @ExceptionHandler(AuthFailureException.class)
     public ResponseEntity<String> authFailure(AuthFailureException e) {
         // 支线通道（API Key / 嵌入助手）的鉴权失败：与 AuthChannelFilter 的 401 口径一致。
         log.info("支线通道鉴权失败: {}", e.getMessage());
-        return error(HttpStatus.UNAUTHORIZED, messageResolver.get("i18n_permission.authenticate_invalid",
-                java.util.Map.of("msg", String.valueOf(e.getMessage()))));
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .header(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, allowedOrigin())
+                .header(AUTH_FAILURE_HEADER, AUTH_FAILURE_CHANNEL)
+                .header(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, AUTH_FAILURE_HEADER)
+                .body(messageResolver.get("i18n_permission.authenticate_invalid",
+                        java.util.Map.of("msg", String.valueOf(e.getMessage()))));
     }
 
     @ExceptionHandler(DebounceBlockedException.class)

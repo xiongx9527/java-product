@@ -65,6 +65,11 @@ class PostgresMetadbMigrationTest {
     private static final String STUB_SQL =
             "SELECT \"status\", COUNT(*) AS \"cnt\" FROM \"orders\" GROUP BY \"status\" ORDER BY \"cnt\" DESC";
 
+    /** A12 起 SQL 生成必须返回结构化 JSON，桩输出同步该契约。 */
+    private static final String STUB_SQL_JSON = "{\"success\":true,\"sql\":\""
+            + STUB_SQL.replace("\"", "\\\"") + "\",\"brief\":\"各状态订单数\","
+            + "\"chart-type\":\"column\",\"tables\":[\"orders\"]}";
+
     private static final String STUB_CHART = "{\"type\":\"column\",\"title\":\"各状态订单数\","
             + "\"columns\":[{\"name\":\"status\",\"value\":\"status\"},{\"name\":\"cnt\",\"value\":\"cnt\"}],"
             + "\"axis\":{\"x\":{\"name\":\"status\",\"value\":\"status\"},"
@@ -250,7 +255,7 @@ class PostgresMetadbMigrationTest {
 
     private List<String> chunksFor(String prompt) {
         if (prompt.contains("请修正后只输出一条正确的 SQL") || prompt.contains("请只输出 SQL")) {
-            return Arrays.asList("```sql\n", STUB_SQL, "\n```");
+            return Arrays.asList("```json\n", STUB_SQL_JSON, "\n```");
         }
         if (prompt.contains("G2 图表配置 JSON")) {
             return List.of(STUB_CHART);

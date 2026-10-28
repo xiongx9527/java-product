@@ -189,6 +189,9 @@ public class AuthChannelFilter implements Filter {
             throws IOException {
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setHeader("Access-Control-Allow-Origin", "*");
+        // A13：标记为支线通道（API Key / 嵌入助手）鉴权失败，前端不清除主账号登录态
+        response.setHeader(AuthFailureSignal.HEADER, AuthFailureSignal.CHANNEL);
+        response.setHeader("Access-Control-Expose-Headers", AuthFailureSignal.HEADER);
         response.setContentType("application/json;charset=UTF-8");
         String detail = messageResolver.get("i18n_permission.authenticate_invalid",
                 java.util.Map.of("msg", message == null ? "" : message), localeResolver.resolveLocale(request));

@@ -7,6 +7,7 @@ import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.AuthContext;
 import com.xiongx9527.askdata.common.web.AuthFailureException;
 import com.xiongx9527.askdata.common.web.BadRequestException;
+import com.xiongx9527.askdata.common.web.ForbiddenException;
 import com.xiongx9527.askdata.system.repository.UserRepository;
 import com.xiongx9527.askdata.system.repository.UserWsRepository;
 import org.springframework.stereotype.Service;
@@ -124,7 +125,8 @@ public class CurrentUserService {
 
     public void requireAdmin() {
         if (!isAdmin(currentUser())) {
-            throw new BadRequestException(messageResolver.get("perm.admin.only"));
+            // A4/A13：越权访问是权限语义，必须 403（此前抛 400 会与参数错误混淆）
+            throw new ForbiddenException(messageResolver.get("perm.admin.only"));
         }
     }
 
@@ -135,7 +137,7 @@ public class CurrentUserService {
             return;
         }
         if (weightInCurrentWorkspace(user) == 0) {
-            throw new BadRequestException(messageResolver.get("perm.ws.admin.only"));
+            throw new ForbiddenException(messageResolver.get("perm.ws.admin.only"));
         }
     }
 }

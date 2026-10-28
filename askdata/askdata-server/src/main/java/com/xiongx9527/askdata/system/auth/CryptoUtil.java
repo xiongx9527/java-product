@@ -85,7 +85,10 @@ public class CryptoUtil {
 
     /** 无参构造（密钥未配置时回退到运行期兜底密钥；供纯静态调用场景与单测使用）。 */
     public CryptoUtil() {
-        this("");
+        // 仅供静态兜底/单测直接构造：不打印「未配置 askdata.secret.key」告警——
+        // 该实例不一定来自容器配置（DatasourceCrypto 的静态兜底、测试），
+        // 在已正确配置密钥的部署里打印会造成误导。真正的配置缺失由上面带 @Value 的构造器告警。
+        this.askDataSecretKey = generateFallbackSecretKey();
     }
 
     // ------------------------------------------------------------------

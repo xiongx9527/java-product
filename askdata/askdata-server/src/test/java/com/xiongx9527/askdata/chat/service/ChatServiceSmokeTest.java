@@ -147,6 +147,8 @@ class ChatServiceSmokeTest {
         assertEquals("SELECT status FROM orders", real.get("sql"));
         assertEquals(true, real.get("finish"));
         assertEquals(33L, ((Number) real.get("total_tokens")).longValue());
+        // 前端「耗时 s」读取 duration（秒，向上取整）；1200ms → 2s，历史缺陷只写 run_time，UI 恒为空
+        assertEquals(2L, ((Number) real.get("duration")).longValue());
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) real.get("data");
         assertEquals(1, ((List<?>) data.get("data")).size());
@@ -233,7 +235,8 @@ class ChatServiceSmokeTest {
                 messageResolver);
         // 他人会话不可见（list 只返回自己 oid 的）
         assertEquals(0, normalService.list().size());
-        assertThrows(BadRequestException.class, () -> normalService.get(chatId, false));
+        assertThrows(com.xiongx9527.askdata.common.web.ForbiddenException.class,
+                () -> normalService.get(chatId, false));
     }
 
     @Test

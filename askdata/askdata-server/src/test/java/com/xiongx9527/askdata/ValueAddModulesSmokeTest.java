@@ -34,7 +34,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 经真实 HTTP + Sa-Token 登录态跑通管理面 CRUD/启停/导入导出/密钥重置。
  */
 @SpringBootTest(properties = {
-        "spring.datasource.url=jdbc:h2:mem:askdata-value-add-test;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE"
+        "spring.datasource.url=jdbc:h2:mem:askdata-value-add-test;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE",
+        // 新建用户的口令来源（生产由部署配置注入）；用于验证普通用户越权返回 403
+        "askdata.user.default-password=SQLBot@123456"
 })
 @AutoConfigureMockMvc
 class ValueAddModulesSmokeTest {
@@ -440,6 +442,42 @@ class ValueAddModulesSmokeTest {
         assertTrue(picture.getResponse().getContentAsByteArray().length > 0);
 
         mockMvc.perform(auth(delete("/api/v1/system/assistant/" + assistantId)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("A4/A13：普通用户越权访问管理员接口返回 403（不是 400/200）")
+    void nonAdminForbiddenOnAdminApi() throws Exception {
+        ensureLogin();
+        String account = "e2e_nonadmin_" + System.nanoTime();
+        String created = mockMvc.perform(auth(post("/api/v1/user"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"account\":\"" + account + "\",\"name\":\"Non Admin\",\"email\":\""
+                                + account + "@example.com\",\"oid_list\":[1]}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\"id\":(\\d+)").matcher(created);
+        assertTrue(matcher.find(), "user id missing: " + created);
+        long userId = Long.parseLong(matcher.group(1));
+
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/login/access-token")
+                        .param("username", CryptoUtil.encryptSqlbot(account))
+                        .param("password", CryptoUtil.encryptSqlbot("SQLBot@123456")))
+                .andReturn();
+        String loginBody = loginResult.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertTrue(loginResult.getResponse().getStatus() == 200,
+                "login failed: status=" + loginResult.getResponse().getStatus() + " body=" + loginBody);
+        int start = loginBody.indexOf("\"access_token\":\"");
+        assertTrue(start > 0, "token missing: " + loginBody);
+        int from = start + "\"access_token\":\"".length();
+        String userToken = loginBody.substring(from, loginBody.indexOf('"', from));
+
+        // 管理员专属接口：普通用户必须 403
+        mockMvc.perform(get("/api/v1/system/parameter")
+                        .header("X-SQLBOT-TOKEN", "Bearer " + userToken))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(auth(delete("/api/v1/user/" + userId)))
                 .andExpect(status().isOk());
     }
 }

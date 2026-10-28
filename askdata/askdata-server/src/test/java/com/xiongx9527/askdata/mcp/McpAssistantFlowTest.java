@@ -74,6 +74,14 @@ class McpAssistantFlowTest {
     private static final String STUB_SQL =
             "SELECT \"status\", COUNT(*) AS \"cnt\" FROM \"orders\" GROUP BY \"status\" ORDER BY \"cnt\" DESC";
 
+    /**
+     * A12 起 SQL 生成必须返回结构化 JSON，桩输出同步该契约。
+     * 不返回 brief：本用例覆盖「模型未给标题时回退完整问题」的既有语义。
+     */
+    private static final String STUB_SQL_JSON = "{\"success\":true,\"sql\":\""
+            + STUB_SQL.replace("\"", "\\\"")
+            + "\",\"chart-type\":\"column\",\"tables\":[\"orders\"]}";
+
     private static final String QUESTION = "统计每个状态的订单数";
 
     @Autowired
@@ -646,7 +654,7 @@ class McpAssistantFlowTest {
             String content = "";
             if (lastUser.contains("请只输出 SQL") || lastUser.contains("请修正后只输出一条正确的 SQL")) {
                 stubCalls.add("sql");
-                content = "```sql\n" + STUB_SQL + "\n```";
+                content = "```json\n" + STUB_SQL_JSON + "\n```";
             } else if (lastUser.contains("请只输出一个 G2 图表配置 JSON")) {
                 stubCalls.add("chart");
                 content = "{\"type\":\"column\",\"title\":\"t\",\"columns\":[],\"axis\":{}}";

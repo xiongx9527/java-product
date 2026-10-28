@@ -373,11 +373,11 @@ public class SchemaContextBuilder {
         // 保留「请只输出 SQL」作为桩/调试可识别的语义标记，但要求以 JSON 对象呈现。
         user.append("\n\n请只输出 SQL 对应的结构化 JSON 对象（不要使用 Markdown 代码块），字段如下：\n")
                 .append("{\n")
-                .append("success\": true 或 false（无法生成 SQL 时为 false），\n")
-                .append("sql\": 生成的只读 SELECT 语句字符串（success 为 false 时为空字符串），\n")
-                .append("brief\": 一句话会话标题（中文，不超过 20 字，用于重命名本次会话），\n")
-                .append("chart-type\": 推荐图表类型，取值 table/column/bar/line/pie 之一，\n")
-                .append("tables\": 本次查询实际用到的表名数组（必须与 FROM/JOIN 中的表一致）\n")
+                .append("  \"success\": true 或 false（无法生成 SQL 时为 false）,\n")
+                .append("  \"sql\": 生成的只读 SELECT 语句字符串（success 为 false 时为空字符串）,\n")
+                .append("  \"brief\": 一句话会话标题（中文，不超过 20 字，用于重命名本次会话）,\n")
+                .append("  \"chart-type\": 推荐图表类型，取值 table/column/bar/line/pie 之一,\n")
+                .append("  \"tables\": 本次查询实际用到的表名数组（必须与 FROM/JOIN 中的表一致）\n")
                 .append("}\n")
                 .append("注意：sql 字段必须是一条完整、可执行的 SQL，不得包含解释性文字。");
         messages.add(new ModelMessage("user", user.toString()));
@@ -1083,6 +1083,34 @@ public class SchemaContextBuilder {
             names.add(Rows.str(table, "table_name"));
         }
         return names;
+    }
+
+    /**
+     * 选中数据源下「勾选表 → (勾选字段 → 字段类型)」的元数据快照（A10 SQL 语义校验用）。
+     *
+     * <p>与 {@link #checkedTableNames(long)} 同源（core_table / core_field 的 checked 标记），
+     * 表名与字段名由调用方按大小写不敏感比对。未同步字段的表返回空列集合。</p>
+     */
+    public Map<String, Map<String, String>> checkedTableColumns(long dsId) {
+        Map<String, Map<String, String>> tables = new LinkedHashMap<>();
+        for (Map<String, Object> table : tableRepository.listByDsIdChecked(dsId)) {
+            String tableName = Rows.str(table, "table_name");
+            if (tableName == null || tableName.isEmpty()) {
+                continue;
+            }
+            Map<String, String> columns = new LinkedHashMap<>();
+            for (Map<String, Object> field : fieldRepository.listByTableId(Rows.lng(table, "id", 0L))) {
+                if (!Rows.bool(field, "checked", true)) {
+                    continue;
+                }
+                String fieldName = Rows.str(field, "field_name");
+                if (fieldName != null && !fieldName.isEmpty()) {
+                    columns.put(fieldName, Rows.str(field, "field_type"));
+                }
+            }
+            tables.put(tableName, columns);
+        }
+        return tables;
     }
 
     // ------------------------------------------------------------------

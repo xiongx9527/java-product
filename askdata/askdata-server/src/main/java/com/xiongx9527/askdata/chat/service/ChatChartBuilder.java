@@ -98,7 +98,14 @@ public class ChatChartBuilder {
                 // 不能因为归一化把多指标语义丢掉。
                 JsonNode multiQuota = axisNode.get("multi-quota");
                 if (multiQuota != null && !multiQuota.isNull()) {
-                    axis.put("multi-quota", objectMapper.convertValue(multiQuota, Object.class));
+                    axis.put("multi-quota", multiQuotaNode(multiQuota));
+                } else if (!axis.containsKey("series")) {
+                    // A9：模型只给了 y 数组（多数值指标）却漏写 multi-quota 时补齐，
+                    // 否则前端把两个指标画在同一轴上，量级差异大时其中一个系列不可见。
+                    Map<String, Object> derived = deriveMultiQuota(y);
+                    if (derived != null) {
+                        axis.put("multi-quota", derived);
+                    }
                 }
             }
             chart.put("axis", axis);
@@ -161,15 +168,13 @@ public class ChatChartBuilder {
                 ? Rows.of("name", numeric.get(0), "value", numeric.get(0))
                 : yList(numeric);
         axis.put("y", y);
-        if (numeric.size() > 1) {
-            // A4：多指标时同步产出 multi-quota（与模型产出形态一致，前端据此走多轴渲染）
-            List<Object> multiQuota = new ArrayList<>();
-            for (String name : numeric) {
-                multiQuota.add(name);
-            }
-            axis.put("multi-quota", multiQuota);
+        boolean hasSeries = nonNumeric.size() > 1;
+        if (numeric.size() > 1 && !hasSeries) {
+            // A9：1 维 + 多指标 → multi-quota（对象形态，前端按 .value 取指标列表）。
+            // 与 series 互斥：存在第二个分类列时按 series 渲染，不再标记 multi-quota。
+            axis.put("multi-quota", multiQuota(numeric));
         }
-        if (nonNumeric.size() > 1) {
+        if (hasSeries) {
             String series = nonNumeric.get(1);
             axis.put("series", Rows.of("name", series, "value", series));
         }
@@ -353,6 +358,51 @@ public class ChatChartBuilder {
             return null;
         }
         return Rows.of("name", name == null ? value : name, "value", value == null ? name : value);
+    }
+
+    /**
+     * 归一化 {@code axis.multi-quota}（A9）：SQLBot 契约是
+     * {@code {"name":"指标类型","value":["m1","m2"]}}，前端按 {@code .value} 取指标列表。
+     * 兼容模型直接给数组（{@code ["m1","m2"]}）的写法，包成同形状对象，避免前端取不到值。
+     */
+    private Object multiQuotaNode(JsonNode node) {
+        if (node.isArray()) {
+            List<String> values = new ArrayList<>();
+            for (int i = 0; i < node.size(); i++) {
+                String value = text(node.get(i), "value");
+                if (value == null) {
+                    value = node.get(i).asText(null);
+                }
+                if (value != null && !value.isEmpty()) {
+                    values.add(value);
+                }
+            }
+            return values.isEmpty() ? null : multiQuota(values);
+        }
+        return objectMapper.convertValue(node, Object.class);
+    }
+
+    /** 由 {@code axis.y} 的多指标数组推导 multi-quota（模型漏写时兜底）。 */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> deriveMultiQuota(Object y) {
+        if (!(y instanceof List)) {
+            return null;
+        }
+        List<String> values = new ArrayList<>();
+        for (Object item : (List<Object>) y) {
+            if (item instanceof Map) {
+                Object value = ((Map<String, Object>) item).get("value");
+                if (value != null && !String.valueOf(value).isEmpty()) {
+                    values.add(String.valueOf(value));
+                }
+            }
+        }
+        return values.size() < 2 ? null : multiQuota(values);
+    }
+
+    /** multi-quota 的对象形态（name 为轴标题，value 为指标列名列表）。 */
+    private static Map<String, Object> multiQuota(List<String> values) {
+        return Rows.of("name", "指标", "value", new ArrayList<>(values));
     }
 
     private static List<Map<String, Object>> defaultColumns(JsonNode node) {

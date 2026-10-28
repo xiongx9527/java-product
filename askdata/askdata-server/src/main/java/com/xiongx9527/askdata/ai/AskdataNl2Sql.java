@@ -5,6 +5,9 @@ import com.xiongx9527.askdata.embedded.DynamicDatasource;
 import com.xiongx9527.askdata.chat.service.SchemaContextBuilder;
 import com.xiongx9527.askdata.datasource.engine.DatasourceType;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.input.PromptTemplate;
 import dev.langchain4j.rag.query.Query;
@@ -18,6 +21,7 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -141,7 +145,40 @@ public class AskdataNl2Sql {
                 }
             }
         }
-        List<Map<String, Object>> rows = execute(sql, dsId, dialectType);
+        // 发现-5 缓解：gpt-oss 等模型可能幻觉不存在的列（如 status 而非 order_status）。
+        // 选定数据源（dsId）执行失败且报错为未知列时，用真实 schema 列名反馈模型一次性改写。
+        List<Map<String, Object>> rows;
+        try {
+            rows = execute(sql, dsId, dialectType);
+        } catch (Exception execEx) {
+            if (dsId != null && isColumnError(execEx.getMessage())) {
+                String corrected = correctSqlColumns(question, model, structure, dialectType, sql, execEx.getMessage());
+                try {
+                    AskdataSqlRetriever.checkSql(corrected);
+                } catch (Exception ignore) {
+                    throw execEx;
+                }
+                String tblErr = ChatQuestionService.validateTables(corrected,
+                        schemaContextBuilder.checkedTableNames(dsId));
+                if (tblErr != null) {
+                    throw execEx;
+                }
+                com.xiongx9527.askdata.permission.PermissionEnforcer.EnforcedQuery enf2 = null;
+                String sql2 = corrected;
+                if (permissionEnforcer != null) {
+                    enf2 = enforceForMcp(permissionEnforcer, currentUserService, dsId, corrected);
+                    if (enf2 != null) {
+                        sql2 = enf2.getSql();
+                    }
+                }
+                rows = execute(sql2, dsId, dialectType);
+                if (enf2 != null) {
+                    enforced = enf2;
+                }
+            } else {
+                throw execEx;
+            }
+        }
         if (enforced != null) {
             Map<String, Object> result = new LinkedHashMap<String, Object>();
             result.put("data", rows);
@@ -269,6 +306,51 @@ public class AskdataNl2Sql {
             return new ArrayList<Map<String, Object>>();
         }
         return jdbcTemplate.queryForList(limited);
+    }
+
+    /**
+     * 发现-5 缓解：判断执行异常是否为「未知列/列不存在」类错误（模型幻觉列的典型报错）。
+     * 覆盖 MySQL(Unknown column)、PostgreSQL(column does not exist)、Oracle(invalid identifier) 等。
+     */
+    private static boolean isColumnError(String msg) {
+        if (msg == null) {
+            return false;
+        }
+        String m = msg.toLowerCase(Locale.ROOT);
+        return m.contains("unknown column")
+                || (m.contains("column") && m.contains("does not exist"))
+                || m.contains("invalid identifier")
+                || m.contains("无效的列名")
+                || m.contains("未知列");
+    }
+
+    /**
+     * 发现-5 缓解：将执行错误与真实 schema 反馈给模型，一次性改写 SQL，要求仅使用真实存在的列。
+     * 用于模型幻觉出不存在的列（如 status 而非 order_status）时自愈，避免把执行错误直接抛给用户。
+     */
+    private String correctSqlColumns(String question, ChatModel model, String structure,
+                                     DatasourceType dialect, String badSql, String errorMsg) {
+        Map<String, Object> vars = new HashMap<String, Object>();
+        vars.put("sqlDialect", dialect.getTemplateName());
+        vars.put("databaseStructure", structure);
+        List<ChatMessage> messages = new ArrayList<ChatMessage>();
+        messages.add(PromptTemplate.from(SQL_PROMPT).apply(vars).toSystemMessage());
+        messages.add(UserMessage.from(question));
+        messages.add(AiMessage.from(badSql));
+        messages.add(UserMessage.from(
+                "The previous SQL failed to execute: " + errorMsg
+                        + "\nIt likely references a column that does not exist. Using ONLY the columns shown in the schema above, "
+                        + "rewrite the SQL to answer the question. Output a single valid SQL SELECT statement and nothing else."));
+        String corrected = model.chat(messages).aiMessage().text();
+        if (corrected != null) {
+            // 去掉 Markdown 代码围栏（反引号，char 96）与结尾分号
+            String bt = String.valueOf((char) 96);
+            corrected = corrected.replace(bt, "").trim();
+            if (corrected.endsWith(";")) {
+                corrected = corrected.substring(0, corrected.length() - 1);
+            }
+        }
+        return corrected == null || corrected.isEmpty() ? badSql : corrected;
     }
 
     /**

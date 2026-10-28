@@ -242,13 +242,15 @@ class ScheduledTaskIntegrationTest {
         try {
             String request = readBody(exchange.getRequestBody());
             JsonNode messages = objectMapper.readTree(request).get("messages");
-            String lastUser = "";
+            // 汇总所有 user 消息：回喂修复会追加消息，"BROKEN" 需在整段对话中持续生效，
+            // 才能稳定模拟“模型始终返回非法 SQL”的持久失败场景。
+            StringBuilder allUser = new StringBuilder();
             for (int i = 0; i < messages.size(); i++) {
                 if ("user".equals(messages.get(i).get("role").asText())) {
-                    lastUser = messages.get(i).get("content").asText();
+                    allUser.append(messages.get(i).get("content").asText()).append('\n');
                 }
             }
-            List<String> chunks = chunksFor(lastUser);
+            List<String> chunks = chunksFor(allUser.toString());
             exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
             exchange.sendResponseHeaders(200, 0);
             try (OutputStream out = exchange.getResponseBody()) {

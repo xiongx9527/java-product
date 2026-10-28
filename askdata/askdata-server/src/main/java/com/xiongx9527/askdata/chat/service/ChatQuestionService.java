@@ -12,6 +12,7 @@ import com.xiongx9527.askdata.chat.service.ChatModelRouter.ModelRef;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.datasource.engine.SqlSafety;
+import com.xiongx9527.askdata.datasource.engine.SqlSemanticValidator;
 import com.xiongx9527.askdata.datasource.repository.DatasourceRepository;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
 import com.xiongx9527.askdata.chart.server.ChartImageService;
@@ -63,6 +64,9 @@ public class ChatQuestionService {
 
     /** SQLBot {@code apps/chat/task/llm.py} 默认数据量阈值。 */
     private static final int SQL_ROW_LIMIT = 1000;
+
+    /** SQL 生成失败时的回喂修复重试上限（覆盖 gpt-oss 偶发不输出可解析 SQL 的方差）。 */
+    private static final int MAX_SQL_REPAIR_RETRIES = 2;
 
     /** 模型单次生成的最大字符数（防止异常模型刷爆记录）。 */
     private static final int MAX_GENERATED_TEXT = 32000;
@@ -374,20 +378,25 @@ public class ChatQuestionService {
                         "sql-result", totalTokens, sqlUsage);
                 // A12：解析结构化 SQL JSON 协议（success,sql,brief,chart-type,tables），不再用正则抠 SQL
                 SqlJsonResult sqlJson = parseSqlJson(sqlText);
-                if (sqlJson == null || !sqlJson.success || sqlJson.sql == null || sqlJson.sql.isEmpty()) {
-                    // 一次修复：把「未输出合法 JSON/SQL」的语义错误回喂，仍走 JSON 协议
-                    String reason = sqlJson == null ? "模型未返回可解析的 JSON"
-                            : (sqlJson.message == null ? "SQL 生成失败" : sqlJson.message);
-                    String repaired = regenerateSql(aiModel, question, dsId, dynamic, sqlText, reason, writer);
-                    SqlJsonResult repairedJson = parseSqlJson(repaired);
-                    if (repairedJson != null && repairedJson.success && repairedJson.sql != null
-                            && !repairedJson.sql.isEmpty()) {
-                        sqlJson = repairedJson;
-                    } else {
+                // 发现-5 延伸修复（A5 偶发 run FAILED）：gpt-oss 模型偶发不输出可解析 SQL，
+                // 原单轮回喂不足；改为至多 MAX_SQL_REPAIR_RETRIES 次重试回喂，显著降低偶发失败率。
+                int sqlRepairLeft = MAX_SQL_REPAIR_RETRIES;
+                while (sqlJson == null || !sqlJson.success || sqlJson.sql == null || sqlJson.sql.isEmpty()) {
+                    if (sqlRepairLeft <= 0) {
+                        String reason = sqlJson == null ? "模型未返回可解析的 JSON"
+                                : (sqlJson.message == null ? "SQL 生成失败" : sqlJson.message);
                         // 非法 JSON / success=false：返回明确错误，不执行 SQL、不截断标题
                         emitError(writer, reason);
                         return;
                     }
+                    String reason = sqlJson == null ? "模型未返回可解析的 JSON"
+                            : (sqlJson.message == null ? "SQL 生成失败" : sqlJson.message);
+                    log.warn("SQL 生成结果不可用（{}），第 {} 次回喂修复，模型原始输出：{}", reason,
+                            (MAX_SQL_REPAIR_RETRIES - sqlRepairLeft + 1), abbreviate(sqlText, 2000));
+                    String repaired = regenerateSql(aiModel, question, dsId, dynamic, sqlText, reason, writer);
+                    sqlJson = parseSqlJson(repaired);
+                    sqlText = repaired;
+                    sqlRepairLeft--;
                 }
                 String sql = sqlJson.sql;
                 String chartType = sqlJson.chartType;
@@ -435,7 +444,9 @@ public class ChatQuestionService {
                 }
                 String validation = rowRuleError != null ? rowRuleError
                         : (sql == null ? "模型未输出可执行的 SQL" : validateSql(sql, dsType, dsId, dynamic));
-                if (validation != null) {
+                // 发现-5 延伸修复（A5 偶发 run FAILED）：校验/空 SQL 失败时回喂修复，至多重试 MAX_SQL_REPAIR_RETRIES 次。
+                int validationRetryLeft = MAX_SQL_REPAIR_RETRIES;
+                while (validation != null && validationRetryLeft > 0) {
                     String fixed = regenerateSql(aiModel, question, dsId, dynamic, sql == null ? "" : sql, validation, writer);
                     String fixedSql = parseSqlJson(fixed).sql;
                     if (fixedSql != null && dynamic != null && !dynamic.getTableSqlTemplates().isEmpty()
@@ -456,6 +467,12 @@ public class ChatQuestionService {
                         sqlText = fixed;
                         sql = fixedSql;
                         validation = null;
+                    } else {
+                        validationRetryLeft--;
+                        if (validationRetryLeft <= 0) {
+                            emitError(writer, validation);
+                            return;
+                        }
                     }
                 }
                 logOperation(currentRecordId.get(), oid, uid, OPERATE_GENERATE_SQL, sqlStart,
@@ -503,9 +520,41 @@ public class ChatQuestionService {
                 // -- 执行 SQL → 表格数据
                 emit(writer, Rows.of("type", "info", "msg", "sql executing"));
                 long execStart = System.currentTimeMillis();
-                Map<String, Object> result = dynamic != null
-                        ? datasourceService.execSqlTransient(dynamic.getType(), dynamic.getConf(), sql)
-                        : datasourceService.execSql(dsId, Rows.of("sql", sql));
+                Map<String, Object> result;
+                try {
+                    result = dynamic != null
+                            ? datasourceService.execSqlTransient(dynamic.getType(), dynamic.getConf(), sql)
+                            : datasourceService.execSql(dsId, Rows.of("sql", sql));
+                } catch (Exception execEx) {
+                    // 发现-5 缓解：模型幻觉不存在的列（如 status 而非 order_status）时执行报“未知列”，
+                    // 用真实 schema 列名反馈模型一次性改写后重试，避免把执行错误直接抛给用户。
+                    if (dsId != null && isColumnError(execEx.getMessage())) {
+                        String fixedText = regenerateSql(aiModel, question, dsId, dynamic, sql,
+                                execEx.getMessage(), writer);
+                        String fixedSql = parseSqlJson(fixedText).sql;
+                        if (fixedSql != null && validateSql(fixedSql, dsType, dsId, dynamic) == null) {
+                            String finalSql = fixedSql;
+                            if (dynamic == null && permissionEnforcer != null) {
+                                try {
+                                    com.xiongx9527.askdata.permission.PermissionEnforcer.EnforcedQuery enf2 =
+                                            permissionEnforcer.enforce(oid, uid, dsId, fixedSql);
+                                    if (enf2 != null) {
+                                        finalSql = enf2.getSql();
+                                    }
+                                } catch (com.xiongx9527.askdata.permission.PermissionEnforcer.PermissionEnforceException ignore) {
+                                    // 改写后权限改写失败：放弃纠正，保留原始错误
+                                }
+                            }
+                            sql = finalSql;
+                            chatRepository.saveSql(recordId, sql, fixedText);
+                            result = datasourceService.execSql(dsId, Rows.of("sql", sql));
+                        } else {
+                            throw execEx;
+                        }
+                    } else {
+                        throw execEx;
+                    }
+                }
                 if (enforced != null) {
                     result = permissionEnforcer.applyHiddenColumns(result, enforced.getHiddenColumns());
                 }
@@ -567,21 +616,11 @@ public class ChatQuestionService {
                             Rows.of("chart_type", chartType, "image_url", imageUrl,
                                     "rendered", imageUrl != null), regenerateRecordId);
 
-                    // -- 推荐问题（仅在真的产出时才发帧：前端空数组会渲染为「获取失败」）
-                    if (dynamic != null || recommendedEnabled(ds)) {
-                        long recommendStart = System.currentTimeMillis();
-                        TokenUsage recommendUsage = new TokenUsage();
-                        List<String> recommended = recommendQuestions(aiModel, question, DEFAULT_ARTICLES_NUMBER,
-                                null, null, recommendUsage);
-                        logOperation(recordId, oid, uid, OPERATE_RECOMMEND_QUESTIONS, recommendStart,
-                                recommendUsage, false, null);
-                        if (!recommended.isEmpty()) {
-                            String json = chatRepository.writeJson(recommended);
-                            chatRepository.saveRecommendedQuestion(recordId, json);
-                            recommendedQuestionRepository.replaceByChat(chatId, recommended);
-                            emit(writer, Rows.of("type", "recommended_question", "content", json));
-                        }
-                    }
+                    // -- 推荐问题：A8 性能优化——不再在主链路内串行调用大模型。
+                    // 前端（ChartAnswer.vue → onChartAnswerFinish）与 E2E/MCP 都通过独立接口
+                    // GET /chat/recommend_questions/{record_id} 获取并落库推荐问题，主链路内
+                    // 再生成一次属于重复 LLM 调用，会把 finish 帧推迟数秒。
+                    // 推荐问题生成失败/不可用的可见性由该接口的错误帧负责（A12）。
                 }
 
                 chatRepository.finishRecord(recordId, System.currentTimeMillis() - started, totalTokens.get());
@@ -817,24 +856,26 @@ public class ChatQuestionService {
         Map<String, Object> record = chatRepository.findRecord(recordId).orElse(null);
         try (FrameWriter writer = new FrameWriter(response, objectMapper)) {
             if (record == null) {
-                emit(writer, Rows.of("type", "recommended_question", "content", "[]"));
+                // A12：推荐问题失败不再静默返回空数组，改为带 code/msg 的错误帧，前端可读提示
+                emitRecommendError(writer, messageResolver.get("chat.record.not.found", recordId));
                 return;
             }
             Map<String, Object> chat = chatRepository.findChat(Rows.lng(record, "chat_id", 0L)).orElse(null);
             if (chat == null) {
-                emit(writer, Rows.of("type", "recommended_question", "content", "[]"));
+                emitRecommendError(writer, messageResolver.get("chat.not.found", Rows.lng(record, "chat_id", 0L)));
                 return;
             }
             // A1：推荐问题同样按当前用户归属校验，管理员不再拥有隐式跨用户读取权限
             requireOwner(chat, user, "ChatRecord");
             Optional<ModelRef> model = modelRouter.defaultChatModel();
             if (!model.isPresent() || !model.get().usable()) {
-                emit(writer, Rows.of("type", "recommended_question", "content", "[]"));
+                emitRecommendError(writer, messageResolver.get("scheduled.no.default.model"));
                 return;
             }
             long start = System.currentTimeMillis();
         long chatId = Rows.lng(record, "chat_id", 0L);
         String chartHint = Rows.str(record, "chart");
+        boolean hasChartHint = chartHint != null && !chartHint.isEmpty();
         List<String> history = new ArrayList<>();
         for (Map<String, Object> prev : chatRepository.listRecordsByChat(chatId)) {
             if (Rows.lng(prev, "id", 0L) == recordId) {
@@ -848,11 +889,19 @@ public class ChatQuestionService {
         List<String> questions;
         try {
             questions = recommendQuestions(model.get(), Rows.str(record, "question"),
-                    articlesNumber, chartHint.isEmpty() ? null : chartHint, history);
+                    articlesNumber, hasChartHint ? chartHint : null, history);
         } catch (Exception e) {
-            // 对齐 SQLBot：推荐问题异常时兜底空数组流（前端渲染不出「获取失败」）
-            log.warn("推荐问题生成失败（兜底空数组流）: {}", e.getMessage());
-            questions = new ArrayList<>();
+            // A12：推荐问题异常改为显式错误帧（带 code/msg），前端展示失败提示并可重试
+            log.warn("推荐问题生成失败: {}", e.getMessage());
+            emitRecommendError(writer, messageResolver.get("chat.recommend.failed", e.getMessage()));
+            return;
+        }
+        if (questions.isEmpty()) {
+            // A12：模型不可用/输出不可解析时 generate 返回 null，解析结果为空也要显式报错，
+            // 不再静默下发空数组让前端误以为「没有推荐问题」。
+            log.warn("推荐问题生成失败: 模型未返回可用问题");
+            emitRecommendError(writer, messageResolver.get("chat.recommend.failed", "模型未返回可用问题"));
+            return;
         }
         logOperation(recordId, oid, Rows.lng(user, "id", 0L), OPERATE_RECOMMEND_QUESTIONS, start, 0L, false, null);
             String json = chatRepository.writeJson(questions);
@@ -1204,7 +1253,13 @@ public class ChatQuestionService {
         if (dsId == null) {
             return null;
         }
-        return validateTables(sql, schemaContextBuilder.checkedTableNames(dsId));
+        String tableError = validateTables(sql, schemaContextBuilder.checkedTableNames(dsId));
+        if (tableError != null) {
+            return tableError;
+        }
+        // A10：表/列/聚合语义校验（元数据缺失或结构超出静态判定范围时自动放行）
+        return SqlSemanticValidator.validate(sql,
+                new SqlSemanticValidator.Schema(schemaContextBuilder.checkedTableColumns(dsId)));
     }
 
     /** 动态数据源当前表名（实时元数据）；读取失败返回 null（不阻断，交由执行阶段报真实错误）。 */
@@ -1320,7 +1375,25 @@ public class ChatQuestionService {
     }
 
     /** 从模型输出中抽取 ```sql 代码块内的 SQL；无代码块时取首个 SELECT 起的内容。 */
+    /**
+     * 供定时任务等非流式调用方使用：优先按 A12 JSON 协议（{"success":true,"sql":...}）解析，
+     * 解析不到再退化为正则抽取裸 SQL。避免提示词要求 JSON 而调用方按裸 SQL 解析导致“无 SQL”。
+     */
+    public static String extractSqlFromOutput(String text, com.fasterxml.jackson.databind.ObjectMapper mapper) {
+        if (text == null || text.trim().isEmpty()) {
+            return null;
+        }
+        if (mapper != null) {
+            SqlJsonResult json = parseSqlJson(text, mapper);
+            if (json != null && json.success && json.sql != null && !json.sql.isEmpty()) {
+                return json.sql;
+            }
+        }
+        return extractSql(text);
+    }
+
     public static String extractSql(String text) {
+        text = stripReasoningTags(text);
         if (text == null || text.trim().isEmpty()) {
             return null;
         }
@@ -1362,6 +1435,41 @@ public class ChatQuestionService {
             result = result.substring(0, semicolon).trim();
         }
         return result;
+    }
+
+    /**
+     * 去除模型输出中的推理标签与代码围栏，便于后续稳定抽取 SQL / JSON。
+     * 兼容 gpt-oss 等会包裹 <think>...</think> 的模型，以及 ```sql / ``` 围栏。
+     */
+    private static String stripReasoningTags(String text) {
+        if (text == null || text.isEmpty()) {
+            return text;
+        }
+        String t = text;
+        // 去除 <think>...</think>（可能跨行，大小写不敏感）
+        t = t.replaceAll("(?is)<think>.*?</think>", " ");
+        // 去除残留的单独 <think> / </think> 标签
+        t = t.replaceAll("(?is)</?think>", " ");
+        // 去除 ```sql / ``` 之类的代码围栏标记（保留内部内容，交给后续抽取）
+        t = t.replaceAll("(?i)```\\s*sql\\s*", " ");
+        t = t.replaceAll("(?i)```\\s*", " ");
+        return t;
+    }
+
+    /**
+     * 发现-5 缓解：判断异常消息是否为「未知列/列不存在」类错误（模型幻觉列的典型报错）。
+     * 覆盖 MySQL(Unknown column)、PostgreSQL(column does not exist)、Oracle(invalid identifier) 等。
+     */
+    private static boolean isColumnError(String msg) {
+        if (msg == null) {
+            return false;
+        }
+        String m = msg.toLowerCase(java.util.Locale.ROOT);
+        return m.contains("unknown column")
+                || (m.contains("column") && m.contains("does not exist"))
+                || m.contains("invalid identifier")
+                || m.contains("无效的列名")
+                || m.contains("未知列");
     }
 
     /** A12：单步 LLM 调用的 token 用量（input / output / total）。 */
@@ -1443,7 +1551,7 @@ public class ChatQuestionService {
 
     /** 从自由文本中提取一个 JSON 对象（容忍 Markdown 代码块与前后说明文字）。 */
     private static String extractJsonObject(String text) {
-        String t = text.trim();
+        String t = stripReasoningTags(text).trim();
         int start = t.indexOf('{');
         int end = t.lastIndexOf('}');
         if (start >= 0 && end > start) {
@@ -1806,11 +1914,14 @@ public class ChatQuestionService {
      */
     private void requireOwner(Map<String, Object> chat, Map<String, Object> user, String label) {
         long id = Rows.lng(chat, "id", 0L);
+        // A4：跨工作空间/跨用户访问属于越权，返回 403
         if (Rows.lng(chat, "oid", 0L) != currentUserService.oidOf(user)) {
-            throw new BadRequestException(label + " with id " + id + " does not belong to current workspace");
+            throw new com.xiongx9527.askdata.common.web.ForbiddenException(
+                    label + " with id " + id + " does not belong to current workspace");
         }
         if (Rows.lng(chat, "create_by", 0L) != Rows.lng(user, "id", 0L)) {
-            throw new BadRequestException(label + " with id " + id + " not Owned by the current user");
+            throw new com.xiongx9527.askdata.common.web.ForbiddenException(
+                    label + " with id " + id + " not Owned by the current user");
         }
     }
 
@@ -1834,11 +1945,31 @@ public class ChatQuestionService {
         emitError(writer, message, ERROR_TYPE_EXEC_SQL, null);
     }
 
+    /**
+     * 推荐问题失败帧（A12）：沿用 {@code recommended_question} 帧类型，附加 {@code code}/{@code msg}。
+     *
+     * <p>前端（{@code RecommendQuestion.vue} / {@code RecommendQuestionQuick.vue}）先判断
+     * {@code data.code && data.code !== 200}，命中后提示 {@code msg} 并结束渲染，因此这里不再
+     * 静默发送空数组。</p>
+     */
+    private static void emitRecommendError(FrameWriter writer, String message) throws IOException {
+        emit(writer, Rows.of("type", "recommended_question", "content", "[]",
+                "code", 500, "msg", message == null ? "" : message));
+    }
+
     /** 异常堆栈转文本（错误帧 traceback 字段，供前端「查看详情」抽屉展示）。 */
     private static String stackTraceOf(Throwable e) {
         java.io.StringWriter sw = new java.io.StringWriter();
         e.printStackTrace(new java.io.PrintWriter(sw));
         return sw.toString();
+    }
+
+    /** 截断超长文本（日志观测用，避免整段模型输出刷屏）。 */
+    private static String abbreviate(String text, int max) {
+        if (text == null) {
+            return "";
+        }
+        return text.length() <= max ? text : text.substring(0, max) + "...(truncated, length=" + text.length() + ")";
     }
 
     private static void emitError(FrameWriter writer, String message, String type, String traceback)

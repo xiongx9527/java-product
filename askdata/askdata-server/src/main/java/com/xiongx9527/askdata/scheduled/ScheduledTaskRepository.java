@@ -1,6 +1,7 @@
 package com.xiongx9527.askdata.scheduled;
 
 import com.xiongx9527.askdata.common.util.IdGenerator;
+import com.xiongx9527.askdata.common.util.MetadbSql;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -21,13 +22,18 @@ public class ScheduledTaskRepository {
                     + "export_format, export_path, push_url, enabled, running, last_run_at, next_run_at, "
                     + "create_time, update_time";
 
-    private static final String RUN_COLUMNS =
-            "id, task_id, oid, trigger_type, status, sql, row_count, export_path, error, "
+    private static final String RUN_COLUMNS_TEMPLATE =
+            "id, task_id, oid, trigger_type, status, %SQL%, row_count, export_path, error, "
                     + "started_at, finished_at, duration_ms, create_time";
 
     private final JdbcTemplate jdbc;
 
     private final IdGenerator idGenerator;
+
+    /** 元数据库方言无关的 {@code sql} 列写法（MySQL/MariaDB 需要反引号）。 */
+    private final String sqlColumn;
+
+    private final String runColumns;
 
     private final RowMapper<ScheduledTask> taskMapper = (rs, rowNum) -> mapTask(rs);
 
@@ -36,6 +42,8 @@ public class ScheduledTaskRepository {
     public ScheduledTaskRepository(JdbcTemplate jdbc, IdGenerator idGenerator) {
         this.jdbc = jdbc;
         this.idGenerator = idGenerator;
+        this.sqlColumn = MetadbSql.sqlColumnName(jdbc);
+        this.runColumns = RUN_COLUMNS_TEMPLATE.replace("%SQL%", sqlColumn);
     }
 
     // ------------------------------------------------------------------
@@ -111,7 +119,7 @@ public class ScheduledTaskRepository {
     public long insertRun(ScheduledTaskRun run) {
         long id = idGenerator.nextId();
         run.setId(id);
-        jdbc.update("INSERT INTO scheduled_task_run (" + RUN_COLUMNS + ") "
+        jdbc.update("INSERT INTO scheduled_task_run (" + runColumns + ") "
                         + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 id, run.getTaskId(), run.getOid(), run.getTriggerType(), run.getStatus(), run.getSql(),
                 run.getRowCount(), run.getExportPath(), run.getError(), run.getStartedAt(),
@@ -121,18 +129,18 @@ public class ScheduledTaskRepository {
 
     public void finishRun(long id, String status, String sql, int rowCount, String exportPath, String error,
                           Long finishedAt, Long durationMs) {
-        jdbc.update("UPDATE scheduled_task_run SET status = ?, sql = ?, row_count = ?, export_path = ?, "
+        jdbc.update("UPDATE scheduled_task_run SET status = ?, " + sqlColumn + " = ?, row_count = ?, export_path = ?, "
                         + "error = ?, finished_at = ?, duration_ms = ? WHERE id = ?",
                 status, sql, rowCount, exportPath, error, finishedAt, durationMs, id);
     }
 
     public Optional<ScheduledTaskRun> findRun(long id) {
-        return jdbc.query("SELECT " + RUN_COLUMNS + " FROM scheduled_task_run WHERE id = ?", runMapper, id)
+        return jdbc.query("SELECT " + runColumns + " FROM scheduled_task_run WHERE id = ?", runMapper, id)
                 .stream().findFirst();
     }
 
     public List<ScheduledTaskRun> listRuns(long taskId, int limit) {
-        return jdbc.query("SELECT " + RUN_COLUMNS + " FROM scheduled_task_run WHERE task_id = ? "
+        return jdbc.query("SELECT " + runColumns + " FROM scheduled_task_run WHERE task_id = ? "
                 + "ORDER BY started_at DESC LIMIT ?", runMapper, taskId, limit);
     }
 

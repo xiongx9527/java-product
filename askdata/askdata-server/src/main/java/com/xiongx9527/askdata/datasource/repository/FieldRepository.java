@@ -97,13 +97,15 @@ public class FieldRepository {
                 args(tableId, keepIds));
     }
 
-    /** 同步后清理：删除已不在数据源勾选集合内的表所属字段（对齐 SQLBot table_id.not_in 语义）。 */
-    public void deleteByTableIdsNotIn(List<Long> keepTableIds) {
+    /** 同步后清理：删除该数据源内已不在勾选集合内的表所属字段（对齐 SQLBot table_id.not_in 语义）。 */
+    public void deleteByTableIdsNotIn(long dsId, List<Long> keepTableIds) {
         if (keepTableIds == null || keepTableIds.isEmpty()) {
             return;
         }
-        jdbc.update("DELETE FROM core_field WHERE table_id NOT IN (" + placeholders(keepTableIds.size()) + ")",
-                keepTableIds.toArray());
+        // 必须按 ds_id 收窄：不同数据源的表 id 互不相关，只带 table_id NOT IN 会误删其它数据源的字段，
+        // 导致别的数据源选表后字段元数据静默丢失（问数拿不到字段只能生成 success=false）。
+        jdbc.update("DELETE FROM core_field WHERE ds_id = ? AND table_id NOT IN (" + placeholders(keepTableIds.size()) + ")",
+                args(dsId, keepTableIds));
     }
 
     /**

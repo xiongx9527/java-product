@@ -146,6 +146,17 @@ class AuthWhitelistTest {
     }
 
     @Test
+    @DisplayName("登录前元数据端点免鉴权（/system/license/version）")
+    void publicMetadataPathsMatch() {
+        // 前端启动阶段（含登录页）会读取版本号；返回 401 会触发 401 拦截器清 token，
+        // 导致刚登录的会话被清掉（e2e 前端用例回归点）。
+        assertTrue(whitelist.isWhitelistedPath("/api/v1/system/license/version"));
+        assertTrue(whitelist.isWhitelistedPath("/system/license/version"));
+        // 仍不影响 SQLBot 35 条 parity
+        assertEquals(35, AuthWhitelist.DEFAULT_PATHS.size());
+    }
+
+    @Test
     @DisplayName("context path 前缀会被剥离")
     void contextPathStripped() {
         // SQLBot 的 API_V1_STR = CONTEXT_PATH + "/api/v1"，因此 context path 一定在 /api/v1 之后。

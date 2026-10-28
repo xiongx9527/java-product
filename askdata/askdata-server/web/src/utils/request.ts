@@ -18,6 +18,11 @@ import JSONBig from 'json-bigint'
 const assistantStore = useAssistantStore()
 const { wsCache } = useCache()
 const router = useRouter()
+
+/**
+ * A13：无需登录即可访问的端点。这些接口返回 401 时只提示，不清除登录态、不整页刷新。
+ */
+const PUBLIC_ENDPOINTS = ['/system/license/version', '/login', '/logout']
 // Response data structure
 export interface ApiResponse<T = unknown> {
   code: number
@@ -217,10 +222,25 @@ class HttpService {
         case 400:
           errorMessage = 'Invalid request parameters'
           break
-        case 401:
+        case 401: {
           errorMessage = error.response?.data
             ? error.response.data.toString()
             : 'Unauthorized, please login again'
+          // A13：只有「主账号会话失效」才清除登录态。
+          // 支线通道（API Key / 嵌入助手）的 401 由后端标记为 channel；白名单端点不应触发清 token。
+          const failureSignal = String(
+            (error.response.headers as Record<string, unknown>)?.['x-askdata-auth-failure'] || ''
+          ).toLowerCase()
+          const requestUrl = String(error.config?.url || '')
+          const isWhitelisted = PUBLIC_ENDPOINTS.some((path) => requestUrl.includes(path))
+          if (failureSignal === 'channel' || isWhitelisted) {
+            ElMessage({
+              message: errorMessage,
+              type: 'error',
+              showClose: true,
+            })
+            return
+          }
           // Redirect to login page if needed
           if (assistantStore.getAssistant) {
             wsCache.delete('user.token')
@@ -241,7 +261,7 @@ class HttpService {
             window.location.reload()
           }, 2000)
           return
-        // break
+        }
         case 403:
           errorMessage = 'Access denied'
           break

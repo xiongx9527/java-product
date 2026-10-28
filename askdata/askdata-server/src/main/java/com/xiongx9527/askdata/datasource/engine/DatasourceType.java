@@ -75,8 +75,8 @@ public enum DatasourceType {
 
         @Override
         public SqlText tableSql(DatasourceConf conf, String dbVersion) {
-            return new SqlText("SELECT c.relname AS TABLE_NAME, "
-                    + "COALESCE(COALESCE(d.description, obj_description(c.oid)), '') AS TABLE_COMMENT "
+            return new SqlText("SELECT c.relname AS \"TABLE_NAME\", "
+                    + "COALESCE(COALESCE(d.description, obj_description(c.oid)), '') AS \"TABLE_COMMENT\" "
                     + "FROM pg_class c LEFT JOIN pg_namespace n ON n.oid = c.relnamespace "
                     + "LEFT JOIN pg_description d ON d.objoid = c.oid AND d.objsubid = 0 "
                     + "WHERE n.nspname = ? AND c.relkind IN ('r', 'v', 'p', 'm') "
@@ -86,9 +86,9 @@ public enum DatasourceType {
 
         @Override
         public SqlText fieldSql(DatasourceConf conf, String tableName) {
-            String sql = "SELECT a.attname AS COLUMN_NAME, "
-                    + "pg_catalog.format_type(a.atttypid, a.atttypmod) AS DATA_TYPE, "
-                    + "col_description(c.oid, a.attnum) AS COLUMN_COMMENT "
+            String sql = "SELECT a.attname AS \"COLUMN_NAME\", "
+                    + "pg_catalog.format_type(a.atttypid, a.atttypmod) AS \"DATA_TYPE\", "
+                    + "col_description(c.oid, a.attnum) AS \"COLUMN_COMMENT\" "
                     + "FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON a.attrelid = c.oid "
                     + "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
                     + "WHERE n.nspname = ? AND a.attnum > 0 AND NOT a.attisdropped";
@@ -397,8 +397,8 @@ public enum DatasourceType {
 
         @Override
         public SqlText tableSql(DatasourceConf conf, String dbVersion) {
-            return new SqlText("SELECT c.relname AS TABLE_NAME, "
-                    + "COALESCE(COALESCE(d.description, obj_description(c.oid)), '') AS TABLE_COMMENT "
+            return new SqlText("SELECT c.relname AS \"TABLE_NAME\", "
+                    + "COALESCE(COALESCE(d.description, obj_description(c.oid)), '') AS \"TABLE_COMMENT\" "
                     + "FROM pg_class c LEFT JOIN pg_namespace n ON n.oid = c.relnamespace "
                     + "LEFT JOIN pg_description d ON d.objoid = c.oid AND d.objsubid = 0 "
                     + "WHERE n.nspname = ? AND c.relkind IN ('r', 'v', 'p', 'm') "
@@ -408,9 +408,9 @@ public enum DatasourceType {
 
         @Override
         public SqlText fieldSql(DatasourceConf conf, String tableName) {
-            String sql = "SELECT a.attname AS COLUMN_NAME, "
-                    + "pg_catalog.format_type(a.atttypid, a.atttypmod) AS DATA_TYPE, "
-                    + "col_description(c.oid, a.attnum) AS COLUMN_COMMENT "
+            String sql = "SELECT a.attname AS \"COLUMN_NAME\", "
+                    + "pg_catalog.format_type(a.atttypid, a.atttypmod) AS \"DATA_TYPE\", "
+                    + "col_description(c.oid, a.attnum) AS \"COLUMN_COMMENT\" "
                     + "FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON a.attrelid = c.oid "
                     + "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
                     + "WHERE n.nspname = ? AND a.attnum > 0 AND NOT a.attisdropped";
@@ -442,17 +442,17 @@ public enum DatasourceType {
 
         @Override
         public SqlText tableSql(DatasourceConf conf, String dbVersion) {
-            return new SqlText("SELECT relname AS TableName, "
-                    + "obj_description(relfilenode::regclass, 'pg_class') AS TableDescription FROM pg_class "
+            return new SqlText("SELECT relname AS \"TABLE_NAME\", "
+                    + "obj_description(relfilenode::regclass, 'pg_class') AS \"TABLE_COMMENT\" FROM pg_class "
                     + "WHERE relkind in ('r','p', 'f') "
                     + "AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = ?)", conf.getDbSchema());
         }
 
         @Override
         public SqlText fieldSql(DatasourceConf conf, String tableName) {
-            String sql = "SELECT a.attname AS COLUMN_NAME, "
-                    + "pg_catalog.format_type(a.atttypid, a.atttypmod) AS DATA_TYPE, "
-                    + "col_description(c.oid, a.attnum) AS COLUMN_COMMENT "
+            String sql = "SELECT a.attname AS \"COLUMN_NAME\", "
+                    + "pg_catalog.format_type(a.atttypid, a.atttypmod) AS \"DATA_TYPE\", "
+                    + "col_description(c.oid, a.attnum) AS \"COLUMN_COMMENT\" "
                     + "FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON a.attrelid = c.oid "
                     + "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
                     + "WHERE n.nspname = ? AND a.attnum > 0 AND NOT a.attisdropped";

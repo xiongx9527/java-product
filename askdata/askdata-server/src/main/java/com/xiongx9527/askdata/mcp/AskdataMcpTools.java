@@ -119,7 +119,7 @@ public class AskdataMcpTools {
             CurrentUserService users = currentUserService();
             long oid = users.oidOf(users.currentUser());
             AiModelService service = SpringUtils.getBean(AiModelService.class);
-            return mapper.writeValueAsString(service.listByWs(oid));
+            return mapper.writeValueAsString(service.listByWsWithDefault(oid));
         } catch (Exception e) {
             return errorJson(mapper, "model_list", e);
         }
@@ -657,7 +657,7 @@ public class AskdataMcpTools {
             }
             requireWorkspace(currentUserService().currentUser(), oid);
             AiModelService service = SpringUtils.getBean(AiModelService.class);
-            return mapper.writeValueAsString(service.listByWs(oid));
+            return mapper.writeValueAsString(service.listByWsWithDefault(oid));
         } catch (ForbiddenException e) {
             throw e;
         } catch (Exception e) {

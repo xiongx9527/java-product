@@ -3,6 +3,7 @@ package com.xiongx9527.askdata.chat.repository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.util.IdGenerator;
+import com.xiongx9527.askdata.common.util.MetadbSql;
 import com.xiongx9527.askdata.common.util.Rows;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -26,8 +27,8 @@ public class ChatRepository {
             "id, create_by, oid, create_time, update_time, deleted, brief, datasource, engine_type, "
                     + "ds_type, origin, chat_type, question, latest_record_time";
 
-    private static final String RECORD_COLUMNS =
-            "id, chat_id, question, create_by, oid, create_time, update_time, finish_time, sql_answer, sql, "
+    private static final String RECORD_COLUMNS_TEMPLATE =
+            "id, chat_id, question, create_by, oid, create_time, update_time, finish_time, sql_answer, %SQL%, "
                     + "datasource, data, chart_answer, chart, analysis, analysis_thinking, predict, predict_content, "
                     + "predict_data, finish, error, run_time, first_chat, recommended_question, analysis_record_id, "
                     + "predict_record_id, regenerate_record_id, duration, total_tokens";
@@ -38,10 +39,17 @@ public class ChatRepository {
 
     private final ObjectMapper objectMapper;
 
+    /** 元数据库方言无关的 {@code sql} 列写法（MySQL/MariaDB 需要反引号）。 */
+    private final String sqlColumn;
+
+    private final String recordColumns;
+
     public ChatRepository(JdbcTemplate jdbc, IdGenerator idGenerator, ObjectMapper objectMapper) {
         this.jdbc = jdbc;
         this.idGenerator = idGenerator;
         this.objectMapper = objectMapper;
+        this.sqlColumn = MetadbSql.sqlColumnName(jdbc);
+        this.recordColumns = RECORD_COLUMNS_TEMPLATE.replace("%SQL%", sqlColumn);
     }
 
     // ------------------------------------------------------------------
@@ -121,12 +129,12 @@ public class ChatRepository {
     // ------------------------------------------------------------------
 
     public Optional<Map<String, Object>> findRecord(long id) {
-        return jdbc.queryForList("SELECT " + RECORD_COLUMNS + " FROM chat_record WHERE id = ?", id).stream()
+        return jdbc.queryForList("SELECT " + recordColumns + " FROM chat_record WHERE id = ?", id).stream()
                 .findFirst();
     }
 
     public List<Map<String, Object>> listRecordsByChat(long chatId) {
-        return jdbc.queryForList("SELECT " + RECORD_COLUMNS + " FROM chat_record WHERE chat_id = ? "
+        return jdbc.queryForList("SELECT " + recordColumns + " FROM chat_record WHERE chat_id = ? "
                 + "ORDER BY create_time ASC", chatId);
     }
 
@@ -183,7 +191,8 @@ public class ChatRepository {
     }
 
     public void updateRecordField(long id, String column, Object value) {
-        jdbc.update("UPDATE chat_record SET " + column + " = ?, update_time = ? WHERE id = ?",
+        jdbc.update("UPDATE chat_record SET " + ("sql".equals(column) ? sqlColumn : column)
+                        + " = ?, update_time = ? WHERE id = ?",
                 value, new Timestamp(System.currentTimeMillis()), id);
     }
 
@@ -234,9 +243,13 @@ public class ChatRepository {
     }
 
     public void finishRecord(long id, long runTime, long totalTokens) {
-        jdbc.update("UPDATE chat_record SET finish = TRUE, finish_time = ?, run_time = ?, total_tokens = ? "
-                        + "WHERE id = ?",
-                new Timestamp(System.currentTimeMillis()), runTime, totalTokens, id);
+        // run_time（毫秒）供内部/日志使用；duration（秒）对齐 SQLBot chat_record.duration，
+        // 前端「耗时 s」直接展示该字段（此前只写 run_time，导致 UI 恒显示空耗时）。
+        // A14：秒单位且向上取整，>0 时最小为 1，避免亚秒级问数显示 0 s。
+        long durationSeconds = runTime <= 0 ? 0 : Math.max(1, (runTime + 999) / 1000);
+        jdbc.update("UPDATE chat_record SET finish = TRUE, finish_time = ?, run_time = ?, duration = ?, "
+                        + "total_tokens = ? WHERE id = ?",
+                new Timestamp(System.currentTimeMillis()), runTime, durationSeconds, totalTokens, id);
     }
 
     public void saveError(long id, String error) {

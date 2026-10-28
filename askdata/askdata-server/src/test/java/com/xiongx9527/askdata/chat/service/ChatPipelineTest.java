@@ -129,6 +129,12 @@ class ChatPipelineTest {
 
     private final List<String> requestBodies = new ArrayList<>();
 
+    /** A12：模拟推荐问题生成失败（桩模型对推荐问题请求返回 500）。 */
+    private boolean failRecommend;
+
+    /** A11：后续问数返回的 brief（用于验证标题不被覆盖）。 */
+    private String briefOverride;
+
     @BeforeEach
     void setUp() throws Exception {
         appJdbc = new JdbcTemplate(new DriverManagerDataSource(
@@ -179,6 +185,8 @@ class ChatPipelineTest {
         stubCalls.clear();
         userPrompts.clear();
         requestBodies.clear();
+        failRecommend = false;
+        briefOverride = null;
         startStubServer();
         new AiModelRepository(appJdbc, idGenerator).insert(idGenerator.nextId(), "",
                 "http://127.0.0.1:" + stubPort, 1, 0, "stub-gemma3", 0, "gemma3", true, "[]", 1,
@@ -637,7 +645,9 @@ class ChatPipelineTest {
         // A4：服务端出图 URL 帧随 chart 之后下发（非交互/导出场景可直接引用）
         assertTrue(types.contains("imageUrl"), types.toString());
         assertTrue(types.indexOf("chart") < types.indexOf("imageUrl"), types.toString());
-        assertTrue(types.contains("recommended_question"), types.toString());
+        // A8：推荐问题不再在主链路内串行生成（会推迟 finish 数秒），改由
+        // GET /chat/recommend_questions/{record_id} 独立获取（见 recommendQuestions* 用例）。
+        assertFalse(types.contains("recommended_question"), types.toString());
         assertEquals("finish", types.get(types.size() - 1), types.toString());
         // id 帧必须早于 sql-data（前端据此拉取表格数据）
         assertTrue(types.indexOf("id") < types.indexOf("sql-data"));
@@ -679,9 +689,10 @@ class ChatPipelineTest {
         assertTrue(steps.stream().anyMatch(step -> "EXECUTE_SQL".equals(step.get("operate"))), steps.toString());
         assertTrue(steps.stream().anyMatch(step -> "GENERATE_CHART".equals(step.get("operate"))), steps.toString());
         // A14：14 类 operate 词汇（含 5 个新增）全部落 chat_log，供 ExecutionDetails 渲染步骤
+        // A8：推荐问题不再在主链路执行，其 operate 记录由独立接口用例断言
         for (String op : new String[] {"CHOOSE_DATASOURCE", "CHOOSE_TABLE", "GENERATE_SQL", "EXECUTE_SQL",
                 "GENERATE_DYNAMIC_SQL", "GENERATE_SQL_WITH_PERMISSIONS", "GENERATE_CHART", "GENERATE_PICTURE",
-                "GENERATE_RECOMMENDED_QUESTIONS", "EXTRACT_KEYWORDS", "FILTER_TERMS", "FILTER_SQL_EXAMPLE",
+                "EXTRACT_KEYWORDS", "FILTER_TERMS", "FILTER_SQL_EXAMPLE",
                 "FILTER_CUSTOM_PROMPT"}) {
             assertTrue(steps.stream().anyMatch(step -> op.equals(step.get("operate"))),
                     "缺失 operate=" + op + " : " + steps);
@@ -697,10 +708,10 @@ class ChatPipelineTest {
         assertEquals(1, chatService.pager(1, 10).getTotal());
         assertEquals(1, chatService.pager(1, 10).getItems().size());
 
-        // 模型被真实调用（桩端点收到 4 次：sql/chart/recommend）
+        // 模型被真实调用：主链路只调用 sql/chart（A8：推荐问题改由独立接口按需生成）
         assertTrue(stubCalls.contains("sql"), stubCalls.toString());
         assertTrue(stubCalls.contains("chart"), stubCalls.toString());
-        assertTrue(stubCalls.contains("recommend"), stubCalls.toString());
+        assertFalse(stubCalls.contains("recommend"), stubCalls.toString());
     }
 
     // ------------------------------------------------------------------
@@ -856,6 +867,79 @@ class ChatPipelineTest {
         assertEquals(4, content.size());
         assertTrue(frame.get("content").asText().startsWith("["));
         assertTrue(frame.get("content").asText().endsWith("]"));
+        // A14：独立接口调用同样落 GENERATE_RECOMMENDED_QUESTIONS 步骤
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> steps = (List<Map<String, Object>>) chatService.recordLog(recordId, false)
+                .get("steps");
+        assertTrue(steps.stream().anyMatch(step ->
+                        "GENERATE_RECOMMENDED_QUESTIONS".equals(step.get("operate"))), steps.toString());
+    }
+
+    @Test
+    void recommendQuestionsSurviveRecordWithoutChart() throws Exception {
+        // 回归：无图表记录（纯表格/失败记录）的 chart 列为 null 时，推荐问题不应 NPE 退化成空数组
+        long chatId = Rows.lng(chatService.start(Rows.of("datasource", dsId)), "id", 0L);
+        MockHttpServletResponse questionResponse = new MockHttpServletResponse();
+        chatQuestionService.streamQuestion(Rows.of("question", "每个状态的订单数", "chat_id", chatId), questionResponse);
+        long recordId = frameLong(parseFrames(questionResponse.getContentAsString()), "id", "id");
+        appJdbc.update("UPDATE chat_record SET chart = NULL WHERE id = ?", recordId);
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        chatQuestionService.streamRecommendQuestions(recordId, 4, response);
+        JsonNode content = objectMapper.readTree(frameOf(parseFrames(response.getContentAsString()),
+                "recommended_question").get("content").asText());
+        assertEquals(4, content.size(), content.toString());
+    }
+
+    // ------------------------------------------------------------------
+    // A11/A12：推荐问题失败可见 & 会话标题稳定
+    // ------------------------------------------------------------------
+
+    @Test
+    void recommendQuestionsFailureEmitsVisibleErrorFrame() throws Exception {
+        // A12：模型异常时不再静默返回 "[]"，而是带 code/msg 的错误帧（前端 ElMessage 提示）
+        long chatId = Rows.lng(chatService.start(Rows.of("datasource", dsId)), "id", 0L);
+        MockHttpServletResponse questionResponse = new MockHttpServletResponse();
+        chatQuestionService.streamQuestion(Rows.of("question", "每个状态的订单数", "chat_id", chatId), questionResponse);
+        long recordId = frameLong(parseFrames(questionResponse.getContentAsString()), "id", "id");
+
+        failRecommend = true;
+        MockHttpServletResponse failed = new MockHttpServletResponse();
+        chatQuestionService.streamRecommendQuestions(recordId, 4, failed);
+        JsonNode errorFrame = frameOf(parseFrames(failed.getContentAsString()), "recommended_question");
+        assertEquals(500, errorFrame.get("code").asInt(), errorFrame.toString());
+        assertFalse(errorFrame.get("msg").asText().isEmpty(), "错误帧必须带可读信息");
+
+        // 模型恢复后重试成功并正常返回推荐问题
+        failRecommend = false;
+        MockHttpServletResponse retried = new MockHttpServletResponse();
+        chatQuestionService.streamRecommendQuestions(recordId, 4, retried);
+        JsonNode okFrame = frameOf(parseFrames(retried.getContentAsString()), "recommended_question");
+        assertFalse(okFrame.has("code"), okFrame.toString());
+        assertEquals(4, objectMapper.readTree(okFrame.get("content").asText()).size());
+    }
+
+    @Test
+    void chatBriefStaysFromFirstQuestionOnly() throws Exception {
+        // A11：同一会话连续三问，标题只取首问 brief，后续问数不得覆盖
+        long chatId = Rows.lng(chatService.start(Rows.of("datasource", dsId)), "id", 0L);
+        chatQuestionService.streamQuestion(Rows.of("question", "第一问：每个状态的订单数", "chat_id", chatId),
+                new MockHttpServletResponse());
+        assertEquals("每个状态的订单数", briefOf(chatId));
+
+        briefOverride = "第二问不该成为标题";
+        chatQuestionService.streamQuestion(Rows.of("question", "第二问：各状态金额", "chat_id", chatId),
+                new MockHttpServletResponse());
+        assertEquals("每个状态的订单数", briefOf(chatId));
+
+        briefOverride = "第三问也不该成为标题";
+        chatQuestionService.streamQuestion(Rows.of("question", "第三问：订单总数", "chat_id", chatId),
+                new MockHttpServletResponse());
+        assertEquals("每个状态的订单数", briefOf(chatId));
+    }
+
+    private String briefOf(long chatId) {
+        return appJdbc.queryForObject("SELECT brief FROM chat WHERE id = ?", String.class, chatId);
     }
 
     // ------------------------------------------------------------------
@@ -966,11 +1050,11 @@ class ChatPipelineTest {
 
         List<JsonNode> frames = parseFrames(response.getContentAsString());
         List<String> types = typesOf(frames);
-        // 与静态路径同一套协议帧：SQL → 表格 → 图表 → 推荐 → 结束
+        // 与静态路径同一套协议帧：SQL → 表格 → 图表 → 结束（推荐问题走独立接口，A8）
         assertTrue(types.contains("sql"), types.toString());
         assertTrue(types.contains("sql-data"), types.toString());
         assertTrue(types.contains("chart"), types.toString());
-        assertTrue(types.contains("recommended_question"), types.toString());
+        assertFalse(types.contains("recommended_question"), types.toString());
         assertEquals("finish", types.get(types.size() - 1), types.toString());
         // datasource 帧不带持久化 id
         JsonNode dsFrame = frameOf(frames, "datasource");
@@ -1050,6 +1134,11 @@ class ChatPipelineTest {
                 }
             }
             userPrompts.add(lastUser);
+            if (failRecommend && isRecommendPrompt(lastUser)) {
+                // A12：推荐问题生成失败（模型侧异常）
+                exchange.sendResponseHeaders(500, -1);
+                return;
+            }
             List<String> chunks = chunksFor(lastUser);
             exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
             exchange.sendResponseHeaders(200, 0);
@@ -1082,11 +1171,11 @@ class ChatPipelineTest {
     private List<String> chunksFor(String prompt) {
         if (prompt.contains("请修正后只输出一条正确的 SQL")) {
             stubCalls.add("sql_fix");
-            return Arrays.asList(STUB_SQL_JSON);
+            return Arrays.asList(sqlJson());
         }
         if (prompt.contains("请只输出 SQL")) {
             stubCalls.add("sql");
-            return Arrays.asList(STUB_SQL_JSON);
+            return Arrays.asList(sqlJson());
         }
         if (prompt.contains("请只输出一个 G2 图表配置 JSON")) {
             stubCalls.add("chart");
@@ -1106,6 +1195,19 @@ class ChatPipelineTest {
                     + "\"本月新增订单数？\",\"订单金额分布？\"]");
         }
         return Collections.emptyList();
+    }
+
+    /** 桩模型 SQL JSON（A11：briefOverride 可覆盖会话标题，用于验证后续问数不改标题）。 */
+    private String sqlJson() {
+        if (briefOverride == null) {
+            return STUB_SQL_JSON;
+        }
+        return STUB_SQL_JSON.replace("\"每个状态的订单数\"", "\"" + briefOverride + "\"");
+    }
+
+    /** 是否为推荐问题提示词（与 chunksFor 的分支保持同一判定）。 */
+    private static boolean isRecommendPrompt(String prompt) {
+        return prompt != null && prompt.contains("请生成 ") && prompt.contains("个相关的追问问题");
     }
 
     /** 按桩服务器收到的 prompt 类型筛选对应请求体（requestBodies 与 userPrompts 同序追加）。 */

@@ -99,6 +99,17 @@ public class DatasourceService {
         this.permissionEnforcer = permissionEnforcer;
     }
 
+    /**
+     * 数据源授权（白名单）仓储：setter 注入，测试用旧构造器直连 mock 时为 null（不做白名单过滤）。
+     * 用于列表可见性——被白名单排除的普通用户不应在列表中看到无权使用的数据源。
+     */
+    private com.xiongx9527.askdata.permission.DsGrantRepository grantRepository;
+
+    @Autowired(required = false)
+    public void setGrantRepository(com.xiongx9527.askdata.permission.DsGrantRepository grantRepository) {
+        this.grantRepository = grantRepository;
+    }
+
     @Autowired
     public DatasourceService(DatasourceRepository datasourceRepository, TableRepository tableRepository,
                              FieldRepository fieldRepository, ExcelService excelService, JdbcEngine engine,
@@ -166,9 +177,19 @@ public class DatasourceService {
         if (currentUserService.isAdmin(user) && oidParam != null) {
             oid = oidParam;
         }
+        boolean admin = currentUserService.isAdmin(user);
+        long uid = currentUserService.uid();
         List<Map<String, Object>> result = new ArrayList<>();
         for (Map<String, Object> row : datasourceRepository.listByOid(oid)) {
-            result.add(toVo(row));
+            Map<String, Object> vo = toVo(row);
+            // 授权白名单：存在授权记录时，未命中的普通用户不可见（管理员始终可见）
+            if (!admin && grantRepository != null) {
+                long id = Rows.lng(vo, "id", 0L);
+                if (grantRepository.hasAnyGrant(oid, id) && !grantRepository.isGranted(oid, id, uid)) {
+                    continue;
+                }
+            }
+            result.add(vo);
         }
         return result;
     }
@@ -788,7 +809,7 @@ public class DatasourceService {
             fieldRepository.deleteByDsId(dsId);
         } else {
             tableRepository.deleteByDsIdNotIn(dsId, tableIds);
-            fieldRepository.deleteByTableIdsNotIn(tableIds);
+            fieldRepository.deleteByTableIdsNotIn(dsId, tableIds);
         }
     }
 

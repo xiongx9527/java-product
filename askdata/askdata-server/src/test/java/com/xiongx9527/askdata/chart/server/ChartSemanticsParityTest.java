@@ -110,22 +110,68 @@ class ChartSemanticsParityTest {
 
     @Test
     void chatChartBuilderPreservesMultiQuota() {
-        // A4：归一化保留 axis.multi-quota（多指标轴标记）
+        // A9：归一化保留 axis.multi-quota（多指标轴标记），对象形态与 SQLBot/前端一致
         Map<String, Object> chart = builder.normalize(
                 "{\"type\":\"column\",\"title\":\"t\","
                         + "\"columns\":[{\"value\":\"m\"},{\"value\":\"s\"}],"
                         + "\"axis\":{\"x\":{\"value\":\"m\"},\"y\":{\"value\":\"s\"},"
-                        + "\"multi-quota\":[\"s\",\"p\"]}}");
+                        + "\"multi-quota\":{\"name\":\"指标类型\",\"value\":[\"s\",\"p\"]}}}");
         assertNotNull(chart);
         @SuppressWarnings("unchecked")
         Map<String, Object> axis = (Map<String, Object>) chart.get("axis");
         assertTrue(axis.containsKey("multi-quota"), "multi-quota preserved by normalize");
-        assertEquals(List.of("s", "p"), axis.get("multi-quota"));
+        assertEquals(Map.of("name", "指标类型", "value", List.of("s", "p")), axis.get("multi-quota"));
+    }
+
+    @Test
+    void chatChartBuilderNormalizesLegacyArrayMultiQuota() {
+        // A9：模型直接给数组（旧写法）时归一化为对象形态，前端 .value 才取得到指标
+        Map<String, Object> chart = builder.normalize(
+                "{\"type\":\"column\",\"title\":\"t\","
+                        + "\"columns\":[{\"value\":\"m\"},{\"value\":\"s\"}],"
+                        + "\"axis\":{\"x\":{\"value\":\"m\"},\"y\":[{\"value\":\"s\"},{\"value\":\"p\"}],"
+                        + "\"multi-quota\":[\"s\",\"p\"]}}");
+        assertNotNull(chart);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> axis = (Map<String, Object>) chart.get("axis");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> quota = (Map<String, Object>) axis.get("multi-quota");
+        assertEquals(List.of("s", "p"), quota.get("value"));
+    }
+
+    @Test
+    void chatChartBuilderDerivesMultiQuotaWhenModelOmitsIt() {
+        // A9：模型漏写 multi-quota 时，按 y 数组补齐，避免两个指标挤在同一轴不可见
+        Map<String, Object> chart = builder.normalize(
+                "{\"type\":\"column\",\"title\":\"t\","
+                        + "\"columns\":[{\"value\":\"m\"},{\"value\":\"s\"},{\"value\":\"p\"}],"
+                        + "\"axis\":{\"x\":{\"value\":\"m\"},"
+                        + "\"y\":[{\"value\":\"s\"},{\"value\":\"p\"}]}}");
+        assertNotNull(chart);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> axis = (Map<String, Object>) chart.get("axis");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> quota = (Map<String, Object>) axis.get("multi-quota");
+        assertNotNull(quota, "multi-quota derived from y array");
+        assertEquals(List.of("s", "p"), quota.get("value"));
+    }
+
+    @Test
+    void chatChartBuilderSkipsMultiQuotaWhenSeriesPresent() {
+        // multi-quota 与 series 互斥：有第二个分类列时按 series 渲染
+        Map<String, Object> chart = builder.normalize(
+                "{\"type\":\"column\",\"title\":\"t\","
+                        + "\"axis\":{\"x\":{\"value\":\"m\"},\"series\":{\"value\":\"c\"},"
+                        + "\"y\":[{\"value\":\"s\"},{\"value\":\"p\"}]}}");
+        assertNotNull(chart);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> axis = (Map<String, Object>) chart.get("axis");
+        assertFalse(axis.containsKey("multi-quota"), "series 与 multi-quota 互斥");
     }
 
     @Test
     void chatChartBuilderAddsMultiQuotaForMultipleNumeric() {
-        // A4：多数值列启发式构造时同步产出 multi-quota
+        // A9：多数值列启发式构造时同步产出 multi-quota（对象形态）
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("fields", List.of("m", "s", "p"));
         result.put("fields_info", List.of(
@@ -137,7 +183,10 @@ class ChartSemanticsParityTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> axis = (Map<String, Object>) chart.get("axis");
         assertTrue(axis.containsKey("multi-quota"), "multi-quota produced for >1 numeric");
-        assertEquals(List.of("s", "p"), axis.get("multi-quota"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> quota = (Map<String, Object>) axis.get("multi-quota");
+        assertEquals(List.of("s", "p"), quota.get("value"));
+        assertFalse(axis.containsKey("series"), "1 维 + 多指标不产生 series");
     }
 
     @Test

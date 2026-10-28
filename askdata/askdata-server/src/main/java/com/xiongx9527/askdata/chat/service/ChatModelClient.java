@@ -41,7 +41,9 @@ public class ChatModelClient {
 
     private static final int CONNECT_TIMEOUT_MS = 8000;
 
-    private static final int READ_TIMEOUT_MS = 120000;
+    // gpt-oss:120b-cloud 等大模型首 token 时延可达数分钟（实测 ~6min），原 120s 读超时会在模型尚未
+    // 返回任何分片时将其降级为「无 SQL」，导致问数/调度偶发失败；放宽到 600s 使慢模型得以完整返回。
+    private static final int READ_TIMEOUT_MS = 600000;
 
     private final ObjectMapper objectMapper;
 

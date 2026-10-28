@@ -75,6 +75,20 @@ class ChatRagTest {
     // ------------------------------------------------------------------
 
     @Test
+    void sqlPromptJsonSkeletonIsWellFormed() {
+        // 回归：提示词里的 JSON 示例字段名必须带前导引号，否则示例本身不是合法 JSON，
+        // 真实模型会照着返回 {"success":false,"sql":"",...}（问数直接失败）。
+        String content = schemaContextBuilder.buildSqlMessages("每个状态的订单数", 1L).get(1).content;
+        assertTrue(content.contains("\"success\": true 或 false"), content);
+        assertTrue(content.contains("\"sql\": 生成的只读 SELECT"), content);
+        assertTrue(content.contains("\"brief\":"), content);
+        assertTrue(content.contains("\"chart-type\":"), content);
+        assertTrue(content.contains("\"tables\":"), content);
+        assertFalse(content.contains("\nsuccess\":"), "字段名缺少前导引号: " + content);
+        assertFalse(content.contains("\nsql\":"), "字段名缺少前导引号: " + content);
+    }
+
+    @Test
     void trainingTableMissingIsDetectedAndDegrades() {
         // 集成 value-add-modules 后 V2 种子已含 data_training；本用例验证「缺表」分支，
         // 故先移除该表（本用例使用独立内存库，不影响其他用例），再断言降级行为。

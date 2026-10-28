@@ -45,6 +45,9 @@ public class ScheduledTaskExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(ScheduledTaskExecutor.class);
 
+    /** SQL 生成/执行失败时的回喂修复重试上限（覆盖 gpt-oss 偶发不输出/输出不可执行 SQL 的方差，A5）。 */
+    private static final int MAX_SQL_GEN_RETRY = 2;
+
     private final ScheduledTaskRepository repository;
 
     private final DatasourceService datasourceService;
@@ -105,11 +108,24 @@ public class ScheduledTaskExecutor {
             ModelRef aiModel = model.get();
             List<ModelMessage> messages =
                     schemaContextBuilder.buildSqlMessages(task.getQuestion(), task.getDatasourceId());
-            String text = modelClient.generate(aiModel.apiDomain, aiModel.apiKey, aiModel.baseModel, messages,
-                    aiModel.params);
-            sql = ChatQuestionService.extractSql(text);
-            if (sql == null) {
-                throw new IllegalStateException(messageResolver.get("scheduled.no.sql"));
+            // 发现-5 延伸修复（A5 偶发 run FAILED）：模型偶发不输出可执行 SQL，
+            // 仅在“无 SQL”时回喂重试（至多 MAX_SQL_GEN_RETRY 次）；执行/安全校验只做一次，
+            // 避免把本应失败的非法 SQL（如 DELETE）通过重试“洗白”。
+            int genLeft = MAX_SQL_GEN_RETRY;
+            while (true) {
+                String text = modelClient.generate(aiModel.apiDomain, aiModel.apiKey, aiModel.baseModel, messages,
+                        aiModel.params);
+                sql = ChatQuestionService.extractSqlFromOutput(text, objectMapper);
+                if (sql != null) {
+                    break;
+                }
+                if (genLeft <= 0) {
+                    throw new IllegalStateException(messageResolver.get("scheduled.no.sql"));
+                }
+                genLeft--;
+                log.warn("定时任务生成 SQL 失败（未解析到 SQL），第 {} 次回喂修复", (MAX_SQL_GEN_RETRY - genLeft));
+                messages.add(new ModelMessage("user",
+                        "上一次回答没有包含可执行的 SQL。请仅基于表结构输出一条合法可执行的 SELECT 语句，不要包含解释或代码块标记。"));
             }
             SqlSafety.checkRead(sql, datasourceService.typeAsSystem(task.getDatasourceId()).getType());
             Map<String, Object> result = datasourceService.execSqlAsSystem(task.getDatasourceId(), sql);

@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.common.web;
 
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -24,7 +25,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class AuthWhitelistParityTest {
 
-    private static final String SQLBOT_ROOT = "/Users/xiongxiao/Workspaces/Idea/codes/New/SQLBot/backend";
+    /** SQLBot 源码根（可用 {@code -Dsqlbot.root=...} 覆盖；缺省为本机同级仓库）。 */
+    private static final String SQLBOT_ROOT = System.getProperty("sqlbot.root",
+            "/Users/xiongxiao/Workspaces/Idea/codes/New/SQLBot/backend");
+
+    /** 参考实现文件；不存在时跳过 parity 校验（不在每台机器上强制克隆 SQLBot 仓库）。 */
+    private static final Path SQLBOT_WHITELIST = Paths.get(SQLBOT_ROOT, "common/utils/whitelist.py");
 
     private final AuthWhitelist whitelist = new AuthWhitelist("/api/v1");
 
@@ -94,6 +100,7 @@ class AuthWhitelistParityTest {
     @Test
     @DisplayName("与 SQLBot WhitelistChecker 对同一批路径给出完全一致的判定")
     void matchesSqlBotImplementationExactly() throws Exception {
+        requireSqlBotSource();
         List<String> paths = corpus();
         List<String> sqlbotResults = runSqlBotReference(paths);
         assertEquals(paths.size(), sqlbotResults.size(), "SQLBot 参考实现应产出等长结果");
@@ -111,14 +118,21 @@ class AuthWhitelistParityTest {
     @Test
     @DisplayName("白名单条目与 SQLBot wlist 逐条同序同内容")
     void whitelistEntriesMatchSqlBotWlist() throws Exception {
+        requireSqlBotSource();
         List<String> sqlbotWlist = readSqlBotWlist();
         assertEquals(sqlbotWlist, AuthWhitelist.DEFAULT_PATHS,
                 "白名单条目应与 SQLBot common/utils/whitelist.py 的 wlist 逐条一致");
     }
 
+    /** 参考源码缺失时跳过（环境依赖，非实现缺陷）。 */
+    private static void requireSqlBotSource() {
+        Assumptions.assumeTrue(Files.isRegularFile(SQLBOT_WHITELIST),
+                "缺少 SQLBot 参考源码，可用 -Dsqlbot.root=<backend 目录> 指定：" + SQLBOT_WHITELIST);
+    }
+
     /** 从 SQLBot 源码里原样抽出 wlist（不重新誊写，避免抄写漂移）。 */
     private static List<String> readSqlBotWlist() throws Exception {
-        String source = new String(Files.readAllBytes(Paths.get(SQLBOT_ROOT, "common/utils/whitelist.py")),
+        String source = new String(Files.readAllBytes(SQLBOT_WHITELIST),
                 StandardCharsets.UTF_8);
         int start = source.indexOf("wlist = [");
         int end = source.indexOf("]", start);
@@ -144,7 +158,7 @@ class AuthWhitelistParityTest {
      * 避免"把 Python 逻辑重写成 Java 再自证"的循环论证。</p>
      */
     private static List<String> runSqlBotReference(List<String> paths) throws Exception {
-        String source = new String(Files.readAllBytes(Paths.get(SQLBOT_ROOT, "common/utils/whitelist.py")),
+        String source = new String(Files.readAllBytes(SQLBOT_WHITELIST),
                 StandardCharsets.UTF_8);
         int start = source.indexOf("wlist = [");
         int end = source.indexOf("]", start);

@@ -96,7 +96,7 @@ CREATE TABLE system_variable (
     var_type    VARCHAR(128) NOT NULL,
     type        VARCHAR(128) NOT NULL,
     `value`     TEXT,
-    create_time TIMESTAMP,
+    create_time DATETIME,
     create_by   BIGINT
 ) DEFAULT CHARSET=utf8mb4;
 
@@ -111,7 +111,7 @@ CREATE TABLE core_datasource (
     type              VARCHAR(64),
     type_name         VARCHAR(64),
     configuration     LONGTEXT,
-    create_time       TIMESTAMP,
+    create_time       DATETIME,
     create_by         BIGINT,
     status            VARCHAR(64),
     num               VARCHAR(256),
@@ -154,7 +154,7 @@ CREATE TABLE ds_recommended_problem (
     question      LONGTEXT,
     remark        LONGTEXT,
     sort          BIGINT,
-    create_time   TIMESTAMP,
+    create_time   DATETIME,
     create_by     BIGINT
 ) DEFAULT CHARSET=utf8mb4;
 
@@ -170,8 +170,8 @@ CREATE TABLE chat (
     id                 BIGINT PRIMARY KEY,
     create_by          BIGINT,
     oid                BIGINT,
-    create_time        TIMESTAMP,
-    update_time        TIMESTAMP,
+    create_time        DATETIME,
+    update_time        DATETIME,
     deleted            INT          NOT NULL DEFAULT 0,
     brief              VARCHAR(2000),
     datasource         BIGINT,
@@ -180,7 +180,7 @@ CREATE TABLE chat (
     origin             INT          NOT NULL DEFAULT 1,
     chat_type          VARCHAR(64),
     question           VARCHAR(2000),
-    latest_record_time TIMESTAMP,
+    latest_record_time DATETIME,
     brief_generate BOOLEAN DEFAULT FALSE,
     recommended_question_answer LONGTEXT,
     recommended_question LONGTEXT,
@@ -195,11 +195,11 @@ CREATE TABLE chat_record (
     question              LONGTEXT,
     create_by             BIGINT,
     oid                   BIGINT,
-    create_time           TIMESTAMP,
-    update_time           TIMESTAMP,
-    finish_time           TIMESTAMP,
+    create_time           DATETIME,
+    update_time           DATETIME,
+    finish_time           DATETIME,
     sql_answer            LONGTEXT,
-    sql                   LONGTEXT,
+    `sql`                 LONGTEXT,
     datasource            BIGINT,
     data                  LONGTEXT,
     chart_answer          LONGTEXT,
@@ -234,8 +234,8 @@ CREATE TABLE chat_log (
     chat_record_id BIGINT,
     oid           BIGINT,
     create_by     BIGINT,
-    start_time    TIMESTAMP,
-    finish_time   TIMESTAMP,
+    start_time    DATETIME,
+    finish_time   DATETIME,
     duration      BIGINT,
     total_tokens  BIGINT,
     operate       VARCHAR(255),
@@ -257,7 +257,7 @@ CREATE TABLE recommended_questions (
     chat_id     BIGINT,
     question    LONGTEXT,
     sort        BIGINT,
-    create_time TIMESTAMP
+    create_time DATETIME
 ) DEFAULT CHARSET=utf8mb4;
 
 -- SQL 示例训练（alembic 042/050/051；question 向量化 embedding 按 D5 以 JSON 文本存储）
@@ -438,7 +438,7 @@ CREATE TABLE scheduled_task_run (
     oid          BIGINT,
     trigger_type VARCHAR(16),
     status       VARCHAR(16),
-    sql          TEXT,
+    `sql`        TEXT,
     row_count    INT,
     export_path  VARCHAR(1024),
     error        VARCHAR(4000),
@@ -588,6 +588,6 @@ CREATE TABLE WORKER_NODE (
     port         VARCHAR(64),
     type         INT,
     launch_date  VARCHAR(64),
-    created      TIMESTAMP,
-    modified     TIMESTAMP
+    created      DATETIME,
+    modified     DATETIME
 ) DEFAULT CHARSET=utf8mb4;

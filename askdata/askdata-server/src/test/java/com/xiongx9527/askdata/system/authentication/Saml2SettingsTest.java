@@ -251,8 +251,8 @@ class Saml2SettingsTest {
         try {
             StpUtil.logout();
             StpUtil.login(9951L);
-            assertThrows(BadRequestException.class, () -> controller.info());
-            assertThrows(BadRequestException.class,
+            assertThrows(com.xiongx9527.askdata.common.web.ForbiddenException.class, () -> controller.info());
+            assertThrows(com.xiongx9527.askdata.common.web.ForbiddenException.class,
                     () -> controller.save(Map.of("idpMetaUrl", "https://idp.example.com/metadata")));
         } finally {
             StpUtil.logout();
