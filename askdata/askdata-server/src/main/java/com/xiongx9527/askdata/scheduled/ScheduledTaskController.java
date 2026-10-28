@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.scheduled;
 
+import com.xiongx9527.askdata.common.debounce.Debounce;
 import com.xiongx9527.askdata.common.web.Result;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -55,6 +56,13 @@ public class ScheduledTaskController {
         return Result.ok(service.stop(id));
     }
 
+    /**
+     * 立即执行一次（验收 A11：同用户短时间重复点击只执行一次）。
+     *
+     * <p>按任务 id 防抖：窗口内同一用户对同一任务重复提交返回 429，
+     * 缓存后端为 Redis 时该判定跨实例生效。</p>
+     */
+    @Debounce(args = {"0"})
     @PostMapping({"/scheduled_task/run/{id}"})
     public Result<Map<String, Object>> runNow(@PathVariable long id) {
         return Result.ok(service.runNow(id));

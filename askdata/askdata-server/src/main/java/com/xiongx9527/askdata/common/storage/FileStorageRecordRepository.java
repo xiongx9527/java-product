@@ -67,6 +67,20 @@ public class FileStorageRecordRepository {
         return rows.isEmpty() ? Optional.empty() : Optional.of(toFileInfo(rows.get(0)));
     }
 
+    /**
+     * 按存储路径 + <b>原始文件名</b>反查（业务侧只持有展示名时的跨实例回源路径）。
+     *
+     * <p>x-file-storage 上传时会把存储名重写为随机名，展示名保存在 {@code original_filename}；
+     * 失败明细回执等接口只有展示名（如 {@code xxx_error.xlsx}），必须按该列回源。
+     * 同名重传时取最新一条。</p>
+     */
+    public Optional<FileInfo> findByPathAndOriginalFilename(String path, String originalFilename) {
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT " + COLUMNS + " FROM file_storage WHERE path = ? AND original_filename = ? "
+                        + "ORDER BY create_time DESC LIMIT 1", path, originalFilename);
+        return rows.isEmpty() ? Optional.empty() : Optional.of(toFileInfo(rows.get(0)));
+    }
+
     public Optional<FileInfo> findById(String id) {
         List<Map<String, Object>> rows = jdbc.queryForList(
                 "SELECT " + COLUMNS + " FROM file_storage WHERE id = ?", id);

@@ -2,6 +2,7 @@ package com.xiongx9527.askdata.cluster;
 
 import com.xiongx9527.askdata.common.storage.AskdataFileStorage;
 import com.xiongx9527.askdata.config.CacheProperties;
+import com.xiongx9527.askdata.mcp.cluster.McpSseClusterBridge;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -45,15 +46,19 @@ public class ClusterReadinessChecker implements ApplicationRunner {
 
     private final ObjectProvider<StringRedisTemplate> redisTemplateProvider;
 
+    private final ObjectProvider<McpSseClusterBridge> mcpBridgeProvider;
+
     public ClusterReadinessChecker(ClusterProperties properties, CacheProperties cacheProperties,
                                    Environment environment,
                                    ObjectProvider<AskdataFileStorage> fileStorageProvider,
-                                   ObjectProvider<StringRedisTemplate> redisTemplateProvider) {
+                                   ObjectProvider<StringRedisTemplate> redisTemplateProvider,
+                                   ObjectProvider<McpSseClusterBridge> mcpBridgeProvider) {
         this.properties = properties;
         this.cacheProperties = cacheProperties;
         this.environment = environment;
         this.fileStorageProvider = fileStorageProvider;
         this.redisTemplateProvider = redisTemplateProvider;
+        this.mcpBridgeProvider = mcpBridgeProvider;
     }
 
     @Override
@@ -206,9 +211,18 @@ public class ClusterReadinessChecker implements ApplicationRunner {
                     "transport=" + transport, "");
         }
         boolean redisRegistry = redisTemplateProvider.getIfAvailable() != null;
-        if (redisRegistry) {
+        boolean bridgeActive = mcpBridgeProvider != null && mcpBridgeProvider.getIfAvailable() != null;
+        if (redisRegistry && bridgeActive) {
             return new ClusterReadinessReport.Item("MCP 会话", ClusterReadinessReport.Level.OK,
-                    "http-sse + Redis 集群注册表（跨实例经 pub/sub 路由）", "");
+                    "http-sse + Redis 会话归属与请求中继（会话在哪个实例建立，"
+                            + "POST /mcp/messages 落到其它实例时由中继转发给持有实例）", "");
+        }
+        if (redisRegistry) {
+            return new ClusterReadinessReport.Item("MCP 会话", ClusterReadinessReport.Level.WARN,
+                    "http-sse 且 Redis 已装配，但 MCP SSE 集群中继未启用（未装配 McpSseClusterBridge）；"
+                            + "POST /mcp/messages 落到非持有实例仍会 session not found",
+                    "确认集群 profile 生效（askdata.cache.type=redis）以激活 McpSseClusterConfiguration，"
+                            + "或为负载均衡开启粘性会话");
         }
         return new ClusterReadinessReport.Item("MCP 会话", ClusterReadinessReport.Level.WARN,
                 "http-sse 且无 StringRedisTemplate，SSE 会话为进程内；POST /mcp/messages 落到其它实例会 session not found",

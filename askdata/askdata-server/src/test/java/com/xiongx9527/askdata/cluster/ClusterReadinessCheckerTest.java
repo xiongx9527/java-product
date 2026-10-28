@@ -2,6 +2,7 @@ package com.xiongx9527.askdata.cluster;
 
 import com.xiongx9527.askdata.common.storage.AskdataFileStorage;
 import com.xiongx9527.askdata.config.CacheProperties;
+import com.xiongx9527.askdata.mcp.cluster.McpSseClusterBridge;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
@@ -24,6 +25,12 @@ class ClusterReadinessCheckerTest {
 
     private static ClusterReadinessChecker checker(MockEnvironment env, String storagePlatform,
                                                    boolean redisTemplate, CacheProperties cache) {
+        return checker(env, storagePlatform, redisTemplate, redisTemplate, cache);
+    }
+
+    private static ClusterReadinessChecker checker(MockEnvironment env, String storagePlatform,
+                                                   boolean redisTemplate, boolean mcpBridge,
+                                                   CacheProperties cache) {
         StaticListableBeanFactory beans = new StaticListableBeanFactory();
         if (storagePlatform != null) {
             AskdataFileStorage storage = mock(AskdataFileStorage.class);
@@ -37,9 +44,14 @@ class ClusterReadinessCheckerTest {
                 beans.getBeanProvider(AskdataFileStorage.class);
         ObjectProvider<StringRedisTemplate> redisProvider =
                 beans.getBeanProvider(StringRedisTemplate.class);
+        if (mcpBridge) {
+            beans.addBean("mcpSseClusterBridge", mock(McpSseClusterBridge.class));
+        }
+        ObjectProvider<McpSseClusterBridge> bridgeProvider =
+                beans.getBeanProvider(McpSseClusterBridge.class);
         ClusterProperties props = new ClusterProperties();
         props.setEnabled(true);
-        return new ClusterReadinessChecker(props, cache, env, storageProvider, redisProvider);
+        return new ClusterReadinessChecker(props, cache, env, storageProvider, redisProvider, bridgeProvider);
     }
 
     private static MockEnvironment env(String dbUrl, String secretKey, String lockType) {
@@ -101,11 +113,27 @@ class ClusterReadinessCheckerTest {
 
     @Test
     void mcpWithRedisIsClusterReady() {
-        // A13：Redis 注册表就绪时不告警
+        // A13：Redis + 集群中继均就绪时才算集群可用，且说明不再依赖粘性会话
         MockEnvironment env = env("jdbc:mysql://db:3306/askdata", "k".repeat(32), "redis");
-        ClusterReadinessReport report = checker(env, "minio", true, redisCache()).check();
+        ClusterReadinessReport report = checker(env, "minio", true, true, redisCache()).check();
 
-        assertEquals(ClusterReadinessReport.Level.OK, levelOf(report, "MCP 会话"));
+        ClusterReadinessReport.Item item = itemOf(report, "MCP 会话");
+        assertEquals(ClusterReadinessReport.Level.OK, item.level());
+        assertTrue(item.detail().contains("中继"));
+    }
+
+    @Test
+    void mcpWithRedisButNoBridgeWarnsInsteadOfFalseOk() {
+        // A13：仅装 Redis 但中继配置未生效时不能报 OK（框架注册表本身不跨实例）
+        MockEnvironment env = env("jdbc:mysql://db:3306/askdata", "k".repeat(32), "redis");
+        env.setProperty("fw-plus.ai.mcp.enabled", "true");
+        env.setProperty("fw-plus.ai.mcp.transport", "http-sse");
+        ClusterReadinessReport report = checker(env, "minio", true, false, redisCache()).check();
+
+        ClusterReadinessReport.Item item = itemOf(report, "MCP 会话");
+        assertEquals(ClusterReadinessReport.Level.WARN, item.level());
+        assertTrue(item.detail().contains("中继未启用"));
+        assertTrue(item.fix().contains("粘性会话"));
     }
 
     @Test

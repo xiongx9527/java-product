@@ -26,6 +26,8 @@ x-askdata-env: &askdata-env
   # 演示环境固定初始密码，便于探针登录；生产不要设置
   ASKDATA_USER_DEFAULT_PASSWORD: SQLBot@123456
   ASKDATA_SCHEDULED_LEASE_SECONDS: "120"
+  # 接口防抖（A11）：缓存后端已切 Redis，故窗口内重复提交跨实例只放行一次
+  ASKDATA_DEBOUNCE_ENABLED: "true"
 
 services:
   mysql:

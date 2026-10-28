@@ -141,13 +141,23 @@ public class AskdataFileStorage {
         }
     }
 
-    /** 按存储路径 + 存储文件名取元信息；不存在时返回 null。 */
+    /**
+     * 按存储路径 + 文件名取元信息；不存在时返回 null。
+     *
+     * <p>先按存储名（{@code filename}，上传接口返回的引用）查，未命中再按展示名
+     * （{@code original_filename}，如失败明细 {@code xxx_error.xlsx}）查——两者都可能是调用方持有的名字。</p>
+     */
     public org.dromara.x.file.storage.core.FileInfo infoByName(String path, String filename) {
         if (!enabled() || recordRepository == null || filename == null || filename.isEmpty()) {
             return null;
         }
         try {
-            return recordRepository.findByPathAndFilename(path, filename).orElse(null);
+            java.util.Optional<org.dromara.x.file.storage.core.FileInfo> found =
+                    recordRepository.findByPathAndFilename(path, filename);
+            if (found.isEmpty()) {
+                found = recordRepository.findByPathAndOriginalFilename(path, filename);
+            }
+            return found.orElse(null);
         } catch (Exception e) {
             log.debug("按文件名查询失败 {} / {}: {}", path, filename, e.getMessage());
             return null;
