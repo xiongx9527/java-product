@@ -223,3 +223,20 @@ spring:
 - Qdrant 不可达 / 集合缺失 / 连接失败均不抛异常，仅记日志并回落，问数主链路可用。
 - 新增后端（如 Weaviate）只需实现 `VectorStore` 并在 `VectorStoreAutoConfiguration` 注册，
   不改动 `EmbeddingService` 与各召回调用点。
+
+## 文件存储平台（local / MinIO / OSS / COS / S3）
+
+文件存储基于 x-file-storage，默认 `local`（`./data/files`，离线可用）。切换平台只需设置环境变量并重启，无需改代码：
+
+| 平台 | `FILE_STORAGE_PLATFORM` | 必填环境变量 |
+| --- | --- | --- |
+| 本地 | `local`（默认） | 无 |
+| MinIO | `minio` | `MINIO_ENDPOINT`、`MINIO_ACCESS_KEY`、`MINIO_SECRET_KEY`、`MINIO_BUCKET` |
+| 阿里云 OSS | `aliyun-oss` | `ALIYUN_OSS_ENDPOINT`、`ALIYUN_OSS_ACCESS_KEY_ID`、`ALIYUN_OSS_ACCESS_KEY_SECRET`、`ALIYUN_OSS_BUCKET` |
+| 腾讯云 COS | `tencent-cos` | `TENCENT_COS_SECRET_ID`、`TENCENT_COS_SECRET_KEY`、`TENCENT_COS_REGION`、`TENCENT_COS_BUCKET` |
+| 通用 S3 | `amazon-s3` | `AMAZON_S3_ENDPOINT`、`AMAZON_S3_ACCESS_KEY_ID`、`AMAZON_S3_SECRET_ACCESS_KEY`、`AMAZON_S3_BUCKET`（`AMAZON_S3_REGION` 默认 `us-east-1`） |
+
+- 可选：`*_DOMAIN` 配置对外访问域名（留空时使用预签名 URL）。
+- 选中平台缺少必填项或平台名未知时，启动日志输出 `文件存储平台配置不可用（…），已回退 local` 并回退 local，服务照常启动。
+- 启动日志 `文件存储平台: <name>` 表示实际生效平台，便于部署核对。
+- 真实环境验证：`e2e/probe-storage.mjs`（上传 → 读回内容比对 → 替换后旧对象删除）。

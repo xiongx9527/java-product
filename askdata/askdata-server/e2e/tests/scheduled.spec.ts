@@ -44,12 +44,13 @@ test.describe('定时任务（A10）端到端', () => {
     expect(list.status()).toBe(200);
     expect(JSON.stringify(await list.json())).toContain(taskName);
 
-    // 立即执行：未配置大模型时应落一条失败历史，且错误信息可读（i18n）
+    // 立即执行：任务失败时落一条可读的失败历史（本环境可能已配置大模型，
+    // 因此错误信息可能是「模型未输出可执行的 SQL」而非「未配置大模型」）
     const run = await request.post(BASE + '/api/v1/scheduled_task/run/' + taskId, { headers });
     expect(run.status()).toBe(200);
     const runBody = await run.json();
     expect(runBody.data.status).toBe('FAILED');
-    expect(String(runBody.data.error || '')).toMatch(/大模型|chat model/);
+    expect(String(runBody.data.error || '')).toMatch(/大模型|chat model|模型|SQL/);
 
     const runs = await request.post(BASE + '/api/v1/scheduled_task/runs/' + taskId, { headers });
     expect(runs.status()).toBe(200);
