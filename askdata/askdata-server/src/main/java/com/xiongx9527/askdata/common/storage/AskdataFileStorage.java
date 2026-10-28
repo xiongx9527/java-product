@@ -62,6 +62,12 @@ public class AskdataFileStorage {
         return fileStorageService != null;
     }
 
+    /** 当前生效的平台标识（local / minio / aliyun-oss / tencent-cos / amazon-s3 / disabled）。 */
+    public String platform() {
+        return fileStorageService == null ? "disabled"
+                : String.valueOf(fileStorageService.getDefaultPlatform());
+    }
+
     private FileStorageService svc() {
         if (fileStorageService == null) {
             throw new StorageException(I18n.msg("storage.not.enabled"));
@@ -110,6 +116,41 @@ public class AskdataFileStorage {
             return toStored(info);
         } catch (Exception e) {
             throw new StorageException(I18n.msg("storage.save.failed") + ": " + e.getMessage(), e);
+        }
+    }
+
+    /** 文件记录仓储（按路径+文件名反查用；未装配时跨实例回源不可用）。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private FileStorageRecordRepository recordRepository;
+
+    /**
+     * 按存储路径 + 存储文件名读回字节（业务接口只传文件名的跨实例回源路径）。
+     *
+     * @return 文件字节；不存在或存储不可用时返回 null（由调用方决定降级）
+     */
+    public byte[] readByName(String path, String filename) {
+        org.dromara.x.file.storage.core.FileInfo info = infoByName(path, filename);
+        if (info == null) {
+            return null;
+        }
+        try {
+            return read(info.getUrl());
+        } catch (Exception e) {
+            log.debug("按文件名读取失败 {} / {}: {}", path, filename, e.getMessage());
+            return null;
+        }
+    }
+
+    /** 按存储路径 + 存储文件名取元信息；不存在时返回 null。 */
+    public org.dromara.x.file.storage.core.FileInfo infoByName(String path, String filename) {
+        if (!enabled() || recordRepository == null || filename == null || filename.isEmpty()) {
+            return null;
+        }
+        try {
+            return recordRepository.findByPathAndFilename(path, filename).orElse(null);
+        } catch (Exception e) {
+            log.debug("按文件名查询失败 {} / {}: {}", path, filename, e.getMessage());
+            return null;
         }
     }
 

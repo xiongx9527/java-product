@@ -1,0 +1,99 @@
+# 最小集群编排：MySQL + Redis + MinIO + 两个 askdata 实例。
+#
+# 用法（在 askdata/askdata-server 目录）：
+#   mvn -pl . -DskipTests package
+#   docker compose -f e2e/docker-compose.cluster.yml up -d --build
+#   node e2e/probe-cluster.mjs        # BASE_A=18099 BASE_B=18100
+#
+# 两个实例共享同一元数据库 / Redis / 对象存储，彼此不共享任何进程内状态。
+name: askdata-cluster
+
+x-askdata-env: &askdata-env
+  SPRING_PROFILES_ACTIVE: cluster
+  ASKDATA_CLUSTER_FAIL_FAST: "true"
+  ASKDATA_DB_URL: jdbc:mysql://mysql:3306/askdata?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
+  ASKDATA_DB_USERNAME: askdata
+  ASKDATA_DB_PASSWORD: askdata
+  ASKDATA_REDIS_HOST: redis
+  ASKDATA_REDIS_PORT: "6379"
+  # 所有实例必须使用同一密钥，否则跨实例无法解密落库密文
+  ASKDATA_SECRET_KEY: cluster-demo-secret-key-change-me
+  FILE_STORAGE_PLATFORM: minio
+  MINIO_ENDPOINT: http://minio:9000
+  MINIO_ACCESS_KEY: minioadmin
+  MINIO_SECRET_KEY: minioadmin
+  MINIO_BUCKET: askdata
+  # 演示环境固定初始密码，便于探针登录；生产不要设置
+  ASKDATA_USER_DEFAULT_PASSWORD: SQLBot@123456
+  ASKDATA_SCHEDULED_LEASE_SECONDS: "120"
+
+services:
+  mysql:
+    image: mysql:5.7
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: askdata
+      MYSQL_USER: askdata
+      MYSQL_PASSWORD: askdata
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "13306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uaskdata", "-paskdata"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "13379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "19000:9000"
+      - "19001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      sh -c "sleep 3; mc alias set local http://minio:9000 minioadmin minioadmin;
+      mc mb -p local/askdata || true; exit 0"
+
+  app-a: &app
+    build:
+      context: ..
+      dockerfile: e2e/Dockerfile.cluster
+    environment: *askdata-env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    ports:
+      - "18099:8000"
+
+  app-b:
+    <<: *app
+    ports:
+      - "18100:8000"

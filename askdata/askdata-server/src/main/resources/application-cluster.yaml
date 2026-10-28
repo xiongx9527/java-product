@@ -1,0 +1,43 @@
+# 集群部署基线（多实例）：--spring.profiles.active=cluster
+#
+# 本 profile 把「多实例共享化」所需的开关一次性打开：共享元数据库、Redis 会话/缓存/锁、
+# 远端对象存储、集群自检。外部依赖与凭据全部走环境变量，缺省值面向本地 docker-compose 调试。
+#
+# 最小依赖：MySQL(或 PostgreSQL) + Redis + MinIO(或 OSS/COS/S3)。
+# 仅当确实要用 PostgreSQL 时额外叠加 --spring.profiles.active=cluster,postgresql。
+askdata:
+  cluster:
+    enabled: true
+    # 自检发现不满足项时是否拒绝启动；默认只告警，便于先观察再收紧
+    fail-fast: ${ASKDATA_CLUSTER_FAIL_FAST:false}
+  # 会话与缓存必须共享，否则登录态/权限变更不跨实例
+  cache:
+    type: redis
+    sa-token-store: redis
+  # 单例后台任务的锁改用全局 Redis 锁
+  lock:
+    type: redis
+  secret:
+    # 所有实例必须是同一个密钥，否则跨实例无法解密落库密文
+    key: ${ASKDATA_SECRET_KEY:}
+  scheduled:
+    # 任务执行权租约（秒）：执行期间按 1/3 租约续租，进程被强杀后最多这么久可被其它实例回收
+    lease-seconds: ${ASKDATA_SCHEDULED_LEASE_SECONDS:300}
+
+spring:
+  datasource:
+    url: ${ASKDATA_DB_URL:jdbc:mysql://127.0.0.1:3306/askdata?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true}
+    driver-class-name: ${ASKDATA_DB_DRIVER:com.mysql.cj.jdbc.Driver}
+    username: ${ASKDATA_DB_USERNAME:askdata}
+    password: ${ASKDATA_DB_PASSWORD:}
+  data:
+    redis:
+      host: ${ASKDATA_REDIS_HOST:127.0.0.1}
+      port: ${ASKDATA_REDIS_PORT:6379}
+      password: ${ASKDATA_REDIS_PASSWORD:}
+      database: ${ASKDATA_REDIS_DATABASE:0}
+
+# 集群下文件存储不能是本地平台（文件会留在处理上传的实例上）
+dromara:
+  x-file-storage:
+    default-platform: ${FILE_STORAGE_PLATFORM:minio}

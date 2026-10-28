@@ -101,5 +101,10 @@ chat-real.spec.ts 与 run-real-e2e.mjs 都依赖真实对话大模型与真实�
 | `probe-perm.mjs` | 数据源授权白名单 + 会话越权 403（A4） | 同上 |
 | `probe-enterprise.mjs` | 企业级管理面 45 项（用户/空间/API Key/参数/审计/License/认证/嵌入/小助手/行列权限） | `BASE` |
 | `probe-storage.mjs` | 对象存储上传→读回→替换删除（MinIO/S3） | `FILE_STORAGE_PLATFORM` |
+| `probe-cluster.mjs` | 双实例跨节点：会话、助手文件、Excel 上传→导入、定时导出端点 | `BASE_A`、`BASE_B` |
+
+集群探针不依赖负载均衡：直接交替访问两个实例更能证明「任意实例处理任意请求」。
+最小集群编排：`docker compose -f e2e/docker-compose.cluster.yml up -d --build`（MySQL + Redis + MinIO + app-a/app-b），
+随后 `BASE_A=http://127.0.0.1:18099 BASE_B=http://127.0.0.1:18100 node e2e/probe-cluster.mjs`。
 
 数据库口令不写入脚本：需要 `E2E_MYSQL_PASSWORD`（root 口令）与 `ADMIN_PASSWORD`（管理员口令，默认 `SQLBot@123456`）。

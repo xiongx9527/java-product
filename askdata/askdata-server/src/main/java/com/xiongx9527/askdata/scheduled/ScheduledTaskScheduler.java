@@ -54,7 +54,9 @@ public class ScheduledTaskScheduler {
         long now = System.currentTimeMillis();
         List<ScheduledTask> due = repository.dueTasks(now, 20);
         for (ScheduledTask task : due) {
-            if (!repository.claim(task.getId(), now)) {
+            // 集群：抢占时写入持有者与租约，节点异常退出后由其它实例在租约到期后回收
+            if (!repository.claim(task.getId(), com.xiongx9527.askdata.cluster.NodeIdentity.value(),
+                    now, executor.leaseUntil(now))) {
                 continue;
             }
             workers.submit(() -> {

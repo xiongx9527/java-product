@@ -38,12 +38,12 @@ class MysqlMetadbDialectTest {
                 + ";MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1";
         try (Connection connection = DriverManager.getConnection(url, "sa", "")) {
             MetadbMigration.migrate(connection, "mysql");
-            assertEquals(35, tableCount(connection));
+            assertEquals(36, tableCount(connection));
             assertEquals(1, count(connection, "sys_user"));
             assertEquals(12, count(connection, "sys_arg"));
             assertEquals(3, count(connection, "system_variable"));
             assertEquals(19, count(connection, "core_field"));
-            assertEquals(List.of("1", "2"), versions(connection));
+            assertEquals(List.of("1", "2", "3", "4"), versions(connection));
         }
     }
 

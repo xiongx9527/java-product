@@ -155,12 +155,12 @@ class PostgresMetadbMigrationTest {
                 "SELECT COUNT(*) FROM information_schema.tables "
                         + "WHERE table_schema = 'public' AND table_type = 'BASE TABLE' "
                         + "AND table_name <> 'flyway_schema_history'", Integer.class);
-        assertEquals(35, tables, "PostgreSQL 空库应迁移出 35 张元数据表");
+        assertEquals(36, tables, "PostgreSQL 空库应迁移出 36 张元数据表");
         assertEquals(1, count("sys_user"));
         assertEquals(12, count("sys_arg"));
         assertEquals(3, count("system_variable"));
         assertEquals(19, count("core_field"));
-        assertEquals(Arrays.asList("1", "2"), jdbc.queryForList(
+        assertEquals(Arrays.asList("1", "2", "3", "4"), jdbc.queryForList(
                 "SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL "
                         + "ORDER BY installed_rank", String.class));
 

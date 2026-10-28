@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.datasource.excel;
 
+import com.xiongx9527.askdata.common.storage.AskdataFileStorage;
 import com.xiongx9527.askdata.common.util.ExcelReadSupport;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.datasource.DatasourceException;
@@ -72,14 +73,33 @@ public class ExcelService {
 
     private final MessageResolver messageResolver;
 
+    /** 共享文件存储：非空且可用时上传落对象存储，解析/导入按文件名跨实例回源。 */
+    private final AskdataFileStorage fileStorage;
+
+    /** 文本列的 DDL 类型（按元数据库方言决定 VARCHAR / TEXT）。 */
+    private final String textColumnType;
+
+    /** 存储路径前缀（对象存储内的目录名）。 */
+    private static final String STORAGE_PATH = "excel";
+
     public ExcelService(JdbcTemplate appJdbc, JdbcEngine engine,
                         @org.springframework.beans.factory.annotation.Value("${askdata.excel.path:./data/excel}")
                                 String excelPath, MessageResolver messageResolver) {
+        this(appJdbc, engine, excelPath, messageResolver, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ExcelService(JdbcTemplate appJdbc, JdbcEngine engine,
+                        @org.springframework.beans.factory.annotation.Value("${askdata.excel.path:./data/excel}")
+                                String excelPath, MessageResolver messageResolver,
+                        AskdataFileStorage fileStorage) {
         this.appJdbc = appJdbc;
         this.engine = engine;
         this.excelDir = Paths.get(excelPath == null || excelPath.isEmpty() ? "./data/excel" : excelPath)
                 .toAbsolutePath().normalize();
         this.messageResolver = messageResolver;
+        this.fileStorage = fileStorage;
+        this.textColumnType = resolveTextColumnType(appJdbc);
     }
 
     // ------------------------------------------------------------------
@@ -113,10 +133,10 @@ public class ExcelService {
      * 返回 {@code {"filename": filePath, "sheets": [{sheetName, tableName, tableComment, rows}]}}。
      */
     public Map<String, Object> importToDb(String filePath, List<Map<String, Object>> sheets) {
-        Path file = resolveStored(filePath);
-        String extension = extensionOf(file.getFileName().toString());
+        String filename = baseName(filePath);
+        String extension = extensionOf(filename);
         Map<String, SheetTable> tablesByName = new LinkedHashMap<>();
-        for (SheetTable table : readAll(file.getFileName().toString(), extension)) {
+        for (SheetTable table : readAll(filename, extension)) {
             tablesByName.put(table.sheetName, table);
         }
         List<Map<String, Object>> result = new ArrayList<>();
@@ -405,16 +425,22 @@ public class ExcelService {
         }
     }
 
+    /**
+     * 读取已保存的上传文件。
+     *
+     * <p>先查本地上传目录（单实例/本地平台），未命中再按「存储路径 + 文件名」从共享文件存储回源，
+     * 使「A 实例上传、B 实例导入」成立。</p>
+     */
     private List<SheetTable> readAll(String filename, String extension) {
-        Path file = excelDir.resolve(filename);
-        if (!Files.isRegularFile(file)) {
+        byte[] bytes = readStoredBytes(filename);
+        if (bytes == null) {
             throw new DatasourceException("File not found");
         }
         try {
             if ("csv".equals(extension)) {
-                return readCsv(new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
+                return readCsv(new String(bytes, StandardCharsets.UTF_8));
             }
-            try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(Files.readAllBytes(file)))) {
+            try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
                 List<SheetTable> result = new ArrayList<>();
                 for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
                     Sheet sheet = workbook.getSheetAt(i);
@@ -640,7 +666,7 @@ public class ExcelService {
         }
     }
 
-    private static String columnType(String fieldType) {
+    private String columnType(String fieldType) {
         switch (fieldType) {
             case "int":
                 return "BIGINT";
@@ -651,8 +677,22 @@ public class ExcelService {
             default:
                 // 文本列用 VARCHAR：CLOB 在 H2 下 getObject 返回 Clob/Reader，序列化会出现
                 // No serializer found for class java.io.BufferedReader
-                return "VARCHAR(" + STRING_COLUMN_LENGTH + ")";
+                return textColumnType;
         }
+    }
+
+    /**
+     * 文本列的 DDL 类型（按元数据库方言选择）。
+     *
+     * <p>H2 允许 {@code VARCHAR(65535)}；MySQL 的 VARCHAR 上限是 16383 字符（utf8mb4），
+     * 超出会直接报 {@code Column length too big}，因此 MySQL/PostgreSQL 统一用 {@code TEXT}。</p>
+     */
+    private static String resolveTextColumnType(JdbcTemplate jdbc) {
+        String product = com.xiongx9527.askdata.common.util.MetadbSql.databaseProduct(jdbc);
+        if (product.contains("mysql") || product.contains("mariadb") || product.contains("postgres")) {
+            return "TEXT";
+        }
+        return "VARCHAR(" + STRING_COLUMN_LENGTH + ")";
     }
 
     /** 按用户选择的字段类型转换值（对齐 SQLBot read_import_dataframe 的 int 舍入/空值语义）。 */
@@ -764,6 +804,16 @@ public class ExcelService {
             throw new DatasourceException("Only support .xlsx/.xls/.csv");
         }
         String filename = ExcelReadSupport.randomizeFileName(originalName);
+        // 集群：优先落共享文件存储，使「A 实例上传、B 实例导入」成立
+        if (fileStorage != null && fileStorage.enabled()) {
+            try {
+                // 返回平台实际存储名（x-file-storage 会重命名为 uuid.ext），后续按该名回源查找
+                return fileStorage.save(file.getBytes(), filename, STORAGE_PATH,
+                        AskdataFileStorage.contentTypeOf(filename)).filename();
+            } catch (Exception e) {
+                throw new DatasourceException("Save excel failed: " + e.getMessage(), e);
+            }
+        }
         try {
             Files.createDirectories(excelDir);
             file.transferTo(excelDir.resolve(filename).toFile());
@@ -773,15 +823,37 @@ public class ExcelService {
         return filename;
     }
 
-    private Path resolveStored(String filePath) {
-        if (filePath == null || filePath.isEmpty()) {
-            throw new DatasourceException("File not found");
+    /**
+     * 读取已保存的上传文件字节：本地上传目录优先（单实例/本地平台），未命中再按文件名回源共享存储。
+     *
+     * @return 文件字节；两处都不存在时返回 null（由调用方报 File not found）
+     */
+    private byte[] readStoredBytes(String filename) {
+        if (filename == null || filename.isEmpty()) {
+            return null;
         }
-        Path resolved = excelDir.resolve(filePath).normalize();
-        if (!resolved.startsWith(excelDir) || !Files.isRegularFile(resolved)) {
-            throw new DatasourceException("File not found");
+        Path local = excelDir.resolve(filename).normalize();
+        if (local.startsWith(excelDir) && Files.isRegularFile(local)) {
+            try {
+                return Files.readAllBytes(local);
+            } catch (IOException e) {
+                throw new DatasourceException("Read excel failed: " + e.getMessage(), e);
+            }
         }
-        return resolved;
+        if (fileStorage != null && fileStorage.enabled()) {
+            return fileStorage.readByName(STORAGE_PATH, filename);
+        }
+        return null;
+    }
+
+    /** 取文件名部分（兼容调用方传入带目录的引用）。 */
+    private static String baseName(String filePath) {
+        if (filePath == null) {
+            return "";
+        }
+        String path = filePath.trim();
+        int slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        return slash >= 0 ? path.substring(slash + 1) : path;
     }
 
     private static String extensionOf(String filename) {

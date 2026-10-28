@@ -30,6 +30,14 @@ public class SettingsFileController {
     @Value("${askdata.excel.path:./data/excel}")
     private String excelPath;
 
+    /** 共享文件存储（可选）：本机没有该文件时按文件名回源。 */
+    private com.xiongx9527.askdata.common.storage.AskdataFileStorage fileStorage;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setFileStorage(com.xiongx9527.askdata.common.storage.AskdataFileStorage fileStorage) {
+        this.fileStorage = fileStorage;
+    }
+
     private final com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver;
 
     public SettingsFileController(com.xiongx9527.askdata.common.i18n.MessageResolver messageResolver) {
@@ -49,13 +57,22 @@ public class SettingsFileController {
         if (!filename.endsWith("_error.xlsx")) {
             throw new BadRequestException(messageResolver.get("settings.file.only.error.xlsx"));
         }
-        File target = new File(excelPath, new File(filename).getName());
-        if (!target.exists() || !target.isFile()) {
+        String name = new File(filename).getName();
+        File target = new File(excelPath, name);
+        if (target.exists() && target.isFile()) {
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + "\"")
+                    .contentType(XLSX)
+                    .body(new FileSystemResource(target));
+        }
+        // 集群：文件由其它实例生成时从共享文件存储回源
+        byte[] bytes = fileStorage == null ? null : fileStorage.readByName("excel", name);
+        if (bytes == null) {
             throw new BadRequestException(messageResolver.get("settings.file.not.exists"));
         }
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + target.getName() + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + "\"")
                 .contentType(XLSX)
-                .body(new FileSystemResource(target));
+                .body(new org.springframework.core.io.ByteArrayResource(bytes));
     }
 }

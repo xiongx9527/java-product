@@ -240,3 +240,34 @@ spring:
 - 选中平台缺少必填项或平台名未知时，启动日志输出 `文件存储平台配置不可用（…），已回退 local` 并回退 local，服务照常启动。
 - 启动日志 `文件存储平台: <name>` 表示实际生效平台，便于部署核对。
 - 真实环境验证：`e2e/probe-storage.mjs`（上传 → 读回内容比对 → 替换后旧对象删除）。
+
+## 多实例集群（`--spring.profiles.active=cluster`）
+
+单实例是默认形态（H2 + 本地文件 + 进程内会话）。多实例必须把「进程内状态」换成共享基础设施：
+
+| 依赖 | 用途 | 不共享的症状 |
+| --- | --- | --- |
+| MySQL / PostgreSQL | 元数据库 | 各实例各一份数据 |
+| Redis | 会话、缓存、防抖、单例锁、MCP SSE 消息路由 | 登录随机 401、权限变更不生效、MCP 404 |
+| 对象存储 | 业务文件（Excel/导出/图片/logo） | 上传在 A、下载在 B 时 404 |
+
+```bash
+java -jar askdata-server.jar --spring.profiles.active=cluster
+```
+
+`application-cluster.yaml` 一次性打开共享化开关，并在启动期执行**集群就绪自检**：
+逐项检查元数据库、应用密钥、会话存储、缓存后端、单例锁、文件存储、雪花 workerId、MCP 会话，
+输出可读诊断；`ASKDATA_CLUSTER_FAIL_FAST=true` 时存在不满足项会拒绝启动。
+
+要点：
+
+- `ASKDATA_SECRET_KEY` 必须在所有实例上一致，否则跨实例无法解密数据源密码等密文。
+- Excel 上传与导入、定时任务导出、术语/训练错误明细、图表图片 token 映射均已走共享存储，
+  请求落到任意实例都能读回。
+- 定时任务执行权带租约（`askdata.scheduled.lease-seconds`）：节点被强杀后 `running` 残留会在租约到期后
+  被其它实例回收，不会永久卡死。
+- MCP `http-sse` 在启用 Redis 时自动使用框架的 `RedisServerSseRegistry`（pub/sub 跨实例路由），
+  不需要粘性会话；未启用 Redis 时才需要负载均衡粘性。
+
+完整说明（配置矩阵、容量换算、错误对照）见 [docs/cluster-deployment.md](docs/cluster-deployment.md)；
+最小可运行编排见 `e2e/docker-compose.cluster.yml`，验证脚本 `e2e/probe-cluster.mjs`。

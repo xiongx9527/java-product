@@ -18,6 +18,25 @@ public final class MetadbSql {
     }
 
     /**
+     * 当前元数据库产品名（小写；取不到时返回空串）。
+     *
+     * <p>用于需要按方言选择 DDL 类型的场景（例如 MySQL 的 VARCHAR 长度上限远小于 H2）。</p>
+     */
+    public static String databaseProduct(JdbcTemplate jdbc) {
+        try {
+            if (jdbc.getDataSource() == null) {
+                return "";
+            }
+            try (Connection connection = jdbc.getDataSource().getConnection()) {
+                String product = connection.getMetaData().getDatabaseProductName();
+                return product == null ? "" : product.toLowerCase(Locale.ROOT);
+            }
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    /**
      * 返回当前元数据库下 {@code sql} 列可用的标识符写法。
      *
      * @param jdbc 元数据库 JdbcTemplate

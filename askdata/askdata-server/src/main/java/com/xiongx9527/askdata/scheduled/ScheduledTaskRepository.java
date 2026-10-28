@@ -86,24 +86,44 @@ public class ScheduledTaskRepository {
                 + "ORDER BY create_time DESC", taskMapper, oid);
     }
 
-    /** 到期待执行任务（启用、未在运行、next_run_at 已到）。 */
+    /**
+     * 到期待执行任务（启用、可抢占、next_run_at 已到）。
+     *
+     * <p>可抢占 = 未运行，或运行中但租约已过期（执行实例被强杀留下的 running 残留）。
+     * {@code lock_expire_at} 为 NULL 的历史行不参与回收，避免滚动升级时抢走旧版本仍在执行的任务。</p>
+     */
     public List<ScheduledTask> dueTasks(long now, int limit) {
         return jdbc.query("SELECT " + TASK_COLUMNS + " FROM scheduled_task "
-                        + "WHERE enabled = TRUE AND running = FALSE AND next_run_at IS NOT NULL "
-                        + "AND next_run_at <= ? ORDER BY next_run_at LIMIT ?",
-                taskMapper, now, limit);
+                        + "WHERE enabled = TRUE AND (running = FALSE OR lock_expire_at < ?) "
+                        + "AND next_run_at IS NOT NULL AND next_run_at <= ? "
+                        + "ORDER BY next_run_at LIMIT ?",
+                taskMapper, now, now, limit);
     }
 
-    /** 抢占任务（并发安全：仅当未运行时置 running=TRUE）。 */
-    public boolean claim(long id, long now) {
-        return jdbc.update("UPDATE scheduled_task SET running = TRUE, update_time = ? "
-                + "WHERE id = ? AND running = FALSE", now, id) == 1;
+    /**
+     * 抢占任务（并发安全：未运行，或原持有者租约已过期）。
+     *
+     * @param owner      当前实例标识
+     * @param leaseUntil 租约到期时间（毫秒时间戳）
+     * @return true 表示本实例取得执行权
+     */
+    public boolean claim(long id, String owner, long now, long leaseUntil) {
+        return jdbc.update("UPDATE scheduled_task SET running = TRUE, lock_owner = ?, lock_expire_at = ?, "
+                + "update_time = ? WHERE id = ? AND (running = FALSE OR lock_expire_at < ?)",
+                owner, leaseUntil, now, id, now) == 1;
+    }
+
+    /** 续租（仅持有者可以续；返回 false 表示租约已丢失）。 */
+    public boolean renew(long id, String owner, long leaseUntil) {
+        return jdbc.update("UPDATE scheduled_task SET lock_expire_at = ? WHERE id = ? AND lock_owner = ?",
+                leaseUntil, id, owner) == 1;
     }
 
     /** 释放任务并写入上次执行时间与下一次执行时间。 */
     public void release(long id, Long lastRunAt, Long nextRunAt, long now) {
-        jdbc.update("UPDATE scheduled_task SET running = FALSE, last_run_at = ?, next_run_at = ?, "
-                + "update_time = ? WHERE id = ?", lastRunAt, nextRunAt, now, id);
+        jdbc.update("UPDATE scheduled_task SET running = FALSE, lock_owner = NULL, lock_expire_at = NULL, "
+                + "last_run_at = ?, next_run_at = ?, update_time = ? WHERE id = ?",
+                lastRunAt, nextRunAt, now, id);
     }
 
     /** 启用/停用任务并重置下一次执行时间。 */

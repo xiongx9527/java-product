@@ -18,6 +18,17 @@ import java.util.Map;
 @Service
 public class ScheduledTaskService {
 
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(ScheduledTaskService.class);
+
+    /** 共享文件存储（可选）：导出文件跨实例下载。 */
+    private com.xiongx9527.askdata.common.storage.AskdataFileStorage fileStorage;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setFileStorage(com.xiongx9527.askdata.common.storage.AskdataFileStorage fileStorage) {
+        this.fileStorage = fileStorage;
+    }
+
     private final ScheduledTaskRepository repository;
 
     private final ScheduledTaskExecutor executor;
@@ -131,7 +142,7 @@ public class ScheduledTaskService {
     public Map<String, Object> runNow(long id) {
         ScheduledTask task = requireOwned(id, currentUserService.currentUser());
         long now = System.currentTimeMillis();
-        if (!repository.claim(id, now)) {
+        if (!repository.claim(id, com.xiongx9527.askdata.cluster.NodeIdentity.value(), now, executor.leaseUntil(now))) {
             throw new BadRequestException(messageResolver.get("scheduled.task.running", id));
         }
         return runView(executor.execute(task, ScheduledTaskRun.TRIGGER_MANUAL));
@@ -143,10 +154,49 @@ public class ScheduledTaskService {
                 .orElseThrow(() -> new BadRequestException(messageResolver.get("scheduled.run.not.found", runId)));
         ScheduledTask task = requireOwned(previous.getTaskId(), currentUserService.currentUser());
         long now = System.currentTimeMillis();
-        if (!repository.claim(task.getId(), now)) {
+        if (!repository.claim(task.getId(), com.xiongx9527.askdata.cluster.NodeIdentity.value(), now, executor.leaseUntil(now))) {
             throw new BadRequestException(messageResolver.get("scheduled.task.running", task.getId()));
         }
         return runView(executor.execute(task, ScheduledTaskRun.TRIGGER_RETRY));
+    }
+
+    /**
+     * 下载某次运行的导出文件。
+     *
+     * <p>集群语义：优先按共享文件存储的引用读取（任意实例可服务）；历史记录里的本地绝对路径
+     * 仍按本机文件读取，保持对旧数据的兼容。</p>
+     */
+    public ExportFile exportFile(long runId) {
+        ScheduledTaskRun run = repository.findRun(runId)
+                .orElseThrow(() -> new BadRequestException(
+                        messageResolver.get("scheduled.run.not.found", runId)));
+        requireOwned(run.getTaskId(), currentUserService.currentUser());
+        String path = run.getExportPath();
+        if (path == null || path.isBlank()) {
+            throw new BadRequestException(messageResolver.get("scheduled.run.no.export", runId));
+        }
+        if (fileStorage != null && fileStorage.enabled() && fileStorage.info(path) != null) {
+            return new ExportFile(fileNameOf(path), fileStorage.read(path));
+        }
+        try {
+            java.nio.file.Path local = java.nio.file.Paths.get(path);
+            if (java.nio.file.Files.isRegularFile(local)) {
+                return new ExportFile(local.getFileName().toString(),
+                        java.nio.file.Files.readAllBytes(local));
+            }
+        } catch (Exception e) {
+            log.debug("读取导出文件失败 {}: {}", path, e.getMessage());
+        }
+        throw new BadRequestException(messageResolver.get("scheduled.run.no.export", runId));
+    }
+
+    /** 导出文件（下载响应用）。 */
+    public record ExportFile(String filename, byte[] content) {
+    }
+
+    private static String fileNameOf(String path) {
+        int slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        return slash >= 0 ? path.substring(slash + 1) : path;
     }
 
     /** 运行历史（倒序，最多 50 条）。 */

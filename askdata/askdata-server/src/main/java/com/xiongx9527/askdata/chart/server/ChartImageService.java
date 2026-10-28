@@ -53,6 +53,12 @@ public class ChartImageService {
     private static final Pattern TOKEN_PATTERN = Pattern.compile("^[0-9a-f]{32}$");
     private static final long DEFAULT_TTL_MS = 86_400_000L; // 24h
 
+    /** 清理任务每轮处理的过期条目上限（避免长事务）。 */
+    private static final int CLEANUP_BATCH = 500;
+
+    /** 清理任务的单实例守卫键。 */
+    private static final String CLEANUP_LOCK_KEY = "askdata:chart:cleanup";
+
     private final ChatChartBuilder chartBuilder;
     private final ChartImageRenderer renderer;
     private final ObjectMapper objectMapper;
@@ -72,6 +78,24 @@ public class ChartImageService {
     private String tokenStoreDirProp = "";
 
     private Path tokenStoreDir;
+
+    /**
+     * token 映射的共享存储（元数据库）。
+     *
+     * <p>多实例下必须落库：生成图片的实例与接收下载请求的实例通常不同。为空时退化为
+     * 本地 JSON（单机/单元测试场景）。</p>
+     */
+    private ChartTokenRepository tokenRepository;
+
+    /** 注入共享 token 映射仓储（无库场景/单元测试可不注入，退化为本地 JSON）。 */
+    @Autowired(required = false)
+    public void setTokenRepository(ChartTokenRepository tokenRepository) {
+        this.tokenRepository = tokenRepository;
+    }
+
+    /** 清理任务的单实例守卫（为空时不加锁，单机场景）。 */
+    @Autowired(required = false)
+    private com.xiongx9527.askdata.common.lock.SingleWorkerGuard singleWorkerGuard;
 
     @Autowired
     public ChartImageService(ChatChartBuilder chartBuilder, ChartImageRenderer renderer,
@@ -125,6 +149,39 @@ public class ChartImageService {
         }
     }
 
+    /**
+     * 持久化映射：有元数据库时落库（跨实例/重启可解析），否则写本地 JSON（无库降级）。
+     */
+    private void persist(String token, TokenEntry entry) {
+        if (tokenRepository != null) {
+            tokenRepository.save(token, entry.url(), entry.expiresAt());
+        } else {
+            saveStore();
+        }
+    }
+
+    /** 从元数据库补读映射（本机缓存未命中时）；不可用时返回 null。 */
+    private TokenEntry loadFromRepository(String token) {
+        if (tokenRepository == null) {
+            return null;
+        }
+        try {
+            java.util.Optional<ChartTokenRepository.Entry> found = tokenRepository.find(token);
+            if (found.isEmpty()) {
+                return null;
+            }
+            ChartTokenRepository.Entry e = found.get();
+            TokenEntry entry = new TokenEntry(e.url(), 0L, e.expireAt());
+            synchronized (storeLock) {
+                store.put(token, entry);
+            }
+            return entry;
+        } catch (Exception e) {
+            log.warn("chart token lookup failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
     private void saveStore() {
         try {
             Files.createDirectories(tokenStoreDir);
@@ -159,7 +216,7 @@ public class ChartImageService {
             TokenEntry entry = new TokenEntry(stored.url(), now, now + ttlMs);
             synchronized (storeLock) {
                 store.put(token, entry);
-                saveStore();
+                persist(token, entry);
             }
             String base = imageBaseUrl.endsWith("/") ? imageBaseUrl : imageBaseUrl + "/";
             return base + token;
@@ -184,6 +241,10 @@ public class ChartImageService {
             entry = store.get(token);
         }
         if (entry == null) {
+            // 跨实例：本机没有该 token 的缓存时回源元数据库
+            entry = loadFromRepository(token);
+        }
+        if (entry == null) {
             return null;
         }
         if (System.currentTimeMillis() > entry.expiresAt()) {
@@ -201,7 +262,15 @@ public class ChartImageService {
     private void removeExpired(String token, TokenEntry entry) {
         synchronized (storeLock) {
             store.remove(token);
-            saveStore();
+            if (tokenRepository != null) {
+                try {
+                    tokenRepository.delete(token);
+                } catch (Exception e) {
+                    log.debug("chart token row delete failed (token cleared): {}", e.getMessage());
+                }
+            } else {
+                saveStore();
+            }
         }
         try {
             fileStorage.delete(entry.url());
@@ -216,6 +285,9 @@ public class ChartImageService {
      * @return number of expired entries removed this pass
      */
     public int cleanupExpired() {
+        if (tokenRepository != null) {
+            return cleanupFromRepository();
+        }
         long now = System.currentTimeMillis();
         List<String> expired = new ArrayList<>();
         synchronized (storeLock) {
@@ -245,13 +317,75 @@ public class ChartImageService {
         return expired.size();
     }
 
-    /** Periodic cleanup (relies on ScheduledTaskConfig's @EnableScheduling; never breaks main flow). */
+    /**
+     * 按元数据库清理过期 token：先删文件再删映射（映射删失败会在下一轮重试）。
+     *
+     * @return 本轮删除的映射条数
+     */
+    private int cleanupFromRepository() {
+        long now = System.currentTimeMillis();
+        List<ChartTokenRepository.Entry> expired;
+        try {
+            expired = tokenRepository.findExpired(now, CLEANUP_BATCH);
+        } catch (Exception e) {
+            log.debug("chart token expired query failed: {}", e.getMessage());
+            return 0;
+        }
+        int removed = 0;
+        for (ChartTokenRepository.Entry e : expired) {
+            try {
+                fileStorage.delete(e.url());
+            } catch (Exception ignored) {
+                // 文件可能已被外部删除，继续删映射
+            }
+            try {
+                if (tokenRepository.delete(e.token())) {
+                    removed++;
+                }
+            } catch (Exception ex) {
+                log.debug("chart token row delete failed {}: {}", e.token(), ex.getMessage());
+            }
+            synchronized (storeLock) {
+                store.remove(e.token());
+            }
+        }
+        if (removed > 0) {
+            log.info("chart image TTL cleanup removed {} expired token(s)", removed);
+        }
+        return removed;
+    }
+
+    /**
+     * 周期清理（依赖 @EnableScheduling）。集群下用单实例守卫保证同一轮只有一个实例执行，
+     * 避免多实例同时删除同一批文件。
+     */
     @Scheduled(fixedDelayString = "${askdata.chart.cleanup-interval-ms:3600000}")
     public void scheduledCleanup() {
+        String key = CLEANUP_LOCK_KEY;
+        boolean acquired = true;
+        if (singleWorkerGuard != null) {
+            try {
+                acquired = singleWorkerGuard.tryAcquire(key);
+            } catch (Exception e) {
+                log.debug("chart cleanup guard unavailable, run locally: {}", e.getMessage());
+            }
+        }
+        if (!acquired) {
+            log.debug("chart image cleanup skipped (another instance holds the guard)");
+            return;
+        }
         try {
             cleanupExpired();
         } catch (Exception e) {
             log.debug("chart image scheduled cleanup error: {}", e.getMessage());
+        } finally {
+            if (singleWorkerGuard != null) {
+                try {
+                    singleWorkerGuard.release(key);
+                } catch (Exception e) {
+                    log.debug("chart cleanup guard release failed: {}", e.getMessage());
+                }
+            }
         }
     }
 

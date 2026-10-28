@@ -28,8 +28,8 @@ class H2MetadbMigrationTest {
             MetadbMigration.migrate(connection);
             assertEquals(1, count(connection, "sys_user"));
             assertEquals(12, count(connection, "sys_arg"));
-            assertEquals(35, tableCount(connection));
-            assertEquals(List.of("1", "2"), versions(connection));
+            assertEquals(36, tableCount(connection));
+            assertEquals(List.of("1", "2", "3", "4"), versions(connection));
         }
     }
 
@@ -47,8 +47,8 @@ class H2MetadbMigrationTest {
 
             assertEquals(1, count(connection, "sys_user"), "旧库种子不应重复插入");
             assertEquals(12, count(connection, "sys_arg"), "旧库种子不应重复插入");
-            assertEquals(35, tableCount(connection));
-            assertEquals(List.of("2"), versions(connection), "旧库应以 V2 为基线");
+            assertEquals(36, tableCount(connection));
+            assertEquals(List.of("2", "3", "4"), versions(connection), "旧库应以 V2 为基线，后续版本继续增量迁移");
         }
     }
 

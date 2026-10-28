@@ -19,6 +19,9 @@ public class ScheduledTaskProperties {
     /** 默认导出目录。 */
     private String exportDir = "./data/exports";
 
+    /** 任务执行权租约（秒）：执行期间按 1/3 周期续租，进程被强杀后到期可被其它实例回收。 */
+    private long leaseSeconds = 300L;
+
     /** 推送 webhook 超时（秒）。 */
     private int pushTimeoutSeconds = 10;
 
@@ -31,6 +34,8 @@ public class ScheduledTaskProperties {
     public void setPollIntervalMs(long pollIntervalMs) { this.pollIntervalMs = pollIntervalMs; }
     public String getExportDir() { return exportDir; }
     public void setExportDir(String exportDir) { this.exportDir = exportDir; }
+    public long getLeaseSeconds() { return leaseSeconds; }
+    public void setLeaseSeconds(long leaseSeconds) { this.leaseSeconds = Math.max(10L, leaseSeconds); }
     public int getPushTimeoutSeconds() { return pushTimeoutSeconds; }
     public void setPushTimeoutSeconds(int pushTimeoutSeconds) { this.pushTimeoutSeconds = pushTimeoutSeconds; }
     public int getWorkerThreads() { return workerThreads; }

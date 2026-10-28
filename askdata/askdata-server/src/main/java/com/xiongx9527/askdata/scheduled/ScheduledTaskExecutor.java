@@ -64,6 +64,14 @@ public class ScheduledTaskExecutor {
 
     private final MessageResolver messageResolver;
 
+    /** 共享文件存储（可选）：导出文件跨实例访问。 */
+    private com.xiongx9527.askdata.common.storage.AskdataFileStorage fileStorage;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setFileStorage(com.xiongx9527.askdata.common.storage.AskdataFileStorage fileStorage) {
+        this.fileStorage = fileStorage;
+    }
+
     public ScheduledTaskExecutor(ScheduledTaskRepository repository, DatasourceService datasourceService,
                                  SchemaContextBuilder schemaContextBuilder, ChatModelClient modelClient,
                                  ChatModelRouter modelRouter, ScheduledTaskProperties properties,
@@ -85,8 +93,17 @@ public class ScheduledTaskExecutor {
      * @param triggerType SCHEDULE / MANUAL / RETRY
      * @return 已完成的运行记录（状态 SUCCESS/FAILED）
      */
+    /** 当前租约到期时间（调度抢占与手动执行共用同一租约口径）。 */
+    public long leaseUntil(long now) {
+        return now + Math.max(10L, properties.getLeaseSeconds()) * 1000L;
+    }
+
     public ScheduledTaskRun execute(ScheduledTask task, String triggerType) {
         long startedAt = System.currentTimeMillis();
+        // 集群：执行期间持续续租，进程被强杀时租约到期即可被其它实例回收
+        LeaseHeartbeat heartbeat = LeaseHeartbeat.start(repository, task.getId(),
+                com.xiongx9527.askdata.cluster.NodeIdentity.value(),
+                Math.max(10L, properties.getLeaseSeconds()) * 1000L);
         ScheduledTaskRun run = new ScheduledTaskRun();
         run.setTaskId(task.getId());
         run.setOid(task.getOid());
@@ -136,6 +153,7 @@ public class ScheduledTaskExecutor {
             error = e.getMessage() == null ? e.toString() : e.getMessage();
             log.warn("定时任务执行失败 task={}: {}", task.getId(), error);
         } finally {
+            heartbeat.close();
             long finishedAt = System.currentTimeMillis();
             String status = error == null ? ScheduledTaskRun.STATUS_SUCCESS : ScheduledTaskRun.STATUS_FAILED;
             repository.finishRun(runId, status, sql, rowCount, exportPath, error, finishedAt,
@@ -179,6 +197,12 @@ public class ScheduledTaskExecutor {
                 ? ChatExcel.Format.CSV : ChatExcel.Format.XLSX;
         String title = task.getName() == null ? "scheduled" : task.getName().replaceAll("[\\\\/:*?\"<>|]", "_");
         ChatExcel.ExportFile file = ChatExcel.exportResult(excelFormat, fields, rows, title);
+        // 集群：导出文件落共享文件存储，export_path 存可跨节点解析的引用
+        if (fileStorage != null && fileStorage.enabled()) {
+            String contentType = "csv".equalsIgnoreCase(format.trim()) ? "text/csv"
+                    : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            return fileStorage.save(file.content, file.filename, "scheduled", contentType).url();
+        }
         String dir = task.getExportPath() == null || task.getExportPath().trim().isEmpty()
                 ? properties.getExportDir() : task.getExportPath().trim();
         Path target = Paths.get(dir, file.filename);

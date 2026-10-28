@@ -76,6 +76,14 @@ fw:
 
 # 数据源 Excel 上传文件目录（对齐 SQLBot settings.EXCEL_PATH）
 askdata:
+  # 集群模式（多实例）：开启后启动期执行就绪自检，逐项核对「任意实例处理任意请求」所需的
+  # 共享化前提（共享元数据库 / 统一密钥 / Redis 会话与缓存 / 远端对象存储 / 唯一 workerId /
+  # MCP 会话注册表）。缺省关闭，保持单实例零外部依赖启动。
+  # 集群基线见 application-cluster.yaml（--spring.profiles.active=cluster）。
+  cluster:
+    enabled: ${ASKDATA_CLUSTER_ENABLED:false}
+    # true：自检存在不满足项时拒绝启动；false：只输出 ERROR 级诊断后继续
+    fail-fast: ${ASKDATA_CLUSTER_FAIL_FAST:false}
   excel:
     path: ./data/excel
   # CORS 允许来源（等价 SQLBot BACKEND_CORS_ORIGINS；逗号/分号分隔）。
@@ -206,6 +214,9 @@ askdata:
     enabled: ${ASKDATA_SCHEDULED_ENABLED:true}
     poll-interval-ms: 30000
     export-dir: ./data/exports
+    # 任务执行权租约（秒）：抢占时写入到期时间，执行期间按 1/3 租约续租；
+    # 进程被强杀后 running 残留，到期即可被其它实例回收（集群必需）
+    lease-seconds: ${ASKDATA_SCHEDULED_LEASE_SECONDS:300}
     push-timeout-seconds: 10
 
   # A27：向量召回阈值（术语 / SQL 示例 / 表级召回共用）。
@@ -240,9 +251,6 @@ askdata:
     aes-key: ${ASKDATA_EMBEDDED_AES_KEY:}
     legacy-hmac-enabled: ${ASKDATA_EMBEDDED_LEGACY_HMAC_ENABLED:false}
 
-  # 通用文件存储（x-file-storage）本地平台根目录；切 OSS/MinIO 等远端平台时由下方 dromara.x-file-storage 配置。
-  file-storage:
-    local-path: ./data/files
 
 # MCP server：复用 fw-plus 封装（fw-plus-ai-mcp-server-spring-boot-starter），取代手写 JSON-RPC。
 # 前缀固定为 fw-plus.ai.mcp.*；缺省即开；传输 http-sse（GET /mcp/sse 建流 + POST /mcp/messages/{uuid}）。

@@ -57,6 +57,10 @@ public class TerminologyService {
     @Value("${askdata.excel.path:./data/excel}")
     private String excelPath;
 
+    /** 共享文件存储（可选）：错误明细等导出文件的跨实例访问入口。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.xiongx9527.askdata.common.storage.AskdataFileStorage fileStorage;
+
     @Autowired
     public TerminologyService(TerminologyRepository terminologyRepository, CurrentUserService currentUserService,
                               DatasourceNameLookup datasourceNameLookup, AuditRecorder auditRecorder,
@@ -458,12 +462,18 @@ public class TerminologyService {
         columns.add(new ExcelUtils.Column("全部数据源", "all_data_sources"));
         columns.add(new ExcelUtils.Column("高级应用", "advanced_application_name"));
         columns.add(new ExcelUtils.Column("错误信息", "errors"));
+        byte[] bytes = excelBytes(columns, failed);
+        // 集群：错误明细落共享文件存储，使下载请求落到任意实例都能取到
+        if (fileStorage != null && fileStorage.enabled()) {
+            fileStorage.save(bytes, errorFilename, "excel",
+                    com.xiongx9527.askdata.common.storage.AskdataFileStorage.contentTypeOf(errorFilename));
+            return errorFilename;
+        }
         File target = new File(excelPath, errorFilename);
         File parent = target.getParentFile();
         if (parent != null && !parent.exists() && !parent.mkdirs()) {
             throw new IOException("Cannot create excel directory: " + parent);
         }
-        byte[] bytes = excelBytes(columns, failed);
         try (OutputStream out = new FileOutputStream(target)) {
             out.write(bytes);
             out.flush();

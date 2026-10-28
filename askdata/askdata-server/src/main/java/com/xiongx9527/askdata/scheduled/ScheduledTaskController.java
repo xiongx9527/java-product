@@ -69,5 +69,21 @@ public class ScheduledTaskController {
     public Result<List<Map<String, Object>>> runs(@PathVariable long taskId) {
         return Result.ok(service.runs(taskId));
     }
+
+    /**
+     * 下载某次运行的导出文件（集群：导出落共享文件存储，任意实例均可服务）。
+     */
+    @GetMapping({"/scheduled_task/run/{runId}/export"})
+    public org.springframework.http.ResponseEntity<byte[]> downloadExport(@PathVariable long runId) {
+        ScheduledTaskService.ExportFile file = service.exportFile(runId);
+        String lower = file.filename().toLowerCase(java.util.Locale.ROOT);
+        String contentType = lower.endsWith(".csv") ? "text/csv"
+                : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        return org.springframework.http.ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + file.filename() + "\"")
+                .contentType(org.springframework.http.MediaType.parseMediaType(contentType))
+                .body(file.content());
+    }
 }
 

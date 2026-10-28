@@ -1,0 +1,10 @@
+# 集群编排用的运行镜像：直接复用已构建的可执行 jar（mvn -pl askdata/askdata-server -am -DskipTests package）。
+FROM eclipse-temurin:17-jre
+
+WORKDIR /app
+COPY target/*.jar /app/app.jar
+
+EXPOSE 8000
+
+# 容器内 PID 恒为 1，雪花 workerId 依赖框架 WORKER_NODE 表分配（共享元数据库），不依赖 PID。
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]

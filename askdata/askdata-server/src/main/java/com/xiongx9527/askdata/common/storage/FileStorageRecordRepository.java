@@ -55,6 +55,18 @@ public class FileStorageRecordRepository {
         return rows.isEmpty() ? Optional.empty() : Optional.of(toFileInfo(rows.get(0)));
     }
 
+    /**
+     * 按存储路径 + 存储文件名反查（业务侧只有文件名时的跨实例回源路径）。
+     *
+     * <p>文件名由上传时随机化，同一 path 下唯一；取最新一条以覆盖同名重传。</p>
+     */
+    public Optional<FileInfo> findByPathAndFilename(String path, String filename) {
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT " + COLUMNS + " FROM file_storage WHERE path = ? AND filename = ? "
+                        + "ORDER BY create_time DESC LIMIT 1", path, filename);
+        return rows.isEmpty() ? Optional.empty() : Optional.of(toFileInfo(rows.get(0)));
+    }
+
     public Optional<FileInfo> findById(String id) {
         List<Map<String, Object>> rows = jdbc.queryForList(
                 "SELECT " + COLUMNS + " FROM file_storage WHERE id = ?", id);
