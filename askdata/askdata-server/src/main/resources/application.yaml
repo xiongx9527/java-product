@@ -277,18 +277,66 @@ logging:
   level:
     root: INFO
     org.springframework.web: INFO
+    # A15：x-file-storage 自动装配的默认 no-op recorder 会被 @EnableFileStorage 提前注册，
+    # 即使 askdata 已用 @Primary 落库实现接管注入，它仍会打一条误导性 WARN
+    # 「没有找到 FileRecorder 的实现类」。该实现对业务无作用，这里关闭其 WARN。
+    org.dromara.x.file.storage.spring.FileStorageAutoConfiguration: ERROR
+    # A15：fw-plus 的 WebMvcCommonFilter 对任何非 2xx 都打 WARN，导致外部探测（/v1/models）
+    # 与浏览器缺省请求（/favicon.ico）周期性刷屏。业务错误的可读信息由 ApiExceptionHandler
+    # 落日志，这里只保留 ERROR 及以上，避免噪声淹没真实告警。
+    com.xiongx9527.fw.plus.boot.autoconfigure.web.webmvc.filter.WebMvcCommonFilter: ERROR
 
 # 通用文件存储 x-file-storage（对齐 SQLBot 文件存储）。默认本地平台（离线可用）；
 # 生产可改为 aliyun-oss / minio / tencent-cos 等远端平台（平台清单见 x-file-storage 文档），并同步切换 default-platform。
+# 平台切换：设置 FILE_STORAGE_PLATFORM=local|minio|aliyun-oss|tencent-cos（默认 local）。
+# 选中平台缺少必填配置时，启动阶段记录 WARN 并回退 local（见 StoragePlatformGuard），不影响启动。
 dromara:
   x-file-storage:
-    default-platform: local
+    default-platform: ${FILE_STORAGE_PLATFORM:local}
     local:
       - platform: local
         enable-storage: true
         base-path: ./data/files
         # domain 留空：文件经 /api/file/download 或各自业务端点访问，不直接暴露静态域名
         domain: ""
+    # MinIO（S3 兼容）：FILE_STORAGE_PLATFORM=minio 时启用
+    minio:
+      - platform: minio
+        enable-storage: ${MINIO_ENABLE:true}
+        access-key: ${MINIO_ACCESS_KEY:}
+        secret-key: ${MINIO_SECRET_KEY:}
+        end-point: ${MINIO_ENDPOINT:http://127.0.0.1:9000}
+        bucket-name: ${MINIO_BUCKET:askdata}
+        # 对外访问域名（可留空；留空时使用预签名 URL）
+        domain: ${MINIO_DOMAIN:}
+    # 阿里云 OSS：FILE_STORAGE_PLATFORM=aliyun-oss 时启用
+    aliyun-oss:
+      - platform: aliyun-oss
+        enable-storage: ${ALIYUN_OSS_ENABLE:true}
+        access-key: ${ALIYUN_OSS_ACCESS_KEY_ID:}
+        secret-key: ${ALIYUN_OSS_ACCESS_KEY_SECRET:}
+        end-point: ${ALIYUN_OSS_ENDPOINT:}
+        bucket-name: ${ALIYUN_OSS_BUCKET:}
+        domain: ${ALIYUN_OSS_DOMAIN:}
+    # 通用 S3 兼容存储（AWS S3 / Ceph RGW / 其它 S3 网关）：FILE_STORAGE_PLATFORM=amazon-s3 时启用
+    amazon-s3:
+      - platform: amazon-s3
+        enable-storage: ${AMAZON_S3_ENABLE:true}
+        access-key: ${AMAZON_S3_ACCESS_KEY_ID:}
+        secret-key: ${AMAZON_S3_SECRET_ACCESS_KEY:}
+        region: ${AMAZON_S3_REGION:us-east-1}
+        end-point: ${AMAZON_S3_ENDPOINT:}
+        bucket-name: ${AMAZON_S3_BUCKET:}
+        domain: ${AMAZON_S3_DOMAIN:}
+    # 腾讯云 COS：FILE_STORAGE_PLATFORM=tencent-cos 时启用
+    tencent-cos:
+      - platform: tencent-cos
+        enable-storage: ${TENCENT_COS_ENABLE:true}
+        secret-id: ${TENCENT_COS_SECRET_ID:}
+        secret-key: ${TENCENT_COS_SECRET_KEY:}
+        region: ${TENCENT_COS_REGION:}
+        bucket-name: ${TENCENT_COS_BUCKET:}
+        domain: ${TENCENT_COS_DOMAIN:}
 
 # API 文档（Knife4j UI + OpenAPI 3，对齐 SQLBot /docs + /openapi.json 的对外能力）：
 #   UI:  /doc.html     Knife4j 页面（knife4j-openapi3-ui 静态资源，免登录）

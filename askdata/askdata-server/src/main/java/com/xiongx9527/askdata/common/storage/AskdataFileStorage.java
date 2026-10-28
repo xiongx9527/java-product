@@ -38,8 +38,23 @@ public class AskdataFileStorage {
 
     private final FileStorageService fileStorageService;
 
+    /** 平台回退原因（由 StoragePlatformEnvironmentPostProcessor 写入；未回退时为空）。 */
+    @org.springframework.beans.factory.annotation.Value("${askdata.storage.platform-fallback:}")
+    private String fallbackReason;
+
     public AskdataFileStorage(FileStorageService fileStorageService) {
         this.fileStorageService = fileStorageService;
+        // A18/A19/A20：启动即暴露实际生效的平台，便于部署核对（缺项回退由 StoragePlatformEnvironmentPostProcessor 完成）
+        log.info("文件存储平台: {}", fileStorageService == null ? "disabled"
+                : String.valueOf(fileStorageService.getDefaultPlatform()));
+    }
+
+    /** 平台回退提示：字段注入完成后输出，保证运维能看到回退原因。 */
+    @jakarta.annotation.PostConstruct
+    void logFallback() {
+        if (fallbackReason != null && !fallbackReason.isEmpty()) {
+            log.warn("文件存储平台配置不可用（{}），已回退 local；如需启用请补全环境变量后重启", fallbackReason);
+        }
     }
 
     /** 存储是否可用（FileStorageService 已装配）。 */

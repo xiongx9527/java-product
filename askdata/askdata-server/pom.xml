@@ -30,6 +30,11 @@
         <justauth-spring-boot-starter.version>1.4.0</justauth-spring-boot-starter.version>
         <!-- 通用文件存储（对齐 SQLBot 文件存储）：本地默认，可配置切 OSS/MinIO 等 -->
         <x-file-storage.version>2.2.1</x-file-storage.version>
+        <!-- 对象存储 SDK：x-file-storage 的平台实现按 classpath 激活（MinIO / 阿里云 OSS / 腾讯云 COS） -->
+        <minio.version>8.5.17</minio.version>
+        <aliyun-oss.version>3.18.5</aliyun-oss.version>
+        <tencent-cos.version>5.6.247</tencent-cos.version>
+        <aws-s3.version>1.12.794</aws-s3.version>
     </properties>
 
 
@@ -408,6 +413,29 @@
                     <artifactId>hutool-core</artifactId>
                 </exclusion>
             </exclusions>
+        </dependency>
+        <!-- 对象存储平台 SDK（A18/A19/A20）：x-file-storage 依据 classpath 激活对应平台实现；
+             未配置平台凭据时不会发起连接，也不影响默认 local 平台启动 -->
+        <dependency>
+            <groupId>io.minio</groupId>
+            <artifactId>minio</artifactId>
+            <version>${minio.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.aliyun.oss</groupId>
+            <artifactId>aliyun-sdk-oss</artifactId>
+            <version>${aliyun-oss.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.qcloud</groupId>
+            <artifactId>cos_api</artifactId>
+            <version>${tencent-cos.version}</version>
+        </dependency>
+        <!-- 通用 S3 兼容对象存储（A22）：x-file-storage amazon-s3 平台使用 AWS SDK v1 -->
+        <dependency>
+            <groupId>com.amazonaws</groupId>
+            <artifactId>aws-java-sdk-s3</artifactId>
+            <version>${aws-s3.version}</version>
         </dependency>
 
         <!-- 数据源引擎 JDBC 驱动（A8：mysql/pg/h2/sqlite 随包提供；
