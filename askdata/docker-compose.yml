@@ -1,0 +1,100 @@
+version: "3.8"
+# 本地集群形态联调：应用(cluster profile) + MySQL + Redis + MinIO
+# 用法: docker compose up -d   (首次需 docker build 或已构建 askdata-server:latest)
+services:
+  mysql:
+    image: mysql:8
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpw}
+      MYSQL_DATABASE: askdata
+      MYSQL_USER: ${MYSQL_USER:-askdata}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-askdata}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD:-rootpw}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-redis123}"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis123}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minio123}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  # 向量库（可选）：启用语义召回 ANN 检索。ASKDATA_VECTOR_STORE_TYPE=qdrant 时生效。
+  # 不启用向量库也可运行（askdata.vector-store.type=none 时向量存元数据库 JSON 列 + 应用内余弦）。
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  askdata:
+    image: askdata-server:latest
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    # 挂载本地 embedding 模型目录（约 793MB，不进镜像/仓库）；缺失时自动降级词法召回。
+    volumes:
+      - ./models:/opt/askdata/models
+    environment:
+      SPRING_PROFILES_ACTIVE: cluster
+      ASKDATA_SECRET_KEY: ${ASKDATA_SECRET_KEY:-please-change-this-secret}
+      ASKDATA_DB_URL: jdbc:mysql://mysql:3306/askdata?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
+      ASKDATA_DB_USERNAME: ${MYSQL_USER:-askdata}
+      ASKDATA_DB_PASSWORD: ${MYSQL_PASSWORD:-askdata}
+      ASKDATA_REDIS_HOST: redis
+      ASKDATA_REDIS_PORT: "6379"
+      ASKDATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-redis123}
+      ASKDATA_CACHE_TYPE: redis
+      ASKDATA_SA_TOKEN_STORE: redis
+      ASKDATA_CLUSTER_ENABLED: "true"
+      FILE_STORAGE_PLATFORM: minio
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minio}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio123}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_BUCKET: askdata
+      # AI 模型开关：true 才会装配 ChatModel 并启用问数/助手链路。
+      # 实际的 LLM / 远程 embedding 连接信息在「系统 -> AI 模型」界面配置（写入 sys_ai_model），不在此硬编码。
+      ASKDATA_ASSISTANT_ENABLED: "true"
+      ASKDATA_EMBEDDING_MODEL_PATH: /opt/askdata/models
+      # 向量存储后端：qdrant（需上方 qdrant 服务）/ none（默认，DB JSON 列 + 应用内余弦）
+      ASKDATA_VECTOR_STORE_TYPE: qdrant
+      ASKDATA_QDRANT_URL: http://qdrant:6333
+      ASKDATA_QDRANT_GRPC_PORT: "6334"
+      ASKDATA_VECTOR_RECALL_THRESHOLD: "0.4"
+
+volumes:
+  mysql_data:
+  minio_data:
+  qdrant_data:

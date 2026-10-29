@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: askdata-qdrant
+  labels:
+    app: askdata-qdrant
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: askdata-qdrant
+  template:
+    metadata:
+      labels:
+        app: askdata-qdrant
+    spec:
+      containers:
+        - name: qdrant
+          image: qdrant/qdrant:latest
+          ports:
+            - name: rest
+              containerPort: 6333
+            - name: grpc
+              containerPort: 6334
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: rest
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: askdata-qdrant
+  labels:
+    app: askdata-qdrant
+spec:
+  type: ClusterIP
+  selector:
+    app: askdata-qdrant
+  ports:
+    - name: rest
+      port: 6333
+      targetPort: rest
+    - name: grpc
+      port: 6334
+      targetPort: grpc

@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: askdata-server
+  labels:
+    app: askdata-server
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: askdata-server
+  template:
+    metadata:
+      labels:
+        app: askdata-server
+    spec:
+      containers:
+        - name: askdata-server
+          image: askdata-server:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: askdata-config
+            - secretRef:
+                name: askdata-secret
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"

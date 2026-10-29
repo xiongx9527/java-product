@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: askdata-config
+  labels:
+    app: askdata-server
+data:
+  SPRING_PROFILES_ACTIVE: "cluster"
+  ASKDATA_DB_URL: "jdbc:mysql://askdata-mysql:3306/askdata?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true"
+  ASKDATA_DB_USERNAME: "askdata"
+  ASKDATA_REDIS_HOST: "askdata-redis"
+  ASKDATA_REDIS_PORT: "6379"
+  ASKDATA_CACHE_TYPE: "redis"
+  ASKDATA_SA_TOKEN_STORE: "redis"
+  ASKDATA_CLUSTER_ENABLED: "true"
+  FILE_STORAGE_PLATFORM: "minio"
+  MINIO_ENDPOINT: "http://askdata-minio:9000"
+  MINIO_BUCKET: "askdata"
+  # AI 模型开关：true 才装配 ChatModel 并启用问数/助手；LLM/远程 embedding 连接信息在「系统 -> AI 模型」配置。
+  ASKDATA_ASSISTANT_ENABLED: "true"
+  ASKDATA_EMBEDDING_MODEL_PATH: "/opt/askdata/models"
+  # 向量存储后端：qdrant / none（默认）
+  ASKDATA_VECTOR_STORE_TYPE: "qdrant"
+  ASKDATA_QDRANT_URL: "http://askdata-qdrant:6333"
+  ASKDATA_QDRANT_GRPC_PORT: "6334"
+  ASKDATA_VECTOR_RECALL_THRESHOLD: "0.4"
