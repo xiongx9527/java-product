@@ -53,6 +53,8 @@ SSO 认证源在 sys_authentication 表中按 type 维护（config 为 JSON，en
 
 ## 5. MCP（SQLBot 兼容 + 原生）
 
+MCP 业务系统对接的完整端点、工具与示例见 docs/mcp-integration.md。要点：
+
 SQLBot 兼容层（SqlbotMcpCompatController，/api/v1/mcp）：
 
 - POST /api/v1/mcp/access_token：换取 MCP 会话 token。

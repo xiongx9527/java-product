@@ -2,12 +2,19 @@
 set -euo pipefail
 # askdata-server jar 管理：start / stop / status / restart / log
 # 用法: ./askdata/scripts/server.sh {start|stop|status|restart|log}
-# 说明：运行前请先在当前 shell 导出所需环境变量（ASKDATA_SECRET_KEY / SPRING_PROFILES_ACTIVE /
-#       ASKDATA_DB_* / ASKDATA_ASSISTANT_ENABLED / ASKDATA_VECTOR_STORE_TYPE 等），start 会原样继承。
+# 配置：脚本同目录的 server.env（若存在）会被自动加载（集中设置 ASKDATA_* 等环境变量）。
 APP_HOME="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ENV_FILE="$SCRIPT_DIR/server.env"
 JAR="$(ls "$APP_HOME"/askdata-server/target/askdata-server-*.jar 2>/dev/null | head -1)"
 PID_FILE="$APP_HOME/askdata-server.pid"
 LOG_FILE="$APP_HOME/askdata-server.log"
+
+# 自动加载同目录配置文件（若存在）
+if [ -f "$ENV_FILE" ]; then
+  echo "加载配置: $ENV_FILE"
+  set -a; . "$ENV_FILE"; set +a
+fi
 
 if [ -z "$JAR" ]; then
   echo "未找到 jar（先执行 askdata/scripts/build.sh 构建）：期望 $APP_HOME/askdata-server/target/askdata-server-*.jar" >&2

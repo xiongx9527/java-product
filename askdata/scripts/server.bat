@@ -1,11 +1,14 @@
 @echo off
 REM askdata-server jar 管理：start / stop / status / restart / log
 REM 用法: askdata\scripts\server.bat {start^|stop^|status^|restart^|log}
-REM 运行前请先设置环境变量（ASKDATA_SECRET_KEY / SPRING_PROFILES_ACTIVE / ASKDATA_DB_* 等），start 会继承。
+REM 配置：同目录 server.env.bat（若存在）会被自动调用以设置 ASKDATA_* 等环境变量。
 setlocal
+set "SCRIPT_DIR=%~dp0"
 set "APP_HOME=%~dp0.."
 set "LOG=%APP_HOME%\askdata-server.log"
 set "PID=%APP_HOME%\askdata-server.pid"
+
+if exist "%SCRIPT_DIR%server.env.bat" call "%SCRIPT_DIR%server.env.bat"
 
 if "%JAVA_HOME%"=="" (
   echo JAVA_HOME 未设置，使用 PATH 中的 java
