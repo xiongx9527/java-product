@@ -121,7 +121,7 @@ askdata-server 的「问数（NL2SQL）/ Predict / 智能助手」依赖一个�
 
 ## 5. 方式二：Docker
 
-仓库已提供 askdata/Dockerfile（多阶段构建，先在 maven 阶段编译，再拷 jar 到 eclipse-temurin:17-jre 运行）。构建时需以仓库根为上下文：docker build -f askdata/Dockerfile -t askdata-server:latest .
+仓库已提供 askdata/docker/Dockerfile（多阶段构建，先在 maven 阶段编译，再拷 jar 到 eclipse-temurin:17-jre 运行）。构建时需以仓库根为上下文：docker build -f askdata/docker/Dockerfile -t askdata-server:latest .
 
     # 构建镜像（需能拉取基础镜像与 maven 依赖；CI 环境建议挂载 ~/.m2 缓存）
     docker build -t askdata-server:latest .
@@ -141,7 +141,7 @@ askdata-server 的「问数（NL2SQL）/ Predict / 智能助手」依赖一个�
       askdata-server:latest
     # LLM / 远程 embedding 连接信息在「系统 -> AI 模型」界面配置（sys_ai_model），不在此硬编码。
 
-askdata/docker-compose.yml（仓库提供）一键拉起 应用 + MySQL + Redis + MinIO，适合本地集群形态联调（cluster profile）。详见该文件注释，构建镜像使用 askdata/Dockerfile。
+askdata/docker/docker-compose.yml（仓库提供）一键拉起 应用 + MySQL + Redis + MinIO，适合本地集群形态联调（cluster profile）。详见该文件注释，构建镜像使用 askdata/docker/Dockerfile。
 
 ## 6. 方式三：Kubernetes
 

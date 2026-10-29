@@ -1,6 +1,6 @@
 # 多阶段构建 askdata-server 可执行镜像
 # 阶段一：编译（需要能拉取 maven 依赖；CI 建议挂载 ~/.m2 缓存以加速）
-# 构建上下文必须为仓库根（docker build -f askdata/Dockerfile -t askdata-server:latest .）
+# 构建上下文必须为仓库根（docker build -f askdata/docker/Dockerfile -t askdata-server:latest .）
 FROM maven:3.9-eclipse-temurin-17 AS build
 WORKDIR /build
 COPY . .
