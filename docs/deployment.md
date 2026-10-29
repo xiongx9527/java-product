@@ -119,6 +119,8 @@ askdata-server 的「问数（NL2SQL）/ Predict / 智能助手」依赖一个�
 
 启动后访问 http://<host>:8000/health 与 http://<host>:8000/doc.html。问数/助手可用前，请到「系统 -> AI 模型」配置默认对话模型（见 §2.5）。
 
+> jar 部署的进程管理脚本与 systemd 单元、以及三种方式的总览见仓库 askdata/deploy/ 目录（README.md、systemd/askdata-server.service）。
+
 ## 5. 方式二：Docker
 
 仓库已提供 askdata/deploy/docker/Dockerfile（多阶段构建，先在 maven 阶段编译，再拷 jar 到 eclipse-temurin:17-jre 运行）。构建时需以仓库根为上下文：docker build -f askdata/deploy/docker/Dockerfile -t askdata-server:latest .

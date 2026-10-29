@@ -1,0 +1,29 @@
+# askdata-server jar 部署的 systemd 单元（Linux 生产/常驻场景）
+# 用法：
+#   sudo cp askdata/deploy/systemd/askdata-server.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now askdata-server
+#   sudo systemctl status askdata-server   # 对应 start/status
+#   sudo systemctl restart askdata-server  # 对应 restart
+#   sudo systemctl stop askdata-server     # 对应 stop
+# 日志：journalctl -u askdata-server -f    # 对应 log
+#
+# 注意：
+#   - 将 server.env 复制到 /opt/askdata/askdata-server.env（EnvironmentFile 为 KEY=VALUE，无 export，注释以 # 开头）。
+#   - ExecStart 的 jar 路径按实际构建产物调整（systemd 不做 glob，需写具体文件名或软链）。
+[Unit]
+Description=askdata-server (jar)
+After=network.target
+
+[Service]
+Type=simple
+User=askdata
+WorkingDirectory=/opt/askdata
+EnvironmentFile=/opt/askdata/askdata-server.env
+ExecStart=/usr/bin/java -jar /opt/askdata/askdata-server/target/askdata-server.jar
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
