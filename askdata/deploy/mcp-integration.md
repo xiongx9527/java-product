@@ -56,6 +56,57 @@ askdata 的鉴权统一基于 Sa-Token（令牌头名 X-SQLBOT-TOKEN、令牌前
 
 问数 SSE 帧格式与 ChatQuestionService 一致（type=error / finish 等），前端按事件流消费即可。
 
+
+### 2.1 兼容 REST 层：请求 / 响应字段明细
+
+通用约定：所有接口 POST，Content-Type: application/json。身份字段 token 为字符串，取 access_token 返回的 token / access_token（二者同值）。错误统一形态：工具返回含 error 键 → HTTP 400 {detail: <error>}；非流式问数运行期错误 → HTTP 500 {success:false, message}。
+
+**/access_token**
+- 请求：username(string, 必填)、password(string, 必填)
+- 成功响应：
+
+```json
+{ "token": "<sa-token>", "tokenName": "X-SQLBOT-TOKEN", "access_token": "<同 token>" }
+```
+
+- 失败响应：{ "error": "<信息>" }
+- 失败情形：账号不存在 / 口令错误；账号未归属工作空间；账号停用；第三方账号不可口令登录；令牌签发失败。
+
+**/mcp_start**
+- 请求：username?(string)、password?(string)、token?(string)、oid?(int|string)、datasource_id?(int|string)、question?(string)
+- 响应：
+
+```json
+{ "access_token": "<token 或 null>", "chat_id": 123 }
+```
+
+- chat_id 为本次开启的会话 ID；带 username/password 现场登录时附带新令牌。datasource_id/chat_id/custom_model 为 int|string 联合类型，传对象 / 数组会返回 400（mcp.error.invalid.id）。
+
+**/mcp_ws_list**
+- 请求：token(string, 必填；也可放 query 参数 token)
+- 响应：工作空间数组，元素 { "id": <long>, "name": "<名称>" }（按名称升序）。
+
+**/mcp_ds_list（别名 /mcp_datasource_list）**
+- 请求：token(string, 必填)、oid?(int|string 联合类型)
+- 响应：数据源数组，元素含 id / name / type 等；已脱敏移除 configuration、embedding、table_relation、recommended_config 字段；按 name 升序。
+- 默认按当前用户工作空间过滤；管理员可经 oid 指定。
+
+**/mcp_model_list**
+- 请求：token(string, 必填)、oid(int|string)
+- 响应：当前工作空间可用模型数组（含模型标识与是否默认）。
+
+**/mcp_question**
+- 请求：token(string, 必填)、chat_id?(int|string)、question(string, 必填)、datasource_id?(int|string)、custom_model?(int|string)、lang?(string, 如 zh-CN)、stream?(bool, 默认 true)、return_img?(bool, 默认 true)
+- 响应（stream=true）：text/event-stream，逐帧 data: {...}；帧 type 取值：sql（生成的 SQL）、data / rows（结果数据）、error（运行期错误，紧随 finish 结束）、finish（结束帧）。
+- 响应（stream=false）：JSON 聚合问数结果（含 SQL、结果行 / 数据、记录 ID、可选 imageUrl）；运行期错误返回 500 {success:false, message, record_id?}。
+- 说明：return_img=false 不渲染图表（响应不含 imageUrl）；custom_model 为按次选模型 ID（不可用返回 mcp.error.custom.model.unavailable）；chat_id 续接会话须归属当前用户 / 工作空间。
+
+**/mcp_assistant**
+- 请求：question(string, 必填；兼容早期 message 字段)、url(string, 必填)、authorization(string, 必填)、stream?(bool, 默认 true，工具层忽略、HTTP 层按 stream 分流)、datasourceId?(long)
+- 响应（stream=true）：SSE，按 finish_step=QUERY_DATA 完成问数（只出 SQL 与数据，不出图）；（stream=false）：JSON（成功含问数结果，失败 {error}）。
+- 说明：url / authorization 必填，以合成身份从第三方数据接口拉取宿主数据源问数。
+
+
 ## 3. 原生 MCP（/mcp，http-sse）
 
 - GET /mcp/sse 建立 SSE 流；POST /mcp/messages/{uuid} 向该流发送消息（JSON-RPC 2.0）。
@@ -72,6 +123,25 @@ askdata 的鉴权统一基于 Sa-Token（令牌头名 X-SQLBOT-TOKEN、令牌前
 | chat_start | datasourceId?, question? | 开启问数会话，返回 chat_id |
 | question_answer | question, datasourceId?, chatId?, customModel?, returnImg? | 问数（NL2SQL → 只读执行 → 返回 SQL 与结果行） |
 | assistant | message | 多轮记忆问数助手（基于默认对话模型） |
+
+
+### 3.1 原生 MCP：工具参数与响应明细
+
+鉴权：调用前须在请求头 X-SQLBOT-TOKEN: Bearer <token> 携带 Sa-Token 会话（可用 /api/v1/mcp/access_token 换得的令牌）。工具按 JSON-RPC 2.0 经 /mcp/messages/{uuid} 调用，initialize 后 tools/call。
+
+| 工具 | 参数（required） | 响应 |
+|------|----------------|------|
+| server_info | 无 | {app:"askdata", mcp:"fw-plus-ai-mcp-server", transport:"http-sse"} |
+| access_token | username(string), password(string) | {token, tokenName, access_token} | {error} |
+| datasource_list | workspaceId?(long) | 数据源数组（同 §2.1 mcp_ds_list 脱敏规则；管理员可指定 workspaceId） |
+| workspace_list | 无 | [{id, name}]（当前用户可管理的工作空间） |
+| model_list | 无 | 当前工作空间可用模型数组（含默认标记） |
+| chat_start | datasourceId?(long), question?(string) | {access_token, chat_id} |
+| question_answer | question(string), datasourceId?(long), chatId?(long), customModel?(long), returnImg?(bool, 默认 true) | 自包含 Markdown 字符串（含 **问**、**记录 ID**、**SQL** 与结果 Markdown 表格；return_img 命中且出图成功时附 imageUrl）；失败 {error} |
+| assistant | message(string) | {answer: "<助手回复>"}；未装配模型返回 {error: mcp.error.assistant.not.assembled} |
+
+说明：原生 MCP 的 question_answer 单次返回 Markdown（非 SSE）；兼容 REST 层 /mcp_question 才是 SSE 流。两者底层问数逻辑（NL2SQL → 只读执行）一致。
+
 
 ## 4. 业务系统对接示例（问数闭环）
 
