@@ -5,10 +5,8 @@ data/
 *.trace.db
 *.mv.db
 
-# dist 默认不提交；唯一例外：web/dist 为 A2 托管产物（jar 静态资源源），必须提交
+# 前端构建产物不纳入版本控制（改由 mvn package 自动 npm build 生成并打进 jar 静态资源）
 dist/
-!askdata/askdata-server/web/dist/
-!askdata/askdata-server/web/dist/**
 
 # IDE / OS
 .idea/
