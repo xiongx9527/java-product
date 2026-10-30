@@ -40,191 +40,31 @@
 
     <dependencyManagement>
         <dependencies>
-            <!-- fw-plus MCP starter 传递闭包：统一用 ${revision}（覆盖父 BOM 误导向的 0.3.0-SNAPSHOT），版本号仅 revision 一处 -->
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-ai-langchain4j-nebula</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-ai-langchain4j-neo4j</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-ai-mcp-server</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-ai-langchain4j-openai</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-annotation</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-auth-core</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-auth-satoken</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-common</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-dify</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-easytrans-annotation</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-easytrans-common</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-easytrans-service</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-magicapi</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-mf-datachange</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-mf-datascope</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-mf-encrypt</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-mp-base</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-mp-datachange</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-mp-datascope</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-mp-encrypt</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-mp-join</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-mybatis-datachange</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-mybatis-datascope</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-mybatis-encrypt</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-poi-easypoi</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-redis</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus</groupId>
-                <artifactId>fw-plus-template</artifactId>
-                <version>${revision}</version>
-            </dependency>
+            <!-- fw-plus 全家桶统一版本管理：三个 BOM 各管一层，版本只在 <properties><revision> 一处维护。
+                 fw-plus-ai-boot-dependencies → fw-plus-ai-boot-*、MCP starter，并聚合后两个 BOM
+                                               （含 spring-boot-dependencies / langchain4j-bom / jackson-bom）
+                 fw-plus-boot-dependencies    → fw-plus-boot-*
+                 fw-plus-dependencies         → auth / common / redis / template / easytrans / poi / mp / mf / mybatis 等 -->
             <dependency>
                 <groupId>com.xiongx9527.fw.plus.ai</groupId>
-                <artifactId>fw-plus-ai-boot</artifactId>
+                <artifactId>fw-plus-ai-boot-dependencies</artifactId>
                 <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus.ai</groupId>
-                <artifactId>fw-plus-ai-boot-autoconfigure</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus.ai</groupId>
-                <artifactId>fw-plus-ai-boot-common</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus.ai</groupId>
-                <artifactId>fw-plus-ai-boot-starter</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus.ai</groupId>
-                <artifactId>fw-plus-ai-mcp-server-spring-boot-starter</artifactId>
-                <version>${revision}</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
             <dependency>
                 <groupId>com.xiongx9527.fw.plus.boot</groupId>
-                <artifactId>fw-plus-boot</artifactId>
+                <artifactId>fw-plus-boot-dependencies</artifactId>
                 <version>${revision}</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
             <dependency>
-                <groupId>com.xiongx9527.fw.plus.boot</groupId>
-                <artifactId>fw-plus-boot-autoconfigure</artifactId>
+                <groupId>com.xiongx9527.fw.plus</groupId>
+                <artifactId>fw-plus-dependencies</artifactId>
                 <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus.boot</groupId>
-                <artifactId>fw-plus-boot-common</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus.boot</groupId>
-                <artifactId>fw-plus-boot-starter</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.xiongx9527.fw.plus.boot</groupId>
-                <artifactId>fw-plus-magicapi-spring-boot-starter</artifactId>
-                <version>${revision}</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -236,34 +76,28 @@
         <dependency>
             <groupId>com.xiongx9527.fw.plus</groupId>
             <artifactId>fw-plus-auth-satoken</artifactId>
-            <version>${revision}</version>
         </dependency>
         <!-- Sa-Token：SpringBoot 3.x/Jakarta 必须用 boot3 变体（SB2 的 sa-token-spring-boot-starter 在 3.5 抛不兼容）。 -->
         <dependency>
             <groupId>cn.dev33</groupId>
             <artifactId>sa-token-spring-boot3-starter</artifactId>
-            <version>${sa-token.version}</version>
         </dependency>
 
         <!-- 注：不再直接依赖 fw-plus-ai-model（原 AiChatModel 契约已移除，ChatModelClient 改为自包含
              OpenAI 兼容客户端）。该构件仍由 fw-plus MCP starter 传递引入，版本在下方 dependencyManagement 锁定。 -->
 
-        <!-- langchain4j 实验 NL2SQL：SqlDatabaseContentRetriever（问数 RAG：schema→生成SQL→执行） -->
-        <dependency>
-            <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-experimental-sql</artifactId>
-            <version>1.22.0-beta32</version>
-        </dependency>
-        <!-- langchain4j agentic（框架 Assistant/技能/意图路由所需 AgenticScopeStore） -->
+        <!-- langchain4j agentic：askdata 源码不直接使用，但 fw-plus-ai-boot-autoconfigure 的
+             AgenticScopeStoreAutoConfiguration 需要 dev.langchain4j.agentic.scope.AgenticScopeStore，
+             缺失会导致 Spring 上下文启动失败（版本由 langchain4j-bom 管理）。 -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-agentic</artifactId>
-            <version>1.22.0-beta32</version>
         </dependency>
         <!-- langchain4j 模型接入（AssistantBuilder 所需 ChatModel/StreamingChatModel/EmbeddingModel；OpenAI 兼容） -->
         <dependency>
             <groupId>com.xiongx9527.fw.plus</groupId>
             <artifactId>fw-plus-ai-langchain4j-openai</artifactId>
+            <!-- fw-plus-dependencies 未收录该构件，版本单独声明 -->
             <version>${revision}</version>
         </dependency>
         <!-- langchain4j 在线向量库后端：Qdrant（复用 langchain4j 的 QdrantEmbeddingStore gRPC 封装，
@@ -271,28 +105,24 @@
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-qdrant</artifactId>
-            <version>1.22.0-beta32</version>
         </dependency>
         <!-- langchain4j 在线向量库后端：Milvus（复用 langchain4j 的 MilvusEmbeddingStore，
              作为 askdata.vector-store.type=milvus 时的向量存储与 ANN 检索后端；不可达时经 DbVectorStore 回落）。 -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-milvus</artifactId>
-            <version>1.22.0-beta32</version>
         </dependency>
         <!-- langchain4j 在线向量库后端：Weaviate（复用 langchain4j 的 WeaviateEmbeddingStore；
              作为 askdata.vector-store.type=weaviate 时的向量存储与 ANN 检索后端；不可达时经 DbVectorStore 回落）。 -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-weaviate</artifactId>
-            <version>1.22.0-beta32</version>
         </dependency>
         <!-- langchain4j 在线向量库后端：pgvector（复用 langchain4j 的 PgVectorEmbeddingStore，JDBC + Postgres 向量扩展；
              作为 askdata.vector-store.type=pgvector 时的向量存储与 ANN 检索后端；不可达时经 DbVectorStore 回落）。 -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-pgvector</artifactId>
-            <version>1.22.0-beta32</version>
         </dependency>
         <!-- langchain4j 在线向量库后端：Redis（社区版 langchain4j-community-redis 的 RedisEmbeddingStore，
              Jedis 客户端；需 Redis Stack：RediSearch 向量字段 + RedisJSON）。
@@ -323,7 +153,6 @@
         <dependency>
             <groupId>cn.dev33</groupId>
             <artifactId>sa-token-redis-template</artifactId>
-            <version>1.46.0</version>
         </dependency>
 
         <!-- langchain4j 在线向量库后端：Elasticsearch（复用 langchain4j 的 ElasticsearchEmbeddingStore，
@@ -332,7 +161,6 @@
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-elasticsearch</artifactId>
-            <version>1.22.0-beta32</version>
         </dependency>
 
         <!-- MCP server（复用 fw-plus 封装 fw-plus-ai-mcp-server-spring-boot-starter，取代手写 JSON-RPC）。
@@ -341,7 +169,6 @@
         <dependency>
             <groupId>com.xiongx9527.fw.plus.ai</groupId>
             <artifactId>fw-plus-ai-mcp-server-spring-boot-starter</artifactId>
-            <version>${revision}</version>
         </dependency>
 
         <!-- Web 层与 JDBC（元数据库 H2；skeleton 期以 JdbcTemplate 访问登录必需表） -->
@@ -387,6 +214,7 @@
         <dependency>
             <groupId>com.github.jsqlparser</groupId>
             <artifactId>jsqlparser</artifactId>
+            <!-- 必须显式锁定：BOM 管理的 4.6 与现有 JSQLParser 5 API（行权限改写）不兼容 -->
             <version>5.1</version>
         </dependency>
 
@@ -395,7 +223,6 @@
         <dependency>
             <groupId>org.dromara.x-file-storage</groupId>
             <artifactId>x-file-storage-core</artifactId>
-            <version>${x-file-storage.version}</version>
             <exclusions>
                 <exclusion>
                     <groupId>cn.hutool</groupId>
@@ -406,7 +233,6 @@
         <dependency>
             <groupId>org.dromara.x-file-storage</groupId>
             <artifactId>x-file-storage-spring</artifactId>
-            <version>${x-file-storage.version}</version>
             <exclusions>
                 <exclusion>
                     <groupId>cn.hutool</groupId>
@@ -419,23 +245,19 @@
         <dependency>
             <groupId>io.minio</groupId>
             <artifactId>minio</artifactId>
-            <version>${minio.version}</version>
         </dependency>
         <dependency>
             <groupId>com.aliyun.oss</groupId>
             <artifactId>aliyun-sdk-oss</artifactId>
-            <version>${aliyun-oss.version}</version>
         </dependency>
         <dependency>
             <groupId>com.qcloud</groupId>
             <artifactId>cos_api</artifactId>
-            <version>${tencent-cos.version}</version>
         </dependency>
         <!-- 通用 S3 兼容对象存储（A22）：x-file-storage amazon-s3 平台使用 AWS SDK v1 -->
         <dependency>
             <groupId>com.amazonaws</groupId>
             <artifactId>aws-java-sdk-s3</artifactId>
-            <version>${aws-s3.version}</version>
         </dependency>
 
         <!-- 数据源引擎 JDBC 驱动（A8：mysql/pg/h2/sqlite 随包提供；
@@ -531,6 +353,7 @@
         <dependency>
             <groupId>org.apache.poi</groupId>
             <artifactId>poi</artifactId>
+            <!-- 必须显式锁定：BOM 管理的 4.1.2 与 poi-ooxml 不兼容，且缺 poi-ooxml-lite -->
             <version>5.2.3</version>
         </dependency>
         <dependency>
@@ -612,7 +435,6 @@
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-            <version>2.8.17</version>
         </dependency>
 
     </dependencies>
