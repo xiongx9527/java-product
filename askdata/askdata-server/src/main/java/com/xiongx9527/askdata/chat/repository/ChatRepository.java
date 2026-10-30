@@ -413,6 +413,28 @@ public class ChatRepository {
     // 工具
     // ------------------------------------------------------------------
 
+    /**
+     * 取某记录最近一条指定 operate 日志的已解析 message（A26 结构化解析）。
+     * 无匹配或解析失败时返回 null（调用方据此退化为无历史）。
+     */
+    public Map<String, Object> lastLogMessage(long recordId, String operate) {
+        List<Map<String, Object>> logs = listLogsByRecord(recordId);
+        if (logs == null || logs.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> target = null;
+        for (Map<String, Object> log : logs) {
+            if (operate.equals(Rows.str(log, "operate"))) {
+                target = log;
+            }
+        }
+        if (target == null) {
+            return null;
+        }
+        Object parsed = parseLogMessage(Rows.str(target, "message"), operate);
+        return parsed instanceof Map ? (Map<String, Object>) parsed : null;
+    }
+
     /** 序列化为 JSON 文本（失败时返回空对象/空数组文本，不抛异常）。 */
     public String writeJson(Object value) {
         try {

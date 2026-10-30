@@ -49,7 +49,7 @@ class McpSqlbotCompatTest {
         }
         // 既有 askdata 原生工具名不受影响
         for (String nativeName : Arrays.asList("datasource_list", "workspace_list", "model_list",
-                "chat_start", "question_answer", "assistant", "server_info")) {
+                "chat_start", "question_answer", "server_info")) {
             assertTrue(names.contains(nativeName), "原生工具名缺失: " + nativeName);
         }
     }

@@ -99,24 +99,58 @@ public class SqlPromptTemplates {
      *                      false 走 no_query_limit
      * @param sqlbotName    助手名（chat.sqlbot_name）
      */
+    /**
+     * 生成 SQL 的 system 提示词：基础模板 {@code system} 段 + {@code generate_rules} 段。
+     *
+     * <p>SQLBot 把 system 与 rules 分成两条消息（llm.py init_messages 的多轮 ack），
+     * 此处对外仍提供合并版本（system+rules 单条）以兼容既有调用；多轮 ack 结构请分别使用
+     * {@link #sqlSystemIdentity} 与 {@link #sqlSystemRules}。</p>
+     *
+     * @param type          数据源方言（决定 quot_rule/limit_rule/basic_example）
+     * @param rowLimit      chat.limit_rows：true 走 query_limit（强制最外层 1000 行），false 走 no_query_limit
+     * @param sqlbotName    助手名（chat.sqlbot_name）
+     */
     public String sqlSystemPrompt(DatasourceType type, boolean rowLimit, String sqlbotName) {
+        return unescapeBraces(systemPart(type, rowLimit, sqlbotName)) + "\n\n"
+                + unescapeBraces(rulesPart(type, rowLimit, sqlbotName));
+    }
+
+    /**
+     * 多轮 ack 结构的 system 身份消息（SQLBot init_messages 的 SystemPromptMessage(content=system)）。
+     */
+    public String sqlSystemIdentity(DatasourceType type, boolean rowLimit, String sqlbotName) {
+        return unescapeBraces(systemPart(type, rowLimit, sqlbotName));
+    }
+
+    /**
+     * 多轮 ack 结构的 rules 消息（SQLBot init_messages 的 HumanPromptMessage(content=rules)，
+     * 其后紧跟 assistant 的 ack）。
+     */
+    public String sqlSystemRules(DatasourceType type, boolean rowLimit, String sqlbotName) {
+        return unescapeBraces(rulesPart(type, rowLimit, sqlbotName));
+    }
+
+    private String systemPart(DatasourceType type, boolean rowLimit, String sqlbotName) {
         Map<String, Object> base = baseSql();
         Map<String, Object> dialect = dialectTemplate(type);
-
         String processCheck = text(dialect.get("process_check"));
         if (processCheck.isEmpty()) {
             processCheck = text(base.get("process_check"));
         }
+        return text(base.get("system"))
+                .replace("{process_check}", processCheck)
+                .replace("{sqlbot_name}", sqlbotName);
+    }
+
+    private String rulesPart(DatasourceType type, boolean rowLimit, String sqlbotName) {
+        Map<String, Object> base = baseSql();
+        Map<String, Object> dialect = dialectTemplate(type);
         String queryLimit = text(base.get(rowLimit ? "query_limit" : "no_query_limit"));
         String multiTable = text(base.get("multi_table_condition"));
         String otherRule = text(dialect.get("other_rule")).replace("{multi_table_condition}", multiTable);
         String baseSqlRules = text(dialect.get("quot_rule")) + queryLimit
                 + text(dialect.get("limit_rule")) + otherRule;
-
-        String system = text(base.get("system"))
-                .replace("{process_check}", processCheck)
-                .replace("{sqlbot_name}", sqlbotName);
-        String rules = text(base.get("generate_rules"))
+        return text(base.get("generate_rules"))
                 .replace("{base_sql_rules}", baseSqlRules)
                 .replace("{basic_sql_examples}", text(dialect.get("basic_example")))
                 .replace("{example_engine}", text(dialect.get("example_engine")))
@@ -124,7 +158,6 @@ public class SqlPromptTemplates {
                 .replace("{example_answer_2}", exampleAnswer(base, dialect, 2, rowLimit))
                 .replace("{example_answer_3}", exampleAnswer(base, dialect, 3, rowLimit))
                 .replace("{sqlbot_name}", sqlbotName);
-        return unescapeBraces(system + "\n\n" + rules);
     }
 
     /**

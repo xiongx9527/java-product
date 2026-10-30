@@ -1,7 +1,11 @@
 package com.xiongx9527.askdata.permission;
 
+import com.xiongx9527.askdata.chat.service.ChatModelClient;
+import com.xiongx9527.askdata.chat.service.ChatModelRouter;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
+import java.util.Locale;
+import java.util.Optional;
 import net.sf.jsqlparser.JSQLParserException;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.statement.Statement;
@@ -51,10 +55,15 @@ public class PermissionEnforcer {
 
     private final DsPermissionQueryService permQuery;
     private final CurrentUserService currentUserService;
+    private final ChatModelClient chatModelClient;
+    private final ChatModelRouter modelRouter;
 
-    public PermissionEnforcer(DsPermissionQueryService permQuery, CurrentUserService currentUserService) {
+    public PermissionEnforcer(DsPermissionQueryService permQuery, CurrentUserService currentUserService,
+                             ChatModelClient chatModelClient, ChatModelRouter modelRouter) {
         this.permQuery = permQuery;
         this.currentUserService = currentUserService;
+        this.chatModelClient = chatModelClient;
+        this.modelRouter = modelRouter;
     }
 
     /** 强制结果：改写后的 SQL + 需隐藏的列名集合。 */
@@ -99,36 +108,142 @@ public class PermissionEnforcer {
         if (currentUserService.isAdmin(currentUserService.currentUser())) {
             return new EnforcedQuery(sql, Collections.emptySet());
         }
+        // 解析失败即 fail-closed：连表名都拿不到，确定性改写无从谈起
+        Statement stmt;
         try {
-            Statement stmt = CCJSqlParserUtil.parse(sql);
-            List<String> tables = collectAllTableNames(stmt);
-            if (tables.isEmpty()) {
-                return new EnforcedQuery(sql, Collections.emptySet());
-            }
-
-            // 行权限：注入 WHERE 片段
-            Map<String, String> tableFilters = new LinkedHashMap<>();
-            for (Map<String, Object> f : permQuery.rowFilters(oid, userId, dsId, tables)) {
-                String tableName = Rows.str(f, "table");
-                String filter = Rows.str(f, "filter");
-                if (!tableName.isEmpty() && !filter.isEmpty()) {
-                    tableFilters.put(tableName, filter);
-                }
-            }
-            String rewritten = rewriteSqlWithRowFilters(stmt, tableFilters);
-
-            // 列权限：收集隐藏列
-            Set<String> hidden = new HashSet<>();
-            for (String t : tables) {
-                hidden.addAll(permQuery.hiddenColumns(oid, userId, dsId, t));
-            }
-            return new EnforcedQuery(rewritten, hidden);
+            stmt = CCJSqlParserUtil.parse(sql);
         } catch (JSQLParserException e) {
-            // fail-closed：无法解析即拒绝执行，避免未加固 SQL 绕过行/列权限
             throw new PermissionEnforceException("failed to parse SQL for permission enforcement", e);
-        } catch (RuntimeException e) {
-            throw new PermissionEnforceException("failed to enforce row/column permission", e);
         }
+        List<String> tables = collectAllTableNames(stmt);
+        if (tables.isEmpty()) {
+            return new EnforcedQuery(sql, Collections.emptySet());
+        }
+        // 行权限过滤器
+        Map<String, String> tableFilters = new LinkedHashMap<>();
+        for (Map<String, Object> f : permQuery.rowFilters(oid, userId, dsId, tables)) {
+            String tableName = Rows.str(f, "table");
+            String filter = Rows.str(f, "filter");
+            if (!tableName.isEmpty() && !filter.isEmpty()) {
+                tableFilters.put(tableName, filter);
+            }
+        }
+        // 列权限：隐藏列集合
+        Set<String> hidden = new HashSet<>();
+        for (String t : tables) {
+            hidden.addAll(permQuery.hiddenColumns(oid, userId, dsId, t));
+        }
+        // 主路径：确定性 JSQLParser 子查询包裹改写（fail-closed）
+        try {
+            String rewritten = rewriteSqlWithRowFilters(stmt, tableFilters);
+            return new EnforcedQuery(rewritten, hidden);
+        } catch (RuntimeException deterministicEx) {
+            // 偏差③收敛：确定性改写失败（极少见，如不可包裹的复杂结构）时退化为 LLM 改写 + 复验 fail-closed
+            return enforceWithLlmFallback(sql, tables, tableFilters, hidden, deterministicEx);
+        }
+    }
+
+    /**
+     * 偏差③：确定性 JSQLParser 改写失败时的 LLM 兜底（对齐 SQLBot build_table_filter）。
+     * 用 LLM 按行权限 filters 改写 SQL，随后 JSQLParser 复验（filter 谓词存在且表集合不变），
+     * 复验失败则 fail-closed 拒绝，绝不以未加固 SQL 放行。
+     */
+    private EnforcedQuery enforceWithLlmFallback(String sql, List<String> tables,
+                                                Map<String, String> tableFilters, Set<String> hidden,
+                                                RuntimeException deterministicEx) {
+        Optional<ChatModelRouter.ModelRef> modelOpt = modelRouter.defaultChatModel();
+        if (!modelOpt.isPresent()) {
+            throw new PermissionEnforceException(
+                    "deterministic row-permission rewrite failed and no LLM fallback available", deterministicEx);
+        }
+        String llmSql = callRowFilterModel(modelOpt.get(), sql, tableFilters);
+        if (llmSql == null || llmSql.trim().isEmpty()) {
+            throw new PermissionEnforceException("LLM row-permission fallback returned empty SQL", deterministicEx);
+        }
+        // 复验：① 可解析；② 表集合不变；③ filter 谓词均在
+        try {
+            Statement reStmt = CCJSqlParserUtil.parse(llmSql);
+            List<String> newTables = collectAllTableNames(reStmt);
+            if (!sameTableSet(tables, newTables)) {
+                throw new PermissionEnforceException(
+                        "LLM row-permission fallback changed the table set (possible privilege escalation)",
+                        deterministicEx);
+            }
+            verifyFilterPredicatesPresent(llmSql, tableFilters);
+            return new EnforcedQuery(llmSql, hidden);
+        } catch (JSQLParserException re) {
+            throw new PermissionEnforceException("LLM row-permission fallback produced unparseable SQL", re);
+        } catch (PermissionEnforceException pe) {
+            throw pe;
+        } catch (RuntimeException re) {
+            throw new PermissionEnforceException("LLM row-permission fallback failed re-verify", re);
+        }
+    }
+
+    /** 让 LLM 按 tableFilters 改写 SQL（对齐 SQLBot build_table_filter）。 */
+    private String callRowFilterModel(ChatModelRouter.ModelRef model, String sql, Map<String, String> tableFilters) {
+        List<ChatModelClient.ModelMessage> messages = new ArrayList<>();
+        messages.add(new ChatModelClient.ModelMessage("system",
+                "你是一个 SQL 改写助手。给定一条 SQL 与若干「表 → 行级过滤条件」，"
+                        + "请把每个过滤条件注入到对应表的查询中（可将该表包裹为子查询 SELECT * FROM (SELECT * FROM <表> WHERE <条件>) <别名>，"
+                        + "或在已有 WHERE 上用 AND 追加；不得改动其它逻辑、不得访问未列出的表）。"
+                        + "只返回修改后的完整 SQL，不要解释，不要使用 Markdown 代码块。"));
+        StringBuilder user = new StringBuilder("原始 SQL：\n").append(sql).append("\n\n需要注入的行级过滤条件：\n");
+        if (tableFilters.isEmpty()) {
+            user.append("（无）\n");
+        } else {
+            for (Map.Entry<String, String> e : tableFilters.entrySet()) {
+                user.append("- 表 ").append(e.getKey()).append(" 需满足：").append(e.getValue()).append("\n");
+            }
+        }
+        user.append("\n请返回注入过滤条件后的完整 SQL。");
+        messages.add(new ChatModelClient.ModelMessage("user", user.toString()));
+        String text = chatModelClient.generate(model.apiDomain, model.apiKey, model.baseModel, messages, model.params);
+        if (text == null) {
+            return null;
+        }
+        // 去掉 Markdown 代码围栏（反引号，char 96）与结尾分号
+        String bt = String.valueOf((char) 96);
+        text = text.replace(bt, "").trim();
+        if (text.endsWith(";")) {
+            text = text.substring(0, text.length() - 1);
+        }
+        return text;
+    }
+
+    /** 复验：每条行权限 filter 的关键谓词必须出现在改写后的 SQL 中。 */
+    private void verifyFilterPredicatesPresent(String sql, Map<String, String> tableFilters) {
+        if (tableFilters == null || tableFilters.isEmpty()) {
+            return;
+        }
+        String lower = sql.toLowerCase(Locale.ROOT);
+        for (Map.Entry<String, String> e : tableFilters.entrySet()) {
+            String cond = normalizePredicate(e.getValue());
+            if (!lower.contains(cond)) {
+                throw new PermissionEnforceException(
+                        "LLM fallback omitted row filter for table " + e.getKey() + ": " + e.getValue(), null);
+            }
+        }
+    }
+
+    private static String normalizePredicate(String filter) {
+        String f = filter.trim();
+        if (f.startsWith("(") && f.endsWith(")")) {
+            f = f.substring(1, f.length() - 1).trim();
+        }
+        return f.toLowerCase(Locale.ROOT).replaceAll("\s+", " ");
+    }
+
+    private static boolean sameTableSet(List<String> a, List<String> b) {
+        Set<String> sa = new HashSet<>();
+        for (String t : a) {
+            sa.add(t.toLowerCase(Locale.ROOT));
+        }
+        Set<String> sb = new HashSet<>();
+        for (String t : b) {
+            sb.add(t.toLowerCase(Locale.ROOT));
+        }
+        return sa.equals(sb);
     }
 
     /**

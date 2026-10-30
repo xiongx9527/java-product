@@ -379,12 +379,22 @@ class ChatKnowledgeChainTest {
         for (String request : stubRequests) {
             try {
                 JsonNode messages = objectMapper.readTree(request).get("messages");
+                // 多轮 ack 结构下，业务术语/自定义提示词/SQL 样例位于与【用户问题】不同的 user 消息；
+                // 故定位到 SQL 生成请求后，拼接其全部 user 消息再断言各 section 是否出现。
+                StringBuilder sb = new StringBuilder();
+                boolean isSqlPrompt = false;
                 for (int i = 0; i < messages.size(); i++) {
                     JsonNode message = messages.get(i);
-                    if ("user".equals(message.get("role").asText())
-                            && message.get("content").asText().contains("请只输出 SQL")) {
-                        return message.get("content").asText();
+                    if ("user".equals(message.get("role").asText())) {
+                        String content = message.get("content").asText();
+                        if (content.contains("请只输出 SQL")) {
+                            isSqlPrompt = true;
+                        }
+                        sb.append(content).append("\n");
                     }
+                }
+                if (isSqlPrompt) {
+                    return sb.toString();
                 }
             } catch (Exception ignored) {
                 // 跳过非 JSON 请求

@@ -57,19 +57,28 @@ class DynamicDatasourceSqlTemplateTest {
         Map<String, String> templates = new LinkedHashMap<>();
         templates.put("orders", "SELECT id, amount FROM orders");
         List<ChatModelClient.ModelMessage> msgs = b.buildSqlMessagesForConf("本月订单", DatasourceType.MYSQL,
-                new DatasourceConf(), "", "", "", "", templates);
-        String user = msgs.get(msgs.size() - 1).content;
+                new DatasourceConf(), "", "", null, "", templates);
+        String user = schemaUser(msgs);
         assertTrue(user.contains("orders"), user);
         assertTrue(user.contains("SELECT id, amount FROM orders"), user);
         assertTrue(user.contains("WITH"), user);
+    }
+
+    private static String schemaUser(List<ChatModelClient.ModelMessage> msgs) {
+        for (ChatModelClient.ModelMessage m : msgs) {
+            if ("user".equals(m.role) && m.content != null && m.content.contains("【数据库表结构】")) {
+                return m.content;
+            }
+        }
+        throw new AssertionError("no schema user message: " + msgs);
     }
 
     @Test
     void sqlPromptOmitsTemplateSectionWhenAbsent() {
         SchemaContextBuilder b = builderWithTemplates();
         List<ChatModelClient.ModelMessage> msgs = b.buildSqlMessagesForConf("本月订单", DatasourceType.MYSQL,
-                new DatasourceConf(), "", "", "", "", Collections.emptyMap());
-        String user = msgs.get(msgs.size() - 1).content;
+                new DatasourceConf(), "", "", null, "", Collections.emptyMap());
+        String user = schemaUser(msgs);
         assertFalse(user.contains("WITH 表名"), user);
     }
 

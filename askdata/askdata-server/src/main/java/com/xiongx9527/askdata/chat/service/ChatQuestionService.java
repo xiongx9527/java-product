@@ -343,6 +343,8 @@ public class ChatQuestionService {
                 Long advancedAppId = Rows.lngOrNull(body, "assistant_id");
                 // 验收 A3：追问上下文（前序 Q&A）先于知识增强计算，供 LLM 实体抽取与 SQL 生成复用
                 String historyText = priorContext(chatId, currentRecordId.get());
+                // 偏差②收敛：SQL 生成使用的历史改为「上一次 GENERATE_SQL 的完整 model messages」（剔除 system）
+                List<ModelMessage> historyMessages = priorContextMessages(chatId, currentRecordId.get());
                 ChatKnowledgeService.KnowledgeContext knowledge =
                         chatKnowledgeService.prepare(question, oid, dsId, advancedAppId, historyText);
                 chatRepository.saveKeywords(recordId, knowledge.getExtractedKeywords(),
@@ -367,15 +369,14 @@ public class ChatQuestionService {
                 // 2.3：用扩展关键词驱动表级召回（对齐 SQLBot 用 expanded_keywords 做表匹配），提升同义表述选表命中率
                 String matchText = knowledge.getExpandedKeywords();
                 TokenUsage sqlUsage = new TokenUsage();
-                String sqlText = generateText(writer, aiModel,
-                        dynamic != null
-                                ? schemaContextBuilder.buildSqlMessagesForConf(question, dynamic.getType(),
-                                        dynamic.getConf(), knowledge.getTerminologyText(), customPromptText,
-                                        historyText, matchText, dynamic.getTableSqlTemplates(),
-                                        dynamic.getTableRules())
-                                : schemaContextBuilder.buildSqlMessages(question, dsId, knowledge.getTerminologyText(),
-                                        customPromptText, knowledge.getSqlExamples(), historyText, matchText),
-                        "sql-result", totalTokens, sqlUsage);
+                List<ModelMessage> sqlMessages = dynamic != null
+                        ? schemaContextBuilder.buildSqlMessagesForConf(question, dynamic.getType(),
+                                dynamic.getConf(), knowledge.getTerminologyText(), customPromptText,
+                                historyMessages, matchText, dynamic.getTableSqlTemplates(),
+                                dynamic.getTableRules())
+                        : schemaContextBuilder.buildSqlMessages(question, dsId, knowledge.getTerminologyText(),
+                                customPromptText, knowledge.getSqlExamples(), historyMessages, matchText);
+                String sqlText = generateText(writer, aiModel, sqlMessages, "sql-result", totalTokens, sqlUsage);
                 // A12：解析结构化 SQL JSON 协议（success,sql,brief,chart-type,tables），不再用正则抠 SQL
                 SqlJsonResult sqlJson = parseSqlJson(sqlText);
                 // 发现-5 延伸修复（A5 偶发 run FAILED）：gpt-oss 模型偶发不输出可解析 SQL，
@@ -443,7 +444,8 @@ public class ChatQuestionService {
                     }
                 }
                 String validation = rowRuleError != null ? rowRuleError
-                        : (sql == null ? "模型未输出可执行的 SQL" : validateSql(sql, dsType, dsId, dynamic));
+                        : (sql == null ? "模型未输出可执行的 SQL"
+                                : validateSql(sql, dsType, dsId, dynamic, question, matchText));
                 // 发现-5 延伸修复（A5 偶发 run FAILED）：校验/空 SQL 失败时回喂修复，至多重试 MAX_SQL_REPAIR_RETRIES 次。
                 int validationRetryLeft = MAX_SQL_REPAIR_RETRIES;
                 while (validation != null && validationRetryLeft > 0) {
@@ -463,7 +465,7 @@ public class ChatQuestionService {
                             fixedSql = null;
                         }
                     }
-                    if (fixedSql != null && validateSql(fixedSql, dsType, dsId, dynamic) == null) {
+                    if (fixedSql != null && validateSql(fixedSql, dsType, dsId, dynamic, question, matchText) == null) {
                         sqlText = fixed;
                         sql = fixedSql;
                         validation = null;
@@ -476,7 +478,7 @@ public class ChatQuestionService {
                     }
                 }
                 logOperation(currentRecordId.get(), oid, uid, OPERATE_GENERATE_SQL, sqlStart,
-                        sqlUsage, validation != null, null);
+                        sqlUsage, validation != null, sqlLogMessage(sqlMessages, sqlText));
                 if (validation != null) {
                     emitError(writer, validation);
                     return;
@@ -532,7 +534,7 @@ public class ChatQuestionService {
                         String fixedText = regenerateSql(aiModel, question, dsId, dynamic, sql,
                                 execEx.getMessage(), writer);
                         String fixedSql = parseSqlJson(fixedText).sql;
-                        if (fixedSql != null && validateSql(fixedSql, dsType, dsId, dynamic) == null) {
+                        if (fixedSql != null && validateSql(fixedSql, dsType, dsId, dynamic, question, matchText) == null) {
                             String finalSql = fixedSql;
                             if (dynamic == null && permissionEnforcer != null) {
                                 try {
@@ -966,7 +968,8 @@ public class ChatQuestionService {
     }
 
     /**
-     * 验收 A3：取前序问答（最近若干条）作为追问上下文，使 follow-up 能引用前文出现的表/列/实体。
+     * 取前序问答（最近若干条）作为追问上下文文本，供知识增强（实体/术语/样例召回）复用。
+     * 注意：SQL 生成的 model messages 历史由 {@link #priorContextMessages} 提供，本方法仅产出文本。
      */
     private String priorContext(long chatId, long excludeRecordId) {
         List<Map<String, Object>> records = chatRepository.listRecordsByChat(chatId);
@@ -989,9 +992,6 @@ public class ChatQuestionService {
             }
             blocks.add(b.toString());
         }
-        // §2.1: 追问上下文的轮数由 chat.context_record_count 控制（缺省 3，对齐 SQLBot
-        // GENERATE_SQL_QUERY_HISTORY_ROUND_COUNT=3），不再硬编码。
-        // 语义对齐 SQLBot get_last_conversation_rounds：<= 0 表示不注入任何历史（返回空）。
         int maxRecords = chatInt("chat.context_record_count", 3);
         if (maxRecords <= 0) {
             return "";
@@ -999,14 +999,95 @@ public class ChatQuestionService {
         if (blocks.size() > maxRecords) {
             blocks = blocks.subList(blocks.size() - maxRecords, blocks.size());
         }
-        // A16：跨轮错误自愈（对齐 SQLBot llm.py:207-215）——把上一轮 exec-sql 失败的错误
-        // 信息注入下一轮提示词，让 LLM 规避同类错误（如不存在的列、类型不匹配）
         String lastError = lastExecSqlError(chatId, excludeRecordId);
         if (!lastError.isEmpty()) {
             blocks.add("Last SQL execution failed with the following error. "
                     + "Fix it in this round and do not repeat the same mistake:\n" + lastError);
         }
         return String.join("\n", blocks);
+    }
+
+    /**
+     * 验收 A2/A3：取上一次 GENERATE_SQL 的完整 model messages 作为追问历史（剔除 system），
+     * 取最近 N 轮（N 由 chat.context_record_count 控制，≤0 不注入），对齐 SQLBot
+     * get_last_conversation_rounds + init_messages 的历史注入（偏差②收敛）。
+     */
+    private List<ModelMessage> priorContextMessages(long chatId, long excludeRecordId) {
+        List<Map<String, Object>> records = chatRepository.listRecordsByChat(chatId);
+        int roundCount = chatInt("chat.context_record_count", 3);
+        if (records == null || records.isEmpty() || roundCount <= 0) {
+            return Collections.emptyList();
+        }
+        // 取当前记录之前的「最近一条」记录：其 GENERATE_SQL 日志已累积了前序历史轮次
+        Long prevRecordId = null;
+        for (int i = records.size() - 1; i >= 0; i--) {
+            long rid = Rows.lng(records.get(i), "id", 0L);
+            if (rid != excludeRecordId) {
+                prevRecordId = rid;
+                break;
+            }
+        }
+        if (prevRecordId == null) {
+            return Collections.emptyList();
+        }
+        Map<String, Object> parsed = chatRepository.lastLogMessage(prevRecordId, OPERATE_GENERATE_SQL);
+        if (parsed == null) {
+            return Collections.emptyList();
+        }
+        Object msgsObj = parsed.get("messages");
+        if (!(msgsObj instanceof List)) {
+            return Collections.emptyList();
+        }
+        List<?> rawMessages = (List<?>) msgsObj;
+        List<ModelMessage> filtered = new ArrayList<>();
+        for (Object o : rawMessages) {
+            if (!(o instanceof Map)) {
+                continue;
+            }
+            Map<String, Object> m = (Map<String, Object>) o;
+            String role = Rows.str(m, "role");
+            if ("system".equalsIgnoreCase(role)) {
+                continue;
+            }
+            filtered.add(new ModelMessage(role, Rows.str(m, "content")));
+        }
+        // 对齐 SQLBot get_last_conversation_rounds：从倒数第 N 个 user 消息起截取
+        List<Integer> humanIdx = new ArrayList<>();
+        for (int i = 0; i < filtered.size(); i++) {
+            if ("user".equalsIgnoreCase(filtered.get(i).role)) {
+                humanIdx.add(i);
+            }
+        }
+        if (humanIdx.isEmpty()) {
+            return Collections.emptyList();
+        }
+        int start = humanIdx.size() <= roundCount ? humanIdx.get(0) : humanIdx.get(humanIdx.size() - roundCount);
+        List<ModelMessage> history = new ArrayList<>(filtered.subList(start, filtered.size()));
+        // A16：跨轮错误自愈——把上一轮 exec-sql 失败的错误注入下一轮提示词
+        String lastError = lastExecSqlError(chatId, excludeRecordId);
+        if (!lastError.isEmpty()) {
+            history.add(new ModelMessage("user", "Last SQL execution failed with the following error. "
+                    + "Fix it in this round and do not repeat the same mistake:\n" + lastError));
+        }
+        return history;
+    }
+
+    /** 构造 GENERATE_SQL 日志的 message（完整 model messages + 本轮模型输出），供 priorContextMessages 回读。 */
+    private Map<String, Object> sqlLogMessage(List<ModelMessage> messages, String answer) {
+        List<Map<String, String>> arr = new ArrayList<>();
+        for (ModelMessage m : messages) {
+            Map<String, String> o = new LinkedHashMap<>();
+            o.put("role", m.role);
+            o.put("content", m.content);
+            arr.add(o);
+        }
+        Map<String, String> ans = new LinkedHashMap<>();
+        ans.put("role", "assistant");
+        ans.put("content", answer == null ? "" : answer);
+        arr.add(ans);
+        Map<String, Object> msg = new LinkedHashMap<>();
+        msg.put("messages", arr);
+        return msg;
     }
 
     /** A16：取本会话最近一条非空 error 的记录错误信息（排除当前记录）。 */
@@ -1215,7 +1296,7 @@ public class ChatQuestionService {
      * @return 错误信息；通过时返回 null
      */
     public String validateSql(String sql, String dsType, Long dsId) {
-        return validateSql(sql, dsType, dsId, null);
+        return validateSql(sql, dsType, dsId, null, "", "");
     }
 
     /**
@@ -1227,6 +1308,23 @@ public class ChatQuestionService {
      * @return 错误信息；通过时返回 null
      */
     public String validateSql(String sql, String dsType, Long dsId, DynamicDatasource dynamic) {
+        return validateSql(sql, dsType, dsId, dynamic, "", "");
+    }
+
+    /**
+     * 只读 SELECT 校验（静态 / 动态数据源共用）：先过 {@link SqlSafety}，再校验表名白名单。
+     *
+     * <p>A8：动态数据源没有 core_datasource 勾选记录，白名单改为实时读取该连接的表名，
+     * 与静态数据源一样拦截模型幻觉出的表，而不是把错误留到执行阶段。</p>
+     * <p>偏差④收敛：静态白名单由 {@code checkedTableNames}（全部勾选表）改为 {@code selectedTableNames}
+     * （本轮 schema 实际召回的表，retrieved-only），与 SQLBot {@code table_name_list} 对齐。</p>
+     *
+     * @param question   用户问题（驱动表召回，决定 selectedTableNames 范围）
+     * @param matchText  表匹配文本（通常为扩展关键词），为空时退化为勾选表次序
+     * @return 错误信息；通过时返回 null
+     */
+    public String validateSql(String sql, String dsType, Long dsId, DynamicDatasource dynamic,
+                             String question, String matchText) {
         String safety = validateSqlSafety(sql, dsType);
         if (safety != null) {
             return safety;
@@ -1253,7 +1351,7 @@ public class ChatQuestionService {
         if (dsId == null) {
             return null;
         }
-        String tableError = validateTables(sql, schemaContextBuilder.checkedTableNames(dsId));
+        String tableError = validateTables(sql, schemaContextBuilder.selectedTableNames(dsId, question, matchText));
         if (tableError != null) {
             return tableError;
         }

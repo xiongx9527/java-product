@@ -330,57 +330,84 @@ public class SchemaContextBuilder {
     // 提示词
     // ------------------------------------------------------------------
 
+    /** SQL 生成 JSON 格式约束（多轮 ack 的最后一跳 user 消息统一复用）。 */
+    private static final String SQL_JSON_FORMAT =
+            "请只输出 SQL 对应的结构化 JSON 对象（不要使用 Markdown 代码块），字段如下：\n"
+            + "{\n"
+            + "  \"success\": true 或 false（无法生成 SQL 时为 false）,\n"
+            + "  \"sql\": 生成的只读 SELECT 语句字符串（success 为 false 时为空字符串）,\n"
+            + "  \"brief\": 一句话会话标题（中文，不超过 20 字，用于重命名本次会话）,\n"
+            + "  \"chart-type\": 推荐图表类型，取值 table/column/bar/line/pie 之一,\n"
+            + "  \"tables\": 本次查询实际用到的表名数组（必须与 FROM/JOIN 中的表一致）\n"
+            + "}\n"
+            + "注意：sql 字段必须是一条完整、可执行的 SQL，不得包含解释性文字。";
+
     /** 构建 SQL 生成的 system + user 消息（含训练样例时附加参考）。 */
     public List<ModelMessage> buildSqlMessages(String question, Long dsId) {
-        return buildSqlMessages(question, dsId, "", "", null, null, question);
+        return buildSqlMessages(question, dsId, "", "", trainingSamples(dsId, question), null, question);
     }
 
     /**
-     * 构建 SQL 生成的 system + user 消息，含 A2 知识增强上下文：
-     * 业务术语（释义 + 同义词扩展）、自定义提示词与训练样例。
+     * 构建 SQL 生成的消息序列（多轮 ack 结构，对齐 SQLBot llm.py init_messages）：
+     * system(身份) → user(rules)+assistant(ack) → user(schema)+assistant(ack)
+     * → 可选 user(custom_prompt)/user(terminologies)/user(data_training) 各配 assistant(ack)
+     * → 历史轮次（priorContextMessages 产出）→ user(question)。
      *
      * @param terminologyText  术语模板文本（XML 形态；空串时省略该节）
      * @param customPromptText 自定义提示词（空串时省略该节）
-     * @param sqlExamples      SQL 示例（null 时本方法自行召回；调用方已召回时传入以避免重复查询）
+     * @param sqlExamples      SQL 示例（训练样例；null 时本方法自行召回）
+     * @param historyMessages  前序完整对话轮（已剔除 system），由 ChatQuestionService.priorContextMessages 产出
      */
     public List<ModelMessage> buildSqlMessages(String question, Long dsId, String terminologyText,
                                                String customPromptText, List<String> sqlExamples,
-                                               String historyText, String matchText) {
-        List<ModelMessage> messages = new ArrayList<>();
+                                               List<ModelMessage> historyMessages, String matchText) {
         List<String> samples = sqlExamples != null ? sqlExamples
                 : (dsId == null ? Collections.<String>emptyList() : trainingSamples(dsId, question));
-        messages.add(new ModelMessage("system", sqlSystemPrompt(!samples.isEmpty(), resolveType(dsId))));
-        StringBuilder user = new StringBuilder();
-        user.append("【数据库表结构】\n").append(dsId == null ? "（未选择数据源）" : buildSchemaText(dsId, question, matchText));
-        if (terminologyText != null && !terminologyText.isEmpty()) {
-            user.append("\n\n【业务术语】\n").append(terminologyText);
-        }
+        String identity = sqlSystemIdentity(resolveType(dsId));
+        String rules = sqlSystemRules(resolveType(dsId));
+        String schemaText = dsId == null ? "（未选择数据源）" : buildSchemaText(dsId, question, matchText);
+        return buildSqlMessageSeq(identity, rules, schemaText, terminologyText, customPromptText,
+                samples, historyMessages, question, SQL_JSON_FORMAT, null);
+    }
+
+    /**
+     * 多轮 ack 公用骨架：system(identity) + 多组 user/assistant ack + 历史轮次 + 末跳 user(question)。
+     *
+     * @param schemaExtra 追加到 schema user 消息尾部的内容（动态数据源的模板/行规则段），可为 null
+     */
+    private List<ModelMessage> buildSqlMessageSeq(String identity, String rules, String schemaText,
+                                                  String terminologyText, String customPromptText,
+                                                  List<String> sqlExamples, List<ModelMessage> historyMessages,
+                                                  String question, String jsonFormat, String schemaExtra) {
+        List<ModelMessage> messages = new ArrayList<>();
+        messages.add(new ModelMessage("system", identity));
+        messages.add(new ModelMessage("user", rules));
+        messages.add(new ModelMessage("assistant",
+                "我已掌握所有规则，包括表结构、SQL规范、安全限制和输出格式，我会严格遵守这些规则。"));
+        String schemaUser = "【数据库表结构】\n" + schemaText + (schemaExtra == null ? "" : schemaExtra);
+        messages.add(new ModelMessage("user", schemaUser));
+        messages.add(new ModelMessage("assistant",
+                "我已确认您提供的数据库信息与表结构schema，我生成的SQL不会超出您提供的范围。"));
         if (customPromptText != null && !customPromptText.isEmpty()) {
-            user.append("\n\n【自定义提示词】\n").append(customPromptText);
+            messages.add(new ModelMessage("user", "【自定义提示词】\n" + customPromptText));
+            messages.add(new ModelMessage("assistant", "我已确认您提供的额外信息，我会进行参考。"));
         }
-        if (!samples.isEmpty()) {
-            user.append("\n\n【可参考的 SQL 样例】\n");
-            for (String sample : samples) {
-                user.append(sample).append("\n");
+        if (terminologyText != null && !terminologyText.isEmpty()) {
+            messages.add(new ModelMessage("user", "【业务术语】\n" + terminologyText));
+            messages.add(new ModelMessage("assistant", "我已确认您提供的术语信息，我会进行参考。"));
+        }
+        if (sqlExamples != null && !sqlExamples.isEmpty()) {
+            StringBuilder sb = new StringBuilder("【可参考的 SQL 样例】\n");
+            for (String s : sqlExamples) {
+                sb.append(s).append("\n");
             }
+            messages.add(new ModelMessage("user", sb.toString()));
+            messages.add(new ModelMessage("assistant", "我已确认您提供的SQL示例，我会进行参考。"));
         }
-        // 验收 A3：追问时注入前序 Q&A，使 follow-up 能引用前文出现的表/列/实体
-        if (historyText != null && !historyText.isEmpty()) {
-            user.append("\n\n【前文问答（追问请优先引用其中已出现的表名、列名与实体）】\n").append(historyText);
+        if (historyMessages != null) {
+            messages.addAll(historyMessages);
         }
-        user.append("\n\n【用户问题】\n").append(question);
-        // A12：SQL 生成必须输出结构化 JSON（禁止用正则从自然语言抠 SQL）。
-        // 保留「请只输出 SQL」作为桩/调试可识别的语义标记，但要求以 JSON 对象呈现。
-        user.append("\n\n请只输出 SQL 对应的结构化 JSON 对象（不要使用 Markdown 代码块），字段如下：\n")
-                .append("{\n")
-                .append("  \"success\": true 或 false（无法生成 SQL 时为 false）,\n")
-                .append("  \"sql\": 生成的只读 SELECT 语句字符串（success 为 false 时为空字符串）,\n")
-                .append("  \"brief\": 一句话会话标题（中文，不超过 20 字，用于重命名本次会话）,\n")
-                .append("  \"chart-type\": 推荐图表类型，取值 table/column/bar/line/pie 之一,\n")
-                .append("  \"tables\": 本次查询实际用到的表名数组（必须与 FROM/JOIN 中的表一致）\n")
-                .append("}\n")
-                .append("注意：sql 字段必须是一条完整、可执行的 SQL，不得包含解释性文字。");
-        messages.add(new ModelMessage("user", user.toString()));
+        messages.add(new ModelMessage("user", "【用户问题】\n" + question + "\n\n" + jsonFormat));
         return messages;
     }
 
@@ -913,25 +940,20 @@ public class SchemaContextBuilder {
     }
 
     /**
-     * 构建 SQL 生成消息（动态数据源版，A8）：与静态数据源同一套 system 提示词（含方言提示）
-     * 与 user 结构，仅表结构来源改为连接配置实时读取。
-     */
-    /**
-     * 构建 SQL 生成消息（动态数据源版，A8 / §2.4）。
+     * 构建 SQL 生成消息（动态数据源版，A8 / §2.4）。多轮 ack 结构对齐 SQLBot init_messages。
      *
-     * @param tableSqlTemplates §2.4: 表级 SQL 模板（表名 -> 子查询模板）；非空时作为 CTE/子查询提示注入，
-     *                          要求模型在最终 SQL 中优先复用这些已下发的子查询（对齐 SQLBot dynamic_sql）。
+     * @param historyMessages 前序完整对话轮（已剔除 system）；null 时省略
      */
     public List<ModelMessage> buildSqlMessagesForConf(String question, DatasourceType type, DatasourceConf conf,
                                                       String terminologyText, String customPromptText,
-                                                      String historyText, String matchText,
+                                                      List<ModelMessage> historyMessages, String matchText,
                                                       Map<String, String> tableSqlTemplates) {
-        return buildSqlMessagesForConf(question, type, conf, terminologyText, customPromptText, historyText,
+        return buildSqlMessagesForConf(question, type, conf, terminologyText, customPromptText, historyMessages,
                 matchText, tableSqlTemplates, null);
     }
 
     /**
-     * 构建 SQL 生成消息（动态数据源版，A8 / §2.4 / A18）。
+     * 构建 SQL 生成消息（动态数据源版，A8 / §2.4 / A18）。多轮 ack 结构对齐 SQLBot init_messages。
      *
      * @param tableSqlTemplates §2.4: 表级 SQL 模板（表名 -> 子查询模板）；非空时作为 CTE/子查询提示注入，
      *                          要求模型在最终 SQL 中优先复用这些已下发的子查询（对齐 SQLBot dynamic_sql）。
@@ -940,42 +962,32 @@ public class SchemaContextBuilder {
      */
     public List<ModelMessage> buildSqlMessagesForConf(String question, DatasourceType type, DatasourceConf conf,
                                                       String terminologyText, String customPromptText,
-                                                      String historyText, String matchText,
+                                                      List<ModelMessage> historyMessages, String matchText,
                                                       Map<String, String> tableSqlTemplates,
                                                       Map<String, String> tableRules) {
-        List<ModelMessage> messages = new ArrayList<>();
-        messages.add(new ModelMessage("system", sqlSystemPrompt(false, type)));
-        StringBuilder user = new StringBuilder();
-        user.append("【数据库表结构】\n").append(buildSchemaTextForConf(type, conf, question, matchText));
-        if (terminologyText != null && !terminologyText.isEmpty()) {
-            user.append("\n\n【业务术语】\n").append(terminologyText);
-        }
-        if (customPromptText != null && !customPromptText.isEmpty()) {
-            user.append("\n\n【自定义提示词】\n").append(customPromptText);
-        }
+        String identity = sqlSystemIdentity(type);
+        String rules = sqlSystemRules(type);
+        String schemaText = buildSchemaTextForConf(type, conf, question, matchText);
+        StringBuilder schemaExtra = new StringBuilder();
         if (tableSqlTemplates != null && !tableSqlTemplates.isEmpty()) {
-            appendDynamicTemplateSection(user, tableSqlTemplates, "查询这些受限表时");
+            appendDynamicTemplateSection(schemaExtra, tableSqlTemplates, "查询这些受限表时");
         }
         if (tableRules != null && !tableRules.isEmpty()) {
-            String rules = com.xiongx9527.askdata.embedded.DynamicDatasource.rowRulesPromptSection(tableRules);
-            if (!rules.isEmpty()) {
-                user.append("\n\n【宿主数据边界（行规则，必须满足；系统执行前会强制注入）】\n").append(rules);
+            String drules = com.xiongx9527.askdata.embedded.DynamicDatasource.rowRulesPromptSection(tableRules);
+            if (!drules.isEmpty()) {
+                schemaExtra.append("\n\n【宿主数据边界（行规则，必须满足；系统执行前会强制注入）】\n").append(drules);
             }
         }
-        if (historyText != null && !historyText.isEmpty()) {
-            user.append("\n\n【前文问答（追问请优先引用其中已出现的表名、列名与实体）】\n").append(historyText);
-        }
-        user.append("\n\n【用户问题】\n").append(question)
-                .append("\n\n请只输出 SQL 对应的结构化 JSON 对象（不要使用 Markdown 代码块），字段同静态数据源：")
-                .append("success/sql/brief/chart-type/tables，sql 为完整可执行的只读 SELECT。");
-        messages.add(new ModelMessage("user", user.toString()));
-        return messages;
+        String jsonFormat = "请只输出 SQL 对应的结构化 JSON 对象（不要使用 Markdown 代码块），字段同静态数据源："
+                + "success/sql/brief/chart-type/tables，sql 为完整可执行的只读 SELECT。";
+        return buildSqlMessageSeq(identity, rules, schemaText, terminologyText, customPromptText,
+                null, historyMessages, question, jsonFormat, schemaExtra.toString());
     }
 
     public List<ModelMessage> buildSqlMessagesForConf(String question, DatasourceType type, DatasourceConf conf,
                                                       String terminologyText, String customPromptText,
-                                                      String historyText, String matchText) {
-        return buildSqlMessagesForConf(question, type, conf, terminologyText, customPromptText, historyText,
+                                                      List<ModelMessage> historyMessages, String matchText) {
+        return buildSqlMessagesForConf(question, type, conf, terminologyText, customPromptText, historyMessages,
                 matchText, Collections.<String, String>emptyMap());
     }
 
@@ -1080,6 +1092,39 @@ public class SchemaContextBuilder {
     public List<String> checkedTableNames(long dsId) {
         List<String> names = new ArrayList<>();
         for (Map<String, Object> table : tableRepository.listByDsIdChecked(dsId)) {
+            names.add(Rows.str(table, "table_name"));
+        }
+        return names;
+    }
+
+    /**
+     * 本轮 {@link #buildSchemaText} 实际选中的表名（retrieved-only：按表级召回排序取 TOP-N）。
+     *
+     * <p>对齐 SQLBot {@code llm.py} 的 {@code table_name_list = choose_table_schema()}：
+     * 仅「检索/召回进入 schema 提示词」的表才进入放行白名单（偏差④收敛）。与
+     * {@link #checkedTableNames(long)}（全部勾选表）不同，未进入本轮 schema 的勾选表不会被放行，
+     * 因此模型若引用了「勾选但未进入 schema」的表将被拒绝。</p>
+     */
+    public List<String> selectedTableNames(long dsId, String question, String matchText) {
+        List<Map<String, Object>> tables = tableRepository.listByDsIdChecked(dsId);
+        if (tables.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Map<Long, Map<String, Object>> byId = new LinkedHashMap<>();
+        for (Map<String, Object> table : tables) {
+            byId.put(Rows.lng(table, "id", 0L), table);
+        }
+        List<String> names = new ArrayList<>();
+        List<Long> included = new ArrayList<>();
+        for (Long tableId : topTableIds(dsId, question, matchText, new ArrayList<>(byId.keySet()))) {
+            if (included.size() >= MAX_TABLES) {
+                break;
+            }
+            Map<String, Object> table = byId.get(tableId);
+            if (table == null) {
+                continue;
+            }
+            included.add(tableId);
             names.add(Rows.str(table, "table_name"));
         }
         return names;
@@ -1315,29 +1360,48 @@ public class SchemaContextBuilder {
      * 开启时用 query_limit（强制最外层 1000 行、禁止在子查询/CTE 内加限制），
      * 关闭时用 no_query_limit（默认不加限制，用户明确指定时才加）。</p>
      */
-    private String sqlSystemPrompt(boolean withTraining, DatasourceType dialect) {
+    /**
+     * 多轮 ack 结构的 system 身份消息（SQLBot init_messages 的 SystemPromptMessage(content=system)）。
+     */
+    private String sqlSystemIdentity(DatasourceType dialect) {
         String name = chatArg("chat.sqlbot_name", "SQLBot");
         boolean rowLimit = Boolean.parseBoolean(chatArg("chat.limit_rows", "true"));
-        // A9：注入移植模板（SQLBot backend/templates/template.yaml + sql_examples/<方言>.yaml）。
-        // 模板缺失或读取失败时退回到下方内置精简提示词，保证问数链路可用。
         if (promptTemplates != null) {
             try {
-                String ported = promptTemplates.sqlSystemPrompt(dialect, rowLimit, name);
+                String ported = promptTemplates.sqlSystemIdentity(dialect, rowLimit, name);
                 if (ported != null && !ported.trim().isEmpty()) {
-                    if (withTraining) {
-                        ported = ported + "\n\n已提供 SQL 样例作为参考，优先对齐其风格。";
-                    }
                     return ported;
                 }
             } catch (RuntimeException e) {
                 log.info("提示词模板读取失败，退化为内置提示词: {}", e.getMessage());
             }
         }
+        return "你是一个严谨的数据库 SQL 专家，服务于一个中文问数（NL2SQL）系统" + name + "。";
+    }
+
+    /**
+     * 多轮 ack 结构的 rules 消息（SQLBot init_messages 的 HumanPromptMessage(content=rules)）。
+     */
+    private String sqlSystemRules(DatasourceType dialect) {
+        String name = chatArg("chat.sqlbot_name", "SQLBot");
+        boolean rowLimit = Boolean.parseBoolean(chatArg("chat.limit_rows", "true"));
+        if (promptTemplates != null) {
+            try {
+                String ported = promptTemplates.sqlSystemRules(dialect, rowLimit, name);
+                if (ported != null && !ported.trim().isEmpty()) {
+                    return ported;
+                }
+            } catch (RuntimeException e) {
+                log.info("提示词模板读取失败，退化为内置提示词: {}", e.getMessage());
+            }
+        }
+        return fallbackRules(name, rowLimit, dialect);
+    }
+
+    /** 内置精简 rules（模板缺失/读取失败时的降级）。 */
+    private String fallbackRules(String name, boolean rowLimit, DatasourceType dialect) {
         StringBuilder sb = new StringBuilder();
-        sb.append("你是一个严谨的数据库 SQL 专家，服务于一个中文问数（NL2SQL）系统")
-                .append(name)
-                .append("。\n")
-                .append("规则：\n")
+        sb.append("规则：\n")
                 .append("1. 只能使用用户提供的表结构中的表与字段；\n")
                 .append("2. 只生成一条只读 SELECT 语句，不要写 INSERT/UPDATE/DELETE/DDL；\n")
                 .append("3. 结果用 ```sql 代码块包裹，不要解释；\n")
@@ -1356,10 +1420,19 @@ public class SchemaContextBuilder {
             // 验收 A1：注入方言特定的标识符引用与分页约定，避免模型默认按 MySQL 生成错误语法
             sb.append(dialect.sqlDialectHint()).append("\n");
         }
-        if (withTraining) {
-            sb.append("已提供 SQL 样例作为参考，优先对齐其风格。\n");
-        }
         return sb.toString();
+    }
+
+    /**
+     * 合并版 system 提示词（兼容 buildSqlFixMessages / chart 等单条 system 调用方）。
+     * 多轮 ack 主链路请直接用 {@link #sqlSystemIdentity} + {@link #sqlSystemRules}。
+     */
+    private String sqlSystemPrompt(boolean withTraining, DatasourceType dialect) {
+        String base = sqlSystemIdentity(dialect) + "\n\n" + sqlSystemRules(dialect);
+        if (withTraining) {
+            base = base + "\n\n已提供 SQL 样例作为参考，优先对齐其风格。";
+        }
+        return base;
     }
 
     /** §2.1：读取 chat 组运行参数（sys_arg）；未注入 Repository / 未配置 / 值为空时返回默认值。 */

@@ -78,7 +78,10 @@ class ChatRagTest {
     void sqlPromptJsonSkeletonIsWellFormed() {
         // 回归：提示词里的 JSON 示例字段名必须带前导引号，否则示例本身不是合法 JSON，
         // 真实模型会照着返回 {"success":false,"sql":"",...}（问数直接失败）。
-        String content = schemaContextBuilder.buildSqlMessages("每个状态的订单数", 1L).get(1).content;
+        // 多轮 ack 结构下，JSON 输出格式位于末跳 user（【用户问题】）消息。
+        List<ChatModelClient.ModelMessage> messages =
+                schemaContextBuilder.buildSqlMessages("每个状态的订单数", 1L);
+        String content = firstUserContaining(messages, "【用户问题】");
         assertTrue(content.contains("\"success\": true 或 false"), content);
         assertTrue(content.contains("\"sql\": 生成的只读 SELECT"), content);
         assertTrue(content.contains("\"brief\":"), content);
@@ -86,6 +89,24 @@ class ChatRagTest {
         assertTrue(content.contains("\"tables\":"), content);
         assertFalse(content.contains("\nsuccess\":"), "字段名缺少前导引号: " + content);
         assertFalse(content.contains("\nsql\":"), "字段名缺少前导引号: " + content);
+    }
+
+    private static String firstUserContaining(List<ChatModelClient.ModelMessage> msgs, String substr) {
+        for (ChatModelClient.ModelMessage m : msgs) {
+            if ("user".equals(m.role) && m.content != null && m.content.contains(substr)) {
+                return m.content;
+            }
+        }
+        throw new AssertionError("no user message contains: " + substr);
+    }
+
+    private static boolean anyUserContains(List<ChatModelClient.ModelMessage> msgs, String substr) {
+        for (ChatModelClient.ModelMessage m : msgs) {
+            if ("user".equals(m.role) && m.content != null && m.content.contains(substr)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Test
@@ -100,10 +121,11 @@ class ChatRagTest {
         // SQL 提示词仍可构建（仅 schema 驱动）
         List<ChatModelClient.ModelMessage> messages =
                 schemaContextBuilder.buildSqlMessages("每个状态的订单数", 1L);
-        assertEquals(2, messages.size());
         assertEquals("system", messages.get(0).role);
-        assertTrue(messages.get(1).content.contains("【数据库表结构】"));
-        assertFalse(messages.get(1).content.contains("【可参考的 SQL 样例】"));
+        // 多轮 ack 结构：schema 在独立 user 消息中，无训练样例时不含「可参考的 SQL 样例」
+        String schemaMsg = firstUserContaining(messages, "【数据库表结构】");
+        assertTrue(schemaMsg.contains("【数据库表结构】"));
+        assertFalse(anyUserContains(messages, "【可参考的 SQL 样例】"));
     }
 
     @Test
@@ -130,8 +152,10 @@ class ChatRagTest {
             assertFalse(sample.contains("停用的样例"), sample);
         }
         assertTrue(samples.get(0).contains("每个状态的订单数"), samples.toString());
-        // 命中样例进入提示词
-        String content = schemaContextBuilder.buildSqlMessages("每个状态的订单数", 1L).get(1).content;
+        // 命中样例进入提示词（多轮 ack 结构下位于独立的 user 消息）
+        List<ChatModelClient.ModelMessage> msgs =
+                schemaContextBuilder.buildSqlMessages("每个状态的订单数", 1L);
+        String content = firstUserContaining(msgs, "【可参考的 SQL 样例】");
         assertTrue(content.contains("【可参考的 SQL 样例】"));
         assertTrue(content.contains("SELECT status, COUNT(*) FROM orders GROUP BY status"));
     }

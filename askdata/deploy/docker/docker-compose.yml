@@ -84,9 +84,7 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio123}
       MINIO_ENDPOINT: http://minio:9000
       MINIO_BUCKET: askdata
-      # AI 模型开关：true 才会装配 ChatModel 并启用问数/助手链路。
-      # 实际的 LLM / 远程 embedding 连接信息在「系统 -> AI 模型」界面配置（写入 sys_ai_model），不在此硬编码。
-      ASKDATA_ASSISTANT_ENABLED: "true"
+      # LLM / 远程 embedding 连接信息在「系统 -> AI 模型」界面配置（写入 sys_ai_model），不在此硬编码。
       ASKDATA_EMBEDDING_MODEL_PATH: /opt/askdata/models
       # 向量存储后端：qdrant（需上方 qdrant 服务）/ none（默认，DB JSON 列 + 应用内余弦）
       ASKDATA_VECTOR_STORE_TYPE: qdrant

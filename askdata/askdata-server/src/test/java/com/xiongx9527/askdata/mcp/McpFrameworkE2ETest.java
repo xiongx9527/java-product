@@ -130,7 +130,7 @@ class McpFrameworkE2ETest {
         assertTrue(names.contains("chat_start"), "tools/list 未暴露 chat_start: " + tools);
         assertTrue(names.contains("access_token"), "tools/list 未暴露 access_token: " + tools);
         assertTrue(names.contains("question_answer"), "tools/list 未暴露 question_answer: " + tools);
-        assertTrue(names.contains("assistant"), "tools/list 未暴露 assistant: " + tools);
+        assertTrue(names.contains("mcp_assistant"), "tools/list 未暴露 mcp_assistant: " + tools);
 
         // 3) tools/call server_info（确定性，无 DB/LLM 依赖）
         post(msgUrl, "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{"

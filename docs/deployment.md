@@ -61,7 +61,7 @@ askdata-server 的「问数（NL2SQL）/ Predict / 智能助手」依赖一个�
   - API Key（本地 Ollama 可留空，框架以 sk-local 占位）；
   - 温度 temperature（可选）。
 - 框架按 OpenAI 兼容协议调用（自动补齐 /v1），因此任何 OpenAI 兼容网关（OpenAI、Ollama、阿里云百炼/DashScope、智谱、自建 vLLM 等）均可直接接入。
-- 仅当 askdata.assistant.enabled=true（环境变量 ASKDATA_ASSISTANT_ENABLED=true）时才会装配 ChatModel Bean 并启用问数/助手链路；缺省不装配，未配置模型也不影响其它功能启动与启动成功。
+- 问数主链路与 MCP 问数工具（question_answer / mcp_question / mcp_assistant）共用该默认对话模型；未配置时相关接口返回可读错误，不影响其它功能启动。
 
 > 说明：测试类 LlmNl2SqlLiveTest 等「live」用例需要真实 LLM 端点，通过 ASKDATA_LLM_DOMAIN 指定（仅测试用，非生产配置；本环境因无可用模型权重/网络未能实跑，主链路已由 ChatPipelineTest 以桩 LLM 覆盖）。
 
@@ -104,11 +104,9 @@ askdata-server 的「问数（NL2SQL）/ Predict / 智能助手」依赖一个�
     export ASKDATA_DB_PASSWORD=<db-pwd>
 
     # —— AI 模型（问数/助手/语义召回）——
-    # 1) 开启助手链路（否则不装配 LLM Bean，问数/助手不可用）
-    export ASKDATA_ASSISTANT_ENABLED=true
-    # 2) 本地 embedding 模型目录（约 793MB，需自行放置；缺失自动降级词法召回）
+    # 1) 本地 embedding 模型目录（约 793MB，需自行放置；缺失自动降级词法召回）
     export ASKDATA_EMBEDDING_MODEL_PATH=/opt/askdata/models
-    # 3) 向量存储后端：qdrant（需先起 qdrant）/ none（默认，DB JSON 列 + 应用内余弦）
+    # 2) 向量存储后端：qdrant（需先起 qdrant）/ none（默认，DB JSON 列 + 应用内余弦）
     export ASKDATA_VECTOR_STORE_TYPE=qdrant
     export ASKDATA_QDRANT_URL=http://127.0.0.1:6333
     export ASKDATA_QDRANT_GRPC_PORT=6334
@@ -135,7 +133,6 @@ askdata-server 的「问数（NL2SQL）/ Predict / 智能助手」依赖一个�
       -e ASKDATA_DB_URL=jdbc:mysql://<db-host>:3306/askdata?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true \
       -e ASKDATA_DB_USERNAME=askdata \
       -e ASKDATA_DB_PASSWORD=<db-pwd> \
-      -e ASKDATA_ASSISTANT_ENABLED=true \
       -e ASKDATA_EMBEDDING_MODEL_PATH=/opt/askdata/models \
       -e ASKDATA_VECTOR_STORE_TYPE=qdrant \
       -e ASKDATA_QDRANT_URL=http://<qdrant-host>:6333 \

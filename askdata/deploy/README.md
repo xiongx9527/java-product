@@ -33,4 +33,4 @@
       docker/      Dockerfile + docker-compose.yml
       k8s/         configmap / secret / deployment / service / qdrant
       systemd/     askdata-server.service（jar 系统服务）
-      （MCP 业务系统对接文档已移至 askdata/mcp/ 目录）
+      （业务系统对接文档见 askdata/integration/：MCP 与嵌入）

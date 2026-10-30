@@ -122,7 +122,6 @@ askdata 的鉴权统一基于 Sa-Token（令牌头名 X-SQLBOT-TOKEN、令牌前
 | model_list | 无 | 当前工作空间可用对话模型 |
 | chat_start | datasourceId?, question? | 开启问数会话，返回 chat_id |
 | question_answer | question, datasourceId?, chatId?, customModel?, returnImg? | 问数（NL2SQL → 只读执行 → 返回 SQL 与结果行） |
-| assistant | message | 多轮记忆问数助手（基于默认对话模型） |
 
 
 ### 3.1 原生 MCP：工具参数与响应明细
@@ -138,7 +137,6 @@ askdata 的鉴权统一基于 Sa-Token（令牌头名 X-SQLBOT-TOKEN、令牌前
 | model_list | 无 | 当前工作空间可用模型数组（含默认标记） |
 | chat_start | datasourceId?(long), question?(string) | {access_token, chat_id} |
 | question_answer | question(string), datasourceId?(long), chatId?(long), customModel?(long), returnImg?(bool, 默认 true) | 自包含 Markdown 字符串（含 **问**、**记录 ID**、**SQL** 与结果 Markdown 表格；return_img 命中且出图成功时附 imageUrl）；失败 {error} |
-| assistant | message(string) | {answer: "<助手回复>"}；未装配模型返回 {error: mcp.error.assistant.not.assembled} |
 
 说明：原生 MCP 的 question_answer 单次返回 Markdown（非 SSE）；兼容 REST 层 /mcp_question 才是 SSE 流。两者底层问数逻辑（NL2SQL → 只读执行）一致。
 
@@ -157,7 +155,8 @@ askdata 的鉴权统一基于 Sa-Token（令牌头名 X-SQLBOT-TOKEN、令牌前
 ## 5. 启用与配置
 
 - 原生 MCP 默认即开（fw-plus.ai.mcp.enabled=true）；如需关闭在配置中置 false。
-- 问数/助手（question_answer、assistant 工具与 /mcp_question）依赖大模型底座：需 ASKDATA_ASSISTANT_ENABLED=true 并在「系统 → AI 模型」配置默认对话模型（见部署文档 §2.5）。
+- 问数类工具（`question_answer`、`mcp_question`、`mcp_assistant`）与 Web 主链路共用同一条管线，只需在「系统 → AI 模型」配置默认对话模型（见部署文档 §2.5），无需额外开关。
+- 多轮追问上下文来自元数据库 chat 记录（`chat.context_record_count`，默认 3 轮），与 Web 会话一致；带 `chatId` 续接即沿用同一会话历史。
 - 兼容 REST 层的白名单放行项属于框架 AuthWhitelist，与 SQLBot 逐条等价（由 AuthWhitelistParityTest 校验）。
 
 ## 6. 对接实例代码（Python / curl）
