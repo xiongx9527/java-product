@@ -196,7 +196,14 @@ public class UserService {
         long id = idGenerator.nextId();
         String systemVariables = serializeSystemVariables(body);
         // 对齐 SQLBot create：新用户 oid=0，绑定工作空间后取首个
-        userRepository.insert(id, account, name, CryptoUtil.md5Hex(resolveDefaultPassword()), email, 0L, status,
+        // 修复：管理员创建用户时若显式传入 password，则以该口令的 MD5 存储；
+        // 否则回落默认口令（保持原行为，兼容导入/SSO 等不传口令的场景）。
+        // 原实现始终用默认口令，导致创建时设置的口令无法登录。
+        String rawPwd = Rows.str(body, "password");
+        String passwordHash = (rawPwd == null || rawPwd.isEmpty())
+                ? CryptoUtil.md5Hex(resolveDefaultPassword())
+                : CryptoUtil.md5Hex(rawPwd);
+        userRepository.insert(id, account, name, passwordHash, email, 0L, status,
                 System.currentTimeMillis(), "zh-CN", origin, systemVariables);
         long oid = 0L;
         for (Long wsId : new TreeSet<>(oidList)) {

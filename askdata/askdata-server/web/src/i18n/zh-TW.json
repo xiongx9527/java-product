@@ -328,7 +328,8 @@
     "rename_conversation_title": "重新命名對話標題",
     "conversation_title": "對話標題",
     "copied": "已複製",
-    "ask_failed": "問數失敗"
+    "ask_failed": "問數失敗",
+    "data_analysis_now": "我可以查詢資料、產生圖表、檢測資料異常、預測資料等趕快開啟智慧問數吧～"
   },
   "ds": {
     "title": "資料來源",

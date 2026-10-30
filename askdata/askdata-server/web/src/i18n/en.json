@@ -328,7 +328,8 @@
     "rename_conversation_title": "Rename conversation title",
     "conversation_title": "Conversation title",
     "copied": "Copied",
-    "ask_failed": "Q&A failed"
+    "ask_failed": "Q&A failed",
+    "data_analysis_now": "I can query data, generate charts, detect data anomalies, predict data, and more! Enable Smart Data Analysis now!"
   },
   "ds": {
     "title": "Data Sources",

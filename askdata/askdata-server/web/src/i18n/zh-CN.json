@@ -328,7 +328,8 @@
     "rename_conversation_title": "重命名对话标题",
     "conversation_title": "对话标题",
     "copied": "已复制",
-    "ask_failed": "问数失败"
+    "ask_failed": "问数失败",
+    "data_analysis_now": "我可以查询数据、生成图表、检测数据异常、预测数据等赶快开启智能问数吧～"
   },
   "ds": {
     "title": "数据源",

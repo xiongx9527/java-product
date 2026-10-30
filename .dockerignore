@@ -1,0 +1,10 @@
+# 镜像构建上下文裁剪：仓库根有 500MB+ 的 web/node_modules 与 target，直接 COPY . . 会拖垮构建。
+.git
+.gitignore
+**/target/
+**/node_modules/
+**/*.log
+.DS_Store
+askdata/askdata-server/data/
+askdata/askdata-server/e2e/test-results/
+docs/
