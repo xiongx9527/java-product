@@ -81,7 +81,7 @@ public class ResponseEnvelopeAdvice implements ResponseBodyAdvice<Object> {
     /** 是否为文件下载响应（{@code Content-Disposition: attachment}）。 */
     private static boolean isFileDownload(ServerHttpRequest request, ServerHttpResponse response) {
         if (response instanceof ServletServerHttpResponse) {
-            jakarta.servlet.http.HttpServletResponse servletResponse =
+            javax.servlet.http.HttpServletResponse servletResponse =
                     ((ServletServerHttpResponse) response).getServletResponse();
             String disposition = servletResponse.getHeader("Content-Disposition");
             if (disposition != null && disposition.toLowerCase().contains("attachment")) {
@@ -89,7 +89,7 @@ public class ResponseEnvelopeAdvice implements ResponseBodyAdvice<Object> {
             }
         }
         if (request instanceof ServletServerHttpRequest) {
-            jakarta.servlet.http.HttpServletRequest servletRequest =
+            javax.servlet.http.HttpServletRequest servletRequest =
                     ((ServletServerHttpRequest) request).getServletRequest();
             String accept = servletRequest.getHeader("Accept");
             if (accept != null && accept.toLowerCase().contains("text/event-stream")) {

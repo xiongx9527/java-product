@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system.platform;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.xiongx9527.askdata.support.MetadbMigration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -229,7 +231,7 @@ class EnterprisePlatformServiceTest {
                 "{\"errcode\":0,\"userid\":\"u9\",\"name\":\"赵六\",\"email\":\"zhao@x.com\"}");
 
         Map<String, Object> user = service.platformUserByCode(EnterprisePlatformService.ORIGIN_WECOM,
-                Map.of("code", "scan-code"));
+                Maps.of("code", "scan-code"));
         assertEquals("u9", user.get("platform_uid"));
         assertEquals("u9", user.get("account"));
         assertEquals("赵六", user.get("name"));
@@ -248,7 +250,7 @@ class EnterprisePlatformServiceTest {
                 "{\"code\":0,\"data\":{\"open_id\":\"ou-9\",\"name\":\"孙七\",\"email\":\"s@x.com\"}}");
 
         Map<String, Object> user = service.platformUserByCode(EnterprisePlatformService.ORIGIN_LARK,
-                Map.of("code", "scan-code"));
+                Maps.of("code", "scan-code"));
         assertEquals("ou-9", user.get("platform_uid"));
         assertEquals("孙七", user.get("name"));
     }
@@ -259,7 +261,7 @@ class EnterprisePlatformServiceTest {
                 "{\"corpid\":\"d\",\"client_id\":\"k\",\"client_secret\":\"s\",\"api_base\":\"" + apiBase() + "\"}",
                 true);
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-                () -> service.platformUserByCode(EnterprisePlatformService.ORIGIN_DINGTALK, Map.of()));
+                () -> service.platformUserByCode(EnterprisePlatformService.ORIGIN_DINGTALK, Maps.of()));
         assertTrue(ex.getMessage().contains("code"), ex.getMessage());
     }
 
@@ -267,7 +269,7 @@ class EnterprisePlatformServiceTest {
     void ssoOfUnconfiguredPlatformFailsReadably() {
         IllegalStateException ex = assertThrows(IllegalStateException.class,
                 () -> service.platformUserByCode(EnterprisePlatformService.ORIGIN_WECOM,
-                        Map.of("code", "x")));
+                        Maps.of("code", "x")));
         assertTrue(ex.getMessage().contains("wecom"), ex.getMessage());
         assertNotNull(ex.getMessage());
     }

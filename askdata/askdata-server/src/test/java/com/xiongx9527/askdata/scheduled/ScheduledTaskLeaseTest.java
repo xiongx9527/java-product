@@ -76,7 +76,7 @@ class ScheduledTaskLeaseTest {
         assertTrue(repository.claim(taskId, "node-a", now, now + 30_000L));
         repository.release(taskId, now, now + 60_000L, now);
 
-        ScheduledTask task = repository.findById(taskId).orElseThrow();
+        ScheduledTask task = repository.findById(taskId).orElseThrow(IllegalStateException::new);
         assertFalse(task.isRunning());
         // 释放后可被任意实例重新抢占
         assertTrue(repository.claim(taskId, "node-b", now + 1L, now + 60_000L));
@@ -100,6 +100,6 @@ class ScheduledTaskLeaseTest {
         List<ScheduledTask> due = repository.dueTasks(now, 10);
         assertTrue(due.stream().noneMatch(t -> t.getId() == taskId),
                 "租约有效的任务不应被其它实例调度");
-        assertEquals(1, repository.findById(taskId).orElseThrow().isRunning() ? 1 : 0);
+        assertEquals(1, repository.findById(taskId).orElseThrow(IllegalStateException::new).isRunning() ? 1 : 0);
     }
 }

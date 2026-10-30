@@ -4,7 +4,7 @@ import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.OriginSupport;
 import com.xiongx9527.askdata.common.web.Result;
 import com.xiongx9527.askdata.system.auth.JwtCodec;
-import jakarta.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;

@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system.sso;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
@@ -25,7 +27,7 @@ public class DingTalkProvider implements ExternalIdpProvider {
     public ExternalIdentity resolveIdentity(ExternalIdpConfig cfg, IdpCallback cb, IdpHttpClient http) {
         String tokenUrl = cfg.getTokenUrl()
                 + "?appkey=" + enc(cfg.getClientId()) + "&appsecret=" + enc(cfg.getClientSecret());
-        IdpHttpClient.Response token = http.get(tokenUrl, Map.of());
+        IdpHttpClient.Response token = http.get(tokenUrl, Maps.of());
         if (!token.ok()) {
             throw new IllegalStateException("dingtalk token failed: " + token.status);
         }
@@ -33,7 +35,7 @@ public class DingTalkProvider implements ExternalIdpProvider {
         String accessToken = SsoJson.str(t, "access_token");
         String userInfoUrl = cfg.getUserInfoUrl()
                 + "?access_token=" + enc(accessToken) + "&code=" + enc(cb.getCode());
-        IdpHttpClient.Response info = http.get(userInfoUrl, Map.of());
+        IdpHttpClient.Response info = http.get(userInfoUrl, Maps.of());
         Map<String, Object> u = SsoJson.parseObject(info.body);
         String userId = SsoJson.str(u, "userid");
         if (userId == null) {
@@ -46,7 +48,7 @@ public class DingTalkProvider implements ExternalIdpProvider {
 
     private static String enc(String s) {
         try {
-            return URLEncoder.encode(s == null ? "" : s, StandardCharsets.UTF_8);
+            return URLEncoder.encode(s == null ? "" : s, "UTF-8");
         } catch (Exception e) {
             return s == null ? "" : s;
         }

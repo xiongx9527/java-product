@@ -1,9 +1,12 @@
 package com.xiongx9527.askdata.settings;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.common.storage.AskdataFileStorage;
 import com.xiongx9527.askdata.common.storage.FileStorageRecordRepository;
 import com.xiongx9527.askdata.common.util.IdGenerator;
+import com.xiongx9527.askdata.common.util.Io;
 import org.dromara.x.file.storage.core.Downloader;
 import org.dromara.x.file.storage.core.FileStorageService;
 import org.junit.jupiter.api.BeforeEach;
@@ -91,9 +94,9 @@ class SettingsFileOriginalNameFallbackTest {
     @Test
     void downloadsByDisplayNameEvenWhenStoredNameIsRandomized() throws Exception {
         // 本机没有该文件（请求落到其它实例），只能按展示名回源共享存储
-        ResponseEntity<Resource> response = controller.downloadFailInfo(Map.of("file", DISPLAY_NAME));
+        ResponseEntity<Resource> response = controller.downloadFailInfo(Maps.of("file", DISPLAY_NAME));
 
-        assertArrayEquals(CONTENT, response.getBody().getContentAsByteArray(),
+        assertArrayEquals(CONTENT, Io.readAll(response.getBody().getInputStream()),
                 "应按 original_filename 命中共享存储并返回同一份字节");
     }
 

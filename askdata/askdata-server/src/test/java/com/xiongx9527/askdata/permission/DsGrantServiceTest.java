@@ -1,5 +1,8 @@
 package com.xiongx9527.askdata.permission;
 
+import com.xiongx9527.askdata.common.util.Lists;
+import com.xiongx9527.askdata.common.util.Maps;
+
 import cn.dev33.satoken.context.mock.SaTokenContextMockUtil;
 import cn.dev33.satoken.stp.StpUtil;
 import com.xiongx9527.askdata.common.web.BadRequestException;
@@ -78,7 +81,7 @@ class DsGrantServiceTest {
 
     @Test
     void whitelistBlocksUngrantedMemberButAllowsAdmin() {
-        dsGrantService.save(Map.of("ds_id", DS_ID, "user_ids", List.of(USER_ALICE)));
+        dsGrantService.save(Maps.of("ds_id", DS_ID, "user_ids", Lists.of(USER_ALICE)));
         // 命中白名单
         assertDoesNotThrow(() -> dsGrantService.checkUsable(OID, USER_ALICE, false, DS_ID));
         // 未命中：拒绝（资源级授权，对齐 SQLBot @require_permissions(type='ds')）
@@ -94,16 +97,16 @@ class DsGrantServiceTest {
     void saveRejectsUserOutsideWorkspace() {
         long outsider = 999L;
         BadRequestException ex = assertThrows(BadRequestException.class,
-                () -> dsGrantService.save(Map.of("ds_id", DS_ID, "user_ids", List.of(outsider))));
+                () -> dsGrantService.save(Maps.of("ds_id", DS_ID, "user_ids", Lists.of(outsider))));
         assertTrue(ex.getMessage().contains("999"), "错误信息应含用户 id: " + ex.getMessage());
         assertFalse(dsGrantRepository.hasAnyGrant(OID, DS_ID));
     }
 
     @Test
     void emptyUserIdsClearsGrantBackToSharing() {
-        dsGrantService.save(Map.of("ds_id", DS_ID, "user_ids", List.of(USER_ALICE)));
+        dsGrantService.save(Maps.of("ds_id", DS_ID, "user_ids", Lists.of(USER_ALICE)));
         assertTrue(dsGrantRepository.hasAnyGrant(OID, DS_ID));
-        dsGrantService.save(Map.of("ds_id", DS_ID, "user_ids", List.of()));
+        dsGrantService.save(Maps.of("ds_id", DS_ID, "user_ids", Lists.of()));
         assertFalse(dsGrantRepository.hasAnyGrant(OID, DS_ID));
         assertDoesNotThrow(() -> dsGrantService.checkUsable(OID, USER_BOB, false, DS_ID));
     }

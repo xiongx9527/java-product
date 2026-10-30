@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.common.web;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.xiongx9527.askdata.common.cache.HotCacheService;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.system.auth.JwtCodec;
@@ -77,7 +79,7 @@ public class EmbeddedTokenAuthenticator {
      */
     public AuthResult authenticate(String rawHeader) {
         if (rawHeader == null || rawHeader.trim().isEmpty()) {
-            throw new AuthFailureException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", HEADER)));
+            throw new AuthFailureException(messageResolver.get("i18n_miss_args", Maps.of("key", HEADER)));
         }
         String[] parts = rawHeader.trim().split("\\s+", 2);
         if (parts.length < 2) {
@@ -104,7 +106,7 @@ public class EmbeddedTokenAuthenticator {
         }
         Object assistantIdValue = claims.get("assistant_id");
         if (assistantIdValue == null || String.valueOf(assistantIdValue).isEmpty()) {
-            throw new AuthFailureException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", "assistant_id")));
+            throw new AuthFailureException(messageResolver.get("i18n_miss_args", Maps.of("key", "assistant_id")));
         }
         long assistantId = toLong(assistantIdValue, -1L);
         Map<String, Object> assistant = hotCacheService.assistantById(assistantId);
@@ -136,7 +138,7 @@ public class EmbeddedTokenAuthenticator {
         }
         Object accountValue = claims.get("account");
         if (accountValue == null || String.valueOf(accountValue).isEmpty()) {
-            throw new AuthFailureException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", "account")));
+            throw new AuthFailureException(messageResolver.get("i18n_miss_args", Maps.of("key", "account")));
         }
         String account = String.valueOf(accountValue);
 
@@ -171,11 +173,11 @@ public class EmbeddedTokenAuthenticator {
         }
         if (Rows.intg(user, "status", 0) != 1) {
             throw new AuthFailureException(messageResolver.get("i18n_login.user_disable",
-                    java.util.Map.of("msg", account)));
+                    Maps.of("msg", account)));
         }
         if (Rows.lng(user, "oid", 0L) == 0L) {
             throw new AuthFailureException(messageResolver.get("i18n_login.no_associated_ws",
-                    java.util.Map.of("msg", account)));
+                    Maps.of("msg", account)));
         }
         // 安全红线：管理员账号不允许通过 embedded token 使用。
         if (currentUserService.isAdmin(user)) {

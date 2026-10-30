@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.cluster;
 
+import com.xiongx9527.askdata.common.util.Texts;
+
 import com.xiongx9527.askdata.common.storage.AskdataFileStorage;
 import com.xiongx9527.askdata.config.CacheProperties;
 import com.xiongx9527.askdata.mcp.cluster.McpSseClusterBridge;
@@ -90,7 +92,7 @@ class ClusterReadinessCheckerTest {
     @Test
     void sharedInfrastructurePassesAllChecks() {
         // A2：共享 MySQL + 同一密钥 + Redis 会话/缓存 + 远端存储 → 全部通过
-        MockEnvironment env = env("jdbc:mysql://db:3306/askdata", "k".repeat(32), "redis");
+        MockEnvironment env = env("jdbc:mysql://db:3306/askdata", Texts.repeat("k", 32), "redis");
         ClusterReadinessReport report = checker(env, "minio", true, redisCache()).check();
 
         assertFalse(report.hasFailure());
@@ -102,7 +104,7 @@ class ClusterReadinessCheckerTest {
     @Test
     void mcpWithoutRedisWarnsAboutStickySessions() {
         // A13：http-sse 且无 StringRedisTemplate → 告警说明需要粘性会话或启用 Redis
-        MockEnvironment env = env("jdbc:mysql://db:3306/askdata", "k".repeat(32), "redis");
+        MockEnvironment env = env("jdbc:mysql://db:3306/askdata", Texts.repeat("k", 32), "redis");
         env.setProperty("fw-plus.ai.mcp.enabled", "true");
         env.setProperty("fw-plus.ai.mcp.transport", "http-sse");
         ClusterReadinessReport report = checker(env, "minio", false, redisCache()).check();
@@ -114,7 +116,7 @@ class ClusterReadinessCheckerTest {
     @Test
     void mcpWithRedisIsClusterReady() {
         // A13：Redis + 集群中继均就绪时才算集群可用，且说明不再依赖粘性会话
-        MockEnvironment env = env("jdbc:mysql://db:3306/askdata", "k".repeat(32), "redis");
+        MockEnvironment env = env("jdbc:mysql://db:3306/askdata", Texts.repeat("k", 32), "redis");
         ClusterReadinessReport report = checker(env, "minio", true, true, redisCache()).check();
 
         ClusterReadinessReport.Item item = itemOf(report, "MCP 会话");
@@ -125,7 +127,7 @@ class ClusterReadinessCheckerTest {
     @Test
     void mcpWithRedisButNoBridgeWarnsInsteadOfFalseOk() {
         // A13：仅装 Redis 但中继配置未生效时不能报 OK（框架注册表本身不跨实例）
-        MockEnvironment env = env("jdbc:mysql://db:3306/askdata", "k".repeat(32), "redis");
+        MockEnvironment env = env("jdbc:mysql://db:3306/askdata", Texts.repeat("k", 32), "redis");
         env.setProperty("fw-plus.ai.mcp.enabled", "true");
         env.setProperty("fw-plus.ai.mcp.transport", "http-sse");
         ClusterReadinessReport report = checker(env, "minio", true, false, redisCache()).check();
@@ -139,7 +141,7 @@ class ClusterReadinessCheckerTest {
     @Test
     void workerIdFallsBackWithPidWarning() {
         // A12：关闭框架分配且未显式配置 worker-id → 撞号风险告警
-        MockEnvironment env = env("jdbc:mysql://db:3306/askdata", "k".repeat(32), "redis");
+        MockEnvironment env = env("jdbc:mysql://db:3306/askdata", Texts.repeat("k", 32), "redis");
         env.setProperty("fw.plus.uid.enabled", "false");
         ClusterReadinessReport report = checker(env, "minio", true, redisCache()).check();
 
@@ -195,7 +197,7 @@ class ClusterReadinessCheckerTest {
 
     private static ClusterReadinessReport.Item itemOf(ClusterReadinessReport report, String name) {
         List<ClusterReadinessReport.Item> items = report.items().stream()
-                .filter(i -> i.name().equals(name)).toList();
+                .filter(i -> i.name().equals(name)).collect(java.util.stream.Collectors.toList());
         assertFalse(items.isEmpty(), "缺少检查项: " + name);
         return items.get(0);
     }

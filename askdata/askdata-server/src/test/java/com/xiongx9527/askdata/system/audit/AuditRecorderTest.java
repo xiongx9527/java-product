@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system.audit;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.xiongx9527.askdata.common.audit.AuditClientIpResolver;
 import com.xiongx9527.askdata.common.audit.AuditModule;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
@@ -51,7 +53,7 @@ class AuditRecorderTest {
         jdbc.update("INSERT INTO sys_user VALUES (5, 7, 'alice')");
 
         userRepository = mock(UserRepository.class);
-        when(userRepository.findById(anyLong())).thenReturn(Optional.of(Map.of("oid", 7L, "name", "alice")));
+        when(userRepository.findById(anyLong())).thenReturn(Optional.of(Maps.of("oid", 7L, "name", "alice")));
 
         IdGenerator idGen = mock(IdGenerator.class);
         when(idGen.nextId()).thenAnswer(inv -> idSeq++);

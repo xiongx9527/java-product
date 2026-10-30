@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.common.i18n;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import cn.dev33.satoken.exception.NotLoginException;
 import com.xiongx9527.askdata.common.web.ApiExceptionHandler;
 import com.xiongx9527.askdata.common.web.BadRequestException;
@@ -34,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class I18nMessageConvergenceTest {
 
     /** §3 清单文件集（相对模块根目录）。 */
-    private static final List<String> AUDITED_FILES = List.of(
+    private static final List<String> AUDITED_FILES = Lists.of(
             "src/main/java/com/xiongx9527/askdata/datasource/service/DatasourceService.java",
             "src/main/java/com/xiongx9527/askdata/terminology/TerminologyService.java",
             "src/main/java/com/xiongx9527/askdata/training/TrainingService.java",

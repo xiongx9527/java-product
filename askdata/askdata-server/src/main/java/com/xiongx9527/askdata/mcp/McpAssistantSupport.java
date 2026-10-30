@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.mcp;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.chat.service.ChatQuestionService;
 import com.xiongx9527.askdata.chat.service.ChatService;
@@ -11,7 +13,7 @@ import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.embedded.DynamicDatasource;
 import com.xiongx9527.askdata.embedded.DynamicDatasourceResolver;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
-import jakarta.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -109,7 +111,7 @@ public class McpAssistantSupport {
 
     private void requireArg(String name, String value) {
         if (value == null || value.trim().isEmpty()) {
-            throw new BadRequestException(messageResolver.get("i18n_miss_args", Map.of("key", name)));
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", Maps.of("key", name)));
         }
     }
 

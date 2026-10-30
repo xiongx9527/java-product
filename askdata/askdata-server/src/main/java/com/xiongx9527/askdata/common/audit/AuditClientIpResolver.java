@@ -1,6 +1,8 @@
 package com.xiongx9527.askdata.common.audit;
 
-import jakarta.servlet.http.HttpServletRequest;
+import com.xiongx9527.askdata.common.util.Lists;
+
+import javax.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -23,7 +25,7 @@ import java.util.List;
 @Component
 public class AuditClientIpResolver {
 
-    private static final List<String> SINGLE_HEADERS = List.of(
+    private static final List<String> SINGLE_HEADERS = Lists.of(
             "X-Forwarded-For", "X-Real-IP", "CF-Connecting-IP", "X-Client-IP", "X-Forwarded");
 
     public String resolve(HttpServletRequest request) {

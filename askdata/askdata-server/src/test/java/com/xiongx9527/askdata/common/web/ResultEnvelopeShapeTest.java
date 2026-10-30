@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.common.web;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.fw.plus.common.model.JsonResult;
@@ -41,7 +43,7 @@ class ResultEnvelopeShapeTest {
 
     @Test
     void okWithObjectKeepsDataSemantics() throws Exception {
-        JsonNode node = mapper.readTree(mapper.writeValueAsString(Result.ok(List.of("a", "b"))));
+        JsonNode node = mapper.readTree(mapper.writeValueAsString(Result.ok(Lists.of("a", "b"))));
         assertEquals(2, node.get("data").size());
         assertEquals(0, node.get("code").asInt());
     }

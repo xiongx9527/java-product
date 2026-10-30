@@ -1,5 +1,8 @@
 package com.xiongx9527.askdata.ai;
 
+import com.xiongx9527.askdata.common.util.Lists;
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -51,11 +54,11 @@ class LlmNl2SqlLiveTest {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("model", model);
         payload.put("stream", false);
-        payload.put("messages", List.of(
-                Map.of("role", "system", "content",
+        payload.put("messages", Lists.of(
+                Maps.of("role", "system", "content",
                         "You are a text-to-SQL expert. Given a database schema and a question, "
                                 + "return ONLY a valid SQL SELECT statement, no explanation."),
-                Map.of("role", "user", "content",
+                Maps.of("role", "user", "content",
                         "Schema:\nTable ACCOUNT(id INTEGER, name VARCHAR(50), created_at TIMESTAMP)"
                                 + "\nQuestion: 查询所有账户的名字和创建时间，按创建时间倒序")));
 

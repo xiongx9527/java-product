@@ -1,5 +1,9 @@
 package com.xiongx9527.askdata.permission;
 
+import com.xiongx9527.askdata.common.util.Lists;
+import com.xiongx9527.askdata.common.util.Maps;
+import com.xiongx9527.askdata.common.util.Sets;
+
 import com.xiongx9527.askdata.datasource.engine.DatasourceType;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import org.junit.jupiter.api.Test;
@@ -96,20 +100,20 @@ class PermissionEnforcerTest {
     @Test
     void hiddenColumnsRemovedFromResult() {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("fields", List.of("id", "secret"));
-        result.put("fields_info", List.of(
-                Map.of("name", "id", "is_numeric", true),
-                Map.of("name", "secret", "is_numeric", false)));
+        result.put("fields", Lists.of("id", "secret"));
+        result.put("fields_info", Lists.of(
+                Maps.of("name", "id", "is_numeric", true),
+                Maps.of("name", "secret", "is_numeric", false)));
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", 1);
         row.put("secret", "x");
-        result.put("data", List.of(row));
+        result.put("data", Lists.of(row));
 
-        enforcer.applyHiddenColumns(result, Set.of("secret"));
+        enforcer.applyHiddenColumns(result, Sets.of("secret"));
 
         @SuppressWarnings("unchecked")
         List<Object> fields = (List<Object>) result.get("fields");
-        assertEquals(List.of("id"), fields);
+        assertEquals(Lists.of("id"), fields);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> data = (List<Map<String, Object>>) result.get("data");
         assertFalse(data.get(0).containsKey("secret"), "hidden column must be stripped from result set");
@@ -119,24 +123,24 @@ class PermissionEnforcerTest {
     @Test
     void noHiddenColumnsLeavesResultUntouched() {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("fields", List.of("id", "name"));
-        result.put("fields_info", List.of(Map.of("name", "id"), Map.of("name", "name")));
-        result.put("data", List.of(Map.of("id", 1, "name", "a")));
+        result.put("fields", Lists.of("id", "name"));
+        result.put("fields_info", Lists.of(Maps.of("name", "id"), Maps.of("name", "name")));
+        result.put("data", Lists.of(Maps.of("id", 1, "name", "a")));
         enforcer.applyHiddenColumns(result, Collections.emptySet());
-        assertEquals(List.of("id", "name"), result.get("fields"));
+        assertEquals(Lists.of("id", "name"), result.get("fields"));
     }
 
     // ---- enforce：普通用户注入，管理员跳过 ----
 
     @Test
     void ordinaryUserGetsRowFilterInjected() {
-        Map<String, Object> user = Map.of("id", 7L, "is_admin", false);
+        Map<String, Object> user = Maps.of("id", 7L, "is_admin", false);
         when(currentUserService.currentUser()).thenReturn(user);
         when(currentUserService.isAdmin(user)).thenReturn(false);
         when(permQuery.rowFilters(anyLong(), anyLong(), anyLong(), any()))
-                .thenReturn(List.of(Map.of("table", "orders", "filter", "(region = 'east')")));
+                .thenReturn(Lists.of(Maps.of("table", "orders", "filter", "(region = 'east')")));
         when(permQuery.hiddenColumns(anyLong(), anyLong(), anyLong(), any()))
-                .thenReturn(Set.of("secret"));
+                .thenReturn(Sets.of("secret"));
 
         PermissionEnforcer.EnforcedQuery enforced = enforcer.enforce(1L, 7L, 10L, "SELECT id FROM orders");
         assertTrue(enforced.getSql().contains("region = 'east'"), enforced.getSql());
@@ -145,7 +149,7 @@ class PermissionEnforcerTest {
 
     @Test
     void adminBypassesPermission() {
-        Map<String, Object> user = Map.of("id", 1L, "is_admin", true);
+        Map<String, Object> user = Maps.of("id", 1L, "is_admin", true);
         when(currentUserService.currentUser()).thenReturn(user);
         when(currentUserService.isAdmin(user)).thenReturn(true);
 

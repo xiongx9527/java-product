@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.training;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import com.xiongx9527.askdata.ai.EmbeddingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,7 +36,7 @@ class TrainingDualRecallTest {
         EmbeddingService embedding = Mockito.mock(EmbeddingService.class);
         Mockito.when(embedding.candidateRequiresEmbeddingColumn()).thenReturn(false);
         Mockito.when(embedding.recallByVector(Mockito.anyString(), Mockito.anyList(), Mockito.anyString(),
-                Mockito.anyDouble(), Mockito.anyInt())).thenReturn(List.of());
+                Mockito.anyDouble(), Mockito.anyInt())).thenReturn(Lists.of());
         service = new TrainingRecallService(embedding, jdbc);
     }
 

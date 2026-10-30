@@ -53,8 +53,10 @@ class DebounceIntegrationTest {
         mvc.perform(post("/test/debounce/apply-custom").param("id", "401")).andExpect(status().isOk());
         MvcResult r = mvc.perform(post("/test/debounce/apply-custom").param("id", "401")).andReturn();
         assertEquals(429, r.getResponse().getStatus());
-        assertTrue(r.getResponse().getContentAsString().contains("请勿重复提交"),
-                "应返回自定义拦截提示, 实际: " + r.getResponse().getContentAsString());
+        // Spring 5.3 的 getContentAsString() 默认按 ISO-8859-1 解码（Spring 6 起默认 UTF-8），
+        // 中文提示必须显式指定 UTF-8，否则断言会因乱码失败。
+        String body = r.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        assertTrue(body.contains("请勿重复提交"), "应返回自定义拦截提示, 实际: " + body);
     }
 
     @Test

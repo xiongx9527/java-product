@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.ai.vector;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import com.xiongx9527.askdata.support.MetadbMigration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -60,7 +62,7 @@ class DbVectorStoreTest {
         store.upsert("askdata-terminology", 3L, new double[] {1D, 1D});
         assertNotNull(jdbc.queryForObject("SELECT embedding FROM terminology WHERE id = 1", String.class));
 
-        List<VectorStore.IdScore> hits = store.query("askdata-terminology", new double[] {1D, 0D}, 10, List.of(1L, 2L, 3L));
+        List<VectorStore.IdScore> hits = store.query("askdata-terminology", new double[] {1D, 0D}, 10, Lists.of(1L, 2L, 3L));
         assertEquals(3, hits.size());
         assertEquals(1L, hits.get(0).id(), "完全一致应排第一");
         assertEquals(3L, hits.get(1).id(), "部分一致次之");
@@ -78,10 +80,10 @@ class DbVectorStoreTest {
         store.upsert("askdata-terminology", 2L, new double[] {1D, 0D});
         store.upsert("askdata-terminology", 3L, new double[] {1D, 0D});
         List<VectorStore.IdScore> scoped =
-                store.query("askdata-terminology", new double[] {1D, 0D}, 10, List.of(2L, 3L));
+                store.query("askdata-terminology", new double[] {1D, 0D}, 10, Lists.of(2L, 3L));
         assertEquals(2, scoped.size());
         assertTrue(scoped.stream().allMatch(h -> h.id() == 2L || h.id() == 3L));
-        assertEquals(1, store.query("askdata-terminology", new double[] {1D, 0D}, 1, List.of(1L, 2L, 3L)).size());
+        assertEquals(1, store.query("askdata-terminology", new double[] {1D, 0D}, 1, Lists.of(1L, 2L, 3L)).size());
     }
 
     @Test
@@ -109,14 +111,14 @@ class DbVectorStoreTest {
         store.upsert("askdata-core_table", 7L, new double[] {0.5D, 0.5D});
         String json = jdbc.queryForObject("SELECT table_embedding FROM core_table WHERE id = 7", String.class);
         assertEquals("0.5,0.5", json.replace("[", "").replace("]", ""));
-        List<VectorStore.IdScore> hits = store.query("askdata-core_table", new double[] {1D, 0D}, 10, List.of(7L));
+        List<VectorStore.IdScore> hits = store.query("askdata-core_table", new double[] {1D, 0D}, 10, Lists.of(7L));
         assertEquals(1, hits.size());
         assertEquals(7L, hits.get(0).id());
     }
 
     @Test
     void queryNeverThrowsOnUnknownCollection() {
-        assertTrue(store.query("askdata-no_such_table", new double[] {1D}, 10, List.of(1L)).isEmpty());
+        assertTrue(store.query("askdata-no_such_table", new double[] {1D}, 10, Lists.of(1L)).isEmpty());
     }
 
     private void insertTerminology(long id, String word) {

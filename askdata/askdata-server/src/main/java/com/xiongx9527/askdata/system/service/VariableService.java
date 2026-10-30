@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system.service;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
@@ -63,7 +65,7 @@ public class VariableService {
         currentUserService.requireAdmin();
         String name = Rows.str(body, "name");
         if (name == null || name.isEmpty()) {
-            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", "name")));
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", Maps.of("key", "name")));
         }
         Long id = Rows.lngOrNull(body, "id");
         if (variableRepository.existsName(name, id)) {
@@ -168,7 +170,7 @@ public class VariableService {
         try {
             return value == null ? "[]" : objectMapper.writeValueAsString(value);
         } catch (Exception e) {
-            throw new BadRequestException(messageResolver.get("i18n_format_invalid", java.util.Map.of("key", "value")));
+            throw new BadRequestException(messageResolver.get("i18n_format_invalid", Maps.of("key", "value")));
         }
     }
 

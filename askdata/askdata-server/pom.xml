@@ -7,7 +7,7 @@
     <parent>
         <groupId>com.xiongx9527</groupId>
         <artifactId>askdata</artifactId>
-        <version>0.3.0-SNAPSHOT</version>
+        <version>0.1.1-SNAPSHOT</version>
     </parent>
 
     <artifactId>askdata-server</artifactId>
@@ -19,13 +19,13 @@
     <properties>
         <maven.test.skip>true</maven.test.skip>
         <!-- Token 头部约定（与 SQLBot 前端逐字兼容） -->
-        <java.version>17</java.version>
-        <!-- 平台迁移 Java17/SB3.5/Jakarta：覆盖根 POM 的 8 -->
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <java.version>1.8</java.version>
+        <!-- 平台：Java8 / Spring Boot 2.7（fw-plus 0.1.1 线） -->
+        <maven.compiler.source>1.8</maven.compiler.source>
+        <maven.compiler.target>1.8</maven.compiler.target>
         <!-- 统一版本属性：fw-plus 与 Spring Boot 各只此一处，供全 POM 引用 -->
-        <revision>0.3.0-SNAPSHOT</revision>
-        <spring-boot.version>3.5.8</spring-boot.version>
+        <revision>0.1.1-SNAPSHOT</revision>
+        <spring-boot.version>2.7.18</spring-boot.version>
         <justauth.version>1.16.6</justauth.version>
         <justauth-spring-boot-starter.version>1.4.0</justauth-spring-boot-starter.version>
         <!-- 通用文件存储（对齐 SQLBot 文件存储）：本地默认，可配置切 OSS/MinIO 等 -->
@@ -70,29 +70,22 @@
     </dependencyManagement>
 
     <dependencies>
-        <!-- 鉴权（D10）：优先复用 fw-plus-auth-satoken 封装（含其 SaToken 惯例类与 cn.dev33 版本 1.46.0） -->
-        <!-- 鉴权（D10）：复用 fw-plus-auth-satoken 封装（SB3/Jakarta 原生，经其传递引入匹配的 sa-token-spring-boot3-starter）。
-             不再显式引入 SB2 变体 sa-token-spring-boot-starter（会在 SpringBoot 3.5 上抛不兼容异常）。 -->
+        <!-- 鉴权（D10）：复用 fw-plus-auth-satoken 封装（含其 SaToken 惯例类与 cn.dev33 版本 1.46.0）。 -->
         <dependency>
             <groupId>com.xiongx9527.fw.plus</groupId>
             <artifactId>fw-plus-auth-satoken</artifactId>
         </dependency>
-        <!-- Sa-Token：SpringBoot 3.x/Jakarta 必须用 boot3 变体（SB2 的 sa-token-spring-boot-starter 在 3.5 抛不兼容）。 -->
+        <!-- Sa-Token：Spring Boot 2.7 / javax 线必须用 SB2 变体。
+             boot3 变体会传递引入 sa-token-jakarta-servlet 与 jakarta.servlet-api 6.0.0
+             （major 55，JDK 8 加载即抛 UnsupportedClassVersionError）。 -->
         <dependency>
             <groupId>cn.dev33</groupId>
-            <artifactId>sa-token-spring-boot3-starter</artifactId>
+            <artifactId>sa-token-spring-boot-starter</artifactId>
         </dependency>
 
         <!-- 注：不再直接依赖 fw-plus-ai-model（原 AiChatModel 契约已移除，ChatModelClient 改为自包含
              OpenAI 兼容客户端）。该构件仍由 fw-plus MCP starter 传递引入，版本在下方 dependencyManagement 锁定。 -->
 
-        <!-- langchain4j agentic：askdata 源码不直接使用，但 fw-plus-ai-boot-autoconfigure 的
-             AgenticScopeStoreAutoConfiguration 需要 dev.langchain4j.agentic.scope.AgenticScopeStore，
-             缺失会导致 Spring 上下文启动失败（版本由 langchain4j-bom 管理）。 -->
-        <dependency>
-            <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-agentic</artifactId>
-        </dependency>
         <!-- langchain4j 模型接入（AssistantBuilder 所需 ChatModel/StreamingChatModel/EmbeddingModel；OpenAI 兼容） -->
         <dependency>
             <groupId>com.xiongx9527.fw.plus</groupId>
@@ -100,39 +93,6 @@
             <!-- fw-plus-dependencies 未收录该构件，版本单独声明 -->
             <version>${revision}</version>
         </dependency>
-        <!-- langchain4j 在线向量库后端：Qdrant（复用 langchain4j 的 QdrantEmbeddingStore gRPC 封装，
-             作为 askdata.vector-store.type=qdrant 时的向量存储与 ANN 检索后端；type=none 时经 DbVectorStore 回落）。 -->
-        <dependency>
-            <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-qdrant</artifactId>
-        </dependency>
-        <!-- langchain4j 在线向量库后端：Milvus（复用 langchain4j 的 MilvusEmbeddingStore，
-             作为 askdata.vector-store.type=milvus 时的向量存储与 ANN 检索后端；不可达时经 DbVectorStore 回落）。 -->
-        <dependency>
-            <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-milvus</artifactId>
-        </dependency>
-        <!-- langchain4j 在线向量库后端：Weaviate（复用 langchain4j 的 WeaviateEmbeddingStore；
-             作为 askdata.vector-store.type=weaviate 时的向量存储与 ANN 检索后端；不可达时经 DbVectorStore 回落）。 -->
-        <dependency>
-            <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-weaviate</artifactId>
-        </dependency>
-        <!-- langchain4j 在线向量库后端：pgvector（复用 langchain4j 的 PgVectorEmbeddingStore，JDBC + Postgres 向量扩展；
-             作为 askdata.vector-store.type=pgvector 时的向量存储与 ANN 检索后端；不可达时经 DbVectorStore 回落）。 -->
-        <dependency>
-            <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-pgvector</artifactId>
-        </dependency>
-        <!-- langchain4j 在线向量库后端：Redis（社区版 langchain4j-community-redis 的 RedisEmbeddingStore，
-             Jedis 客户端；需 Redis Stack：RediSearch 向量字段 + RedisJSON）。
-             作为 askdata.vector-store.type=redis 时的向量存储与 ANN 检索后端；不可达时经 DbVectorStore 回落。 -->
-        <dependency>
-            <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-community-redis</artifactId>
-            <version>1.22.0-beta32</version>
-        </dependency>
-
         <!-- 缓存层：Spring Cache 抽象（后端由 askdata.cache.type 决定：memory / redis / none） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -153,14 +113,6 @@
         <dependency>
             <groupId>cn.dev33</groupId>
             <artifactId>sa-token-redis-template</artifactId>
-        </dependency>
-
-        <!-- langchain4j 在线向量库后端：Elasticsearch（复用 langchain4j 的 ElasticsearchEmbeddingStore，
-             kNN 检索 + metadata 过滤；作为 askdata.vector-store.type=elasticsearch 时的向量存储与 ANN
-             检索后端；不可达时经 DbVectorStore 回落）。 -->
-        <dependency>
-            <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-elasticsearch</artifactId>
         </dependency>
 
         <!-- MCP server（复用 fw-plus 封装 fw-plus-ai-mcp-server-spring-boot-starter，取代手写 JSON-RPC）。
@@ -203,10 +155,6 @@
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-database-postgresql</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.flywaydb</groupId>
             <artifactId>flyway-mysql</artifactId>
         </dependency>
 
@@ -214,8 +162,9 @@
         <dependency>
             <groupId>com.github.jsqlparser</groupId>
             <artifactId>jsqlparser</artifactId>
-            <!-- 必须显式锁定：BOM 管理的 4.6 与现有 JSQLParser 5 API（行权限改写）不兼容 -->
-            <version>5.1</version>
+            <!-- 必须显式锁定 4.9：BOM 管理的 4.6 是旧 AST 模型（SelectBody/SubSelect），
+                 4.9 已是 5.x 的统一模型（PlainSelect extends Select）且仍是 Java 8 字节码（major 52）。 -->
+            <version>4.9</version>
         </dependency>
 
         <!-- 通用文件存储 x-file-storage（对齐 SQLBot 文件存储）：本地默认、可配置切 OSS/MinIO 等；
@@ -280,18 +229,20 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- 真实环境方言验证驱动（test 范围，仅集成测试使用；不打进产物）。
-             Oracle XE 21c / SQL Server 2022 真实连通与元数据/预览 SQL 验收所需。 -->
+        <!-- 真实环境方言验证驱动（runtime，随包提供）。
+             Oracle XE 21c / SQL Server 2022 真实连通与元数据/预览 SQL 验收所需。
+             版本必须选 Java 8 字节码（major 52）的构件：ojdbc11 / mssql-jdbc *.jre11
+             均为 major 55，JDK 8 加载即抛 UnsupportedClassVersionError。 -->
         <dependency>
             <groupId>com.oracle.database.jdbc</groupId>
-            <artifactId>ojdbc11</artifactId>
-            <version>21.9.0.0</version>
+            <artifactId>ojdbc8</artifactId>
+            <version>21.5.0.0</version>
             <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>com.microsoft.sqlserver</groupId>
             <artifactId>mssql-jdbc</artifactId>
-            <version>12.10.2.jre11</version>
+            <version>10.2.3.jre8</version>
             <scope>runtime</scope>
         </dependency>
 
@@ -330,6 +281,12 @@
                 <exclusion>
                     <groupId>jdk.tools</groupId>
                     <artifactId>jdk.tools</artifactId>
+                </exclusion>
+                <!-- libthrift 0.21.0 传递引入 jakarta.servlet-api 6.0.0（major 55，JDK 8 无法加载），
+                     且与 Spring Boot 2.7 的 javax.servlet 命名空间冲突。 -->
+                <exclusion>
+                    <groupId>jakarta.servlet</groupId>
+                    <artifactId>jakarta.servlet-api</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
@@ -422,11 +379,10 @@
         </dependency>
 
         <!-- API 文档：Knife4j UI（/doc.html）+ springdoc（/v3/api-docs 规范）。
-             只取 knife4j 的静态 UI 构件：starter 4.5.0 的 Knife4jOpenApiCustomizer 按 springdoc 2.3.0
-             的 SpringDocConfigProperties.getGroupConfigs():List 编译，在 2.5+ 改成 Set 后会抛
-             NoSuchMethodError，而 springdoc 2.3.0 又不兼容 Spring Boot 3.5.x，两者不可兼得。
-             UI 本身是纯前端静态资源（META-INF/resources/doc.html + /webjars/**），直接读
-             /v3/api-docs/swagger-config 分组，不需要 starter 的自动配置。 -->
+             只取 knife4j 的静态 UI 构件：UI 本身是纯前端静态资源（META-INF/resources/doc.html
+             + /webjars/**），直接读 /v3/api-docs/swagger-config 分组，不需要 starter 的自动配置。
+             springdoc 必须用 v1 线（springdoc-openapi-ui 1.7.0）：v2 的
+             springdoc-openapi-starter-* 2.2.0 是 Java 17 字节码（major 61），且面向 Spring Boot 3。 -->
         <dependency>
             <groupId>com.github.xiaoymin</groupId>
             <artifactId>knife4j-openapi3-ui</artifactId>
@@ -434,7 +390,8 @@
         </dependency>
         <dependency>
             <groupId>org.springdoc</groupId>
-            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <artifactId>springdoc-openapi-ui</artifactId>
+            <version>1.7.0</version>
         </dependency>
 
     </dependencies>

@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.chart.server;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.chat.service.ChatChartBuilder;
 import com.xiongx9527.askdata.common.storage.AskdataFileStorage;
@@ -11,10 +13,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.PostConstruct;
+import javax.annotation.PostConstruct;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -105,7 +108,7 @@ public class ChartImageService {
         this.objectMapper = objectMapper;
         this.fileStorage = fileStorage;
         // non-Spring / unit-test default token store dir (persisted to temp, no @Value needed).
-        this.tokenStoreDir = Path.of(System.getProperty("java.io.tmpdir"), "askdata-chart-tokens");
+        this.tokenStoreDir = Paths.get(System.getProperty("java.io.tmpdir"), "askdata-chart-tokens");
         initStore();
     }
 
@@ -123,9 +126,9 @@ public class ChartImageService {
     @PostConstruct
     public void init() {
         if (tokenStoreDir == null) {
-            tokenStoreDir = tokenStoreDirProp == null || tokenStoreDirProp.isBlank()
-                    ? Path.of(System.getProperty("user.home", "."), ".askdata", "chart-tokens")
-                    : Path.of(tokenStoreDirProp);
+            tokenStoreDir = tokenStoreDirProp == null || tokenStoreDirProp.trim().isEmpty()
+                    ? Paths.get(System.getProperty("user.home", "."), ".askdata", "chart-tokens")
+                    : Paths.get(tokenStoreDirProp);
         }
         initStore();
     }
@@ -167,7 +170,7 @@ public class ChartImageService {
         }
         try {
             java.util.Optional<ChartTokenRepository.Entry> found = tokenRepository.find(token);
-            if (found.isEmpty()) {
+            if (!found.isPresent()) {
                 return null;
             }
             ChartTokenRepository.Entry e = found.get();
@@ -394,7 +397,41 @@ public class ChartImageService {
     }
 
     /** token metadata (JSON-serializable). */
-    public record TokenEntry(String url, long createdAt, long expiresAt) {
+    public static class TokenEntry {
+
+        private final String url;
+
+        private final long createdAt;
+
+        private final long expiresAt;
+
+        /**
+         * 由 record 改写为普通类后，Jackson 无法从 {@code url()} 这类非 bean 命名推断属性，
+         * 会把它当成无属性对象（写空 JSON、读回失败），因此显式标注构造参数与访问器。
+         */
+        @com.fasterxml.jackson.annotation.JsonCreator
+        public TokenEntry(@com.fasterxml.jackson.annotation.JsonProperty("url") String url,
+                          @com.fasterxml.jackson.annotation.JsonProperty("createdAt") long createdAt,
+                          @com.fasterxml.jackson.annotation.JsonProperty("expiresAt") long expiresAt) {
+            this.url = url;
+            this.createdAt = createdAt;
+            this.expiresAt = expiresAt;
+        }
+
+        @com.fasterxml.jackson.annotation.JsonProperty("url")
+        public String url() {
+            return url;
+        }
+
+        @com.fasterxml.jackson.annotation.JsonProperty("createdAt")
+        public long createdAt() {
+            return createdAt;
+        }
+
+        @com.fasterxml.jackson.annotation.JsonProperty("expiresAt")
+        public long expiresAt() {
+            return expiresAt;
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -429,7 +466,7 @@ public class ChartImageService {
                     break;
                 }
             }
-            fieldsInfo.add(Map.of("name", f, "is_numeric", numeric));
+            fieldsInfo.add(Maps.of("name", f, "is_numeric", numeric));
         }
         List<Map<String, Object>> limited = rows.size() > MAX_RENDER_ROWS
                 ? new ArrayList<>(rows.subList(0, MAX_RENDER_ROWS)) : rows;

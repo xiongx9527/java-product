@@ -104,7 +104,7 @@ class ScheduledExportDownloadTest {
     @Test
     void legacyLocalPathStillReadable() throws Exception {
         Path local = tempDir.resolve("legacy.csv");
-        Files.writeString(local, "a,b\n");
+        Files.write(local, "a,b\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         runId = insertRun(local.toString());
         Mockito.when(storage.info(anyString())).thenReturn(null);
 

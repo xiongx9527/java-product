@@ -27,7 +27,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import jakarta.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -1419,7 +1419,7 @@ public class ChatQuestionService {
             net.sf.jsqlparser.statement.Statement stmt =
                     net.sf.jsqlparser.parser.CCJSqlParserUtil.parse(sql);
             java.util.Set<String> names = new java.util.LinkedHashSet<>();
-            for (String raw : new net.sf.jsqlparser.util.TablesNamesFinder<>().getTables(stmt)) {
+            for (String raw : new net.sf.jsqlparser.util.TablesNamesFinder().getTables(stmt)) {
                 String name = unquoteIdentifier(raw);
                 if (!name.isEmpty()) {
                     names.add(name.toLowerCase(Locale.ROOT));

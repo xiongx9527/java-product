@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.terminology;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.datasource.DatasourceNameLookup;
 import com.xiongx9527.askdata.common.i18n.TestMessageResolver;
@@ -65,18 +67,18 @@ class TerminologyWorkspaceScopeTest {
 
     private java.util.Map<String, Object> body(List<Long> datasourceIds) {
         return Rows.of("word", "销售额", "description", "订单金额合计", "specific_ds", true,
-                "datasource_ids", datasourceIds, "other_words", List.of());
+                "datasource_ids", datasourceIds, "other_words", Lists.of());
     }
 
     @Test
     void acceptsDatasourceOfCurrentWorkspace() {
-        long id = terminologyService.createOrUpdate(body(List.of(OWN_DS)));
+        long id = terminologyService.createOrUpdate(body(Lists.of(OWN_DS)));
         assertEquals(OID, jdbc.queryForObject("SELECT oid FROM terminology WHERE id = ?", Long.class, id));
     }
 
     @Test
     void rejectsDatasourceFromAnotherWorkspace() {
-        assertThrows(BadRequestException.class, () -> terminologyService.createOrUpdate(body(List.of(FOREIGN_DS))));
+        assertThrows(BadRequestException.class, () -> terminologyService.createOrUpdate(body(Lists.of(FOREIGN_DS))));
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM terminology", Integer.class));
     }
 

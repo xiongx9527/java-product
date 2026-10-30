@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system.sso;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.xiongx9527.askdata.system.service.UserService;
 
 import org.junit.jupiter.api.Test;
@@ -79,8 +81,8 @@ class ExternalIdpServiceTest {
         String idToken = IdpTestCrypto.idToken(pair.getPrivate(), "k1", claims);
 
         ExternalIdpConfig oidc = cfg();
-        oidc.setExtra(Map.of("jwks-url", "https://idp/jwks", "issuer", "https://idp"));
-        StubHttp http = new StubHttp(Map.of(
+        oidc.setExtra(Maps.of("jwks-url", "https://idp/jwks", "issuer", "https://idp"));
+        StubHttp http = new StubHttp(Maps.of(
                 "jwks", IdpTestCrypto.jwks(pair, "k1"),
                 "token", "{\"access_token\":\"at\",\"id_token\":\"" + idToken + "\"}",
                 "userinfo", "{\"email\":\"a@b.com\",\"name\":\"Alice\"}"));
@@ -106,8 +108,8 @@ class ExternalIdpServiceTest {
         String idToken = IdpTestCrypto.idToken(signer.getPrivate(), "k1", claims);
 
         ExternalIdpConfig oidc = cfg();
-        oidc.setExtra(Map.of("jwks-url", "https://idp/jwks"));
-        StubHttp http = new StubHttp(Map.of(
+        oidc.setExtra(Maps.of("jwks-url", "https://idp/jwks"));
+        StubHttp http = new StubHttp(Maps.of(
                 "jwks", IdpTestCrypto.jwks(other, "k1"),
                 "token", "{\"access_token\":\"at\",\"id_token\":\"" + idToken + "\"}"));
         IdpCallback callback = new IdpCallback();
@@ -125,7 +127,7 @@ class ExternalIdpServiceTest {
         claims.put("sub", "sub-123");
         claims.put("exp", System.currentTimeMillis() / 1000L + 300L);
         String idToken = IdpTestCrypto.idToken(pair.getPrivate(), "k1", claims);
-        StubHttp http = new StubHttp(Map.of(
+        StubHttp http = new StubHttp(Maps.of(
                 "token", "{\"access_token\":\"at\",\"id_token\":\"" + idToken + "\"}"));
         IdpCallback callback = new IdpCallback();
         callback.setCode("c");
@@ -139,11 +141,11 @@ class ExternalIdpServiceTest {
     void wechatWorkResolvesIdentity() {
         ExternalIdpConfig wc = cfg();
         wc.setTokenUrl("https://idp/gettoken");
-        StubHttp http = new StubHttp(Map.of(
+        StubHttp http = new StubHttp(Maps.of(
                 "gettoken", "{\"access_token\":\"at\"}",
                 "userinfo", "{\"userid\":\"U1\",\"name\":\"Bob\",\"email\":\"b@c.com\"}"));
         ExternalIdentity idp = service.resolveIdentity(IdpType.WECHAT_WORK, wc,
-                IdpCallback.fromQuery(Map.of("code", "c")), http);
+                IdpCallback.fromQuery(Maps.of("code", "c")), http);
         assertEquals("wechat:U1", idp.getAccount());
         assertEquals("Bob", idp.getName());
     }
@@ -156,9 +158,9 @@ class ExternalIdpServiceTest {
                 + "</cas:attributes></cas:authenticationSuccess></cas:serviceResponse>";
         ExternalIdpConfig cas = cfg();
         cas.setTokenUrl("https://idp/serviceValidate");
-        StubHttp http = new StubHttp(Map.of("serviceValidate", xml));
+        StubHttp http = new StubHttp(Maps.of("serviceValidate", xml));
         ExternalIdentity idp = service.resolveIdentity(IdpType.CAS, cas,
-                IdpCallback.fromQuery(Map.of("ticket", "t")), http);
+                IdpCallback.fromQuery(Maps.of("ticket", "t")), http);
         assertEquals("cas:casuser", idp.getAccount());
         assertEquals("cas@e.com", idp.getEmail());
     }
@@ -169,11 +171,11 @@ class ExternalIdpServiceTest {
         String xml = IdpTestCrypto.signedSamlResponse(pair.getPrivate(), "uidval", "e@f.com");
 
         ExternalIdpConfig saml = cfg();
-        saml.setExtra(Map.of("saml-cert", IdpTestCrypto.publicKeyBase64(pair)));
+        saml.setExtra(Maps.of("saml-cert", IdpTestCrypto.publicKeyBase64(pair)));
         IdpCallback cb = new IdpCallback();
         cb.setSamlResponse(IdpTestCrypto.base64(xml));
 
-        ExternalIdentity idp = service.resolveIdentity(IdpType.SAML2, saml, cb, new StubHttp(Map.of()));
+        ExternalIdentity idp = service.resolveIdentity(IdpType.SAML2, saml, cb, new StubHttp(Maps.of()));
         assertEquals("saml:uidval", idp.getAccount());
         assertEquals("e@f.com", idp.getEmail());
     }
@@ -181,12 +183,12 @@ class ExternalIdpServiceTest {
     @Test
     void saml2RejectsUnsignedAssertion() {
         ExternalIdpConfig saml = cfg();
-        saml.setExtra(Map.of("saml-cert", "AAAA"));
+        saml.setExtra(Maps.of("saml-cert", "AAAA"));
         IdpCallback cb = new IdpCallback();
         cb.setSamlResponse(IdpTestCrypto.base64(IdpTestCrypto.unsignedSamlResponse("uidval", "e@f.com")));
 
         IllegalStateException error = assertThrows(IllegalStateException.class,
-                () -> service.resolveIdentity(IdpType.SAML2, saml, cb, new StubHttp(Map.of())));
+                () -> service.resolveIdentity(IdpType.SAML2, saml, cb, new StubHttp(Maps.of())));
         assertTrue(error.getMessage().contains("not signed"), error.getMessage());
     }
 
@@ -195,7 +197,7 @@ class ExternalIdpServiceTest {
         IdpCallback cb = new IdpCallback();
         cb.setSamlResponse(IdpTestCrypto.base64(IdpTestCrypto.unsignedSamlResponse("uidval", "e@f.com")));
         IllegalStateException error = assertThrows(IllegalStateException.class,
-                () -> service.resolveIdentity(IdpType.SAML2, cfg(), cb, new StubHttp(Map.of())));
+                () -> service.resolveIdentity(IdpType.SAML2, cfg(), cb, new StubHttp(Maps.of())));
         assertTrue(error.getMessage().contains("certificate is not configured"), error.getMessage());
     }
 
@@ -206,11 +208,11 @@ class ExternalIdpServiceTest {
         String tampered = xml.replace("uidval", "attacker");
 
         ExternalIdpConfig saml = cfg();
-        saml.setExtra(Map.of("saml-cert", IdpTestCrypto.publicKeyBase64(pair)));
+        saml.setExtra(Maps.of("saml-cert", IdpTestCrypto.publicKeyBase64(pair)));
         IdpCallback cb = new IdpCallback();
         cb.setSamlResponse(IdpTestCrypto.base64(tampered));
         IllegalStateException error = assertThrows(IllegalStateException.class,
-                () -> service.resolveIdentity(IdpType.SAML2, saml, cb, new StubHttp(Map.of())));
+                () -> service.resolveIdentity(IdpType.SAML2, saml, cb, new StubHttp(Maps.of())));
         assertTrue(error.getMessage().contains("signature"), error.getMessage());
     }
 
@@ -220,7 +222,7 @@ class ExternalIdpServiceTest {
         when(userService.provisionExternalUser(anyString(), any(), any())).thenReturn(42L);
         LocalAccountLinker linker = new LocalAccountLinker(userService, 1L);
         long uid = linker.link(new ExternalIdentity("oidc:sub-123", "Alice", "a@b.com",
-                "sub-123", Map.of()));
+                "sub-123", Maps.of()));
         assertEquals(42L, uid);
         verify(userService).provisionExternalUser("oidc:sub-123", "Alice", "a@b.com");
     }
@@ -228,7 +230,7 @@ class ExternalIdpServiceTest {
     @Test
     void unsupportedTypeRejected() {
         assertThrows(IllegalArgumentException.class,
-                () -> service.resolveIdentity(null, cfg(), new IdpCallback(), new StubHttp(Map.of())));
+                () -> service.resolveIdentity(null, cfg(), new IdpCallback(), new StubHttp(Maps.of())));
     }
 
     @Test

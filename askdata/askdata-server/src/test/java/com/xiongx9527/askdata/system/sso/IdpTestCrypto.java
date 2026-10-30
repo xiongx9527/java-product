@@ -7,7 +7,6 @@ import org.w3c.dom.Element;
 import javax.xml.crypto.dsig.CanonicalizationMethod;
 import javax.xml.crypto.dsig.DigestMethod;
 import javax.xml.crypto.dsig.Reference;
-import javax.xml.crypto.dsig.SignatureMethod;
 import javax.xml.crypto.dsig.SignedInfo;
 import javax.xml.crypto.dsig.Transform;
 import javax.xml.crypto.dsig.XMLSignatureFactory;
@@ -105,7 +104,7 @@ final class IdpTestCrypto {
         SignedInfo signedInfo = factory.newSignedInfo(
                 factory.newCanonicalizationMethod(CanonicalizationMethod.INCLUSIVE,
                         (C14NMethodParameterSpec) null),
-                factory.newSignatureMethod(SignatureMethod.RSA_SHA256, null),
+                factory.newSignatureMethod("http://www.w3.org/2001/04/xmldsig-more#rsa-sha256", null),
                 Collections.singletonList(reference));
         DOMSignContext context = new DOMSignContext(key, assertion);
         context.setDefaultNamespacePrefix("ds");

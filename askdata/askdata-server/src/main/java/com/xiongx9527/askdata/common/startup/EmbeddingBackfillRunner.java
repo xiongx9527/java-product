@@ -6,7 +6,7 @@ import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.datasource.embedding.DatasourceEmbeddingService;
 import com.xiongx9527.askdata.terminology.TerminologyRecallService;
 import com.xiongx9527.askdata.training.TrainingRecallService;
-import jakarta.annotation.PostConstruct;
+import javax.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -102,7 +102,7 @@ public class EmbeddingBackfillRunner {
     }
 
     /** 释放守卫（应用关闭时）。 */
-    @jakarta.annotation.PreDestroy
+    @javax.annotation.PreDestroy
     public void release() {
         singleWorkerGuard.release(SingleWorkerGuard.EMBEDDING_BACKFILL_KEY);
     }

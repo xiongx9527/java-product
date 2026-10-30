@@ -106,7 +106,7 @@ public class Saml2Provider implements ExternalIdpProvider {
         // 尝试 zlib inflate（HTTP-Redirect Binding），失败则按原样（POST Binding）
         try (InflaterInputStream iis = new InflaterInputStream(
                 new ByteArrayInputStream(decoded), new Inflater(true))) {
-            return new String(iis.readAllBytes(), StandardCharsets.UTF_8);
+            return new String(readAll(iis), StandardCharsets.UTF_8);
         } catch (Exception e) {
             return new String(decoded, StandardCharsets.UTF_8);
         }
@@ -114,10 +114,21 @@ public class Saml2Provider implements ExternalIdpProvider {
 
     private static String enc(String s) {
         try {
-            return URLEncoder.encode(s == null ? "" : s, StandardCharsets.UTF_8);
+            return URLEncoder.encode(s == null ? "" : s, "UTF-8");
         } catch (Exception e) {
             return s == null ? "" : s;
         }
+    }
+
+    /** 读尽输入流（Java 8 无 {@code readAllBytes()}）。 */
+    private static byte[] readAll(InflaterInputStream in) throws Exception {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        byte[] chunk = new byte[4096];
+        int n;
+        while ((n = in.read(chunk)) >= 0) {
+            buf.write(chunk, 0, n);
+        }
+        return buf.toByteArray();
     }
 }
 

@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.ai.vector;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import com.xiongx9527.askdata.support.MetadbMigration;
 
 import com.sun.net.httpserver.HttpExchange;
@@ -112,7 +114,7 @@ class EmbeddingServiceVectorStoreRoutingTest {
         candidates.add(row(1L, "订单"));
         candidates.add(row(2L, "用户"));
         candidates.add(row(3L, "商品"));
-        recording.queryResult = List.of(
+        recording.queryResult = Lists.of(
                 new VectorStore.IdScore(3L, 0.9D),
                 new VectorStore.IdScore(1L, 0.6D),
                 new VectorStore.IdScore(2L, 0.2D));
@@ -121,7 +123,7 @@ class EmbeddingServiceVectorStoreRoutingTest {
                 embeddingService.recallByVector("terminology", candidates, "查一下订单", 0.4D, 2);
 
         assertEquals("askdata-terminology", recording.lastQueryCollection);
-        assertEquals(List.of(1L, 2L, 3L), recording.lastQueryCandidateIds);
+        assertEquals(Lists.of(1L, 2L, 3L), recording.lastQueryCandidateIds);
         assertEquals(2, hits.size(), "topCount 截断生效");
         assertEquals(3L, Rows.lng(hits.get(0), "id", 0L));
         assertEquals(1L, Rows.lng(hits.get(1), "id", 0L));
@@ -133,8 +135,8 @@ class EmbeddingServiceVectorStoreRoutingTest {
     @Test
     void recallByVectorKeepsAllWhenThresholdIsZero() throws Exception {
         startEmbeddingStub();
-        List<Map<String, Object>> candidates = List.of(row(1L, "a"), row(2L, "b"));
-        recording.queryResult = List.of(new VectorStore.IdScore(2L, 0.1D), new VectorStore.IdScore(1L, 0.05D));
+        List<Map<String, Object>> candidates = Lists.of(row(1L, "a"), row(2L, "b"));
+        recording.queryResult = Lists.of(new VectorStore.IdScore(2L, 0.1D), new VectorStore.IdScore(1L, 0.05D));
         List<Map<String, Object>> hits = embeddingService.recallByVector("terminology", candidates, "x", 0D, 10);
         assertEquals(2, hits.size(), "阈值为 0 时全部保留");
         assertEquals(2L, Rows.lng(hits.get(0), "id", 0L));
@@ -142,8 +144,8 @@ class EmbeddingServiceVectorStoreRoutingTest {
 
     @Test
     void recallByVectorReturnsEmptyWithoutEmbeddingModel() {
-        List<Map<String, Object>> candidates = List.of(row(1L, "a"));
-        recording.queryResult = List.of(new VectorStore.IdScore(1L, 0.9D));
+        List<Map<String, Object>> candidates = Lists.of(row(1L, "a"));
+        recording.queryResult = Lists.of(new VectorStore.IdScore(1L, 0.9D));
         assertTrue(embeddingService.recallByVector("terminology", candidates, "查询", 0D, 5).isEmpty(),
                 "无可用 embedding 模型时应返回空（调用方降级为词法）");
     }
@@ -151,8 +153,8 @@ class EmbeddingServiceVectorStoreRoutingTest {
     @Test
     void vectorScoresReturnsIdToScoreMap() throws Exception {
         startEmbeddingStub();
-        recording.queryResult = List.of(new VectorStore.IdScore(5L, 0.7D), new VectorStore.IdScore(6L, 0.3D));
-        Map<Long, Double> scores = embeddingService.vectorScores("terminology", "查询", List.of(5L, 6L, 7L));
+        recording.queryResult = Lists.of(new VectorStore.IdScore(5L, 0.7D), new VectorStore.IdScore(6L, 0.3D));
+        Map<Long, Double> scores = embeddingService.vectorScores("terminology", "查询", Lists.of(5L, 6L, 7L));
         assertEquals(2, scores.size());
         assertEquals(0.7D, scores.get(5L), 1e-9);
         assertEquals(0.3D, scores.get(6L), 1e-9);
@@ -161,7 +163,7 @@ class EmbeddingServiceVectorStoreRoutingTest {
 
     @Test
     void vectorScoresEmptyWithoutEmbeddingModel() {
-        assertTrue(embeddingService.vectorScores("terminology", "查询", List.of(1L)).isEmpty());
+        assertTrue(embeddingService.vectorScores("terminology", "查询", Lists.of(1L)).isEmpty());
     }
 
     // ------------------------------------------------------------------

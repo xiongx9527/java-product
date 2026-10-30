@@ -231,7 +231,7 @@ public class PermissionEnforcer {
         if (f.startsWith("(") && f.endsWith(")")) {
             f = f.substring(1, f.length() - 1).trim();
         }
-        return f.toLowerCase(Locale.ROOT).replaceAll("\s+", " ");
+        return f.toLowerCase(Locale.ROOT).replaceAll("[ \\t\\r\\n]+", " ");
     }
 
     private static boolean sameTableSet(List<String> a, List<String> b) {
@@ -276,17 +276,17 @@ public class PermissionEnforcer {
 
     /** 递归处理语句：SELECT 走 rewriteSelect；UNION/集合操作逐支处理且其 CTE 体也处理。 */
     private void rewriteStatement(Statement stmt, Map<String, String> tableFilters) {
-        if (stmt instanceof Select s) {
-            rewriteSelect(s, tableFilters);
-        } else if (stmt instanceof SetOperationList sol) {
-            rewriteSetOperation(sol, tableFilters);
+        if (stmt instanceof Select) {
+            rewriteSelect((Select) stmt, tableFilters);
+        } else if (stmt instanceof SetOperationList) {
+            rewriteSetOperation((SetOperationList) stmt, tableFilters);
         }
     }
 
     /** 处理单个 SELECT：先递归 CTE 体，再处理 UNION/集合操作体，最后包裹 FROM/JOIN 中的匹配基表（含 FROM 子查询）。 */
     private void rewriteSelect(Select select, Map<String, String> tableFilters) {
         if (select.getWithItemsList() != null) {
-            for (WithItem<?> w : select.getWithItemsList()) {
+            for (WithItem w : select.getWithItemsList()) {
                 Select s = w.getSelect();
                 if (s != null) {
                     rewriteSelect(s, tableFilters);
@@ -326,7 +326,7 @@ public class PermissionEnforcer {
     /** 处理集合操作：其 WITH 体与各 SELECT 分支逐一递归（A3 复杂 SQL 不外溢）。 */
     private void rewriteSetOperation(SetOperationList sol, Map<String, String> tableFilters) {
         if (sol.getWithItemsList() != null) {
-            for (WithItem<?> w : sol.getWithItemsList()) {
+            for (WithItem w : sol.getWithItemsList()) {
                 Select s = w.getSelect();
                 if (s != null) {
                     rewriteSelect(s, tableFilters);
@@ -340,11 +340,11 @@ public class PermissionEnforcer {
 
     /** FROM/JOIN 项的改写：基表按 filter 包裹为子查询；子查询（含 CTE 引用的内层）递归处理后返回 null。 */
     private FromItem rewriteFromItem(FromItem item, Map<String, String> tableFilters) {
-        if (item instanceof Table t) {
-            return wrapIfNeeded(t, tableFilters);
+        if (item instanceof Table) {
+            return wrapIfNeeded((Table) item, tableFilters);
         }
-        if (item instanceof Select s) {
-            rewriteSelect(s, tableFilters);
+        if (item instanceof Select) {
+            rewriteSelect((Select) item, tableFilters);
         }
         return null;
     }
@@ -406,11 +406,12 @@ public class PermissionEnforcer {
     }
 
     private void collectFromStatement(Statement stmt, Set<String> names) {
-        if (stmt instanceof Select s) {
-            collectFromSelect(s, names);
-        } else if (stmt instanceof SetOperationList sol) {
+        if (stmt instanceof Select) {
+            collectFromSelect((Select) stmt, names);
+        } else if (stmt instanceof SetOperationList) {
+            SetOperationList sol = (SetOperationList) stmt;
             if (sol.getWithItemsList() != null) {
-                for (WithItem<?> w : sol.getWithItemsList()) {
+                for (WithItem w : sol.getWithItemsList()) {
                     Select s = w.getSelect();
                     if (s != null) {
                         collectFromSelect(s, names);
@@ -425,7 +426,7 @@ public class PermissionEnforcer {
 
     private void collectFromSelect(Select select, Set<String> names) {
         if (select.getWithItemsList() != null) {
-            for (WithItem<?> w : select.getWithItemsList()) {
+            for (WithItem w : select.getWithItemsList()) {
                 Select s = w.getSelect();
                 if (s != null) {
                     collectFromSelect(s, names);
@@ -440,7 +441,7 @@ public class PermissionEnforcer {
         }
         if (setOp != null) {
             if (setOp.getWithItemsList() != null) {
-                for (WithItem<?> w : setOp.getWithItemsList()) {
+                for (WithItem w : setOp.getWithItemsList()) {
                     Select s = w.getSelect();
                     if (s != null) {
                         collectFromSelect(s, names);
@@ -466,13 +467,13 @@ public class PermissionEnforcer {
     }
 
     private void collectFromItem(FromItem item, Set<String> names) {
-        if (item instanceof Table t) {
-            String name = t.getName();
+        if (item instanceof Table) {
+            String name = ((Table) item).getName();
             if (name != null && !name.isEmpty()) {
                 names.add(name);
             }
-        } else if (item instanceof Select s) {
-            collectFromSelect(s, names);
+        } else if (item instanceof Select) {
+            collectFromSelect((Select) item, names);
         }
     }
 

@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.datasource.service;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import com.xiongx9527.askdata.datasource.embedding.DatasourceEmbeddingService;
 import com.xiongx9527.askdata.datasource.embedding.TableEmbeddingService;
 import com.xiongx9527.askdata.datasource.engine.JdbcEngine;
@@ -67,7 +69,7 @@ class VectorRefreshTimingTest {
         field.put("id", 21L);
         field.put("ds_id", 5L);
         field.put("table_id", 11L);
-        when(fieldRepository.listByTableId(11L)).thenReturn(java.util.List.of(field));
+        when(fieldRepository.listByTableId(11L)).thenReturn(Lists.of(field));
 
         service.editField(rows("id", 21L, "table_id", 11L, "ds_id", 5L, "custom_comment", "订单号"));
 

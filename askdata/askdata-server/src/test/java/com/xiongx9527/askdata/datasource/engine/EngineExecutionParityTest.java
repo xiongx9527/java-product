@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.datasource.engine;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.datasource.DatasourceException;
 import org.junit.jupiter.api.Test;
@@ -43,7 +45,7 @@ class EngineExecutionParityTest {
         DatasourceConf conf = baseConf();
         assertTrue(DatasourceType.ORACLE.tableSql(conf, null).getSql().contains("ALL_TABLES"));
         assertTrue(DatasourceType.ORACLE.fieldSql(conf, "T").getSql().contains("ALL_TAB_COLUMNS"));
-        String preview = DatasourceType.ORACLE.previewSql(List.of("ID", "NAME"), "T", conf, null);
+        String preview = DatasourceType.ORACLE.previewSql(Lists.of("ID", "NAME"), "T", conf, null);
         assertTrue(preview.contains("ROWNUM <= 100"), preview);
         assertTrue(DatasourceType.ORACLE.sqlDialectHint().contains("ROWNUM"));
     }
@@ -53,7 +55,7 @@ class EngineExecutionParityTest {
         DatasourceConf conf = baseConf();
         assertTrue(DatasourceType.DM.tableSql(conf, null).getSql().contains("all_tab_comments"));
         assertTrue(DatasourceType.DM.fieldSql(conf, "T").getSql().contains("ALL_TAB_COLUMNS"));
-        assertTrue(DatasourceType.DM.previewSql(List.of("ID"), "T", conf, null).contains("LIMIT 100"));
+        assertTrue(DatasourceType.DM.previewSql(Lists.of("ID"), "T", conf, null).contains("LIMIT 100"));
         assertTrue(DatasourceType.DM.sqlDialectHint().contains("ROWNUM"));
     }
 
@@ -63,7 +65,7 @@ class EngineExecutionParityTest {
         for (DatasourceType t : Arrays.asList(DatasourceType.KINGBASE, DatasourceType.REDSHIFT)) {
             assertTrue(t.tableSql(conf, null).getSql().contains("pg_class"), t.name());
             assertTrue(t.fieldSql(conf, "T").getSql().contains("pg_attribute"), t.name());
-            assertTrue(t.previewSql(List.of("ID"), "T", conf, null).contains("LIMIT 100"), t.name());
+            assertTrue(t.previewSql(Lists.of("ID"), "T", conf, null).contains("LIMIT 100"), t.name());
         }
     }
 
@@ -72,7 +74,7 @@ class EngineExecutionParityTest {
         DatasourceConf conf = baseConf();
         assertEquals("SHOW TABLES", DatasourceType.HIVE.tableSql(conf, null).getSql());
         assertTrue(DatasourceType.HIVE.fieldSql(conf, "T").getSql().contains("DESCRIBE "));
-        assertTrue(DatasourceType.HIVE.previewSql(List.of("ID"), "T", conf, null).contains("LIMIT 100"));
+        assertTrue(DatasourceType.HIVE.previewSql(Lists.of("ID"), "T", conf, null).contains("LIMIT 100"));
     }
 
     @Test
@@ -84,7 +86,7 @@ class EngineExecutionParityTest {
     @Test
     void sqlServerUsesTopPaging() {
         DatasourceConf conf = baseConf();
-        assertTrue(DatasourceType.SQLSERVER.previewSql(List.of("ID"), "T", conf, null).contains("TOP 100"));
+        assertTrue(DatasourceType.SQLSERVER.previewSql(Lists.of("ID"), "T", conf, null).contains("TOP 100"));
         assertTrue(DatasourceType.SQLSERVER.sqlDialectHint().contains("TOP"));
     }
 

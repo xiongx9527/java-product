@@ -49,6 +49,30 @@ public class ChartTokenRepository {
     }
 
     /** token 映射条目。 */
-    public record Entry(String token, String url, long expireAt) {
+    public static class Entry {
+
+        private final String token;
+
+        private final String url;
+
+        private final long expireAt;
+
+        public Entry(String token, String url, long expireAt) {
+            this.token = token;
+            this.url = url;
+            this.expireAt = expireAt;
+        }
+
+        public String token() {
+            return token;
+        }
+
+        public String url() {
+            return url;
+        }
+
+        public long expireAt() {
+            return expireAt;
+        }
     }
 }

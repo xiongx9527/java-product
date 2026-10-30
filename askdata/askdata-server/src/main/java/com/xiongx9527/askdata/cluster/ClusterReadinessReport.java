@@ -8,7 +8,17 @@ import java.util.List;
  * <p>每项包含检查名、结论、现场值与修复建议；{@link #hasFailure()} 为 true 表示存在硬性
  * 不满足项（多实例下必然出错），{@link #hasWarning()} 为 true 表示需要运维确认但可启动。</p>
  */
-public record ClusterReadinessReport(List<Item> items) {
+public class ClusterReadinessReport {
+
+    private final List<Item> items;
+
+    public ClusterReadinessReport(List<Item> items) {
+        this.items = items;
+    }
+
+    public List<Item> items() {
+        return items;
+    }
 
     /** 单项检查结论。 */
     public enum Level {
@@ -20,14 +30,45 @@ public record ClusterReadinessReport(List<Item> items) {
         FAIL
     }
 
-    /** 单项检查。
-     *
-     * @param name   检查项名称
-     * @param level  结论
-     * @param detail 现场值（不含敏感信息）
-     * @param fix    修复建议；OK 时为空
-     */
-    public record Item(String name, Level level, String detail, String fix) {
+    /** 单项检查。 */
+    public static class Item {
+
+        private final String name;
+
+        private final Level level;
+
+        private final String detail;
+
+        private final String fix;
+
+        /**
+         * @param name   检查项名称
+         * @param level  结论
+         * @param detail 现场值（不含敏感信息）
+         * @param fix    修复建议；OK 时为空
+         */
+        public Item(String name, Level level, String detail, String fix) {
+            this.name = name;
+            this.level = level;
+            this.detail = detail;
+            this.fix = fix;
+        }
+
+        public String name() {
+            return name;
+        }
+
+        public Level level() {
+            return level;
+        }
+
+        public String detail() {
+            return detail;
+        }
+
+        public String fix() {
+            return fix;
+        }
     }
 
     public boolean hasFailure() {

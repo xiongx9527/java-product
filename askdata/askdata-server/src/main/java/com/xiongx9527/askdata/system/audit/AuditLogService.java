@@ -11,7 +11,7 @@ import com.xiongx9527.askdata.system.service.CurrentUserService;
 import com.xiongx9527.askdata.system.service.WorkspaceService;
 import org.springframework.stereotype.Service;
 
-import jakarta.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;

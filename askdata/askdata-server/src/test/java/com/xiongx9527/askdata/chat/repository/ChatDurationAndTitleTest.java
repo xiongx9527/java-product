@@ -28,12 +28,28 @@ class ChatDurationAndTitleTest {
 
     /** 调用 finishRecord 并返回 jdbc.update 的入参（顺序：finish_time, run_time, duration, tokens, id）。 */
     private static Object[] finishArgs(long runTimeMs) {
-        JdbcTemplate template = mock(JdbcTemplate.class);
+        return updateArgs(repo -> repo.finishRecord(9L, runTimeMs, 12L));
+    }
+
+    /**
+     * 执行一次写操作并返回 {@code jdbc.update} 的 varargs（不含 SQL）。
+     *
+     * <p>Mockito 4 对 varargs 是逐元素捕获，{@code ArgumentCaptor<Object[]>} 只能取到最后一个
+     * 元素（会抛 ClassCastException）；这里用默认 Answer 读取原始调用参数，再按 Spring 5.3
+     * 的行为（{@code getArguments()} 已展开 varargs）去掉首个 SQL 参数。</p>
+     */
+    private static Object[] updateArgs(java.util.function.Consumer<ChatRepository> call) {
+        final Object[][] captured = new Object[1][];
+        JdbcTemplate template = mock(JdbcTemplate.class, invocation -> {
+            if ("update".equals(invocation.getMethod().getName())) {
+                Object[] raw = invocation.getArguments();
+                captured[0] = java.util.Arrays.copyOfRange(raw, 1, raw.length);
+            }
+            return 1;
+        });
         ChatRepository repo = new ChatRepository(template, mock(IdGenerator.class), new ObjectMapper());
-        ArgumentCaptor<Object[]> args = ArgumentCaptor.forClass(Object[].class);
-        repo.finishRecord(9L, runTimeMs, 12L);
-        verify(template).update(anyString(), args.capture());
-        return args.getValue();
+        call.accept(repo);
+        return captured[0];
     }
 
     @Test
@@ -62,11 +78,9 @@ class ChatDurationAndTitleTest {
 
     @Test
     void renameChatOverwritesBriefInsteadOfAppending() {
-        repository.renameChat(7L, "各省销售额");
-        ArgumentCaptor<Object[]> args = ArgumentCaptor.forClass(Object[].class);
-        verify(jdbc).update(anyString(), args.capture());
-        assertEquals("各省销售额", args.getValue()[0]);
-        assertEquals(7L, args.getValue()[2]);
+        Object[] args = updateArgs(repo -> repo.renameChat(7L, "各省销售额"));
+        assertEquals("各省销售额", args[0]);
+        assertEquals(7L, args[2]);
     }
 
     @Test

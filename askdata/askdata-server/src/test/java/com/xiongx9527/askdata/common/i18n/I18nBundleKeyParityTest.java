@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.common.i18n;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -31,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class I18nBundleKeyParityTest {
 
     /** 五语种（含缺省包）属性文件。 */
-    private static final List<String> BUNDLES = List.of(
+    private static final List<String> BUNDLES = Lists.of(
             "messages.properties",
             "messages_zh_CN.properties",
             "messages_en.properties",
@@ -65,7 +67,7 @@ class I18nBundleKeyParityTest {
 
     @Test
     void everyLocaleHasOwnTranslationForEmbeddedDecryptErrors() throws IOException {
-        List<String> keys = List.of("i18n_embedded.credential_decrypt_failed",
+        List<String> keys = Lists.of("i18n_embedded.credential_decrypt_failed",
                 "i18n_embedded.password_decrypt_failed");
         for (String bundle : BUNDLES) {
             Properties props = load(bundle);
@@ -80,7 +82,7 @@ class I18nBundleKeyParityTest {
     void englishDiffersFromChineseForNewlyAddedKeys() throws IOException {
         Properties zh = load("messages.properties");
         Properties en = load("messages_en.properties");
-        for (String key : List.of("mcp.error.invalid.id", "storage.unsupported.type", "op.delete.success")) {
+        for (String key : Lists.of("mcp.error.invalid.id", "storage.unsupported.type", "op.delete.success")) {
             assertTrue(zh.containsKey(key) && en.containsKey(key), "missing key " + key);
             assertFalse(zh.getProperty(key).equals(en.getProperty(key)),
                     "English bundle still falls back to Chinese for " + key);

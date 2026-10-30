@@ -1,5 +1,8 @@
 package com.xiongx9527.askdata.settings;
 
+import com.xiongx9527.askdata.common.util.Io;
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.common.storage.AskdataFileStorage;
 import org.junit.jupiter.api.Test;
@@ -44,11 +47,11 @@ class SettingsFileStorageFallbackTest {
         controller.setFileStorage(storage);
 
         ResponseEntity<Resource> response = controller.downloadFailInfo(
-                Map.of("file", "term_error.xlsx"));
+                Maps.of("file", "term_error.xlsx"));
 
         assertEquals(200, response.getStatusCode().value());
         assertNotNull(response.getBody());
-        assertEquals("shared-bytes", new String(response.getBody().getInputStream().readAllBytes(),
+        assertEquals("shared-bytes", new String(Io.readAll(response.getBody().getInputStream()),
                 StandardCharsets.UTF_8));
     }
 }

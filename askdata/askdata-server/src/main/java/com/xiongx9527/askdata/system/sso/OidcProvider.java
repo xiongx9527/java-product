@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system.sso;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
@@ -31,12 +33,12 @@ public class OidcProvider implements ExternalIdpProvider {
 
     @Override
     public ExternalIdentity resolveIdentity(ExternalIdpConfig cfg, IdpCallback cb, IdpHttpClient http) {
-        IdpHttpClient.Response token = http.postForm(cfg.getTokenUrl(), Map.of(
+        IdpHttpClient.Response token = http.postForm(cfg.getTokenUrl(), Maps.of(
                 "grant_type", "authorization_code",
                 "code", cb.getCode() == null ? "" : cb.getCode(),
                 "redirect_uri", cfg.getRedirectUri() == null ? "" : cfg.getRedirectUri(),
                 "client_id", cfg.getClientId() == null ? "" : cfg.getClientId(),
-                "client_secret", cfg.getClientSecret() == null ? "" : cfg.getClientSecret()), Map.of());
+                "client_secret", cfg.getClientSecret() == null ? "" : cfg.getClientSecret()), Maps.of());
         if (!token.ok()) {
             throw new IllegalStateException("oidc token exchange failed: " + token.status);
         }
@@ -53,7 +55,7 @@ public class OidcProvider implements ExternalIdpProvider {
         if (sub == null || email == null || name == null) {
             // 授权服务器未把资料放进 id_token 时，用 access_token 补 userinfo
             IdpHttpClient.Response info = http.get(cfg.getUserInfoUrl(),
-                    Map.of("Authorization", "Bearer " + strOrEmpty(t, "access_token")));
+                    Maps.of("Authorization", "Bearer " + strOrEmpty(t, "access_token")));
             if (info.ok()) {
                 Map<String, Object> u = SsoJson.parseObject(info.body);
                 if (sub == null) {
@@ -80,7 +82,7 @@ public class OidcProvider implements ExternalIdpProvider {
 
     private static String enc(String s) {
         try {
-            return URLEncoder.encode(s == null ? "" : s, StandardCharsets.UTF_8);
+            return URLEncoder.encode(s == null ? "" : s, "UTF-8");
         } catch (Exception e) {
             return s == null ? "" : s;
         }

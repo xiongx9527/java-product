@@ -41,7 +41,7 @@ public class ScheduledTaskScheduler {
         });
     }
 
-    @jakarta.annotation.PreDestroy
+    @javax.annotation.PreDestroy
     public void shutdown() {
         workers.shutdownNow();
     }

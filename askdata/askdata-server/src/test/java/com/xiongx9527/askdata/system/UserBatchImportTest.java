@@ -206,7 +206,7 @@ class UserBatchImportTest {
                 "wsuser2", "Ws User 2", "wsuser2@askdata.com", "分析空间", "ws_admin", "0", "3", "p-42"}));
         assertEquals(1, result.get("successCount"), String.valueOf(result));
 
-        Map<String, Object> user = userRepository.findByAccount("wsuser2").orElseThrow();
+        Map<String, Object> user = userRepository.findByAccount("wsuser2").orElseThrow(IllegalStateException::new);
         long uid = ((Number) user.get("id")).longValue();
         assertEquals(wsId, ((Number) user.get("oid")).longValue());
         assertEquals(0, ((Number) user.get("status")).intValue());

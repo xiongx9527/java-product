@@ -1,4 +1,6 @@
 package com.xiongx9527.askdata.system.service;
+
+import com.xiongx9527.askdata.common.util.Maps;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -89,11 +91,11 @@ public class CurrentUserService {
         }
         if (Rows.lng(user, "status", 0L) != 1L) {
             throw new AuthFailureException(messageResolver.get("i18n_login.user_disable",
-                    java.util.Map.of("msg", "")));
+                    Maps.of("msg", "")));
         }
         if (oidOf(user) == 0L) {
             throw new AuthFailureException(messageResolver.get("i18n_login.no_associated_ws",
-                    java.util.Map.of("msg", "")));
+                    Maps.of("msg", "")));
         }
     }
 

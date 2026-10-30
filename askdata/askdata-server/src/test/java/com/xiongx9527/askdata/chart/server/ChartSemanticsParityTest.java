@@ -1,5 +1,8 @@
 package com.xiongx9527.askdata.chart.server;
 
+import com.xiongx9527.askdata.common.util.Lists;
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.chat.service.ChatChartBuilder;
 import org.junit.jupiter.api.Test;
@@ -34,15 +37,15 @@ class ChartSemanticsParityTest {
         assertFalse(ChartImageRenderer.seriesColor(0).equals(ChartImageRenderer.seriesColor(1)));
         assertFalse(ChartImageRenderer.seriesColor(1).equals(ChartImageRenderer.seriesColor(2)));
         // 多 series 出图确实用到两种颜色
-        Map<String, Object> dual = Map.of(
+        Map<String, Object> dual = Maps.of(
                 "type", "column", "title", "sales and profit",
-                "columns", List.of(Map.of("value", "m"), Map.of("value", "s"), Map.of("value", "p")),
-                "axis", Map.of(
-                        "x", Map.of("value", "m"),
-                        "y", List.of(Map.of("value", "s"), Map.of("value", "p"))));
-        BufferedImage img = read(renderer.renderPng(dual, List.of(
-                Map.of("m", "a", "s", 1, "p", 2),
-                Map.of("m", "b", "s", 3, "p", 4))));
+                "columns", Lists.of(Maps.of("value", "m"), Maps.of("value", "s"), Maps.of("value", "p")),
+                "axis", Maps.of(
+                        "x", Maps.of("value", "m"),
+                        "y", Lists.of(Maps.of("value", "s"), Maps.of("value", "p"))));
+        BufferedImage img = read(renderer.renderPng(dual, Lists.of(
+                Maps.of("m", "a", "s", 1, "p", 2),
+                Maps.of("m", "b", "s", 3, "p", 4))));
         assertTrue(colorPresent(img, ChartImageRenderer.seriesColor(0), 40), "series0 color present");
         assertTrue(colorPresent(img, ChartImageRenderer.seriesColor(1), 40), "series1 color present");
     }
@@ -50,15 +53,15 @@ class ChartSemanticsParityTest {
     @Test
     void horizontalBarLengthIsProportionalToValue() {
         // A4：横向 bar 条长按数值比例（而非按类别顺序）
-        Map<String, Object> bar = Map.of(
+        Map<String, Object> bar = Maps.of(
                 "type", "bar", "title", "compare",
-                "columns", List.of(Map.of("value", "cat"), Map.of("value", "val")),
-                "axis", Map.of(
-                        "x", Map.of("value", "cat"),
-                        "y", Map.of("value", "val")));
-        List<Map<String, Object>> data = List.of(
-                Map.of("cat", "A", "val", 100.0),
-                Map.of("cat", "B", "val", 200.0));
+                "columns", Lists.of(Maps.of("value", "cat"), Maps.of("value", "val")),
+                "axis", Maps.of(
+                        "x", Maps.of("value", "cat"),
+                        "y", Maps.of("value", "val")));
+        List<Map<String, Object>> data = Lists.of(
+                Maps.of("cat", "A", "val", 100.0),
+                Maps.of("cat", "B", "val", 200.0));
         BufferedImage img = read(renderer.renderPng(bar, data));
         // 类别 0（值 100）中心约在 y=343，类别 1（值 200）约在 y=165（见 drawCartesian 布局）
         int rightSmall = maxXOfColor(img, 313, 373, ChartImageRenderer.seriesColor(0), 40);
@@ -75,16 +78,16 @@ class ChartSemanticsParityTest {
         // A4：area 用系列色浅投影填充（不同于系列色本身）
         Color fill = ChartImageRenderer.areaFillColor(0);
         assertFalse(fill.equals(ChartImageRenderer.seriesColor(0)), "area fill differs from series color");
-        Map<String, Object> area = Map.of(
+        Map<String, Object> area = Maps.of(
                 "type", "area", "title", "trend",
-                "columns", List.of(Map.of("value", "m"), Map.of("value", "s")),
-                "axis", Map.of(
-                        "x", Map.of("value", "m"),
-                        "y", Map.of("value", "s")));
-        BufferedImage img = read(renderer.renderPng(area, List.of(
-                Map.of("m", "a", "s", 50.0),
-                Map.of("m", "b", "s", 150.0),
-                Map.of("m", "c", "s", 100.0))));
+                "columns", Lists.of(Maps.of("value", "m"), Maps.of("value", "s")),
+                "axis", Maps.of(
+                        "x", Maps.of("value", "m"),
+                        "y", Maps.of("value", "s")));
+        BufferedImage img = read(renderer.renderPng(area, Lists.of(
+                Maps.of("m", "a", "s", 50.0),
+                Maps.of("m", "b", "s", 150.0),
+                Maps.of("m", "c", "s", 100.0))));
         // 填充色应出现在图中（面积区内部为实色，抗锯齿边界外）
         assertTrue(colorPresent(img, fill, 10), "area fill color present in rendered PNG");
     }
@@ -95,15 +98,15 @@ class ChartSemanticsParityTest {
         assertEquals("PAID 1,234 (35.0%)", ChartImageRenderer.pieLabel("PAID", 1234.0, 3524.0));
         assertEquals("X 0 (0.0%)", ChartImageRenderer.pieLabel("X", 0.0, 0.0));
         // 渲染饼图应产出合法 PNG（且标签绘制使用 pieLabel 格式）
-        Map<String, Object> pie = Map.of(
+        Map<String, Object> pie = Maps.of(
                 "type", "pie", "title", "share",
-                "columns", List.of(Map.of("value", "cat"), Map.of("value", "val")),
-                "axis", Map.of(
-                        "x", Map.of("value", "cat"),
-                        "y", Map.of("value", "val")));
-        byte[] png = renderer.renderPng(pie, List.of(
-                Map.of("cat", "PAID", "val", 1234.0),
-                Map.of("cat", "FREE", "val", 2290.0)));
+                "columns", Lists.of(Maps.of("value", "cat"), Maps.of("value", "val")),
+                "axis", Maps.of(
+                        "x", Maps.of("value", "cat"),
+                        "y", Maps.of("value", "val")));
+        byte[] png = renderer.renderPng(pie, Lists.of(
+                Maps.of("cat", "PAID", "val", 1234.0),
+                Maps.of("cat", "FREE", "val", 2290.0)));
         assertNotNull(png);
         assertTrue(png.length > 100);
     }
@@ -120,7 +123,7 @@ class ChartSemanticsParityTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> axis = (Map<String, Object>) chart.get("axis");
         assertTrue(axis.containsKey("multi-quota"), "multi-quota preserved by normalize");
-        assertEquals(Map.of("name", "指标类型", "value", List.of("s", "p")), axis.get("multi-quota"));
+        assertEquals(Maps.of("name", "指标类型", "value", Lists.of("s", "p")), axis.get("multi-quota"));
     }
 
     @Test
@@ -136,7 +139,7 @@ class ChartSemanticsParityTest {
         Map<String, Object> axis = (Map<String, Object>) chart.get("axis");
         @SuppressWarnings("unchecked")
         Map<String, Object> quota = (Map<String, Object>) axis.get("multi-quota");
-        assertEquals(List.of("s", "p"), quota.get("value"));
+        assertEquals(Lists.of("s", "p"), quota.get("value"));
     }
 
     @Test
@@ -153,7 +156,7 @@ class ChartSemanticsParityTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> quota = (Map<String, Object>) axis.get("multi-quota");
         assertNotNull(quota, "multi-quota derived from y array");
-        assertEquals(List.of("s", "p"), quota.get("value"));
+        assertEquals(Lists.of("s", "p"), quota.get("value"));
     }
 
     @Test
@@ -173,19 +176,19 @@ class ChartSemanticsParityTest {
     void chatChartBuilderAddsMultiQuotaForMultipleNumeric() {
         // A9：多数值列启发式构造时同步产出 multi-quota（对象形态）
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("fields", List.of("m", "s", "p"));
-        result.put("fields_info", List.of(
-                Map.of("name", "m", "is_numeric", false),
-                Map.of("name", "s", "is_numeric", true),
-                Map.of("name", "p", "is_numeric", true)));
-        result.put("data", List.of(Map.of("m", "a", "s", 1, "p", 2)));
+        result.put("fields", Lists.of("m", "s", "p"));
+        result.put("fields_info", Lists.of(
+                Maps.of("name", "m", "is_numeric", false),
+                Maps.of("name", "s", "is_numeric", true),
+                Maps.of("name", "p", "is_numeric", true)));
+        result.put("data", Lists.of(Maps.of("m", "a", "s", 1, "p", 2)));
         Map<String, Object> chart = builder.build(result, "compare");
         @SuppressWarnings("unchecked")
         Map<String, Object> axis = (Map<String, Object>) chart.get("axis");
         assertTrue(axis.containsKey("multi-quota"), "multi-quota produced for >1 numeric");
         @SuppressWarnings("unchecked")
         Map<String, Object> quota = (Map<String, Object>) axis.get("multi-quota");
-        assertEquals(List.of("s", "p"), quota.get("value"));
+        assertEquals(Lists.of("s", "p"), quota.get("value"));
         assertFalse(axis.containsKey("series"), "1 维 + 多指标不产生 series");
     }
 

@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.common.storage;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import org.dromara.x.file.storage.core.FileStorageProperties;
 import org.dromara.x.file.storage.core.FileStorageService;
 import org.dromara.x.file.storage.core.FileStorageServiceBuilder;
@@ -25,7 +27,7 @@ public final class FileStorageTestFactory {
         local.setPlatform("local");
         local.setBasePath(basePath.toAbsolutePath().toString());
         local.setDomain("");
-        List<LocalFileStorage> storages = FileStorageServiceBuilder.buildLocalFileStorage(List.of(local));
+        List<LocalFileStorage> storages = FileStorageServiceBuilder.buildLocalFileStorage(Lists.of(local));
         return FileStorageServiceBuilder.create(props)
                 .setFileRecorder(new InMemoryFileRecorder())
                 .setDefaultTikaFactory()

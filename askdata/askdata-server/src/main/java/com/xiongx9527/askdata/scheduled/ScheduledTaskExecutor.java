@@ -16,15 +16,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -226,18 +224,35 @@ public class ScheduledTaskExecutor {
             payload.put("row_count", Rows.mapList(result.get("data")).size());
             String body = objectMapper.writeValueAsString(payload);
             int timeout = Math.max(1, properties.getPushTimeoutSeconds());
-            HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(timeout)).build();
-            HttpRequest request = HttpRequest.newBuilder(URI.create(url.trim()))
-                    .timeout(Duration.ofSeconds(timeout))
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
-                    .build();
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException("Push failed with HTTP " + response.statusCode());
+            int status = postJson(url.trim(), body, timeout);
+            if (status < 200 || status >= 300) {
+                throw new IllegalStateException("Push failed with HTTP " + status);
             }
         } catch (Exception e) {
             throw new IllegalStateException("Push failed: " + e.getMessage(), e);
+        }
+    }
+
+    /** 以 JSON 体 POST，返回 HTTP 状态码（Java 8 {@link HttpURLConnection}）。 */
+    private static int postJson(String url, String body, int timeoutSeconds) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        try {
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(timeoutSeconds * 1000);
+            conn.setReadTimeout(timeoutSeconds * 1000);
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            byte[] payload = body.getBytes(StandardCharsets.UTF_8);
+            conn.setFixedLengthStreamingMode(payload.length);
+            OutputStream out = conn.getOutputStream();
+            try {
+                out.write(payload);
+            } finally {
+                out.close();
+            }
+            return conn.getResponseCode();
+        } finally {
+            conn.disconnect();
         }
     }
 }

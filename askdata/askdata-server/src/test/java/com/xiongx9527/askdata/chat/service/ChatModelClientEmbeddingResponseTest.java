@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.chat.service;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -55,7 +57,7 @@ class ChatModelClientEmbeddingResponseTest {
     void largeEmbeddingResponseIsParsedWithoutTruncation() {
         List<double[]> vectors = client.embed(
                 "http://127.0.0.1:" + server.getAddress().getPort(), "k", "bge-m3",
-                List.of("库存盘点表", "订单表"));
+                Lists.of("库存盘点表", "订单表"));
         assertNotNull(vectors, "大响应体不得因截断而解析失败");
         assertEquals(2, vectors.size());
         for (double[] v : vectors) {

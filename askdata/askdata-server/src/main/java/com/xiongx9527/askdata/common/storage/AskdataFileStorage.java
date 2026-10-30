@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.common.storage;
 
+import com.xiongx9527.askdata.common.util.Sets;
+
 import org.dromara.x.file.storage.core.FileInfo;
 import org.dromara.x.file.storage.core.FileStorageService;
 import org.slf4j.Logger;
@@ -31,10 +33,10 @@ public class AskdataFileStorage {
 
     /** 常见允许的图片扩展名。 */
     public static final Set<String> IMAGE_EXT =
-            Set.of("jpg", "jpeg", "png", "gif", "svg", "webp", "bmp");
+            Sets.of("jpg", "jpeg", "png", "gif", "svg", "webp", "bmp");
     /** 常见允许的表格/文档扩展名。 */
     public static final Set<String> DOC_EXT =
-            Set.of("xls", "xlsx", "csv", "json", "txt", "pdf");
+            Sets.of("xls", "xlsx", "csv", "json", "txt", "pdf");
 
     private final FileStorageService fileStorageService;
 
@@ -50,7 +52,7 @@ public class AskdataFileStorage {
     }
 
     /** 平台回退提示：字段注入完成后输出，保证运维能看到回退原因。 */
-    @jakarta.annotation.PostConstruct
+    @javax.annotation.PostConstruct
     void logFallback() {
         if (fallbackReason != null && !fallbackReason.isEmpty()) {
             log.warn("文件存储平台配置不可用（{}），已回退 local；如需启用请补全环境变量后重启", fallbackReason);
@@ -154,7 +156,7 @@ public class AskdataFileStorage {
         try {
             java.util.Optional<org.dromara.x.file.storage.core.FileInfo> found =
                     recordRepository.findByPathAndFilename(path, filename);
-            if (found.isEmpty()) {
+            if (!found.isPresent()) {
                 found = recordRepository.findByPathAndOriginalFilename(path, filename);
             }
             return found.orElse(null);
@@ -213,20 +215,34 @@ public class AskdataFileStorage {
     /** 由文件名推断 Content-Type（未知回落 application/octet-stream）。 */
     public static String contentTypeOf(String filename) {
         String ext = extensionOf(filename);
-        return switch (ext) {
-            case "png" -> "image/png";
-            case "jpg", "jpeg" -> "image/jpeg";
-            case "gif" -> "image/gif";
-            case "svg" -> "image/svg+xml";
-            case "webp" -> "image/webp";
-            case "bmp" -> "image/bmp";
-            case "pdf" -> "application/pdf";
-            case "json" -> "application/json";
-            case "txt", "csv" -> "text/plain";
-            case "xls" -> "application/vnd.ms-excel";
-            case "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-            default -> "application/octet-stream";
-        };
+        switch (ext) {
+            case "png":
+                return "image/png";
+            case "jpg":
+            case "jpeg":
+                return "image/jpeg";
+            case "gif":
+                return "image/gif";
+            case "svg":
+                return "image/svg+xml";
+            case "webp":
+                return "image/webp";
+            case "bmp":
+                return "image/bmp";
+            case "pdf":
+                return "application/pdf";
+            case "json":
+                return "application/json";
+            case "txt":
+            case "csv":
+                return "text/plain";
+            case "xls":
+                return "application/vnd.ms-excel";
+            case "xlsx":
+                return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            default:
+                return "application/octet-stream";
+        }
     }
 
     /** 取纯扩展名（小写、无点）；无扩展名返回空串。 */

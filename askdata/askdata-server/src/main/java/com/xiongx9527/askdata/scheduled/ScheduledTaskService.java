@@ -172,7 +172,7 @@ public class ScheduledTaskService {
                         messageResolver.get("scheduled.run.not.found", runId)));
         requireOwned(run.getTaskId(), currentUserService.currentUser());
         String path = run.getExportPath();
-        if (path == null || path.isBlank()) {
+        if (path == null || path.trim().isEmpty()) {
             throw new BadRequestException(messageResolver.get("scheduled.run.no.export", runId));
         }
         if (fileStorage != null && fileStorage.enabled() && fileStorage.info(path) != null) {
@@ -191,7 +191,24 @@ public class ScheduledTaskService {
     }
 
     /** 导出文件（下载响应用）。 */
-    public record ExportFile(String filename, byte[] content) {
+    public static class ExportFile {
+
+        private final String filename;
+
+        private final byte[] content;
+
+        public ExportFile(String filename, byte[] content) {
+            this.filename = filename;
+            this.content = content;
+        }
+
+        public String filename() {
+            return filename;
+        }
+
+        public byte[] content() {
+            return content;
+        }
     }
 
     private static String fileNameOf(String path) {

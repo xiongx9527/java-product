@@ -1,7 +1,7 @@
 package com.xiongx9527.askdata.chat.service;
 
 import com.xiongx9527.askdata.datasource.engine.DatasourceType;
-import jakarta.annotation.PostConstruct;
+import javax.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ClassPathResource;

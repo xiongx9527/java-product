@@ -55,7 +55,7 @@ public class RedisClientConfig {
         if (timeout != null && !timeout.isZero() && !timeout.isNegative()) {
             factory.setTimeout(timeout.toMillis());
         }
-        if (properties.getSsl() != null && properties.getSsl().isEnabled()) {
+        if (properties.isSsl()) {
             factory.setUseSsl(true);
         }
         return factory;

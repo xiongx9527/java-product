@@ -144,11 +144,13 @@ public final class SqlSafety {
      */
     private static Set<String> collectFunctionNames(Statement stmt) {
         Set<String> names = new HashSet<>();
-        if (stmt instanceof Select s) {
+        if (stmt instanceof Select) {
+            Select s = (Select) stmt;
             collectSelect(s, names);
-        } else if (stmt instanceof SetOperationList sol) {
+        } else if (stmt instanceof SetOperationList) {
+            SetOperationList sol = (SetOperationList) stmt;
             if (sol.getWithItemsList() != null) {
-                for (WithItem<?> w : sol.getWithItemsList()) {
+                for (WithItem w : sol.getWithItemsList()) {
                     collectSelect(w.getSelect(), names);
                 }
             }
@@ -162,7 +164,7 @@ public final class SqlSafety {
     /** 递归遍历 SELECT（覆盖 CTE / UNION / FROM-JOIN / 子查询）中的表达式，收集函数名。 */
     private static void collectSelect(Select select, Set<String> out) {
         if (select.getWithItemsList() != null) {
-            for (WithItem<?> w : select.getWithItemsList()) {
+            for (WithItem w : select.getWithItemsList()) {
                 collectSelect(w.getSelect(), out);
             }
         }
@@ -174,7 +176,7 @@ public final class SqlSafety {
         }
         if (setOp != null) {
             if (setOp.getWithItemsList() != null) {
-                for (WithItem<?> w : setOp.getWithItemsList()) {
+                for (WithItem w : setOp.getWithItemsList()) {
                     collectSelect(w.getSelect(), out);
                 }
             }
@@ -214,8 +216,8 @@ public final class SqlSafety {
         }
         if (ps.getGroupBy() != null && ps.getGroupBy().getGroupByExpressions() != null) {
             for (Object o : ps.getGroupBy().getGroupByExpressions()) {
-                if (o instanceof Expression e) {
-                    collectExpr(e, out);
+                if (o instanceof Expression) {
+                    collectExpr((Expression) o, out);
                 }
             }
         }
@@ -227,8 +229,8 @@ public final class SqlSafety {
     }
 
     private static void collectFromItem(FromItem item, Set<String> out) {
-        if (item instanceof ParenthesedSelect ps) {
-            collectSelect(ps.getSelect(), out);
+        if (item instanceof ParenthesedSelect) {
+            collectSelect(((ParenthesedSelect) item).getSelect(), out);
         }
     }
 
@@ -237,7 +239,8 @@ public final class SqlSafety {
         if (e == null) {
             return;
         }
-        if (e instanceof Function f) {
+        if (e instanceof Function) {
+            Function f = (Function) e;
             String name = f.getName();
             if (name != null) {
                 out.add(name.toLowerCase(Locale.ROOT));
@@ -245,31 +248,33 @@ public final class SqlSafety {
             ExpressionList<?> params = f.getParameters();
             if (params != null) {
                 for (Object p : params.getExpressions()) {
-                    if (p instanceof Expression ex) {
-                        collectExpr(ex, out);
+                    if (p instanceof Expression) {
+                        collectExpr((Expression) p, out);
                     }
                 }
             }
             Object attr = f.getAttribute();
-            if (attr instanceof Expression ex) {
-                collectExpr(ex, out);
+            if (attr instanceof Expression) {
+                collectExpr((Expression) attr, out);
             }
             return;
         }
-        if (e instanceof BinaryExpression be) {
+        if (e instanceof BinaryExpression) {
+            BinaryExpression be = (BinaryExpression) e;
             collectExpr(be.getLeftExpression(), out);
             collectExpr(be.getRightExpression(), out);
             return;
         }
-        if (e instanceof Parenthesis p) {
-            collectExpr(p.getExpression(), out);
+        if (e instanceof Parenthesis) {
+            collectExpr(((Parenthesis) e).getExpression(), out);
             return;
         }
-        if (e instanceof CastExpression ce) {
-            collectExpr(ce.getLeftExpression(Expression.class), out);
+        if (e instanceof CastExpression) {
+            collectExpr(((CastExpression) e).getLeftExpression(Expression.class), out);
             return;
         }
-        if (e instanceof CaseExpression c) {
+        if (e instanceof CaseExpression) {
+            CaseExpression c = (CaseExpression) e;
             if (c.getSwitchExpression() != null) {
                 collectExpr(c.getSwitchExpression(), out);
             }
@@ -284,17 +289,19 @@ public final class SqlSafety {
             }
             return;
         }
-        if (e instanceof NotExpression ne) {
-            collectExpr(ne.getExpression(), out);
+        if (e instanceof NotExpression) {
+            collectExpr(((NotExpression) e).getExpression(), out);
             return;
         }
-        if (e instanceof Between bt) {
+        if (e instanceof Between) {
+            Between bt = (Between) e;
             collectExpr(bt.getLeftExpression(), out);
             collectExpr(bt.getBetweenExpressionStart(), out);
             collectExpr(bt.getBetweenExpressionEnd(), out);
             return;
         }
-        if (e instanceof InExpression ie) {
+        if (e instanceof InExpression) {
+            InExpression ie = (InExpression) e;
             collectExpr(ie.getLeftExpression(), out);
             collectExpr(ie.getRightExpression(), out);
             return;
@@ -308,7 +315,7 @@ public final class SqlSafety {
         if (statement instanceof Select) {
             Select select = (Select) statement;
             if (select.getWithItemsList() != null) {
-                for (WithItem<?> withItem : select.getWithItemsList()) {
+                for (WithItem withItem : select.getWithItemsList()) {
                     if (cteBodyIsWrite(withItem)) {
                         return true;
                     }
@@ -319,7 +326,7 @@ public final class SqlSafety {
         if (statement instanceof SetOperationList) {
             SetOperationList setOp = (SetOperationList) statement;
             if (setOp.getWithItemsList() != null) {
-                for (WithItem<?> withItem : setOp.getWithItemsList()) {
+                for (WithItem withItem : setOp.getWithItemsList()) {
                     if (cteBodyIsWrite(withItem)) {
                         return true;
                     }
@@ -332,7 +339,7 @@ public final class SqlSafety {
     }
 
     /** CTE 子查询体为写操作语句（DELETE/INSERT/...）时返回 true。 */
-    private static boolean cteBodyIsWrite(WithItem<?> withItem) {
+    private static boolean cteBodyIsWrite(WithItem withItem) {
         Statement inner;
         try {
             inner = withItem.getSelect();

@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system;
 
+import com.xiongx9527.askdata.common.util.Texts;
+
 import com.xiongx9527.askdata.common.web.AuthFailureException;
 import com.xiongx9527.askdata.system.repository.UserRepository;
 import com.xiongx9527.askdata.system.repository.UserWsRepository;
@@ -32,7 +34,7 @@ class PasswordStrengthAndSessionTest {
         assertTrue(com.xiongx9527.askdata.system.controller.LoginController.isValidPwdFormat("Abcdef1!"));
         assertTrue(com.xiongx9527.askdata.system.controller.LoginController.isValidPwdFormat("Passw0rd#"));
         // 20 位（含特殊字符）仍在范围内
-        assertTrue(com.xiongx9527.askdata.system.controller.LoginController.isValidPwdFormat("Aa1!" + "x".repeat(16)));
+        assertTrue(com.xiongx9527.askdata.system.controller.LoginController.isValidPwdFormat("Aa1!" + Texts.repeat("x", 16)));
     }
 
     @Test
@@ -40,7 +42,7 @@ class PasswordStrengthAndSessionTest {
         // 长度不足 8
         assertFalse(com.xiongx9527.askdata.system.controller.LoginController.isValidPwdFormat("Ab1!"));
         // 超过 20
-        assertFalse(com.xiongx9527.askdata.system.controller.LoginController.isValidPwdFormat("Aa1!" + "x".repeat(20)));
+        assertFalse(com.xiongx9527.askdata.system.controller.LoginController.isValidPwdFormat("Aa1!" + Texts.repeat("x", 20)));
         // 缺小写
         assertFalse(com.xiongx9527.askdata.system.controller.LoginController.isValidPwdFormat("ABCDEF1!"));
         // 缺大写

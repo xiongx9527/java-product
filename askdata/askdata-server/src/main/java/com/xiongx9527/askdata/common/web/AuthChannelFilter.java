@@ -1,14 +1,16 @@
 package com.xiongx9527.askdata.common.web;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.embedded.AssistantRepository;
-import jakarta.servlet.Filter;
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.ServletRequest;
-import jakarta.servlet.ServletResponse;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
+import javax.servlet.Filter;
+import javax.servlet.FilterChain;
+import javax.servlet.ServletException;
+import javax.servlet.ServletRequest;
+import javax.servlet.ServletResponse;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -194,7 +196,7 @@ public class AuthChannelFilter implements Filter {
         response.setHeader("Access-Control-Expose-Headers", AuthFailureSignal.HEADER);
         response.setContentType("application/json;charset=UTF-8");
         String detail = messageResolver.get("i18n_permission.authenticate_invalid",
-                java.util.Map.of("msg", message == null ? "" : message), localeResolver.resolveLocale(request));
+                Maps.of("msg", message == null ? "" : message), localeResolver.resolveLocale(request));
         String body = "{\"code\":401,\"data\":null,\"msg\":\"" + escapeJson(detail) + "\"}";
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         response.setContentLength(bytes.length);

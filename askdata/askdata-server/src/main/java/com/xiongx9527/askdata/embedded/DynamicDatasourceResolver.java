@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.embedded;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.BadRequestException;
@@ -65,10 +67,10 @@ public class DynamicDatasourceResolver {
                                              Map<String, String> headers) {
         if (!isAdvancedApplication(assistantType)) {
             throw new BadRequestException(messageResolver.get("i18n_embedded.dynamic_ds_advanced_only",
-                    Map.of("type", assistantType)));
+                    Maps.of("type", assistantType)));
         }
         if (hostUrl == null || hostUrl.trim().isEmpty()) {
-            throw new BadRequestException(messageResolver.get("i18n_miss_args", Map.of("key", "host_url")));
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", Maps.of("key", "host_url")));
         }
         String body = fetchFromHost(hostUrl.trim(), headers);
         Map<String, Object> hostConfig;
@@ -225,7 +227,7 @@ public class DynamicDatasourceResolver {
      */
     public Map<String, Object> hostEndpointFromMcp(String url, String authorization) {
         if (url == null || url.trim().isEmpty()) {
-            throw new BadRequestException(messageResolver.get("i18n_miss_args", Map.of("key", "url")));
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", Maps.of("key", "url")));
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("endpoint", url.trim());
@@ -321,7 +323,7 @@ public class DynamicDatasourceResolver {
     private List<Map<String, Object>> fetchHostDatasources(int assistantType, Map<String, Object> hostEndpoint) {
         if (!isAdvancedApplication(assistantType)) {
             throw new BadRequestException(messageResolver.get("i18n_embedded.dynamic_ds_advanced_only",
-                    Map.of("type", assistantType)));
+                    Maps.of("type", assistantType)));
         }
         if (hostEndpoint == null) {
             throw new BadRequestException(messageResolver.get("i18n_embedded.host_fetch_failed",
@@ -432,14 +434,14 @@ public class DynamicDatasourceResolver {
     public DynamicDatasource resolve(int assistantType, Map<String, Object> hostConfig) {
         if (!isAdvancedApplication(assistantType)) {
             throw new BadRequestException(messageResolver.get("i18n_embedded.dynamic_ds_advanced_only",
-                    java.util.Map.of("type", assistantType)));
+                    Maps.of("type", assistantType)));
         }
         if (hostConfig == null) {
-            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", "configuration")));
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", Maps.of("key", "configuration")));
         }
         String typeText = Rows.str(hostConfig, "type");
         if (typeText == null || typeText.trim().isEmpty()) {
-            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", "type")));
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", Maps.of("key", "type")));
         }
         DatasourceType type;
         try {
@@ -512,15 +514,23 @@ public class DynamicDatasourceResolver {
             if (query.length() > 0) {
                 query.append('&');
             }
-            query.append(java.net.URLEncoder.encode(entry.getKey(), java.nio.charset.StandardCharsets.UTF_8))
+            query.append(encode(entry.getKey()))
                     .append('=')
-                    .append(java.net.URLEncoder.encode(entry.getValue(),
-                            java.nio.charset.StandardCharsets.UTF_8));
+                    .append(encode(entry.getValue()));
         }
         if (query.length() == 0) {
             return url;
         }
         return url + (url.contains("?") ? "&" : "?") + query;
+    }
+
+    /** URL 编码（UTF-8）；Java 8 的 String 重载需处理受检异常。 */
+    private static String encode(String value) {
+        try {
+            return java.net.URLEncoder.encode(value, "UTF-8");
+        } catch (java.io.UnsupportedEncodingException e) {
+            return value;
+        }
     }
 
     /** §2.4: 解析 dynamic_sql（表名 → 子查询模板）；非法/空返回空 Map。 */

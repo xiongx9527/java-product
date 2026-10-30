@@ -1,4 +1,6 @@
 package com.xiongx9527.askdata.system.service;
+
+import com.xiongx9527.askdata.common.util.Maps;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -13,7 +15,7 @@ import com.xiongx9527.askdata.system.repository.AiModelRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import jakarta.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpServletResponse;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -143,7 +145,7 @@ public class AiModelService {
                 .orElseThrow(() -> new BadRequestException(messageResolver.get("aimodel.not.found", id)));
         if (Rows.bool(model, "default_model", false)) {
             throw new BadRequestException(messageResolver.get("i18n_llm.delete_default_error",
-                    java.util.Map.of("key", String.valueOf(Rows.str(model, "name")))));
+                    Maps.of("key", String.valueOf(Rows.str(model, "name")))));
         }
         aiModelRepository.deleteAllMappings(id);
         aiModelRepository.delete(id);
@@ -375,7 +377,7 @@ public class AiModelService {
             int code = connection.getResponseCode();
             if (code >= 400) {
                 String detail = readAll(connection.getErrorStream());
-                emitError(writer, messageResolver.get("aimodel.http_error", java.util.Map.of("msg",
+                emitError(writer, messageResolver.get("aimodel.http_error", Maps.of("msg",
                         "HTTP " + code + (detail.isEmpty() ? "" : ": " + detail))));
                 return;
             }
@@ -454,7 +456,7 @@ public class AiModelService {
 
     private void emitError(PrintWriter writer, String message) throws IOException {
         writeLine(writer, Rows.of("error",
-                messageResolver.get("i18n_llm.validate_error", java.util.Map.of("msg", message))));
+                messageResolver.get("i18n_llm.validate_error", Maps.of("msg", message))));
     }
 
     private static String readAll(InputStream inputStream) throws IOException {
@@ -519,14 +521,14 @@ public class AiModelService {
         try {
             return objectMapper.writeValueAsString(configList);
         } catch (Exception e) {
-            throw new BadRequestException(messageResolver.get("i18n_format_invalid", java.util.Map.of("key", "config_list")));
+            throw new BadRequestException(messageResolver.get("i18n_format_invalid", Maps.of("key", "config_list")));
         }
     }
 
     private String required(Map<String, Object> body, String key) {
         String value = Rows.str(body, key);
         if (value == null || value.isEmpty()) {
-            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", key)));
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", Maps.of("key", key)));
         }
         return value;
     }

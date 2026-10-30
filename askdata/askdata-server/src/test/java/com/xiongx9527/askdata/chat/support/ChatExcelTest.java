@@ -1,5 +1,9 @@
 package com.xiongx9527.askdata.chat.support;
 
+import com.xiongx9527.askdata.common.util.Texts;
+
+import com.xiongx9527.askdata.common.util.Maps;
+
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -138,7 +142,7 @@ class ChatExcelTest {
         List<Map<String, Object>> rows = new ArrayList<>();
         rows.add(new LinkedHashMap<>());
         byte[] content = ChatExcel.buildResultWorkbook(fields("a", "a"), rows,
-                "a[b]c:d*e?f/g" + "h".repeat(40));
+                "a[b]c:d*e?f/g" + Texts.repeat("h", 40));
         Sheet sheet = readSheet(content);
         assertTrue(sheet.getSheetName().startsWith("abcdefg"));
         assertTrue(sheet.getSheetName().length() <= 31, sheet.getSheetName());
@@ -223,8 +227,8 @@ class ChatExcelTest {
     @Test
     void predictStyleRowsAreAppendedInOrder() throws Exception {
         List<Map<String, Object>> rows = new ArrayList<>(Arrays.asList(
-                new LinkedHashMap<>(Map.of("status", "PAID")),
-                new LinkedHashMap<>(Map.of("status", "FORECAST"))));
+                new LinkedHashMap<>(Maps.of("status", "PAID")),
+                new LinkedHashMap<>(Maps.of("status", "FORECAST"))));
         Sheet sheet = readSheet(ChatExcel.buildResultWorkbook(fields("状态", "status"), rows, "t"));
         assertEquals("PAID", sheet.getRow(1).getCell(0).getStringCellValue());
         assertEquals("FORECAST", sheet.getRow(2).getCell(0).getStringCellValue());

@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.common.storage;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
@@ -38,12 +40,12 @@ public class StoragePlatformEnvironmentPostProcessor implements EnvironmentPostP
     private static final Map<String, List<String>> REQUIRED = new LinkedHashMap<>();
 
     static {
-        REQUIRED.put("local", List.of());
-        REQUIRED.put("minio", List.of("access-key", "secret-key", "end-point", "bucket-name"));
-        REQUIRED.put("aliyun-oss", List.of("access-key", "secret-key", "end-point", "bucket-name"));
-        REQUIRED.put("tencent-cos", List.of("secret-id", "secret-key", "region", "bucket-name"));
+        REQUIRED.put("local", Lists.of());
+        REQUIRED.put("minio", Lists.of("access-key", "secret-key", "end-point", "bucket-name"));
+        REQUIRED.put("aliyun-oss", Lists.of("access-key", "secret-key", "end-point", "bucket-name"));
+        REQUIRED.put("tencent-cos", Lists.of("secret-id", "secret-key", "region", "bucket-name"));
         // 通用 S3：endpoint 必填（自建/Ceph/其它 S3 网关需显式指定），region 缺省 us-east-1
-        REQUIRED.put("amazon-s3", List.of("access-key", "secret-key", "end-point", "bucket-name"));
+        REQUIRED.put("amazon-s3", Lists.of("access-key", "secret-key", "end-point", "bucket-name"));
     }
 
     @Override

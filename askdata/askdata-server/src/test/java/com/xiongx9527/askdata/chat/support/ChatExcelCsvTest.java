@@ -1,5 +1,8 @@
 package com.xiongx9527.askdata.chat.support;
 
+import com.xiongx9527.askdata.common.util.Lists;
+import com.xiongx9527.askdata.common.util.Maps;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -16,15 +19,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ChatExcelCsvTest {
 
     private List<Map<String, Object>> fields() {
-        return List.of(
-                Map.of("name", "月份", "value", "month"),
-                Map.of("name", "销售额", "value", "sales"));
+        return Lists.of(
+                Maps.of("name", "月份", "value", "month"),
+                Maps.of("name", "销售额", "value", "sales"));
     }
 
     private List<Map<String, Object>> rows() {
-        return List.of(
-                Map.of("month", "1月", "sales", 120),
-                Map.of("month", "2月", "sales", 200));
+        return Lists.of(
+                Maps.of("month", "1月", "sales", 120),
+                Maps.of("month", "2月", "sales", 200));
     }
 
     @Test
@@ -43,8 +46,8 @@ class ChatExcelCsvTest {
 
     @Test
     void escapesCommasAndQuotes() {
-        List<Map<String, Object>> f = List.of(Map.of("name", "note", "value", "note"));
-        List<Map<String, Object>> r = List.of(Map.of("note", "a,b\"c"));
+        List<Map<String, Object>> f = Lists.of(Maps.of("name", "note", "value", "note"));
+        List<Map<String, Object>> r = Lists.of(Maps.of("note", "a,b\"c"));
         byte[] csv = ChatExcel.buildResultCsv(f, r);
         String text = new String(csv, 3, csv.length - 3, java.nio.charset.StandardCharsets.UTF_8);
         // value contains comma and quote -> must be wrapped and inner quote doubled

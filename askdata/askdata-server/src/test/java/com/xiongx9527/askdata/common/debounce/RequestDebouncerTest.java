@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.common.debounce;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.xiongx9527.askdata.common.cache.CacheNames;
 import org.junit.jupiter.api.BeforeEach;
@@ -80,7 +82,7 @@ class RequestDebouncerTest {
             @Override public org.springframework.cache.Cache getCache(String name) {
                 throw new IllegalStateException("cache unavailable");
             }
-            @Override public java.util.Collection<String> getCacheNames() { return java.util.List.of(); }
+            @Override public java.util.Collection<String> getCacheNames() { return java.util.Collections.<String>emptyList(); }
         }, properties);
         assertTrue(debouncer.allow("k", 1000L));
     }

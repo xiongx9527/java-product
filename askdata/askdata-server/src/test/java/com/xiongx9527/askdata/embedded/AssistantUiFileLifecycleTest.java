@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.embedded;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.web.BadRequestException;
@@ -104,7 +106,7 @@ class AssistantUiFileLifecycleTest {
         MockMultipartFile fresh = new MockMultipartFile("file", "new.png,logo", "image/png",
                 new byte[]{(byte) 0x89, 'P', 'N', 'G', 5, 5, 5});
         assistantService.updateUi("{\"id\":" + assistantId + "}",
-                List.<MultipartFile>of(fresh));
+                Lists.<MultipartFile>of(fresh));
 
         Map<String, Object> after = readConfig();
         String newLogo = String.valueOf(after.get("logo"));
@@ -124,7 +126,7 @@ class AssistantUiFileLifecycleTest {
                 new byte[]{(byte) 0x89, 'P', 'N', 'G'});
         assertThrows(BadRequestException.class,
                 () -> assistantService.updateUi("{\"id\":" + assistantId + "}",
-                        List.<MultipartFile>of(bad)));
+                        Lists.<MultipartFile>of(bad)));
     }
 
     @Test
@@ -133,7 +135,7 @@ class AssistantUiFileLifecycleTest {
                 "<svg onload=alert(1)/>".getBytes());
         assertThrows(RuntimeException.class,
                 () -> assistantService.updateUi("{\"id\":" + assistantId + "}",
-                        List.<MultipartFile>of(svg)));
+                        Lists.<MultipartFile>of(svg)));
     }
 
     private String saveAssistantFile(String originalName) throws Exception {

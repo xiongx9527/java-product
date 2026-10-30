@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.common.web;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.xiongx9527.askdata.common.cache.HotCacheService;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.system.auth.JwtCodec;
@@ -50,7 +52,7 @@ public class ApiKeyTokenAuthenticator {
      */
     public Map<String, Object> authenticate(String rawHeader) {
         if (rawHeader == null || rawHeader.trim().isEmpty()) {
-            throw new AuthFailureException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", HEADER)));
+            throw new AuthFailureException(messageResolver.get("i18n_miss_args", Maps.of("key", HEADER)));
         }
         String[] parts = rawHeader.trim().split("\\s+", 2);
         if (parts.length < 2 || !SCHEME.equalsIgnoreCase(parts[0])) {
@@ -92,11 +94,11 @@ public class ApiKeyTokenAuthenticator {
         }
         if (Rows.intg(user, "status", 0) != 1) {
             throw new AuthFailureException(messageResolver.get("i18n_login.user_disable",
-                    java.util.Map.of("msg", Rows.str(user, "account") == null ? "" : Rows.str(user, "account"))));
+                    Maps.of("msg", Rows.str(user, "account") == null ? "" : Rows.str(user, "account"))));
         }
         if (Rows.lng(user, "oid", 0L) == 0L) {
             throw new AuthFailureException(messageResolver.get("i18n_login.no_associated_ws",
-                    java.util.Map.of("msg", Rows.str(user, "account") == null ? "" : Rows.str(user, "account"))));
+                    Maps.of("msg", Rows.str(user, "account") == null ? "" : Rows.str(user, "account"))));
         }
         return userView(user);
     }

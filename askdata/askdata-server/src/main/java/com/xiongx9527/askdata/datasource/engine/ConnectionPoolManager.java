@@ -517,11 +517,72 @@ public class ConnectionPoolManager {
      * @param timeoutMs  池满时等待空闲连接的最长时间（默认 30000）
      * @param recycleMs  连接最大存活年龄（A18，默认 3600000；0 表示不回收）
      */
-    public record PoolSettings(int coreSize, int maxOverflow, long timeoutMs, long recycleMs) {
+    public static final class PoolSettings {
+
+        private final int coreSize;
+
+        private final int maxOverflow;
+
+        private final long timeoutMs;
+
+        private final long recycleMs;
+
+        public PoolSettings(int coreSize, int maxOverflow, long timeoutMs, long recycleMs) {
+            this.coreSize = coreSize;
+            this.maxOverflow = maxOverflow;
+            this.timeoutMs = timeoutMs;
+            this.recycleMs = recycleMs;
+        }
 
         /** 兼容既有三参数构造（recycle 使用默认值）。 */
         public PoolSettings(int coreSize, int maxOverflow, long timeoutMs) {
             this(coreSize, maxOverflow, timeoutMs, DEFAULT_POOL_RECYCLE_MS);
+        }
+
+        public int coreSize() {
+            return coreSize;
+        }
+
+        public int maxOverflow() {
+            return maxOverflow;
+        }
+
+        public long timeoutMs() {
+            return timeoutMs;
+        }
+
+        public long recycleMs() {
+            return recycleMs;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (this == other) {
+                return true;
+            }
+            if (!(other instanceof PoolSettings)) {
+                return false;
+            }
+            PoolSettings that = (PoolSettings) other;
+            return coreSize == that.coreSize
+                    && maxOverflow == that.maxOverflow
+                    && timeoutMs == that.timeoutMs
+                    && recycleMs == that.recycleMs;
+        }
+
+        @Override
+        public int hashCode() {
+            int result = coreSize;
+            result = 31 * result + maxOverflow;
+            result = 31 * result + (int) (timeoutMs ^ (timeoutMs >>> 32));
+            result = 31 * result + (int) (recycleMs ^ (recycleMs >>> 32));
+            return result;
+        }
+
+        @Override
+        public String toString() {
+            return "PoolSettings[coreSize=" + coreSize + ", maxOverflow=" + maxOverflow
+                    + ", timeoutMs=" + timeoutMs + ", recycleMs=" + recycleMs + "]";
         }
 
         /** 默认参数（未配置数据源池参数时使用）。 */

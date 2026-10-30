@@ -1,5 +1,8 @@
 package com.xiongx9527.askdata.permission;
 
+import com.xiongx9527.askdata.common.util.Lists;
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.util.Rows;
@@ -54,15 +57,15 @@ class DsPermissionQueryServiceTest {
         FieldRepository fieldRepo = Mockito.mock(FieldRepository.class);
         DatasourceRepository dsRepo = Mockito.mock(DatasourceRepository.class);
         CurrentUserService userService = Mockito.mock(CurrentUserService.class);
-        Map<String, Object> user = Map.of("id", 7L);
+        Map<String, Object> user = Maps.of("id", 7L);
         Mockito.when(userService.currentUser()).thenReturn(user);
         Mockito.when(userService.isAdmin(user)).thenReturn(false);
-        Mockito.when(dsRepo.findById(10L)).thenReturn(Optional.of(Map.of("type", "mysql")));
-        Mockito.when(tableRepo.findByDsAndName(10L, "orders")).thenReturn(Optional.of(Map.of("id", 100L)));
-        Mockito.when(fieldRepo.listByTableId(100L)).thenReturn(List.of(
-                Map.of("id", 1001L, "field_name", "region", "field_type", "varchar"),
-                Map.of("id", 1002L, "field_name", "secret", "field_type", "varchar"),
-                Map.of("id", 1003L, "field_name", "amount", "field_type", "decimal")));
+        Mockito.when(dsRepo.findById(10L)).thenReturn(Optional.of(Maps.of("type", "mysql")));
+        Mockito.when(tableRepo.findByDsAndName(10L, "orders")).thenReturn(Optional.of(Maps.of("id", 100L)));
+        Mockito.when(fieldRepo.listByTableId(100L)).thenReturn(Lists.of(
+                Maps.of("id", 1001L, "field_name", "region", "field_type", "varchar"),
+                Maps.of("id", 1002L, "field_name", "secret", "field_type", "varchar"),
+                Maps.of("id", 1003L, "field_name", "amount", "field_type", "decimal")));
 
         DsPermissionRepository repo = new DsPermissionRepository(jdbc, new ObjectMapper(), new IdGenerator());
         service = new DsPermissionQueryService(repo, tableRepo, fieldRepo,
@@ -76,7 +79,7 @@ class DsPermissionQueryServiceTest {
         insertRowPermission(11, 1, 100, ROW_REGION, null);
         insertRowPermission(12, 2, 100, ROW_AMOUNT, null);
 
-        List<Map<String, Object>> filters = service.rowFilters(1, 7, 10, List.of("orders"));
+        List<Map<String, Object>> filters = service.rowFilters(1, 7, 10, Lists.of("orders"));
         assertEquals(1, filters.size(), filters.toString());
         String filter = Rows.str(filters.get(0), "filter");
         assertTrue(filter.contains("region"), filter);
@@ -101,7 +104,7 @@ class DsPermissionQueryServiceTest {
         insertRowPermission(15, 5, 100, ROW_REGION, null);
         insertColumnPermission(16, 5, 100, "[{\"field_id\":1002,\"enable\":false}]", null);
 
-        assertTrue(service.rowFilters(1, 7, 10, List.of("orders")).isEmpty());
+        assertTrue(service.rowFilters(1, 7, 10, Lists.of("orders")).isEmpty());
         assertTrue(service.hiddenColumns(1, 7, 10, "orders").isEmpty());
     }
 
@@ -110,7 +113,7 @@ class DsPermissionQueryServiceTest {
         insertRule(8, 1, "[19]", "[7]", null);
         insertRowPermission(19, 8, 100, ROW_REGION, "[7]");
 
-        assertTrue(service.rowFilters(1, 7, 10, List.of("orders")).isEmpty());
+        assertTrue(service.rowFilters(1, 7, 10, Lists.of("orders")).isEmpty());
     }
 
     @Test
@@ -118,7 +121,7 @@ class DsPermissionQueryServiceTest {
         insertRule(6, 1, "[17]", "[8]", null);
         insertRowPermission(17, 6, 100, ROW_REGION, null);
 
-        assertTrue(service.rowFilters(1, 7, 10, List.of("orders")).isEmpty());
+        assertTrue(service.rowFilters(1, 7, 10, Lists.of("orders")).isEmpty());
     }
 
     @Test
@@ -126,7 +129,7 @@ class DsPermissionQueryServiceTest {
         insertRule(7, 999, "[18]", "[7]", null);
         insertRowPermission(18, 7, 100, ROW_REGION, null);
 
-        assertTrue(service.rowFilters(1, 7, 10, List.of("orders")).isEmpty());
+        assertTrue(service.rowFilters(1, 7, 10, Lists.of("orders")).isEmpty());
     }
 
     private void insertRule(long id, long oid, String permissionList, String userList, String whiteList) {

@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system.sso;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import java.io.ByteArrayInputStream;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -69,7 +71,7 @@ final class OidcIdTokenVerifier {
     private static PublicKey publicKey(ExternalIdpConfig cfg, String kid, IdpHttpClient http) {
         String jwksUrl = cfg.extra("jwks-url");
         if (jwksUrl != null && !jwksUrl.isEmpty()) {
-            IdpHttpClient.Response response = http.get(jwksUrl, Map.of());
+            IdpHttpClient.Response response = http.get(jwksUrl, Maps.of());
             if (!response.ok()) {
                 throw new IllegalStateException("oidc jwks fetch failed: " + response.status);
             }

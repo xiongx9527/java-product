@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.chat.service;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.chat.service.ChatModelClient.ModelMessage;
 import org.junit.jupiter.api.Test;
@@ -19,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ChatModelClientPayloadTest {
 
     private static List<ModelMessage> messages() {
-        return List.of(new ModelMessage("system", "sys"), new ModelMessage("user", "hi"));
+        return Lists.of(new ModelMessage("system", "sys"), new ModelMessage("user", "hi"));
     }
 
     @Test

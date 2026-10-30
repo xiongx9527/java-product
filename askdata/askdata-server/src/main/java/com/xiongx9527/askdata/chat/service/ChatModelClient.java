@@ -6,7 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import jakarta.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpServletResponse;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -456,7 +456,7 @@ public class ChatModelClient {
          * 避免再维护一套简化链路。{@link #close()} 对捕获模式不产生副作用。</p>
          */
         public static FrameWriter capturing(ObjectMapper objectMapper, FrameListener listener) {
-            return new FrameWriter(new PrintWriter(java.io.Writer.nullWriter()), objectMapper, listener);
+            return new FrameWriter(new PrintWriter(new java.io.StringWriter()), objectMapper, listener);
         }
 
         /** 写出一帧 {@code data:{json}\n\n}，与 SQLBot 前端 answer/*.vue 解析逐字兼容。 */

@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system.sso;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
@@ -26,7 +28,7 @@ public class WechatWorkProvider implements ExternalIdpProvider {
     public ExternalIdentity resolveIdentity(ExternalIdpConfig cfg, IdpCallback cb, IdpHttpClient http) {
         String tokenUrl = cfg.getTokenUrl()
                 + "?corpid=" + enc(cfg.getClientId()) + "&corpsecret=" + enc(cfg.getClientSecret());
-        IdpHttpClient.Response token = http.get(tokenUrl, Map.of());
+        IdpHttpClient.Response token = http.get(tokenUrl, Maps.of());
         if (!token.ok()) {
             throw new IllegalStateException("wechat token failed: " + token.status);
         }
@@ -34,7 +36,7 @@ public class WechatWorkProvider implements ExternalIdpProvider {
         String accessToken = SsoJson.str(t, "access_token");
         String userInfoUrl = cfg.getUserInfoUrl()
                 + "?access_token=" + enc(accessToken) + "&code=" + enc(cb.getCode());
-        IdpHttpClient.Response info = http.get(userInfoUrl, Map.of());
+        IdpHttpClient.Response info = http.get(userInfoUrl, Maps.of());
         Map<String, Object> u = SsoJson.parseObject(info.body);
         String userId = SsoJson.str(u, "userid");
         String name = SsoJson.str(u, "name");
@@ -44,7 +46,7 @@ public class WechatWorkProvider implements ExternalIdpProvider {
 
     private static String enc(String s) {
         try {
-            return URLEncoder.encode(s == null ? "" : s, StandardCharsets.UTF_8);
+            return URLEncoder.encode(s == null ? "" : s, "UTF-8");
         } catch (Exception e) {
             return s == null ? "" : s;
         }

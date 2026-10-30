@@ -8,29 +8,36 @@ import java.util.List;
  * <p>askdata 的向量由现有 embedding 模型（远程 API / 本地 ONNX）产出；
  * 本接口只负责向量的<b>持久化</b>与<b>最近邻（ANN）检索</b>，不关心向量如何生成。</p>
  *
- * <p>当前实现：
- * <ul>
- *   <li>{@link Langchain4jQdrantVectorStore} — 在线向量库，基于 langchain4j 的 {@code QdrantEmbeddingStore}
- *       （复用其 Qdrant gRPC 封装），作为 {@code type=qdrant} 时的存储后端；</li>
- *   <li>{@link Langchain4jMilvusVectorStore} — 在线向量库，基于 langchain4j 的 {@code MilvusEmbeddingStore}，
- *       作为 {@code type=milvus} 时的存储后端；</li>
- *   <li>{@link Langchain4jWeaviateVectorStore} — 在线向量库，基于 langchain4j 的 {@code WeaviateEmbeddingStore}，
- *       作为 {@code type=weaviate} 时的存储后端；</li>
- *   <li>{@link Langchain4jPgVectorVectorStore} — 在线向量库，基于 langchain4j 的 {@code PgVectorEmbeddingStore}
- *       （JDBC + Postgres 向量扩展），作为 {@code type=pgvector} 时的存储后端；</li>
- *   <li>{@link Langchain4jElasticsearchVectorStore} — 在线向量库，基于 langchain4j 的 {@code ElasticsearchEmbeddingStore}
- *       （kNN 检索 + metadata 过滤），作为 {@code type=elasticsearch} 时的存储后端；</li>
- *   <li>{@link Langchain4jRedisVectorStore} — 在线向量库，基于 langchain4j 社区版 {@code RedisEmbeddingStore}
- *       （Jedis，需 Redis Stack），作为 {@code type=redis} 时的存储后端；</li>
- *   <li>{@link DbVectorStore} — 兼容回退，沿用现有「DB embedding 列 + 应用内余弦」，
- *       在 {@code type=none} 或在线库不可达时启用，保留既有行为。</li>
- * </ul>
- * </p>
+ * <p>当前实现：{@link DbVectorStore} —— 「DB embedding 列 + 应用内余弦」，不依赖外部向量库客户端，
+ * 因此在 Java 8 / Spring Boot 2.7 平台同样可用。</p>
+ *
+ * <p>历史版本提供的在线后端（qdrant / milvus / weaviate / pgvector / elasticsearch / redis）基于
+ * langchain4j 1.x 的 {@code EmbeddingStore} 写接口（需同时指定 point id 与 metadata），
+ * langchain4j 0.35 不提供该接口，故 Java 8 版本不再内置；{@code askdata.vector-store.type}
+ * 配为这些取值时回落 {@link DbVectorStore}。</p>
  */
 public interface VectorStore {
 
     /** 命中点（id + 相似度，降序由调用方保证）。 */
-    record IdScore(long id, double score) {}
+    class IdScore {
+
+        private final long id;
+
+        private final double score;
+
+        public IdScore(long id, double score) {
+            this.id = id;
+            this.score = score;
+        }
+
+        public long id() {
+            return id;
+        }
+
+        public double score() {
+            return score;
+        }
+    }
 
     /** 集合名前缀（配置 askdata.vector-store.collection-prefix，缺省 askdata）。 */
     String collectionPrefix();

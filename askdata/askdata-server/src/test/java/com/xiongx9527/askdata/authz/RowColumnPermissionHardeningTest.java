@@ -1,5 +1,9 @@
 package com.xiongx9527.askdata.authz;
 
+import com.xiongx9527.askdata.common.util.Lists;
+import com.xiongx9527.askdata.common.util.Maps;
+import com.xiongx9527.askdata.common.util.Sets;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.chat.service.ChatModelClient;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter;
@@ -76,20 +80,20 @@ class RowColumnPermissionHardeningTest {
         FieldRepository fieldRepo = mock(FieldRepository.class);
         DatasourceRepository dsRepo = mock(DatasourceRepository.class);
         CurrentUserService userService = mock(CurrentUserService.class);
-        Map<String, Object> user = Map.of("id", 7L, "oid", 1L,
-                "system_variables", List.of(Map.of("variableId", 500L, "variableValues", List.of("k1"))));
+        Map<String, Object> user = Maps.of("id", 7L, "oid", 1L,
+                "system_variables", Lists.of(Maps.of("variableId", 500L, "variableValues", Lists.of("k1"))));
         when(userService.currentUser()).thenReturn(user);
         when(userService.isAdmin(ArgumentMatchers.any())).thenReturn(false);
-        when(dsRepo.findById(10L)).thenReturn(Optional.of(Map.of("type", "mysql")));
-        when(tableRepo.findByDsAndName(10L, "orders")).thenReturn(Optional.of(Map.of("id", 100L)));
-        when(fieldRepo.listByTableId(100L)).thenReturn(List.of(
-                Map.of("id", 1001L, "field_name", "region", "field_type", "varchar"),
-                Map.of("id", 1002L, "field_name", "secret", "field_type", "varchar"),
-                Map.of("id", 1003L, "field_name", "amount", "field_type", "decimal")));
+        when(dsRepo.findById(10L)).thenReturn(Optional.of(Maps.of("type", "mysql")));
+        when(tableRepo.findByDsAndName(10L, "orders")).thenReturn(Optional.of(Maps.of("id", 100L)));
+        when(fieldRepo.listByTableId(100L)).thenReturn(Lists.of(
+                Maps.of("id", 1001L, "field_name", "region", "field_type", "varchar"),
+                Maps.of("id", 1002L, "field_name", "secret", "field_type", "varchar"),
+                Maps.of("id", 1003L, "field_name", "amount", "field_type", "decimal")));
 
         VariableRepository variableRepo = mock(VariableRepository.class);
-        when(variableRepo.findById(500L)).thenReturn(Optional.of(Map.of("type", "kv", "value",
-                List.of(Map.of("key", "k1", "value", "v1"), Map.of("key", "k2", "value", "v2")))));
+        when(variableRepo.findById(500L)).thenReturn(Optional.of(Maps.of("type", "kv", "value",
+                Lists.of(Maps.of("key", "k1", "value", "v1"), Maps.of("key", "k2", "value", "v2")))));
 
         DsPermissionRepository repo = new DsPermissionRepository(jdbc, new ObjectMapper(), new IdGenerator());
         service = new DsPermissionQueryService(repo, tableRepo, fieldRepo,
@@ -125,7 +129,7 @@ class RowColumnPermissionHardeningTest {
         insertRowPermission(11, 1, 100, ROW_VAR, null);
         setUserVariable("kX");
         assertThrows(IllegalArgumentException.class,
-                () -> service.rowFilters(1, 7, 10, List.of("orders")));
+                () -> service.rowFilters(1, 7, 10, Lists.of("orders")));
     }
 
     @Test
@@ -133,7 +137,7 @@ class RowColumnPermissionHardeningTest {
         insertRule(1, 1, "[11]", "[7]", null);
         insertRowPermission(11, 1, 100, ROW_VAR, null);
         setUserVariable("k1");
-        List<Map<String, Object>> filters = service.rowFilters(1, 7, 10, List.of("orders"));
+        List<Map<String, Object>> filters = service.rowFilters(1, 7, 10, Lists.of("orders"));
         assertTrue(filters.size() == 1, filters.toString());
         String filter = Rows.str(filters.get(0), "filter");
         assertTrue(filter.contains("region"), filter);
@@ -173,18 +177,18 @@ class RowColumnPermissionHardeningTest {
 
         DsPermissionQueryService permissionQuery = mock(DsPermissionQueryService.class);
         when(permissionQuery.hiddenColumns(anyLong(), anyLong(), eq(10L), eq("orders")))
-                .thenReturn(Set.of("secret"));
+                .thenReturn(Sets.of("secret"));
         builder.setPermissionQuery(permissionQuery);
 
         CurrentUserService userService = mock(CurrentUserService.class);
-        when(userService.currentUser()).thenReturn(Map.of("id", 7L, "oid", 1L));
+        when(userService.currentUser()).thenReturn(Maps.of("id", 7L, "oid", 1L));
         when(userService.isAdmin(ArgumentMatchers.any())).thenReturn(false);
         when(userService.oidOf(ArgumentMatchers.any())).thenReturn(1L);
         builder.setCurrentUserService(userService);
 
         Method m = SchemaContextBuilder.class.getDeclaredMethod("tableBlock", long.class, Map.class);
         m.setAccessible(true);
-        String prompt = (String) m.invoke(builder, 10L, Map.of("id", 9001L, "table_name", "orders"));
+        String prompt = (String) m.invoke(builder, 10L, Maps.of("id", 9001L, "table_name", "orders"));
 
         assertTrue(prompt.contains("id"), prompt);
         assertTrue(prompt.contains("amount"), prompt);
@@ -196,8 +200,8 @@ class RowColumnPermissionHardeningTest {
     // ------------------------------------------------------------------
 
     private void setUserVariable(String key) {
-        Map<String, Object> user = Map.of("id", 7L, "oid", 1L,
-                "system_variables", List.of(Map.of("variableId", 500L, "variableValues", List.of(key))));
+        Map<String, Object> user = Maps.of("id", 7L, "oid", 1L,
+                "system_variables", Lists.of(Maps.of("variableId", 500L, "variableValues", Lists.of(key))));
         when(baseUserService.currentUser()).thenReturn(user);
     }
 

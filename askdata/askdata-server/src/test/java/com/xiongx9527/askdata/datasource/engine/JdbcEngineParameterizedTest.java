@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.datasource.engine;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -73,7 +75,7 @@ class JdbcEngineParameterizedTest {
 
         verify(connection).prepareStatement(anyString());
         verify(connection, never()).createStatement();
-        assertEquals(List.of(), result.get("fields"));
+        assertEquals(Lists.of(), result.get("fields"));
     }
 
     @Test
@@ -102,6 +104,6 @@ class JdbcEngineParameterizedTest {
     @Test
     void mysqlIllegalParamsContainsLocalInfile() {
         // 对齐 SQLBot：MYSQL.illegalParams 精确为 [local_infile]
-        assertEquals(List.of("local_infile"), DatasourceType.MYSQL.illegalParams());
+        assertEquals(Lists.of("local_infile"), DatasourceType.MYSQL.illegalParams());
     }
 }

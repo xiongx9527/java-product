@@ -7,7 +7,7 @@ import com.xiongx9527.askdata.common.i18n.TestMessageResolver;
 import com.xiongx9527.askdata.common.web.ApiExceptionHandler;
 import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.common.web.ForbiddenException;
-import jakarta.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;

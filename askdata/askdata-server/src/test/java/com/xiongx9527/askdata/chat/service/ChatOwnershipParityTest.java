@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.chat.service;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.chat.repository.ChatRepository;
 import com.xiongx9527.askdata.chat.repository.RecommendedQuestionRepository;
@@ -90,17 +92,17 @@ class ChatOwnershipParityTest {
 
         // 同一 oid 下 A 只看到自己的会话；分页与总数同口径
         switchUser(2L, "user-a", OID);
-        assertEquals(List.of(chatA), chatIds(chatService.list()));
-        assertEquals(List.of(chatA), chatIds(chatService.pager(1, 10).getItems()));
+        assertEquals(Lists.of(chatA), chatIds(chatService.list()));
+        assertEquals(Lists.of(chatA), chatIds(chatService.pager(1, 10).getItems()));
         assertEquals(1L, chatService.pager(1, 10).getTotal());
 
         switchUser(3L, "user-b", OID);
-        assertEquals(List.of(chatB), chatIds(chatService.list()));
+        assertEquals(Lists.of(chatB), chatIds(chatService.list()));
         assertEquals(1L, chatService.pager(1, 10).getTotal());
 
         // 管理员也只看到自己创建的会话，不因管理员身份放大可见范围
         switchUser(1L, "admin", OID);
-        assertEquals(List.of(chatAdmin), chatIds(chatService.list()));
+        assertEquals(Lists.of(chatAdmin), chatIds(chatService.list()));
         assertEquals(1L, chatService.pager(1, 10).getTotal());
 
         // 最近问题：12 条 A 提问只返回最近 10 条，时间倒序且稳定；B/管理员/跨空间提问不泄漏
@@ -125,16 +127,16 @@ class ChatOwnershipParityTest {
         switchUser(2L, "user-a", OID);
         List<String> recentA = chatService.recentQuestions(DS_ID);
         assertEquals(10, recentA.size(), recentA.toString());
-        assertEquals(List.of("A-q-11", "A-q-10", "A-q-09", "A-q-08", "A-q-07",
+        assertEquals(Lists.of("A-q-11", "A-q-10", "A-q-09", "A-q-08", "A-q-07",
                 "A-q-06", "A-q-05", "A-q-04", "A-q-03", "A-q-02"), recentA);
         assertTrue(!recentA.contains("B-q-01") && !recentA.contains("admin-q-01")
                 && !recentA.contains("A-other-workspace-q"), recentA.toString());
 
         switchUser(3L, "user-b", OID);
-        assertEquals(List.of("B-q-01"), chatService.recentQuestions(DS_ID));
+        assertEquals(Lists.of("B-q-01"), chatService.recentQuestions(DS_ID));
 
         switchUser(1L, "admin", OID);
-        assertEquals(List.of("admin-q-01"), chatService.recentQuestions(DS_ID));
+        assertEquals(Lists.of("admin-q-01"), chatService.recentQuestions(DS_ID));
     }
 
     @Test
@@ -187,6 +189,6 @@ class ChatOwnershipParityTest {
     }
 
     private static List<Long> chatIds(List<Map<String, Object>> chats) {
-        return chats.stream().map(chat -> Rows.lng(chat, "id", 0L)).toList();
+        return chats.stream().map(chat -> Rows.lng(chat, "id", 0L)).collect(java.util.stream.Collectors.toList());
     }
 }

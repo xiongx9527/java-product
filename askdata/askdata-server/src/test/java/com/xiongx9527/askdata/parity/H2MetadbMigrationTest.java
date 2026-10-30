@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.parity;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import com.xiongx9527.askdata.support.MetadbMigration;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
@@ -29,7 +31,7 @@ class H2MetadbMigrationTest {
             assertEquals(1, count(connection, "sys_user"));
             assertEquals(12, count(connection, "sys_arg"));
             assertEquals(36, tableCount(connection));
-            assertEquals(List.of("1", "2", "3", "4"), versions(connection));
+            assertEquals(Lists.of("1", "2", "3", "4"), versions(connection));
         }
     }
 
@@ -48,7 +50,7 @@ class H2MetadbMigrationTest {
             assertEquals(1, count(connection, "sys_user"), "旧库种子不应重复插入");
             assertEquals(12, count(connection, "sys_arg"), "旧库种子不应重复插入");
             assertEquals(36, tableCount(connection));
-            assertEquals(List.of("2", "3", "4"), versions(connection), "旧库应以 V2 为基线，后续版本继续增量迁移");
+            assertEquals(Lists.of("2", "3", "4"), versions(connection), "旧库应以 V2 为基线，后续版本继续增量迁移");
         }
     }
 

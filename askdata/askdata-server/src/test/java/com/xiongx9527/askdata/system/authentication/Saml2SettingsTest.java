@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system.authentication;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import cn.dev33.satoken.context.mock.SaTokenContextMockUtil;
 import cn.dev33.satoken.stp.StpUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -124,12 +126,23 @@ class Saml2SettingsTest {
     // ① 三个端点真实存在（前端不再 404）
     @Test
     void threeEndpointsAreMapped() throws Exception {
-        assertNotNull(handlerMapping.getHandler(new MockHttpServletRequest("GET",
-                "/api/v1/setting/authentication/info/saml")), "GET info/saml 必须存在");
-        assertNotNull(handlerMapping.getHandler(new MockHttpServletRequest("POST",
-                "/api/v1/setting/authentication/save/saml")), "POST save/saml 必须存在");
-        assertNotNull(handlerMapping.getHandler(new MockHttpServletRequest("POST",
-                "/api/v1/setting/authentication/validate/saml2")), "POST validate/saml2 必须存在");
+        assertNotNull(getHandler("GET", "/api/v1/setting/authentication/info/saml"),
+                "GET info/saml 必须存在");
+        assertNotNull(getHandler("POST", "/api/v1/setting/authentication/save/saml"),
+                "POST save/saml 必须存在");
+        assertNotNull(getHandler("POST", "/api/v1/setting/authentication/validate/saml2"),
+                "POST validate/saml2 必须存在");
+    }
+
+    /**
+     * Spring 5.3 的 {@code AbstractHandlerMapping#getHandler} 直接读取已缓存的 RequestPath，
+     * 裸 {@code MockHttpServletRequest} 没有该属性会抛 IllegalArgumentException；
+     * Spring 6 会在方法内自行解析，因此这里显式 parseAndCache。
+     */
+    private Object getHandler(String method, String path) throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest(method, path);
+        org.springframework.web.util.ServletRequestPathUtils.parseAndCache(request);
+        return handlerMapping.getHandler(request);
     }
 
     // ② 未配置时返回空默认体（不是 404 / 无响应）
@@ -148,23 +161,23 @@ class Saml2SettingsTest {
     void saveValidatesRequiredFieldsAndPersists() {
         // 缺 IdP 元数据地址
         BadRequestException missing = assertThrows(BadRequestException.class,
-                () -> controller.save(Map.of("idpMetaUrl", "")));
+                () -> controller.save(Maps.of("idpMetaUrl", "")));
         assertEquals(messageResolver.get("saml.idp.meta.required"), missing.getMessage());
 
         // 非 http(s) 地址
         BadRequestException invalidUrl = assertThrows(BadRequestException.class,
-                () -> controller.save(Map.of("idpMetaUrl", "idp.example.com/metadata")));
+                () -> controller.save(Maps.of("idpMetaUrl", "idp.example.com/metadata")));
         assertTrue(invalidUrl.getMessage().contains("idp.example.com"), invalidUrl.getMessage());
 
         // 开启签名但缺私钥/证书
         BadRequestException signing = assertThrows(BadRequestException.class,
-                () -> controller.save(Map.of("idpMetaUrl", "https://idp.example.com/metadata",
+                () -> controller.save(Maps.of("idpMetaUrl", "https://idp.example.com/metadata",
                         "wantAssertionsSigned", true)));
         assertEquals(messageResolver.get("saml.signing.required"), signing.getMessage());
 
         // 证书格式非法
         BadRequestException badCert = assertThrows(BadRequestException.class,
-                () -> controller.save(Map.of("idpMetaUrl", "https://idp.example.com/metadata",
+                () -> controller.save(Maps.of("idpMetaUrl", "https://idp.example.com/metadata",
                         "wantAssertionsSigned", true,
                         "certificate", "not-a-certificate",
                         "privateKey", "not-a-key")));
@@ -194,7 +207,7 @@ class Saml2SettingsTest {
     void validateChecksCertificateAndMetadata() {
         // 缺必填项 → 可读错误
         BadRequestException missing = assertThrows(BadRequestException.class,
-                () -> controller.validate(Map.of()));
+                () -> controller.validate(Maps.of()));
         assertEquals(messageResolver.get("saml.idp.meta.required"), missing.getMessage());
 
         // 元数据不可读 → valid=false 且带原因
@@ -253,7 +266,7 @@ class Saml2SettingsTest {
             StpUtil.login(9951L);
             assertThrows(com.xiongx9527.askdata.common.web.ForbiddenException.class, () -> controller.info());
             assertThrows(com.xiongx9527.askdata.common.web.ForbiddenException.class,
-                    () -> controller.save(Map.of("idpMetaUrl", "https://idp.example.com/metadata")));
+                    () -> controller.save(Maps.of("idpMetaUrl", "https://idp.example.com/metadata")));
         } finally {
             StpUtil.logout();
             StpUtil.login(1L);

@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.datasource.excel;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.common.storage.AskdataFileStorage;
@@ -104,10 +106,10 @@ class ExcelStorageCrossInstanceTest {
         for (Map<String, Object> sheet : Rows.mapList(parsed.get("data"))) {
             List<Map<String, Object>> fields = new java.util.ArrayList<>();
             for (Map<String, Object> field : Rows.mapList(sheet.get("fields"))) {
-                fields.add(Map.of("fieldName", Rows.str(field, "fieldName"),
+                fields.add(Maps.of("fieldName", Rows.str(field, "fieldName"),
                         "fieldType", Rows.str(field, "fieldType")));
             }
-            sheets.add(Map.of("sheetName", Rows.str(sheet, "sheetName"), "fields", fields));
+            sheets.add(Maps.of("sheetName", Rows.str(sheet, "sheetName"), "fields", fields));
         }
 
         Map<String, Object> result = service.importToDb(filename, sheets);

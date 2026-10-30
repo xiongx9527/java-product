@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.chat.service;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.xiongx9527.askdata.support.MetadbMigration;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -480,7 +482,7 @@ class ChatPipelineTest {
         BadRequestException denied = assertThrows(BadRequestException.class,
                 () -> chatService.startForMcp(Rows.of("datasource", dsId, "question", "授权失败")),
                 "MCP 建会话应拒绝未授权数据源");
-        assertEquals(messageResolver.get("ds.not.authorized", Map.of("id", dsId)),
+        assertEquals(messageResolver.get("ds.not.authorized", Maps.of("id", dsId)),
                 denied.getMessage());
 
         switchUser(1L, "admin", true);
@@ -577,7 +579,7 @@ class ChatPipelineTest {
                 .get("id")).longValue();
         // 风险修复：真实 DsGrantService + 真实 ds_grant 行，验证非管理员在流式/非流式两条链路被拒。
         new DsGrantRepository(appJdbc, idGenerator).insert(1L, dsId, 2L, 1L);
-        String expected = messageResolver.get("ds.not.authorized", Map.of("id", dsId));
+        String expected = messageResolver.get("ds.not.authorized", Maps.of("id", dsId));
 
         stubCalls.clear();
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -699,7 +701,7 @@ class ChatPipelineTest {
         }
         // A14：新增步骤携带结构化 message（含 pid 字段，便于 ExecutionDetails 关联父记录）
         Map<String, Object> chooseDs = steps.stream()
-                .filter(s -> "CHOOSE_DATASOURCE".equals(s.get("operate"))).findFirst().orElseThrow();
+                .filter(s -> "CHOOSE_DATASOURCE".equals(s.get("operate"))).findFirst().orElseThrow(IllegalStateException::new);
         assertNotNull(chooseDs.get("message"), "CHOOSE_DATASOURCE 应携带 message");
         assertNotNull(chatService.recordLog(recordId, true));
         assertTrue(chatService.recentQuestions(dsId).contains("每个状态的订单数"));

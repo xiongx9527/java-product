@@ -38,7 +38,7 @@ public class PortableWorkerIdAssigner implements WorkerIdAssigner {
                     "INSERT INTO WORKER_NODE (host_name, port, type, launch_date, created, modified) "
                             + "VALUES (?, ?, ?, ?, ?, ?)", Statement.RETURN_GENERATED_KEYS);
             statement.setString(1, hostName());
-            statement.setString(2, String.valueOf(ProcessHandle.current().pid()));
+            statement.setString(2, String.valueOf(currentPid()));
             statement.setInt(3, NODE_TYPE_ACTUAL);
             // 历史 schema.sql 的 launch_date 为 VARCHAR，保持字符串写入以兼容旧库。
             statement.setString(4, timestamp.toString());
@@ -68,6 +68,17 @@ public class PortableWorkerIdAssigner implements WorkerIdAssigner {
             return InetAddress.getLocalHost().getHostName();
         } catch (Exception e) {
             return "unknown";
+        }
+    }
+
+    /** 当前进程号（Java 8 无 ProcessHandle，退回 RuntimeMXBean 的 "pid@host" 前缀）。 */
+    private static long currentPid() {
+        try {
+            String name = java.lang.management.ManagementFactory.getRuntimeMXBean().getName();
+            int at = name.indexOf('@');
+            return Long.parseLong(at > 0 ? name.substring(0, at) : name);
+        } catch (Exception e) {
+            return -1L;
         }
     }
 }

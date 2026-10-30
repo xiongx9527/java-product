@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system.sso;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
@@ -23,9 +25,9 @@ public class FeishuProvider implements ExternalIdpProvider {
 
     @Override
     public ExternalIdentity resolveIdentity(ExternalIdpConfig cfg, IdpCallback cb, IdpHttpClient http) {
-        IdpHttpClient.Response token = http.postForm(cfg.getTokenUrl(), Map.of(
+        IdpHttpClient.Response token = http.postForm(cfg.getTokenUrl(), Maps.of(
                 "app_id", cfg.getClientId() == null ? "" : cfg.getClientId(),
-                "app_secret", cfg.getClientSecret() == null ? "" : cfg.getClientSecret()), Map.of());
+                "app_secret", cfg.getClientSecret() == null ? "" : cfg.getClientSecret()), Maps.of());
         if (!token.ok()) {
             throw new IllegalStateException("feishu token failed: " + token.status);
         }
@@ -36,7 +38,7 @@ public class FeishuProvider implements ExternalIdpProvider {
         }
         IdpHttpClient.Response info = http.get(
                 cfg.getUserInfoUrl() + "?access_token=" + enc(accessToken) + "&code=" + enc(cb.getCode()),
-                Map.of());
+                Maps.of());
         Map<String, Object> u = SsoJson.parseObject(info.body);
         String openId = SsoJson.str(u, "open_id");
         String name = SsoJson.str(u, "name");
@@ -46,7 +48,7 @@ public class FeishuProvider implements ExternalIdpProvider {
 
     private static String enc(String s) {
         try {
-            return URLEncoder.encode(s == null ? "" : s, StandardCharsets.UTF_8);
+            return URLEncoder.encode(s == null ? "" : s, "UTF-8");
         } catch (Exception e) {
             return s == null ? "" : s;
         }

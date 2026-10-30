@@ -1,5 +1,8 @@
 package com.xiongx9527.askdata.chart.server;
 
+import com.xiongx9527.askdata.common.util.Lists;
+import com.xiongx9527.askdata.common.util.Maps;
+
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
@@ -20,38 +23,38 @@ class ChartImageRendererTest {
     private static final byte[] PNG_MAGIC = {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
 
     private static List<Map<String, Object>> sampleData() {
-        return List.of(
-                Map.of("month", "m1", "sales", 120.0, "profit", 30.0),
-                Map.of("month", "m2", "sales", 200.0, "profit", 55.0),
-                Map.of("month", "m3", "sales", 150.0, "profit", 40.0)
+        return Lists.of(
+                Maps.of("month", "m1", "sales", 120.0, "profit", 30.0),
+                Maps.of("month", "m2", "sales", 200.0, "profit", 55.0),
+                Maps.of("month", "m3", "sales", 150.0, "profit", 40.0)
         );
     }
 
     private static Map<String, Object> cartesian(String type) {
-        return Map.of(
+        return Maps.of(
                 "type", type, "title", "trend",
-                "columns", List.of(Map.of("value", "month"), Map.of("value", "sales")),
-                "axis", Map.of(
-                        "x", Map.of("value", "month"),
-                        "y", Map.of("value", "sales"))
+                "columns", Lists.of(Maps.of("value", "month"), Maps.of("value", "sales")),
+                "axis", Maps.of(
+                        "x", Maps.of("value", "month"),
+                        "y", Maps.of("value", "sales"))
         );
     }
 
     private static Map<String, Object> pie() {
-        return Map.of(
+        return Maps.of(
                 "type", "pie", "title", "share",
-                "columns", List.of(Map.of("value", "month"), Map.of("value", "sales")),
-                "axis", Map.of(
-                        "x", Map.of("value", "month"),
-                        "y", Map.of("value", "sales"))
+                "columns", Lists.of(Maps.of("value", "month"), Maps.of("value", "sales")),
+                "axis", Maps.of(
+                        "x", Maps.of("value", "month"),
+                        "y", Maps.of("value", "sales"))
         );
     }
 
     private static Map<String, Object> table() {
-        return Map.of(
+        return Maps.of(
                 "type", "table", "title", "detail",
-                "columns", List.of(Map.of("value", "month"), Map.of("value", "sales")),
-                "axis", Map.of()
+                "columns", Lists.of(Maps.of("value", "month"), Maps.of("value", "sales")),
+                "axis", Maps.of()
         );
     }
 
@@ -95,7 +98,7 @@ class ChartImageRendererTest {
 
     @Test
     void rendersEmptyDataWithoutThrowing() {
-        assertValidPng(new ChartImageRenderer().renderPng(cartesian("column"), List.of()));
+        assertValidPng(new ChartImageRenderer().renderPng(cartesian("column"), Lists.of()));
     }
 
     @Test
@@ -105,12 +108,12 @@ class ChartImageRendererTest {
 
     @Test
     void multiSeriesCartesianUsesAllSeries() {
-        Map<String, Object> dual = Map.of(
+        Map<String, Object> dual = Maps.of(
                 "type", "column", "title", "sales and profit",
-                "columns", List.of(Map.of("value", "month"), Map.of("value", "sales"), Map.of("value", "profit")),
-                "axis", Map.of(
-                        "x", Map.of("value", "month"),
-                        "y", List.of(Map.of("value", "sales"), Map.of("value", "profit")))
+                "columns", Lists.of(Maps.of("value", "month"), Maps.of("value", "sales"), Maps.of("value", "profit")),
+                "axis", Maps.of(
+                        "x", Maps.of("value", "month"),
+                        "y", Lists.of(Maps.of("value", "sales"), Maps.of("value", "profit")))
         );
         assertValidPng(new ChartImageRenderer().renderPng(dual, sampleData()));
     }

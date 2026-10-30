@@ -123,14 +123,14 @@ class UserImportLocalizedTest {
         assertFalse(result.containsKey("fileId"), "不再返回 fileId（SQLBot 字段名为 dataKey）");
 
         // ⑤ 状态 / 来源 / 角色映射
-        Map<String, Object> admin = userRepository.findByAccount("zh_user1").orElseThrow();
+        Map<String, Object> admin = userRepository.findByAccount("zh_user1").orElseThrow(IllegalStateException::new);
         long adminUid = ((Number) admin.get("id")).longValue();
         assertEquals(1, ((Number) admin.get("status")).intValue(), "已启用 → status=1");
         assertEquals(0, ((Number) admin.get("origin")).intValue(), "本地创建 → origin=0");
         assertEquals(1L, ((Number) admin.get("oid")).longValue(), "默认工作空间 → 调用者工作空间");
         assertEquals(1, userWsRepository.weightOf(adminUid, 1L), "管理员 → weight=1");
 
-        Map<String, Object> member = userRepository.findByAccount("zh_user2").orElseThrow();
+        Map<String, Object> member = userRepository.findByAccount("zh_user2").orElseThrow(IllegalStateException::new);
         long memberUid = ((Number) member.get("id")).longValue();
         assertEquals(0, ((Number) member.get("status")).intValue(), "已禁用 → status=0");
         assertEquals(0, userWsRepository.weightOf(memberUid, 1L), "普通成员 → weight=0");
@@ -174,7 +174,7 @@ class UserImportLocalizedTest {
                         messageResolver.get("i18n_user.local_creation", Locale.TRADITIONAL_CHINESE), ""}
         }));
         assertEquals(1, result.get("successCount"), String.valueOf(result));
-        Map<String, Object> user = userRepository.findByAccount("tw_user").orElseThrow();
+        Map<String, Object> user = userRepository.findByAccount("tw_user").orElseThrow(IllegalStateException::new);
         assertEquals(1, ((Number) user.get("status")).intValue());
         assertEquals(1, userWsRepository.weightOf(((Number) user.get("id")).longValue(), 1L));
     }

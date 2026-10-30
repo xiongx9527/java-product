@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.ai;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import com.xiongx9527.askdata.system.service.AiModelService;
 import org.junit.jupiter.api.Test;
 
@@ -74,7 +76,7 @@ class AiModelStatusAzureTest {
         // api_version / deployment_name 只参与 URL，Azure 请求体中剔除
         Map<String, Object> payload = com.xiongx9527.askdata.chat.service.ChatModelClient.buildPayload(
                 "gpt-4o",
-                List.of(new com.xiongx9527.askdata.chat.service.ChatModelClient.ModelMessage("user", "1+1=?")),
+                Lists.of(new com.xiongx9527.askdata.chat.service.ChatModelClient.ModelMessage("user", "1+1=?")),
                 params, true);
         assertFalse(payload.containsKey("api_version"));
         assertFalse(payload.containsKey("deployment_name"));

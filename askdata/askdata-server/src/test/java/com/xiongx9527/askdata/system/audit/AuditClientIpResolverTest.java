@@ -1,7 +1,7 @@
 package com.xiongx9527.askdata.system.audit;
 
 import com.xiongx9527.askdata.common.audit.AuditClientIpResolver;
-import jakarta.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

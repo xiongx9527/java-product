@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system.sso;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
@@ -24,7 +26,7 @@ public class CasProvider implements ExternalIdpProvider {
         String url = cfg.getTokenUrl()
                 + "?service=" + enc(cfg.getRedirectUri())
                 + "&ticket=" + enc(cb.getTicket());
-        IdpHttpClient.Response resp = http.get(url, Map.of());
+        IdpHttpClient.Response resp = http.get(url, Maps.of());
         if (!resp.ok()) {
             throw new IllegalStateException("cas ticket validation failed: " + resp.status);
         }
@@ -42,7 +44,7 @@ public class CasProvider implements ExternalIdpProvider {
 
     private static String enc(String s) {
         try {
-            return URLEncoder.encode(s == null ? "" : s, StandardCharsets.UTF_8);
+            return URLEncoder.encode(s == null ? "" : s, "UTF-8");
         } catch (Exception e) {
             return s == null ? "" : s;
         }

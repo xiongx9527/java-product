@@ -1,5 +1,9 @@
 package com.xiongx9527.askdata.system;
 
+import com.xiongx9527.askdata.common.util.Lists;
+import com.xiongx9527.askdata.common.util.Io;
+import com.xiongx9527.askdata.common.util.Maps;
+
 import cn.dev33.satoken.SaManager;
 import cn.dev33.satoken.context.mock.SaTokenContextMockUtil;
 import cn.dev33.satoken.stp.StpUtil;
@@ -105,7 +109,7 @@ class SystemDetailsTest {
         // 默认值：application.yaml 中 sa-token.timeout 的缺省表达式
         String yaml;
         try (InputStream in = new ClassPathResource("application.yaml").getInputStream()) {
-            yaml = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            yaml = new String(Io.readAll(in), StandardCharsets.UTF_8);
         }
         java.util.regex.Matcher matcher = java.util.regex.Pattern
                 .compile("timeout:\\s*\\$\\{ASKDATA_TOKEN_TIMEOUT:(\\d+)}")
@@ -179,7 +183,7 @@ class SystemDetailsTest {
                     null, false).getItems()) {
                 accounts.add(Rows.str(item, "account"));
             }
-            assertTrue(accounts.containsAll(List.of("rel_zhang", "rel_zhangsan", "rel_other")),
+            assertTrue(accounts.containsAll(Lists.of("rel_zhang", "rel_zhangsan", "rel_other")),
                     "关键字应命中三个测试账号: " + accounts);
             assertEquals("rel_other", accounts.get(0),
                     "命中字段更多的用户应排在最前（match_count 降序）: " + accounts);
@@ -207,7 +211,7 @@ class SystemDetailsTest {
         jdbc.update("INSERT INTO system_variable VALUES "
                 + "(9901, 'i18n_variable.account', 'text', 'system', '[\"account\"]', NULL, NULL)");
         try {
-            variableService.delete(List.of(9901L));
+            variableService.delete(Lists.of(9901L));
             Integer remaining = jdbc.queryForObject(
                     "SELECT COUNT(*) FROM system_variable WHERE id = 9901", Integer.class);
             assertEquals(0, remaining, "内置（system）变量应可删除（对齐 SQLBot delete）");
@@ -250,16 +254,16 @@ class SystemDetailsTest {
                 "Azure 域名应走 deployment 形态并使用 config_list 的 api_version");
 
         assertEquals("http://localhost:8000/v1/chat/completions",
-                AiModelService.connectivityUrl("http://localhost:8000", "qwen2", Map.of(), 2),
+                AiModelService.connectivityUrl("http://localhost:8000", "qwen2", Maps.of(), 2),
                 "protocol=2（vLLM）端点固定在 /v1 下");
         assertEquals("http://localhost:8000/v1/chat/completions",
-                AiModelService.connectivityUrl("http://localhost:8000/v1", "qwen2", Map.of(), 2),
+                AiModelService.connectivityUrl("http://localhost:8000/v1", "qwen2", Maps.of(), 2),
                 "vLLM 已带 /v1 时不重复拼接");
         assertEquals("http://localhost:8000/api/chat/completions",
-                AiModelService.connectivityUrl("http://localhost:8000/api", "gpt-4o-mini", Map.of(), 1),
+                AiModelService.connectivityUrl("http://localhost:8000/api", "gpt-4o-mini", Maps.of(), 1),
                 "protocol=1（OpenAI）按 api_domain 原样规范化，自定义前缀保留");
         assertEquals("http://localhost:8000/api/v1/chat/completions",
-                AiModelService.connectivityUrl("http://localhost:8000/api", "qwen2", Map.of(), 2),
+                AiModelService.connectivityUrl("http://localhost:8000/api", "qwen2", Maps.of(), 2),
                 "protocol=2 在自定义前缀下仍落到 /v1");
     }
 

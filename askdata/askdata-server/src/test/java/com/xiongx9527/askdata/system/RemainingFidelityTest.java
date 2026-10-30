@@ -1,5 +1,8 @@
 package com.xiongx9527.askdata.system;
 
+import com.xiongx9527.askdata.common.util.Io;
+import com.xiongx9527.askdata.common.util.Lists;
+
 import cn.dev33.satoken.context.mock.SaTokenContextMockUtil;
 import cn.dev33.satoken.stp.StpUtil;
 import com.xiongx9527.askdata.common.audit.AuditModule;
@@ -107,7 +110,7 @@ class RemainingFidelityTest {
                 "account", "fidelity_default_user",
                 "name", "Fidelity Default User",
                 "email", "fidelity_default@askdata.com",
-                "oid_list", java.util.List.of(1L)));
+                "oid_list", Lists.of(1L)));
         long newUid = Rows.lng(created, "id", 0L);
         try {
             // 把该用户口令重置为默认口令
@@ -151,7 +154,7 @@ class RemainingFidelityTest {
                 "account", "fidelity_chg_user",
                 "name", "Fidelity Chg User",
                 "email", "fidelity_chg@askdata.com",
-                "oid_list", java.util.List.of(1L)));
+                "oid_list", Lists.of(1L)));
         long newUid = Rows.lng(created, "id", 0L);
         try {
             // 新建用户口令 = askdata.user.default-password（create 忽略 body.password）
@@ -195,7 +198,7 @@ class RemainingFidelityTest {
             // 新口令落库生效
             Optional<Map<String, Object>> row = userRepository.findById(newUid);
             assertEquals(CryptoUtil.md5Hex("NewPassw0rd!1"),
-                    String.valueOf(row.orElseThrow().get("password")));
+                    String.valueOf(row.orElseThrow(IllegalStateException::new).get("password")));
         } finally {
             jdbc.update("DELETE FROM sys_user WHERE id = ?", newUid);
             jdbc.update("DELETE FROM sys_user_ws WHERE uid = ?", newUid);
@@ -278,10 +281,10 @@ class RemainingFidelityTest {
     void hostnameSourceTableOnlyDefinedOnce() throws Exception {
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
                 "CREATE TABLE(?: IF NOT EXISTS)? sys_logs_resource");
-        for (String vendor : java.util.List.of("h2", "postgresql", "mysql")) {
-            String schema = java.nio.file.Files.readString(java.nio.file.Path.of(
-                    "src/main/resources/db/migration/" + vendor + "/V1__baseline.sql"));
-            long count = pattern.matcher(schema).results().count();
+        for (String vendor : Lists.of("h2", "postgresql", "mysql")) {
+            String schema = Io.readAllUtf8(java.nio.file.Files.newInputStream(java.nio.file.Paths.get(
+                    "src/main/resources/db/migration/" + vendor + "/V1__baseline.sql")));
+            long count = countMatches(pattern, schema);
             assertEquals(1, count, vendor + " 方言中 sys_logs_resource 应只定义一次（F-18）");
         }
     }
@@ -310,14 +313,14 @@ class RemainingFidelityTest {
                 "account", "fidelity_member_user",
                 "name", "Fidelity Member User",
                 "email", "fidelity_member@askdata.com",
-                "oid_list", java.util.List.of(1L)));
+                "oid_list", Lists.of(1L)));
         long uid = Rows.lng(created, "id", 0L);
         org.springframework.mock.web.MockHttpServletRequest request =
                 new org.springframework.mock.web.MockHttpServletRequest("DELETE", "/api/v1/system/workspace/uws");
         org.springframework.web.context.request.RequestContextHolder.setRequestAttributes(
                 new org.springframework.web.context.request.ServletRequestAttributes(request));
         try {
-            workspaceController.uwsDelete(Rows.of("oid", 1L, "uid_list", java.util.List.of(uid)));
+            workspaceController.uwsDelete(Rows.of("oid", 1L, "uid_list", Lists.of(uid)));
             List<Map<String, Object>> logs = jdbc.queryForList(
                     "SELECT * FROM sys_logs WHERE module = ? AND operation_type = ? AND resource_id = ?",
                     "member", "delete", String.valueOf(uid));
@@ -365,5 +368,15 @@ class RemainingFidelityTest {
             jdbc.update("DELETE FROM sys_logs_resource WHERE module = 'ai_model' AND resource_id = ?",
                     String.valueOf(modelId));
         }
+    }
+
+    /** 统计正则命中次数（Java 8 无 Matcher.results()）。 */
+    private static long countMatches(java.util.regex.Pattern pattern, String text) {
+        java.util.regex.Matcher m = pattern.matcher(text);
+        long count = 0;
+        while (m.find()) {
+            count++;
+        }
+        return count;
     }
 }

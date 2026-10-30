@@ -2,6 +2,7 @@ package com.xiongx9527.askdata.embedded;
 
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.common.storage.FileStorageTestFactory;
+import com.xiongx9527.askdata.common.util.Io;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -58,7 +59,7 @@ class AssistantFileStorageTest {
 
         Resource res = storage.load(fileId);
         assertNotNull(res);
-        assertArrayEquals(png, res.getInputStream().readAllBytes());
+        assertArrayEquals(png, Io.readAll(res.getInputStream()));
     }
 
     @Test

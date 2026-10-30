@@ -1,4 +1,6 @@
 package com.xiongx9527.askdata.system.service;
+
+import com.xiongx9527.askdata.common.util.Maps;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -213,7 +215,7 @@ public class UserService {
      */
     public long provisionExternalUser(String account, String name, String email) {
         if (account == null || account.trim().isEmpty()) {
-            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", "account")));
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", Maps.of("key", "account")));
         }
         String safeAccount = account.trim();
         java.util.Optional<Map<String, Object>> existing = userRepository.findByAccount(safeAccount);
@@ -364,7 +366,7 @@ public class UserService {
             Optional<Map<String, Object>> ws = workspaceRepository.findById(oid);
             if (ws.isPresent()) {
                 throw new BadRequestException(messageResolver.get("i18n_user.ws_not_available",
-                        java.util.Map.of("ws", String.valueOf(Rows.str(ws.get(), "name")))));
+                        Maps.of("ws", String.valueOf(Rows.str(ws.get(), "name")))));
             }
             throw new BadRequestException(messageResolver.get("workspace.not.found", oid));
         }
@@ -431,7 +433,7 @@ public class UserService {
     private String required(Map<String, Object> body, String key) {
         Object value = Rows.get(body, key);
         if (value == null || String.valueOf(value).isEmpty()) {
-            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", key)));
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", Maps.of("key", key)));
         }
         return String.valueOf(value);
     }
@@ -444,7 +446,7 @@ public class UserService {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (Exception e) {
-            throw new BadRequestException(messageResolver.get("i18n_format_invalid", java.util.Map.of("key", "system_variables")));
+            throw new BadRequestException(messageResolver.get("i18n_format_invalid", Maps.of("key", "system_variables")));
         }
     }
 

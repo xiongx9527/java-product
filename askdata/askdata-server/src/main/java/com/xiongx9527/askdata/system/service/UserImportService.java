@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system.service;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.common.util.ExcelUtils;
 import com.xiongx9527.askdata.common.util.IdGenerator;
@@ -348,13 +350,13 @@ public class UserImportService {
                                String statusText, String originText, String platformUid,
                                Set<String> batchAccounts) {
         if (account.isEmpty()) {
-            return messageResolver.get("i18n_miss_args", java.util.Map.of("key", "account"));
+            return messageResolver.get("i18n_miss_args", Maps.of("key", "account"));
         }
         if (name.isEmpty()) {
-            return messageResolver.get("i18n_miss_args", java.util.Map.of("key", "name"));
+            return messageResolver.get("i18n_miss_args", Maps.of("key", "name"));
         }
         if (email.isEmpty()) {
-            return messageResolver.get("i18n_miss_args", java.util.Map.of("key", "email"));
+            return messageResolver.get("i18n_miss_args", Maps.of("key", "email"));
         }
         if (!EMAIL_REGEX.matcher(email).matches()) {
             return messageResolver.get("user.email.invalid", email);

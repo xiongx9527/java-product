@@ -8,7 +8,7 @@ import com.xiongx9527.askdata.chat.service.ChatQuestionService;
 import com.xiongx9527.askdata.common.i18n.I18n;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.BadRequestException;
-import jakarta.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.HttpStatus;
@@ -218,7 +218,7 @@ public class SqlbotMcpCompatController {
         try {
             JsonNode node = mapper.readTree(toolJson);
             JsonNode err = node == null ? null : node.get("error");
-            if (err != null && !err.isNull() && !err.asText().isBlank()) {
+            if (err != null && !err.isNull() && !err.asText().trim().isEmpty()) {
                 return detail(HttpStatus.BAD_REQUEST, err.asText());
             }
         } catch (Exception ignored) {

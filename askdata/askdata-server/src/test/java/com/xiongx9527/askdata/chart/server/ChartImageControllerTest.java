@@ -1,5 +1,8 @@
 package com.xiongx9527.askdata.chart.server;
 
+import com.xiongx9527.askdata.common.util.Lists;
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.chat.service.ChatChartBuilder;
 import com.xiongx9527.askdata.common.storage.FileStorageTestFactory;
@@ -39,9 +42,9 @@ class ChartImageControllerTest {
     @Test
     void servesPngByToken() throws Exception {
         ChartImageService svc = service();
-        String url = svc.renderFromResult(Map.of("rows", List.of(
-                Map.of("m", "m1", "s", 10),
-                Map.of("m", "m2", "s", 20))), "t");
+        String url = svc.renderFromResult(Maps.of("rows", Lists.of(
+                Maps.of("m", "m1", "s", 10),
+                Maps.of("m", "m2", "s", 20))), "t");
         String token = url.substring(url.lastIndexOf('/') + 1);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new ChartImageController(svc)).build();
         mvc.perform(get("/api/chart/image/" + token))

@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.prompt;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.xiongx9527.askdata.common.audit.AuditModule;
 import com.xiongx9527.askdata.common.audit.AuditLog;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
@@ -13,7 +15,7 @@ import com.xiongx9527.askdata.system.service.CurrentUserService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import jakarta.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -316,7 +318,7 @@ public class CustomPromptService {
                 datasource = datasourceNameLookup.idByName(datasourceName);
                 if (datasource == null) {
                     errors.add(messageResolver.get("i18n_custom_prompt.datasource_name_not_found",
-                            java.util.Map.of("name", datasourceName)));
+                            Maps.of("name", datasourceName)));
                 }
             }
             if (!advancedApplicationName.isEmpty()) {
@@ -324,7 +326,7 @@ public class CustomPromptService {
                         advancedApplicationName);
                 if (assistants.isEmpty()) {
                     errors.add(messageResolver.get("i18n_custom_prompt.advanced_application_name_not_found",
-                            java.util.Map.of("name", advancedApplicationName)));
+                            Maps.of("name", advancedApplicationName)));
                 } else {
                     advancedApplication = Rows.lngOrNull(assistants.get(0), "id");
                 }
@@ -386,7 +388,7 @@ public class CustomPromptService {
         }
         if (!TYPE_GENERATE_SQL.equals(type) && !TYPE_ANALYSIS.equals(type) && !TYPE_PREDICT_DATA.equals(type)) {
             throw new BadRequestException(messageResolver.get("i18n_custom_prompt.invalid_type",
-                    java.util.Map.of("type", type)));
+                    Maps.of("type", type)));
         }
         return type;
     }
@@ -394,7 +396,7 @@ public class CustomPromptService {
     private String requiredText(Map<String, Object> body, String key) {
         String value = Rows.str(body, key);
         if (value == null || value.trim().isEmpty()) {
-            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", key)));
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", Maps.of("key", key)));
         }
         return value.trim();
     }

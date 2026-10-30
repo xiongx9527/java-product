@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system.authentication;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
@@ -141,7 +143,7 @@ public class Saml2SettingsService {
             json = objectMapper.writeValueAsString(config);
         } catch (Exception e) {
             throw new BadRequestException(messageResolver.get("i18n_format_invalid",
-                    java.util.Map.of("key", "config")));
+                    Maps.of("key", "config")));
         }
         authenticationRepository.upsert(SAML2_TYPE, SAML2_NAME, SAML2_TYPE, json, enable, valid, createTime);
     }

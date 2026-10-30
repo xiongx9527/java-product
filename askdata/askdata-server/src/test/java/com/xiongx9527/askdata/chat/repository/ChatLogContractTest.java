@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.chat.repository;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.chat.service.ChatQuestionService;
 import com.xiongx9527.askdata.common.util.IdGenerator;
@@ -34,7 +36,7 @@ class ChatLogContractTest {
             new ObjectMapper());
 
     /** SQLBot backend/apps/chat/models/chat_model.py 的 OperationEnum 枚举名。 */
-    private static final Map<String, String> SQLBOT_OPERATION_ENUM = Map.of(
+    private static final Map<String, String> SQLBOT_OPERATION_ENUM = Maps.of(
             "OPERATE_GENERATE_SQL", "GENERATE_SQL",
             "OPERATE_GENERATE_CHART", "GENERATE_CHART",
             "OPERATE_ANALYSIS", "ANALYSIS",

@@ -1,6 +1,6 @@
 package com.xiongx9527.askdata.common.web;
 
-import jakarta.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletRequest;
 
 import java.net.URI;
 import java.net.URISyntaxException;

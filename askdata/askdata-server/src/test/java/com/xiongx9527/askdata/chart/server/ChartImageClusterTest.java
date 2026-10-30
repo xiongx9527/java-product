@@ -1,5 +1,8 @@
 package com.xiongx9527.askdata.chart.server;
 
+import com.xiongx9527.askdata.common.util.Lists;
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.chat.service.ChatChartBuilder;
 import com.xiongx9527.askdata.common.storage.AskdataFileStorage;
@@ -52,7 +55,7 @@ class ChartImageClusterTest {
     }
 
     private static Map<String, Object> rows() {
-        return Map.of("rows", List.of(Map.of("m", "m1", "s", 10), Map.of("m", "m2", "s", 20)));
+        return Maps.of("rows", Lists.of(Maps.of("m", "m1", "s", 10), Maps.of("m", "m2", "s", 20)));
     }
 
     @Test
@@ -93,7 +96,7 @@ class ChartImageClusterTest {
             Thread.currentThread().interrupt();
         }
         assertNull(node.get(token));
-        assertTrue(repository.find(token).isEmpty(), "过期 token 的映射应从共享存储删除");
+        assertTrue(!repository.find(token).isPresent(), "过期 token 的映射应从共享存储删除");
     }
 
     @Test

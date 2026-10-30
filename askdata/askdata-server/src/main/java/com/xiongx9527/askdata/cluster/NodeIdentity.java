@@ -32,7 +32,18 @@ public final class NodeIdentity {
         if (host.length() > 40) {
             host = host.substring(0, 40);
         }
-        return host + ":" + ProcessHandle.current().pid() + ":"
+        return host + ":" + currentPid() + ":"
                 + UUID.randomUUID().toString().substring(0, 8);
+    }
+
+    /** 当前进程号（Java 8 无 ProcessHandle，退回 RuntimeMXBean 的 "pid@host" 前缀）。 */
+    private static long currentPid() {
+        try {
+            String name = java.lang.management.ManagementFactory.getRuntimeMXBean().getName();
+            int at = name.indexOf('@');
+            return Long.parseLong(at > 0 ? name.substring(0, at) : name);
+        } catch (Exception e) {
+            return -1L;
+        }
     }
 }

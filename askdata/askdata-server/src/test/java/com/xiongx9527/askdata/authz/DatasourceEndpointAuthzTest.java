@@ -1,5 +1,9 @@
 package com.xiongx9527.askdata.authz;
 
+import com.xiongx9527.askdata.common.util.Lists;
+import com.xiongx9527.askdata.common.util.Maps;
+import com.xiongx9527.askdata.common.util.Sets;
+
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.web.BadRequestException;
@@ -96,7 +100,7 @@ class DatasourceEndpointAuthzTest {
         TableRelationService service = new TableRelationService(datasourceRepository,
                 new com.fasterxml.jackson.databind.ObjectMapper(), MESSAGE_RESOLVER, noAdmin, grant);
 
-        assertThrows(BadRequestException.class, () -> service.save(DS_ID, List.of()));
+        assertThrows(BadRequestException.class, () -> service.save(DS_ID, Lists.of()));
         assertThrows(BadRequestException.class, () -> service.get(DS_ID));
     }
 
@@ -104,7 +108,7 @@ class DatasourceEndpointAuthzTest {
     void listHidesDatasourceExcludedByGrantWhitelist() {
         seedDatasource(DS_ID, "{}");
         CurrentUserService user = mock(CurrentUserService.class);
-        when(user.currentUser()).thenReturn(Map.of("id", 9L, "oid", 1L));
+        when(user.currentUser()).thenReturn(Maps.of("id", 9L, "oid", 1L));
         when(user.isAdmin(any())).thenReturn(false);
         when(user.oidOf(any())).thenReturn(1L);
         when(user.uid()).thenReturn(9L);
@@ -139,7 +143,7 @@ class DatasourceEndpointAuthzTest {
         TableRelationService service = new TableRelationService(datasourceRepository,
                 new com.fasterxml.jackson.databind.ObjectMapper(), MESSAGE_RESOLVER, user, grant);
 
-        assertThrows(BadRequestException.class, () -> service.save(DS_ID, List.of()));
+        assertThrows(BadRequestException.class, () -> service.save(DS_ID, Lists.of()));
         assertThrows(BadRequestException.class, () -> service.get(DS_ID));
     }
 
@@ -150,7 +154,7 @@ class DatasourceEndpointAuthzTest {
                 new com.fasterxml.jackson.databind.ObjectMapper(), MESSAGE_RESOLVER,
                 wsAdminUser(), grantingGrant());
 
-        service.save(DS_ID, List.of(Map.of("shape", "edge")));
+        service.save(DS_ID, Lists.of(Maps.of("shape", "edge")));
         assertEquals(1, service.get(DS_ID).size());
     }
 
@@ -170,7 +174,7 @@ class DatasourceEndpointAuthzTest {
         assertThrows(BadRequestException.class, () -> service.list(DS_ID));
         assertThrows(BadRequestException.class, () -> service.base(DS_ID));
         assertThrows(BadRequestException.class,
-                () -> service.save(Map.of("datasource_id", DS_ID)));
+                () -> service.save(Maps.of("datasource_id", DS_ID)));
     }
 
     @Test
@@ -195,8 +199,8 @@ class DatasourceEndpointAuthzTest {
         RecommendedProblemService service = new RecommendedProblemService(problemRepo, datasourceRepository,
                 wsAdminUser(), new com.fasterxml.jackson.databind.ObjectMapper(), grantingGrant());
 
-        service.save(Map.of("datasource_id", DS_ID, "recommended_config", 2,
-                "problemInfo", List.of(Map.of("question", "每个状态的订单数", "sort", 0))));
+        service.save(Maps.of("datasource_id", DS_ID, "recommended_config", 2,
+                "problemInfo", Lists.of(Maps.of("question", "每个状态的订单数", "sort", 0))));
         assertEquals(1, service.list(DS_ID).size());
         assertTrue(String.valueOf(service.base(DS_ID).get("questions")).contains("每个状态的订单数"));
     }
@@ -220,7 +224,7 @@ class DatasourceEndpointAuthzTest {
                 new ConnectionPoolManager(), null);
 
         assertThrows(BadRequestException.class,
-                () -> service.execSqlAuthorized(DS_ID, Map.of("sql", "SELECT 1")));
+                () -> service.execSqlAuthorized(DS_ID, Maps.of("sql", "SELECT 1")));
     }
 
     @Test
@@ -243,7 +247,7 @@ class DatasourceEndpointAuthzTest {
         PermissionEnforcer enforcer = mock(PermissionEnforcer.class);
         PermissionEnforcer.EnforcedQuery enforced =
                 new PermissionEnforcer.EnforcedQuery("SELECT enforced_col FROM t WHERE row_filter = 1",
-                        Set.of("hidden_col"));
+                        Sets.of("hidden_col"));
         when(enforcer.enforce(anyLong(), anyLong(), eq(DS_ID), eq("SELECT 1"))).thenReturn(enforced);
         when(enforcer.applyHiddenColumns(any(), any())).thenAnswer(inv -> {
             java.util.Map<String, Object> m = new java.util.HashMap<>(inv.getArgument(0));
@@ -251,12 +255,12 @@ class DatasourceEndpointAuthzTest {
             return m;
         });
         java.util.Map<String, Object> engineResult = new java.util.HashMap<>();
-        engineResult.put("data", List.of());
+        engineResult.put("data", Lists.of());
         when(engine.execSql(any(), any(), eq("SELECT enforced_col FROM t WHERE row_filter = 1"), eq(DS_ID)))
                 .thenReturn(engineResult);
         service.setPermissionEnforcer(enforcer);
 
-        java.util.Map<String, Object> result = service.execSqlAuthorized(DS_ID, Map.of("sql", "SELECT 1"));
+        java.util.Map<String, Object> result = service.execSqlAuthorized(DS_ID, Maps.of("sql", "SELECT 1"));
 
         verify(engine).execSql(any(), any(), eq("SELECT enforced_col FROM t WHERE row_filter = 1"), eq(DS_ID));
         assertEquals(true, result.get("hidden_applied"));
@@ -268,7 +272,7 @@ class DatasourceEndpointAuthzTest {
 
     private static CurrentUserService wsAdminUser() {
         CurrentUserService user = mock(CurrentUserService.class);
-        when(user.currentUser()).thenReturn(Map.of("id", 7L, "account", "u", "oid", 1L));
+        when(user.currentUser()).thenReturn(Maps.of("id", 7L, "account", "u", "oid", 1L));
         when(user.isAdmin(ArgumentMatchers.any())).thenReturn(false);
         doNothing().when(user).requireWsAdmin();
         when(user.uid()).thenReturn(7L);

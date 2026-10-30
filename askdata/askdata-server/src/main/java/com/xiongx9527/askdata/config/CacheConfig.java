@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.config;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.xiongx9527.askdata.common.cache.CacheNames;
 import com.xiongx9527.askdata.common.debounce.DebounceProperties;
@@ -113,7 +115,7 @@ public class CacheConfig {
         return RedisCacheManager.builder(factory)
                 .cacheDefaults(config)
                 // 防抖缓存的 TTL 取防抖窗口（与其它缓存的默认 TTL 不同）
-                .withInitialCacheConfigurations(java.util.Map.of(CacheNames.REQUEST_DEBOUNCE, debounceConfig))
+                .withInitialCacheConfigurations(Maps.of(CacheNames.REQUEST_DEBOUNCE, debounceConfig))
                 .transactionAware()
                 .build();
     }

@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.embedded;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
@@ -86,7 +88,7 @@ class AssistantDsEndpointTest {
         Map<String, Object> config = new LinkedHashMap<>();
         config.put("oid", oid);
         config.put("online", false);
-        config.put("public_list", List.of(201L, 202L));
+        config.put("public_list", Lists.of(201L, 202L));
         long assistantId = insertAssistant("assistantA", 0, oid, objectMapper.writeValueAsString(config));
 
         insertDatasource(201L, "orders", "order ds", "mysql", "MySQL", "1/3", oid);

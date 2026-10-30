@@ -1,4 +1,6 @@
 package com.xiongx9527.askdata.system.service;
+
+import com.xiongx9527.askdata.common.util.Maps;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -145,7 +147,7 @@ public class WorkspaceService {
         userWsRepository.deleteAllForWorkspace(id);
         for (Long uid : affectedUids) {
             java.util.Optional<Map<String, Object>> user = userRepository.findById(uid);
-            if (user.isEmpty() || Rows.lng(user.get(), "oid", 0L) != id) {
+            if (!user.isPresent() || Rows.lng(user.get(), "oid", 0L) != id) {
                 continue;
             }
             List<Long> remaining = userRepository.oidListOf(uid);
@@ -188,7 +190,7 @@ public class WorkspaceService {
 
     public PageResult<Map<String, Object>> optionPager(int pageNum, int pageSize, String keyword, long oid) {
         if (oid <= 0) {
-            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", "oid")));
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", Maps.of("key", "oid")));
         }
         currentUserService.requireAdmin();
         int page = Math.max(pageNum, 1);
@@ -204,7 +206,7 @@ public class WorkspaceService {
 
     public Map<String, Object> optionUser(String keyword) {
         if (keyword == null || keyword.isEmpty()) {
-            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", "keyword")));
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", Maps.of("key", "keyword")));
         }
         currentUserService.requireWsAdmin();
         Map<String, Object> current = currentUserService.currentUser();
@@ -225,7 +227,7 @@ public class WorkspaceService {
 
         List<Long> uidList = Rows.longList(Rows.get(body, "uid_list"));
         if (uidList.isEmpty()) {
-            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", "uid_list")));
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", Maps.of("key", "uid_list")));
         }
         if (!workspaceRepository.findById(oid).isPresent()) {
             throw new BadRequestException(messageResolver.get("workspace.not.found", oid));
@@ -243,10 +245,10 @@ public class WorkspaceService {
         long oid = Rows.lng(body, "oid", 0L);
         int weight = Rows.intg(body, "weight", 0);
         if (uid <= 0 || oid <= 0) {
-            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", "oid, uid")));
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", Maps.of("key", "oid, uid")));
         }
         Map<String, Object> binding = userWsRepository.find(uid, oid)
-                .orElseThrow(() -> new BadRequestException(messageResolver.get("i18n_not_exist", java.util.Map.of("msg", "user workspace"))));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("i18n_not_exist", Maps.of("msg", "user workspace"))));
         if (Rows.intg(binding, "weight", 0) == weight) {
             return;
         }

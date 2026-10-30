@@ -18,6 +18,7 @@ import net.sf.jsqlparser.statement.select.SetOperationList;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -159,9 +160,10 @@ public final class SqlSemanticValidator {
             // 解析失败由 SqlSafety 统一报错，这里不重复
             return null;
         }
-        if (!(statement instanceof Select select)) {
+        if (!(statement instanceof Select)) {
             return null;
         }
+        Select select = (Select) statement;
         if (select.getWithItemsList() != null && !select.getWithItemsList().isEmpty()) {
             // CTE：内部标识符可能是 CTE 别名，静态元数据无法准确判定，跳过列级校验
             return null;
@@ -182,16 +184,16 @@ public final class SqlSemanticValidator {
     /** 拆出可校验的 PlainSelect；含派生表/UNION 等无法静态判定列归属的结构时返回 null。 */
     private static List<PlainSelect> plainSelects(Select select) {
         List<PlainSelect> plains = new ArrayList<>();
-        if (select instanceof PlainSelect plain) {
-            plains.add(plain);
+        if (select instanceof PlainSelect) {
+            plains.add((PlainSelect) select);
             return plains;
         }
-        if (select instanceof SetOperationList set) {
-            for (Select item : set.getSelects()) {
-                if (!(item instanceof PlainSelect plain)) {
+        if (select instanceof SetOperationList) {
+            for (Select item : ((SetOperationList) select).getSelects()) {
+                if (!(item instanceof PlainSelect)) {
                     return null;
                 }
-                plains.add(plain);
+                plains.add((PlainSelect) item);
             }
             return plains;
         }
@@ -256,16 +258,17 @@ public final class SqlSemanticValidator {
         List<Column> groupBy = groupByColumns(plain);
         boolean hasAggregate = false;
         List<Column> bareSelectColumns = new ArrayList<>();
-        for (SelectItem<?> item : items == null ? List.<SelectItem<?>>of() : items) {
+        for (SelectItem<?> item : items == null ? Collections.<SelectItem<?>>emptyList() : items) {
             Expression expression = item.getExpression();
-            if (expression instanceof Function function && isAggregate(function)) {
+            if (expression instanceof Function && isAggregate((Function) expression)) {
+                Function function = (Function) expression;
                 hasAggregate = true;
                 String error = validateAggregateFunction(function, schema, aliasToTable);
                 if (error != null) {
                     return error;
                 }
-            } else if (expression instanceof Column column) {
-                bareSelectColumns.add(column);
+            } else if (expression instanceof Column) {
+                bareSelectColumns.add((Column) expression);
             }
         }
         if (!hasAggregate || bareSelectColumns.isEmpty()) {
@@ -290,9 +293,10 @@ public final class SqlSemanticValidator {
             return null;
         }
         for (Object parameter : function.getParameters().getExpressions()) {
-            if (!(parameter instanceof Column column)) {
+            if (!(parameter instanceof Column)) {
                 continue;
             }
+            Column column = (Column) parameter;
             String columnName = unquote(column.getColumnName());
             String qualifier = column.getTable() == null ? null : unquote(column.getTable().getName());
             String table = qualifier == null ? null : aliasToTable.get(qualifier.toLowerCase(Locale.ROOT));
@@ -317,18 +321,18 @@ public final class SqlSemanticValidator {
     private static List<Table> baseTables(PlainSelect plain) {
         List<Table> tables = new ArrayList<>();
         if (plain.getFromItem() != null) {
-            if (!(plain.getFromItem() instanceof Table table)) {
+            if (!(plain.getFromItem() instanceof Table)) {
                 return null;
             }
-            tables.add(table);
+            tables.add((Table) plain.getFromItem());
         }
         if (plain.getJoins() != null) {
             for (Join join : plain.getJoins()) {
                 FromItem item = join.getRightItem();
-                if (!(item instanceof Table table)) {
+                if (!(item instanceof Table)) {
                     return null;
                 }
-                tables.add(table);
+                tables.add((Table) item);
             }
         }
         return tables.isEmpty() ? null : tables;
@@ -351,8 +355,8 @@ public final class SqlSemanticValidator {
         }
         if (plain.getGroupBy() != null && plain.getGroupBy().getGroupByExpressions() != null) {
             for (Object expression : plain.getGroupBy().getGroupByExpressions()) {
-                if (expression instanceof Expression e) {
-                    expressions.add(e);
+                if (expression instanceof Expression) {
+                    expressions.add((Expression) expression);
                 }
             }
         }
@@ -384,8 +388,8 @@ public final class SqlSemanticValidator {
             return columns;
         }
         for (Object expression : plain.getGroupBy().getGroupByExpressions()) {
-            if (expression instanceof Column column) {
-                columns.add(column);
+            if (expression instanceof Column) {
+                columns.add((Column) expression);
             }
         }
         return columns;
@@ -434,13 +438,12 @@ public final class SqlSemanticValidator {
         if (expression == null) {
             return;
         }
-        expression.accept(new ExpressionVisitorAdapter<Void>() {
+        expression.accept(new ExpressionVisitorAdapter() {
             @Override
-            public <S> Void visit(Column column, S context) {
+            public void visit(Column column) {
                 out.add(column);
-                return null;
             }
-        }, null);
+        });
     }
 
     private static String unquote(String identifier) {

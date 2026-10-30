@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.common.debounce;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import com.xiongx9527.askdata.common.cache.CacheNames;
 import com.xiongx9527.askdata.config.CacheProperties;
 import org.slf4j.Logger;
@@ -104,7 +106,7 @@ public class RequestDebouncer {
         long expiry = now + window;
         try {
             Long acquired = redisProvider.getIfAvailable().execute(ACQUIRE_SCRIPT,
-                    List.of(REDIS_KEY_PREFIX + key),
+                    Lists.of(REDIS_KEY_PREFIX + key),
                     String.valueOf(expiry), String.valueOf(now), String.valueOf(window));
             return acquired != null && acquired == 1L;
         } catch (Exception e) {

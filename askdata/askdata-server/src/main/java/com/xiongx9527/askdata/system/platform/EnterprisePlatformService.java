@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system.platform;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.system.authentication.AuthenticationRepository;
@@ -182,7 +184,7 @@ public class EnterprisePlatformService {
                 String token = dingtalkToken(config);
                 String deptId = pid == null || pid.isEmpty() ? "1" : pid;
                 Map<String, Object> res = postJson(dingtalkBase(config) + "/topapi/v2/department/listsub",
-                        Map.of("dept_id", Long.parseLong(deptId), "language", "zh_CN"), token);
+                        Maps.of("dept_id", Long.parseLong(deptId), "language", "zh_CN"), token);
                 List<Map<String, Object>> out = new ArrayList<>();
                 for (Map<String, Object> m : mapList(res.get("result"))) {
                     out.add(node(m.get("dept_id"), m.get("name")));
@@ -226,7 +228,7 @@ public class EnterprisePlatformService {
             case ORIGIN_DINGTALK: {
                 String token = dingtalkToken(config);
                 Map<String, Object> res = postJson(dingtalkBase(config) + "/topapi/v2/user/list",
-                        Map.of("dept_id", Long.parseLong(deptId), "cursor", 0L, "size", 100), token);
+                        Maps.of("dept_id", Long.parseLong(deptId), "cursor", 0L, "size", 100), token);
                 List<Map<String, Object>> out = new ArrayList<>();
                 Map<String, Object> result = asMap(res.get("result"));
                 if (result != null) {
@@ -293,17 +295,17 @@ public class EnterprisePlatformService {
             case ORIGIN_DINGTALK: {
                 String token = dingtalkToken(config);
                 Map<String, Object> info = postJson(dingtalkBase(config) + "/topapi/v2/user/getuserinfo",
-                        Map.of("code", code), token);
+                        Maps.of("code", code), token);
                 Map<String, Object> result = asMap(info.get("result"));
                 String userId = result == null ? null : text(result, "userid");
                 if (userId == null) {
                     throw new IllegalStateException("dingtalk login failed: userid not found");
                 }
                 Map<String, Object> user = postJson(dingtalkBase(config) + "/topapi/v2/user/get",
-                        Map.of("userid", userId, "language", "zh_CN"), token);
+                        Maps.of("userid", userId, "language", "zh_CN"), token);
                 Map<String, Object> u = asMap(user.get("result"));
                 if (u == null) {
-                    u = Map.of();
+                    u = Maps.of();
                 }
                 Map<String, Object> out = new LinkedHashMap<>();
                 out.put("platform_uid", userId);
@@ -317,7 +319,7 @@ public class EnterprisePlatformService {
                 String appToken = larkToken(origin, config);
                 Map<String, Object> tokenRes = postJson(larkBase(origin, config)
                         + "/open-apis/authen/v1/oidc/access_token",
-                        Map.of("grant_type", "authorization_code", "code", code), appToken);
+                        Maps.of("grant_type", "authorization_code", "code", code), appToken);
                 Map<String, Object> data = asMap(tokenRes.get("data"));
                 String accessToken = data == null ? null : text(data, "access_token");
                 if (accessToken == null) {
@@ -327,7 +329,7 @@ public class EnterprisePlatformService {
                         accessToken);
                 Map<String, Object> u = asMap(userRes.get("data"));
                 if (u == null) {
-                    u = Map.of();
+                    u = Maps.of();
                 }
                 Map<String, Object> out = new LinkedHashMap<>();
                 out.put("platform_uid", text(u, "open_id"));
@@ -357,7 +359,7 @@ public class EnterprisePlatformService {
     private String dingtalkToken(Map<String, Object> config) {
         return cached(ORIGIN_DINGTALK + "|" + dingtalkBase(config), () -> {
             Map<String, Object> res = postJson(dingtalkBase(config) + "/v1.0/oauth2/accessToken",
-                    Map.of("appKey", text(config, "client_id"), "appSecret", text(config, "client_secret")),
+                    Maps.of("appKey", text(config, "client_id"), "appSecret", text(config, "client_secret")),
                     null);
             return text(res, "accessToken");
         });
@@ -366,7 +368,7 @@ public class EnterprisePlatformService {
     private String larkToken(int origin, Map<String, Object> config) {
         return cached(origin + "|" + larkBase(origin, config), () -> {
             Map<String, Object> res = postJson(larkBase(origin, config) + "/open-apis/auth/v3/app_access_token/internal",
-                    Map.of("app_id", text(config, "client_id"), "app_secret", text(config, "client_secret")),
+                    Maps.of("app_id", text(config, "client_id"), "app_secret", text(config, "client_secret")),
                     null);
             return text(res, "app_access_token");
         });
@@ -436,7 +438,7 @@ public class EnterprisePlatformService {
     private Map<String, Object> postJson(String url, Map<String, Object> body, String bearer) {
         String json;
         try {
-            json = objectMapper.writeValueAsString(body == null ? Map.of() : body);
+            json = objectMapper.writeValueAsString(body == null ? Maps.of() : body);
         } catch (Exception e) {
             throw new IllegalStateException("unable to serialize request body: " + e.getMessage());
         }
@@ -493,7 +495,7 @@ public class EnterprisePlatformService {
         while ((n = in.read(buffer)) > 0) {
             out.write(buffer, 0, n);
         }
-        return out.toString(StandardCharsets.UTF_8);
+        return new String(out.toByteArray(), StandardCharsets.UTF_8);
     }
 
     @SuppressWarnings("unchecked")
@@ -518,7 +520,7 @@ public class EnterprisePlatformService {
         Map<String, Object> node = new LinkedHashMap<>();
         node.put("id", String.valueOf(id));
         node.put("name", name == null ? "" : String.valueOf(name));
-        node.put("options", Map.of("is_user", false));
+        node.put("options", Maps.of("is_user", false));
         return node;
     }
 

@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.common.web;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import cn.dev33.satoken.exception.NotLoginException;
 import com.xiongx9527.askdata.common.debounce.DebounceBlockedException;
 import com.xiongx9527.askdata.common.debounce.DebounceProperties;
@@ -16,7 +18,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
-import jakarta.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletRequest;
 
 /**
  * 异常输出对齐 SQLBot：非 2xx 时返回纯文本 detail（前端 request.ts 直接展示 response 文本）；
@@ -82,7 +84,7 @@ public class ApiExceptionHandler {
                 .header(AUTH_FAILURE_HEADER, AUTH_FAILURE_SESSION)
                 .header(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, AUTH_FAILURE_HEADER)
                 .body(messageResolver.get("i18n_permission.authenticate_invalid",
-                        java.util.Map.of("msg", String.valueOf(e.getMessage()))));
+                        Maps.of("msg", String.valueOf(e.getMessage()))));
     }
 
     @ExceptionHandler(AuthFailureException.class)
@@ -94,7 +96,7 @@ public class ApiExceptionHandler {
                 .header(AUTH_FAILURE_HEADER, AUTH_FAILURE_CHANNEL)
                 .header(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, AUTH_FAILURE_HEADER)
                 .body(messageResolver.get("i18n_permission.authenticate_invalid",
-                        java.util.Map.of("msg", String.valueOf(e.getMessage()))));
+                        Maps.of("msg", String.valueOf(e.getMessage()))));
     }
 
     @ExceptionHandler(DebounceBlockedException.class)
@@ -106,7 +108,7 @@ public class ApiExceptionHandler {
         String detail = (detailOverride != null && !detailOverride.isEmpty())
                 ? detailOverride
                 : messageResolver.get("i18n_debounce.too_frequent",
-                        java.util.Map.of("seconds", String.valueOf(retryAfter)));
+                        Maps.of("seconds", String.valueOf(retryAfter)));
         Result<Void> result = new Result<>();
         result.code(429);
         result.data(null);
@@ -139,7 +141,7 @@ public class ApiExceptionHandler {
     private ResponseEntity<String> detail(HttpStatus status, String detail) {
         String body;
         try {
-            body = JSON.writeValueAsString(java.util.Map.of("detail", detail == null ? "" : detail));
+            body = JSON.writeValueAsString(Maps.of("detail", detail == null ? "" : detail));
         } catch (Exception e) {
             body = "{\"detail\":\"\"}";
         }

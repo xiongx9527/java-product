@@ -69,10 +69,17 @@ public class ClusterReadinessChecker implements ApplicationRunner {
         ClusterReadinessReport report = check();
         for (ClusterReadinessReport.Item item : report.items()) {
             switch (item.level()) {
-                case OK -> log.info("集群自检 [通过] {}：{}", item.name(), item.detail());
-                case WARN -> log.warn("集群自检 [告警] {}：{}；建议：{}", item.name(), item.detail(), item.fix());
-                case FAIL -> log.error("集群自检 [不满足] {}：{}；修复：{}", item.name(), item.detail(), item.fix());
-                default -> { }
+                case OK:
+                    log.info("集群自检 [通过] {}：{}", item.name(), item.detail());
+                    break;
+                case WARN:
+                    log.warn("集群自检 [告警] {}：{}；建议：{}", item.name(), item.detail(), item.fix());
+                    break;
+                case FAIL:
+                    log.error("集群自检 [不满足] {}：{}；修复：{}", item.name(), item.detail(), item.fix());
+                    break;
+                default:
+                    break;
             }
         }
         long ok = report.items().stream().filter(i -> i.level() == ClusterReadinessReport.Level.OK).count();
@@ -119,7 +126,7 @@ public class ClusterReadinessChecker implements ApplicationRunner {
 
     private ClusterReadinessReport.Item checkSecretKey() {
         String key = environment.getProperty("askdata.secret.key", "");
-        if (key == null || key.isBlank()) {
+        if (key == null || key.trim().isEmpty()) {
             return new ClusterReadinessReport.Item("应用密钥", ClusterReadinessReport.Level.FAIL,
                     "askdata.secret.key 为空，各实例启动期会各自随机生成",
                     "为所有实例配置同一个 ASKDATA_SECRET_KEY，否则跨实例无法解密数据源密码等密文");

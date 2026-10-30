@@ -1,5 +1,8 @@
 package com.xiongx9527.askdata.chart.server;
 
+import com.xiongx9527.askdata.common.util.Lists;
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.chat.service.ChatChartBuilder;
 import com.xiongx9527.askdata.common.storage.FileStorageTestFactory;
@@ -38,10 +41,10 @@ class ChartImageServiceTest {
     @Test
     void rendersResultAndReturnsUrl() {
         ChartImageService svc = service();
-        Map<String, Object> result = Map.of(
-                "rows", List.of(
-                        Map.of("month", "m1", "sales", 120),
-                        Map.of("month", "m2", "sales", 200))
+        Map<String, Object> result = Maps.of(
+                "rows", Lists.of(
+                        Maps.of("month", "m1", "sales", 120),
+                        Maps.of("month", "m2", "sales", 200))
         );
         String url = svc.renderFromResult(result, "monthly sales");
         assertNotNull(url);
@@ -57,13 +60,13 @@ class ChartImageServiceTest {
         // 主链路 result 形状为 {fields, fields_info, data}（无 rows）——SSR 必须同样出图
         ChartImageService svc = service();
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("fields", List.of("region", "cnt"));
-        result.put("fields_info", List.of(
-                Map.of("name", "region", "is_numeric", false),
-                Map.of("name", "cnt", "is_numeric", true)));
-        result.put("data", List.of(
-                Map.of("region", "east", "cnt", 3),
-                Map.of("region", "west", "cnt", 5)));
+        result.put("fields", Lists.of("region", "cnt"));
+        result.put("fields_info", Lists.of(
+                Maps.of("name", "region", "is_numeric", false),
+                Maps.of("name", "cnt", "is_numeric", true)));
+        result.put("data", Lists.of(
+                Maps.of("region", "east", "cnt", 3),
+                Maps.of("region", "west", "cnt", 5)));
         String url = svc.renderFromResult(result, "各地区订单数");
         assertNotNull(url);
         String token = url.substring(url.lastIndexOf('/') + 1);
@@ -75,8 +78,8 @@ class ChartImageServiceTest {
     @Test
     void returnsNullWhenNoRows() {
         ChartImageService svc = service();
-        assertNull(svc.renderFromResult(Map.of("rows", List.of()), "x"));
-        assertNull(svc.renderFromResult(Map.of("foo", "bar"), "x"));
+        assertNull(svc.renderFromResult(Maps.of("rows", Lists.of()), "x"));
+        assertNull(svc.renderFromResult(Maps.of("foo", "bar"), "x"));
         assertNull(svc.renderFromResult(null, "x"));
     }
 

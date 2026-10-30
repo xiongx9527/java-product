@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -21,9 +23,9 @@ import static org.junit.jupiter.api.Assertions.fail;
 class NoHardcodedSecretsTest {
 
     private static final Pattern SECRET_LITERAL = Pattern.compile(
-            "(?i)(password|passwd|secret|secret_key|api_key|apikey|token|access_key|accesskey)\s*=\s*\"[A-Za-z0-9!@#$%^&*()_+=\\-]{4,}\"");
+            "(?i)(password|passwd|secret|secret_key|api_key|apikey|token|access_key|accesskey)\\s*=\\s*\"[A-Za-z0-9!@#$%^&*()_+=\\-]{4,}\"");
 
-    private static final List<String> DENY = List.of("Root57@123456", "SQLBot@123456");
+    private static final List<String> DENY = Lists.of("Root57@123456", "SQLBot@123456");
 
     /**
      * A5 补充：{@code @Value} 注解中 secret/password/key/token 类配置不得带非空缺省值，
@@ -42,7 +44,7 @@ class NoHardcodedSecretsTest {
         }
         Path migrations = Paths.get("src/main/resources/db/migration");
         if (Files.exists(migrations)) {
-            try (var paths = Files.walk(migrations)) {
+            try (java.util.stream.Stream<Path> paths = Files.walk(migrations)) {
                 paths.filter(p -> p.toString().endsWith(".sql")).forEach(p -> checkFile(p, offenders));
             }
         }
@@ -57,13 +59,13 @@ class NoHardcodedSecretsTest {
 
     private void checkFile(Path p, List<String> offenders) {
         try {
-            String content = Files.readString(p);
+            String content = new String(Files.readAllBytes(p), java.nio.charset.StandardCharsets.UTF_8);
             for (String deny : DENY) {
                 if (content.contains(deny)) {
                     offenders.add(p + " : 含禁用字面量 " + deny);
                 }
             }
-            var m = SECRET_LITERAL.matcher(content);
+            java.util.regex.Matcher m = SECRET_LITERAL.matcher(content);
             while (m.find()) {
                 // 白名单：产品默认管理员口令哈希（MD5 of SQLBot@123456）仅作种子，允许
                 if (m.group().contains("8f32d1e371702c1b1b7346f4b07a701d")) {
@@ -71,7 +73,7 @@ class NoHardcodedSecretsTest {
                 }
                 offenders.add(p + " : 疑似硬编码密钥赋值 " + m.group());
             }
-            var vd = VALUE_DEFAULT_SECRET.matcher(content);
+            java.util.regex.Matcher vd = VALUE_DEFAULT_SECRET.matcher(content);
             while (vd.find()) {
                 offenders.add(p + " : @Value 缺省值疑似密钥 " + vd.group());
             }

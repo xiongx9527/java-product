@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.parity;
 
+import com.xiongx9527.askdata.common.util.Lists;
+
 import cn.dev33.satoken.context.mock.SaTokenContextMockUtil;
 import cn.dev33.satoken.stp.StpUtil;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -178,7 +180,7 @@ class PostgresMetadbMigrationTest {
         long dsId = Rows.lng(datasourceService.add(Rows.of(
                 "name", "pg parity target", "description", "", "type", "h2",
                 "configuration", h2Configuration(),
-                "tables", List.of(Rows.of("table_name", "orders", "table_comment", "订单表")))), "id", 0L);
+                "tables", Lists.of(Rows.of("table_name", "orders", "table_comment", "订单表")))), "id", 0L);
         long chatId = Rows.lng(chatService.start(Rows.of("datasource", dsId)), "id", 0L);
 
         Map<String, Object> answer = chatQuestionService.ask(Rows.of(
@@ -258,18 +260,18 @@ class PostgresMetadbMigrationTest {
             return Arrays.asList("```json\n", STUB_SQL_JSON, "\n```");
         }
         if (prompt.contains("G2 图表配置 JSON")) {
-            return List.of(STUB_CHART);
+            return Lists.of(STUB_CHART);
         }
         if (prompt.contains("个相关的追问问题")) {
-            return List.of("[\"各状态订单金额是多少？\"]");
+            return Lists.of("[\"各状态订单金额是多少？\"]");
         }
         if (prompt.contains("对结果的分析")) {
-            return List.of("PAID 与 NEW 两个状态的订单分布如下。");
+            return Lists.of("PAID 与 NEW 两个状态的订单分布如下。");
         }
         if (prompt.contains("预测数据")) {
-            return List.of("[{\"status\":\"FORECAST\",\"cnt\":5}]");
+            return Lists.of("[{\"status\":\"FORECAST\",\"cnt\":5}]");
         }
-        return List.of("[]");
+        return Lists.of("[]");
     }
 
     private static String readBody(InputStream inputStream) throws Exception {
@@ -279,6 +281,6 @@ class PostgresMetadbMigrationTest {
         while ((length = inputStream.read(chunk)) != -1) {
             buffer.write(chunk, 0, length);
         }
-        return buffer.toString(StandardCharsets.UTF_8);
+        return new String(buffer.toByteArray(), StandardCharsets.UTF_8);
     }
 }

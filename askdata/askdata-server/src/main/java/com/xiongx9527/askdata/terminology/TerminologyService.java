@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.terminology;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.xiongx9527.askdata.common.audit.AuditModule;
 import com.xiongx9527.askdata.common.audit.AuditLog;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
@@ -15,7 +17,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import jakarta.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpServletResponse;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -371,7 +373,7 @@ public class TerminologyService {
                     Long dsId = datasourceNameLookup.idByName(dsName, oid);
                     if (dsId == null) {
                         errors.add(messageResolver.get("i18n_terminology.datasource_name_not_found",
-                                java.util.Map.of("name", dsName)));
+                                Maps.of("name", dsName)));
                     } else {
                         datasourceIds.add(dsId);
                     }
@@ -380,7 +382,7 @@ public class TerminologyService {
                     advancedApplication = resolveAssistantByName(oid, advancedApplicationName);
                     if (advancedApplication == null) {
                         errors.add(messageResolver.get("i18n_terminology.advanced_application_name_not_found",
-                                java.util.Map.of("name", advancedApplicationName)));
+                                Maps.of("name", advancedApplicationName)));
                     }
                 }
                 if (datasourceIds.isEmpty() && advancedApplication == null) {
@@ -427,7 +429,7 @@ public class TerminologyService {
         Long invalidId = invalid.get(0);
         String name = datasourceNameLookup.namesOf(invalid).get(invalidId);
         throw new BadRequestException(messageResolver.get("i18n_datasource.not_in_workspace",
-                java.util.Map.of("name", name == null ? String.valueOf(invalidId) : name)));
+                Maps.of("name", name == null ? String.valueOf(invalidId) : name)));
     }
 
     private Long resolveAssistantByName(long oid, String name) {
@@ -607,7 +609,7 @@ public class TerminologyService {
     private String requiredText(Map<String, Object> body, String key) {
         String value = Rows.str(body, key);
         if (value == null || value.trim().isEmpty()) {
-            throw new BadRequestException(messageResolver.get("i18n_miss_args", java.util.Map.of("key", key)));
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", Maps.of("key", key)));
         }
         return value.trim();
     }

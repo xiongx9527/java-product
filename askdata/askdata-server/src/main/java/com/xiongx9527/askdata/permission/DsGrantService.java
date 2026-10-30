@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.permission;
 
+import com.xiongx9527.askdata.common.util.Maps;
+
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
@@ -54,7 +56,7 @@ public class DsGrantService {
         long oid = currentUserService.oidOf(currentUserService.currentUser());
         long dsId = Rows.lng(body, "ds_id", 0L);
         if (dsId <= 0) {
-            throw new BadRequestException(messageResolver.get("i18n_miss_args", Map.of("key", "ds_id")));
+            throw new BadRequestException(messageResolver.get("i18n_miss_args", Maps.of("key", "ds_id")));
         }
         requireOwnedsDatasource(oid, dsId);
         long operator = currentUserService.uid();
@@ -72,7 +74,7 @@ public class DsGrantService {
             }
             if (!dsGrantRepository.userInWorkspace(oid, userId)) {
                 throw new BadRequestException(messageResolver.get("ds.grant.user.invalid",
-                        Map.of("id", userId)));
+                        Maps.of("id", userId)));
             }
             valid.add(userId);
         }
@@ -98,7 +100,7 @@ public class DsGrantService {
             return;
         }
         if (dsGrantRepository.hasAnyGrant(oid, dsId) && !dsGrantRepository.isGranted(oid, dsId, userId)) {
-            throw new BadRequestException(messageResolver.get("ds.not.authorized", Map.of("id", dsId)));
+            throw new BadRequestException(messageResolver.get("ds.not.authorized", Maps.of("id", dsId)));
         }
     }
 
@@ -120,9 +122,9 @@ public class DsGrantService {
 
     private void requireOwnedsDatasource(long oid, long dsId) {
         Map<String, Object> ds = datasourceRepository.findById(dsId)
-                .orElseThrow(() -> new BadRequestException(messageResolver.get("ds.not.found", Map.of("id", dsId))));
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("ds.not.found", Maps.of("id", dsId))));
         if (Rows.lng(ds, "oid", 0L) != oid) {
-            throw new BadRequestException(messageResolver.get("ds.not.found", Map.of("id", dsId)));
+            throw new BadRequestException(messageResolver.get("ds.not.found", Maps.of("id", dsId)));
         }
     }
 }

@@ -11,6 +11,7 @@ import com.xiongx9527.askdata.chat.service.ChatModelRouter;
 import com.xiongx9527.askdata.chat.service.SchemaContextBuilder;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.common.util.IdGenerator;
+import com.xiongx9527.askdata.common.util.Io;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.datasource.embedding.TableEmbeddingService;
 import com.xiongx9527.askdata.datasource.engine.DatasourceType;
@@ -302,7 +303,7 @@ class ScheduledTaskIntegrationTest {
     }
 
     private static String readBody(InputStream input) throws Exception {
-        byte[] bytes = input.readAllBytes();
+        byte[] bytes = Io.readAll(input);
         return new String(bytes, StandardCharsets.UTF_8);
     }
 }

@@ -29,7 +29,7 @@ class ConfigurableRuntimeOptionsTest {
     void openApiVersionDefaultsToBuildVersion() {
         OpenApiProperties props = new OpenApiProperties();
         // 构建版本来自 Maven 过滤的 askdata-build.properties（正常构建下即 project.version）
-        assertFalse(props.getVersion().isBlank(), "版本不应为空");
+        assertFalse(props.getVersion().trim().isEmpty(), "版本不应为空");
         assertEquals(props.getVersion(), OpenApiProperties.buildVersion());
     }
 
