@@ -553,6 +553,16 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- LDAP 真 bind 端到端测试（A2）：进程内 LDAP 服务（随机端口、真实 TCP），
+             验证 LdapSsoClient 的 JNDI simple bind 全链路（服务账号 bind → 搜索用户 DN →
+             用户 DN bind 校验口令 → 读属性映射）。仅 test 范围，不进产物。 -->
+        <dependency>
+            <groupId>com.unboundid</groupId>
+            <artifactId>unboundid-ldapsdk</artifactId>
+            <version>7.0.5</version>
+            <scope>test</scope>
+        </dependency>
+
         <!-- 本地 embedding 模型（D8/A6）：ONNX Runtime 驱动 shibing624_text2vec-base-chinese
              （768 维归一化）。模型权重不进 git（793MB），运行时从可配置目录加载
              （askdata.embedding.model-path，默认 /opt/askdata/models）；

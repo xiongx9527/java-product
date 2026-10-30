@@ -41,41 +41,102 @@
 
 结果：1 测试通过。该测试已提交至 main（commit 0a8a638）。
 
-### 2.3 真实外部引擎 live 测试（原默认 skip，本次已实跑）
+### 2.3 真实外部引擎 live 测试（2026-10-29 复跑：9 类 / 15 用例全部实跑通过）
 
-这些测试默认在缺少外部引擎时跳过；本次在本地已安装的服务上真实执行并全部通过：
+这些测试默认在缺少外部引擎时跳过（`assumeTrue` / `@EnabledIfSystemProperty` 门控）；
+2026-10-29 在本机真实服务上复跑，**无一项 skip**，明细如下：
 
 | 测试类 | 真实后端 | 结果 |
 |--------|----------|------|
-| PgLiveDialectTest | 本机 PostgreSQL 16（:5432） | 1 passed |
-| MySqlLiveDialectTest | 本机 MySQL 5.7（:3306） | 1 passed |
-| AuthWhitelistParityTest | 真实 SQLBot whitelist.py 源码逐条比对 | 2 passed |
-| DebounceRedisCrossInstanceTest | 真实 Redis（跨实例 Lua 原子占位） | 3 passed |
+| PgLiveDialectTest | 本机 PostgreSQL 16.14（127.0.0.1:5432，库 postgres / schema public） | 1 passed |
+| MySqlLiveDialectTest | MySQL 5.7.44（Docker `askdata-cluster-mysql-1`，127.0.0.1:13306，真实建 `askdata_verify` 库与 fixture 表） | 1 passed |
+| OracleLiveDialectTest | Oracle XE 21c（Docker `oracle-xe`，127.0.0.1:1521，service `XEPDB1`，真实建 `SYSTEM.VERIFY_TBL`） | 1 passed |
+| SqlServerLiveDialectTest | SQL Server 2022（Docker `sqlserver`，127.0.0.1:1433，真实建 `askdata_verify.dbo.VERIFY_TBL`） | 1 passed |
+| LlmNl2SqlLiveTest | 本机 Ollama（127.0.0.1:11434）+ `gpt-oss:120b-cloud`，真实「schema + 自然语言 → SQL」 | 1 passed |
+| DebounceRedisCrossInstanceTest | Redis 7.4.12（Docker `askdata-cluster-redis-1`，127.0.0.1:13379，两实例共享 Redis、Lua 原子占位） | 3 passed |
+| AuthWhitelistParityTest | 真实 SQLBot 源码 `common/utils/whitelist.py` 逐条比对（`-Dsqlbot.root`） | 2 passed |
+| SamlSsoRealHttpE2ETest | 真实 Spring Boot 上下文 + 真实 RSA 签名 SAMLResponse + MockMvc HTTP 回调 + 真实落库 | 1 passed |
+| LdapSsoRealBindE2ETest（本次新增） | UnboundID `InMemoryDirectoryServer`（真实 LDAP 协议、真实 TCP、随机端口） | 4 passed |
 
-SSO 子系统整体：23 个测试全绿（含 SAML/CAS/LDAP/OIDC、SAML 设置、管理员守卫）。
+汇总：`Tests run: 15, Failures: 0, Errors: 0, Skipped: 0`，`BUILD SUCCESS`（JDK 17，Maven 离线 `-o`）。
+
+新增的 `system/sso/LdapSsoRealBindE2ETest` 覆盖 `LdapSsoClient.loginWithPassword` 的完整链路：
+服务账号 bind → 按 `ou` + `user_filter` 搜到用户 DN → 用户 DN + 口令做第二次真实 bind → 读属性映射。
+断言四件事：正确口令 bind 成功且 `account/name/email` 按 `uid/cn/mail` 映射；错误口令在 bind 阶段被拒绝
+（错误信息含 `LDAP bind failed`）；目录中不存在的用户报 `LDAP user not found`；`validate` 用服务账号 bind 通过。
+测试自带进程内 LDAP 服务、不依赖环境变量，因此始终执行而非 skip。
+
+SSO 子系统整体：`system.sso` + `system.authentication` 两个包共 **46 个测试全绿**
+（含 SAML/CAS/LDAP/OIDC、SAML 设置、管理员守卫；`Tests run: 46, Failures: 0, Errors: 0, Skipped: 0`）。
 
 ### 2.4 如何复现 live 测试
 
-    # 前置：本机已运行 PostgreSQL(5432) / MySQL(3306) / Redis(6379)，且 SQLBot 源码可用
-    export ASKDATA_PG_HOST=127.0.0.1 ASKDATA_PG_PORT=5432            ASKDATA_PG_USER=<pg_user> ASKDATA_PG_PASSWORD=<pg_pwd>            ASKDATA_PG_DB=postgres ASKDATA_PG_SCHEMA=public
-    export ASKDATA_MYSQL_HOST=127.0.0.1 ASKDATA_MYSQL_PORT=3306            ASKDATA_MYSQL_USER=<mysql_user> ASKDATA_MYSQL_PASSWORD=<mysql_pwd>
-    export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home
-    cd java-product
-    mvn -o -pl askdata/askdata-server test -Dmaven.test.skip=false -DskipTests=false       -Dtest=PgLiveDialectTest,MySqlLiveDialectTest,AuthWhitelistParityTest,DebounceRedisCrossInstanceTest       -Daskdata.test.redis.port=6379       -Dsqlbot.root=/path/to/SQLBot/backend
+```bash
+# 前置：本机（或容器）已运行 PostgreSQL / MySQL / Oracle XE / SQL Server / Redis / Ollama，
+# 且 SQLBot 源码可用。端口按实际环境替换：PG 5432、Docker MySQL 13306、
+# Docker Oracle 1521、Docker SQL Server 1433、Docker Redis 13379、Ollama 11434。
+export ASKDATA_PG_HOST=127.0.0.1
+export ASKDATA_PG_PORT=5432
+export ASKDATA_PG_USER=<pg_user>
+export ASKDATA_PG_PASSWORD=<pg_pwd>
+export ASKDATA_PG_DB=postgres
+export ASKDATA_PG_SCHEMA=public
 
-Oracle / SQL Server / LLM 三类 live 测试需要在对应引擎/端点可达时运行（见 §3）。
+export ASKDATA_MYSQL_HOST=127.0.0.1
+export ASKDATA_MYSQL_PORT=13306          # 本机 3306 的 MySQL 亦可，需具备 CREATE DATABASE 权限
+export ASKDATA_MYSQL_USER=<mysql_user>
+export ASKDATA_MYSQL_PASSWORD=<mysql_pwd>
+
+export ASKDATA_ORACLE_HOST=127.0.0.1
+export ASKDATA_ORACLE_PORT=1521
+export ASKDATA_ORACLE_USER=SYSTEM
+export ASKDATA_ORACLE_PASSWORD=<oracle_system_pwd>
+export ASKDATA_ORACLE_SERVICE=XEPDB1
+
+export ASKDATA_SQLSERVER_HOST=127.0.0.1
+export ASKDATA_SQLSERVER_PORT=1433
+export ASKDATA_SQLSERVER_USER=sa
+export ASKDATA_SQLSERVER_PASSWORD=<sa_pwd>
+
+export ASKDATA_LLM_DOMAIN=http://127.0.0.1:11434
+# 可选：覆盖模型（默认 gpt-oss:120b-cloud）
+# export ASKDATA_LLM_MODEL=qwen3:4b
+
+export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home
+cd java-product
+mvn -o -pl askdata/askdata-server -am test \
+  -Dmaven.test.skip=false -DskipTests=false -DfailIfNoTests=false \
+  -Dtest=PgLiveDialectTest,MySqlLiveDialectTest,OracleLiveDialectTest,SqlServerLiveDialectTest,LlmNl2SqlLiveTest,AuthWhitelistParityTest,DebounceRedisCrossInstanceTest,SamlSsoRealHttpE2ETest,LdapSsoRealBindE2ETest \
+  -Daskdata.test.redis.port=13379 \
+  -Dsqlbot.root=/path/to/SQLBot/backend
+```
+
+说明：
+
+- `DebounceRedisCrossInstanceTest` 必须显式传 `-Daskdata.test.redis.port`，否则整类跳过。
+- `AuthWhitelistParityTest` 必须传 `-Dsqlbot.root` 指向 SQLBot `backend` 目录，否则参考实现缺失而跳过。
+- `PgLiveDialectTest` / `MySqlLiveDialectTest` / `OracleLiveDialectTest` / `SqlServerLiveDialectTest` /
+  `LlmNl2SqlLiveTest` 依赖对应 `ASKDATA_*` 环境变量，未设置时整类跳过（不是失败）。
+- `LdapSsoRealBindE2ETest` 自带进程内 LDAP 服务，**不需要任何环境变量或外部服务**，始终执行。
+- 凭据只经环境变量注入，不写入代码或本文件。
+
+### 2.5 本次新增的测试依赖
+
+`LdapSsoRealBindE2ETest` 需要 `com.unboundid:unboundid-ldapsdk`（已在 `askdata-server/pom.xml`
+以 `test` scope 声明，版本 7.0.5，不进产物）。首次构建需联网下载一次，之后离线 `-o` 可复用本地仓库。
 
 ## 3. 残留缺口（已说明，非实现缺陷）
 
+2026-10-29 复核后，此前登记的 Oracle / SQL Server / LLM / LDAP 四类缺口**均已在本机真实环境实跑通过**
+（见 §2.3），不再是缺口。当前仅剩一项与外部交付相关的待办：
+
 | 项 | 原因 | 现状与对策 |
 |----|------|------------|
-| OracleLiveDialectTest（1） | 本沙箱无 Oracle 引擎/驱动 | 方言 SQL 逻辑已由 AskdataNl2SqlDialectTest 覆盖；在具备 Oracle 的环境（或 CI）设置 ASKDATA_ORACLE_HOST 等即可实跑 |
-| SqlServerLiveDialectTest（1） | 本沙箱无 SQL Server 引擎/驱动 | 同上，设置 ASKDATA_SQLSERVER_HOST 等即可实跑 |
-| LlmNl2SqlLiveTest（1） | Ollama 已运行但无模型权重缓存，且网络不可用 | 问数主链路已由 ChatPipelineTest 以桩 LLM 覆盖；设置 ASKDATA_LLM_DOMAIN 指向可用 Ollama/OpenAI 端点即可实跑 |
-| LDAP 真 bind 端到端测试 | 缺少 UnboundID ldapsdk 测试依赖且离线 | LdapSsoClient.loginWithPassword 为真实 bind 实现，已被 LdapSsoClientTest 覆盖；补端到端需在 pom 加 com.unboundid:unboundid-ldapsdk(test) 并起嵌入/本地 LDAP |
-| 代码推送 origin/main | github.com:443 不可达 | 本地 commit 0a8a638 已完成，待网络恢复后 git push origin main |
+| 代码推送 origin/main | 需要用户明确授权，且本地提交是否推送与本次验证结论无关 | 网络已恢复（2026-10-29 复核 `https://github.com` 返回 200）；推送仍待用户授权后执行 `git push origin main` |
 
-上述 live 测试「跳过」是测试自身的外部依赖门控（env var / 服务可达性），不是关闭测试或实现打折；其覆盖的方言/SQL 生成/问数逻辑均有对应的非 live 测试在绿态运行。
+live 测试「跳过」机制仍然保留（env var / 服务可达性门控），用于没有对应外部服务的机器与 CI；
+在这些机器上跳过不等于实现打折：对应方言/SQL 生成/问数逻辑仍有非 live 测试在绿态运行，
+且本文已给出可复现的真实环境命令。
 
 ## 4. 验证方法学（避免误判）
 
