@@ -21,6 +21,13 @@ management:
 spring:
   application:
     name: askdata-server
+  # 本地 UAT 期间禁止浏览器缓存前端静态资源（index.html 未带 hash，易被缓存导致“改了不生效”）。
+  # 生产可移除此段或改为带 hash 的资源与合适 max-age。
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          no-store: true
   # 排除 Spring Boot 自带的 Redis 自动配置：它在 spring-data-redis 位于 classpath 时会无条件创建
   # StringRedisTemplate，而框架 McpAutoConfiguration.RedisClusterConfiguration 以
   # @ConditionalOnBean(StringRedisTemplate) 为条件，会注册启动期即连接 Redis 的
@@ -244,6 +251,9 @@ askdata:
     enforcement: ${ASKDATA_LICENSE_ENFORCEMENT:bypass}
     sign-key: ${ASKDATA_LICENSE_SIGN_KEY:}
     max-count: ${ASKDATA_LICENSE_MAX_COUNT:1000000}
+  # A27：企业功能总开关（独立于 License）。true=企业 IM 扫码登录、平台用户同步等始终可用（绕过 License 校验）；
+  # false=由 License 决定企业版/社区版（持有有效许可证为企业版，否则社区版）。缺省 false（License 决定）。
+  enterprise-enabled: ${ASKDATA_ENTERPRISE_ENABLED:false}
   # A27：嵌入签名（A11）。aes-key 为 SQLBot AES 信封密钥，留空时嵌入 token 校验不可用；
   # legacy-hmac-enabled=true 时才接受旧 id.timestamp.hmac 签名，缺省关闭。
   embedded:

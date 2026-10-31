@@ -443,10 +443,13 @@ public class EnterprisePlatformService {
 
     private String dingtalkToken(Map<String, Object> config) {
         return cached(ORIGIN_DINGTALK + "|" + dingtalkBase(config), () -> {
-            Map<String, Object> res = postJson(dingtalkBase(config) + "/v1.0/oauth2/accessToken",
-                    Maps.of("appKey", text(config, "client_id"), "appSecret", text(config, "client_secret")),
-                    null);
-            return text(res, "accessToken");
+            // 钉钉 oapi gettoken：与 topapi 同 host（oapi.dingtalk.com），返回 access_token。
+            // 原实现请求 api.dingtalk.com 的 /v1.0/oauth2/accessToken，与后续 topapi 调用的
+            // oapi host 不一致（该 token 端点在 oapi 上 404），导致真实登录换 token 失败。
+            String url = dingtalkBase(config) + "/gettoken?appkey="
+                    + text(config, "client_id") + "&appsecret=" + text(config, "client_secret");
+            Map<String, Object> res = get(url, null);
+            return text(res, "access_token");
         });
     }
 
@@ -474,39 +477,35 @@ public class EnterprisePlatformService {
         }
         try {
             switch (origin) {
-                case ORIGIN_WECOM:
-                case ORIGIN_DINGTALK: {
-                    // 企业微信/钉钉：使用 JustAuth（开源 SDK）校验应用凭据。
-                    // login 流程的第一步即校验 app 凭据（corpid+corpsecret / appKey+appSecret），
-                    // 凭据错误会在此处直接暴露真实原因；无真实扫码 code 时按失败处理，
-                    // 但只要凭据正确就不会误报“连接成功”。
-                    // 测试连接没有真实回调地址，用占位 redirect_uri 让 SDK 跳过地址校验，
-                    // 真正去校验 app 凭据（corpid+corpsecret / appKey+appSecret）。
-                    AuthConfig authConfig = toImAuthConfig(origin, config,
-                            firstNonEmpty(text(config, "redirect_uri"), "https://localhost/callback"));
-                    AuthRequest request;
-                    if (origin == ORIGIN_WECOM) {
-                        request = new AuthWeChatEnterpriseQrcodeRequest(authConfig);
-                    } else if (origin == ORIGIN_DINGTALK) {
-                        request = new AuthDingTalkRequest(authConfig);
-                    } else {
-                        request = new AuthFeishuRequest(authConfig);
-                    }
-                    AuthCallback callback = AuthCallback.builder().code("__validate__").state("x").build();
-                    AuthResponse<AuthUser> response = request.login(callback);
-                    if (response != null && response.ok() && response.getData() != null) {
+                case ORIGIN_WECOM: {
+                    // 直接请求企业微信 gettoken 校验 corpid+corpsecret（不依赖扫码 code）。
+                    // 原实现用假 code "__validate__" 走 login，必然在“换用户”步骤失败，
+                    // 导致凭据正确也报“不存在的临时授权码”；改为校验 token 端点更准确。
+                    Map<String, Object> res = get(wecomBase(config) + "/cgi-bin/gettoken?corpid="
+                            + text(config, "corpid") + "&corpsecret=" + text(config, "corpsecret"), null);
+                    String token = res == null ? null : text(res, "access_token");
+                    if (token != null && !token.isEmpty()) {
                         result.put("valid", true);
                         result.put("reason", null);
                     } else {
-                        String detail;
-                        if (response == null) {
-                            detail = "no response";
-                        } else if (response.getMsg() != null) {
-                            detail = response.getMsg();
-                        } else {
-                            detail = "code=" + response.getCode() + ", data=" + response.getData();
-                        }
-                        result.put("reason", detail);
+                        String detail = firstPresent(res, "errmsg", "error", "message");
+                        result.put("reason", detail != null ? detail
+                                : ("errcode=" + (res == null ? null : res.get("errcode"))));
+                    }
+                    return result;
+                }
+                case ORIGIN_DINGTALK: {
+                    // 直接请求钉钉 oapi gettoken 校验 appKey+appSecret（与 topapi 同 host）。
+                    Map<String, Object> res = get(dingtalkBase(config) + "/gettoken?appkey="
+                            + text(config, "client_id") + "&appsecret=" + text(config, "client_secret"), null);
+                    String token = res == null ? null : text(res, "access_token");
+                    if (token != null && !token.isEmpty()) {
+                        result.put("valid", true);
+                        result.put("reason", null);
+                    } else {
+                        String detail = firstPresent(res, "errmsg", "error", "message");
+                        result.put("reason", detail != null ? detail
+                                : ("errcode=" + (res == null ? null : res.get("errcode"))));
                     }
                     return result;
                 }
