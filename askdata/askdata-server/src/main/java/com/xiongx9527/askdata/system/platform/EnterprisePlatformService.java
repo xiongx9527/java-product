@@ -18,16 +18,11 @@ import org.springframework.stereotype.Service;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
 
 /**
  * 企业 IM 平台（企业微信 / 钉钉 / 飞书 / LarkSuite）开放能力：客户端信息、组织树、扫码登录换用户。
@@ -364,7 +359,7 @@ public class EnterprisePlatformService {
         if (state != null && state.contains("client")) {
             return dingtalkUserByInternalCode(config, code);
         }
-        return dingtalkUserBySnsCode(config, code);
+        return dingtalkUserByOauthCode(config, code);
     }
 
     /** 钉钉客户端内 JSAPI 免登（内部 code）。 */
@@ -394,45 +389,48 @@ public class EnterprisePlatformService {
     }
 
     /**
-     * 钉钉网页扫码登录（DTFrameLogin, scope=openid）走 SNS 流程：企业内部应用的
-     * AppKey/AppSecret 即 SNS 的 appid/appsecret。sns/getuserinfo_bycode 需带
-     * timestamp 与 signature = base64(HmacSHA256(timestamp + code, appSecret))。
+     * 钉钉企业内部应用网页扫码登录（DTFrameLogin, scope=openid）走新版 OAuth2：
+     * 用 AppKey/AppSecret 换用户 accessToken，再查 contact/users/me 取 unionId，
+     * 最后用内部 token 经 topapi/v2/user/getbyunionid 换 userid 并补全资料。
+     * （旧版 sns/gettoken 仅适用于「网站应用」，企业内部应用会报 40001 Secret 错误。）
      */
-    private Map<String, Object> dingtalkUserBySnsCode(Map<String, Object> config, String code) {
-        String snsToken = dingtalkSnsToken(config);
-        String secret = text(config, "client_secret");
-        String timestamp = String.valueOf(System.currentTimeMillis());
-        String signature = dingtalkSnsSignature(code, secret, timestamp);
-        String url = dingtalkBase(config)
-                + "/sns/getuserinfo_bycode?access_token=" + snsToken
-                + "&code=" + encode(code)
-                + "&timestamp=" + timestamp
-                + "&signature=" + encode(signature);
-        Map<String, Object> info = get(url, null);
-        Object errcodeObj = info == null ? null : info.get("errcode");
-        int errcode;
-        if (errcodeObj == null) {
-            errcode = 0;
-        } else {
+    private Map<String, Object> dingtalkUserByOauthCode(Map<String, Object> config, String code) {
+        String clientId = text(config, "client_id");
+        String clientSecret = text(config, "client_secret");
+        Map<String, Object> tokenBody = new LinkedHashMap<>();
+        tokenBody.put("clientId", clientId);
+        tokenBody.put("clientSecret", clientSecret);
+        tokenBody.put("code", code);
+        tokenBody.put("grantType", "authorization_code");
+        Map<String, Object> tokenRes = postJson("https://api.dingtalk.com/v1.0/oauth2/userAccessToken",
+                tokenBody, null);
+        String userToken = text(tokenRes, "accessToken");
+        if (userToken == null || userToken.isEmpty()) {
+            throw new IllegalStateException("dingtalk oauth login failed: userAccessToken not found; resp=" + tokenRes);
+        }
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("x-acs-dingtalk-access-token", userToken);
+        Map<String, Object> me = getWithHeaders("https://api.dingtalk.com/v1.0/contact/users/me", headers);
+        String unionId = text(me, "unionId");
+        String nick = text(me, "nick");
+        String email = text(me, "email");
+        String userId = null;
+        if (unionId != null && !unionId.isEmpty()) {
             try {
-                errcode = Integer.parseInt(String.valueOf(errcodeObj).trim().split("\\.")[0]);
-            } catch (NumberFormatException e) {
-                errcode = -1;
+                String token = dingtalkToken(config);
+                Map<String, Object> byUnion = postJson(dingtalkBase(config)
+                                + "/topapi/v2/user/getbyunionid?access_token=" + token,
+                        Maps.of("unionid", unionId), null);
+                Map<String, Object> r = asMap(byUnion.get("result"));
+                if (r != null) {
+                    userId = text(r, "userid");
+                }
+            } catch (Exception ignored) {
+                // 换不到 userid 时退化为 unionId 作为平台唯一标识
             }
         }
-        if (errcode != 0) {
-            throw new IllegalStateException("dingtalk sns login failed: " + info);
-        }
-        Map<String, Object> userInfo = asMap(info.get("user_info"));
-        if (userInfo == null) {
-            throw new IllegalStateException("dingtalk sns login failed: user_info not found; dingtalk_resp=" + info);
-        }
-        String userId = text(userInfo, "userid");
-        String unionid = text(userInfo, "unionid");
-        String nick = text(userInfo, "nick");
         Map<String, Object> out = new LinkedHashMap<>();
         if (userId != null && !userId.isEmpty()) {
-            // 有内部 userid 时用 topapi 补全姓名/邮箱；失败则退用 sns 昵称。
             out.put("platform_uid", userId);
             out.put("account", userId);
             try {
@@ -446,48 +444,19 @@ public class EnterprisePlatformService {
                     out.put("email", text(u, "email"));
                 } else {
                     out.put("name", nick);
+                    out.put("email", email);
                 }
             } catch (Exception e) {
                 out.put("name", nick);
+                out.put("email", email);
             }
         } else {
-            // 极少数情况无 userid（如外部联系人），退化为 unionid 作为平台唯一标识。
-            out.put("platform_uid", unionid);
-            out.put("account", unionid);
+            out.put("platform_uid", unionId);
+            out.put("account", unionId);
             out.put("name", nick);
+            out.put("email", email);
         }
         return out;
-    }
-
-    private String dingtalkSnsToken(Map<String, Object> config) {
-        return cached(ORIGIN_DINGTALK + "|sns|" + dingtalkBase(config), () -> {
-            String url = dingtalkBase(config) + "/sns/gettoken?appid="
-                    + text(config, "client_id") + "&appsecret=" + text(config, "client_secret");
-            Map<String, Object> res = get(url, null);
-            return text(res, "access_token");
-        });
-    }
-
-    private static String dingtalkSnsSignature(String code, String secret, String timestamp) {
-        try {
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-            byte[] raw = mac.doFinal((timestamp + code).getBytes(StandardCharsets.UTF_8));
-            return Base64.getEncoder().encodeToString(raw);
-        } catch (Exception e) {
-            throw new IllegalStateException("dingtalk sns signature failed: " + e.getMessage());
-        }
-    }
-
-    private static String encode(String value) {
-        if (value == null) {
-            return "";
-        }
-        try {
-            return URLEncoder.encode(value, "UTF-8");
-        } catch (Exception e) {
-            return value;
-        }
     }
 
         private String larkToken(int origin, Map<String, Object> config) {
@@ -646,7 +615,11 @@ public class EnterprisePlatformService {
     }
 
     private Map<String, Object> get(String url, String bearer) {
-        return request("GET", url, null, bearer);
+        Map<String, String> headers = new LinkedHashMap<>();
+        if (bearer != null && !bearer.isEmpty()) {
+            headers.put("Authorization", "Bearer " + bearer);
+        }
+        return requestWithHeaders("GET", url, null, headers);
     }
 
     private Map<String, Object> postJson(String url, Map<String, Object> body, String bearer) {
@@ -656,17 +629,30 @@ public class EnterprisePlatformService {
         } catch (Exception e) {
             throw new IllegalStateException("unable to serialize request body: " + e.getMessage());
         }
-        return request("POST", url, json, bearer);
+        Map<String, String> headers = new LinkedHashMap<>();
+        if (bearer != null && !bearer.isEmpty()) {
+            headers.put("Authorization", "Bearer " + bearer);
+        }
+        return requestWithHeaders("POST", url, json, headers);
+    }
+
+    private Map<String, Object> getWithHeaders(String url, Map<String, String> headers) {
+        return requestWithHeaders("GET", url, null, headers);
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> request(String method, String url, String jsonBody, String bearer) {
+    private Map<String, Object> requestWithHeaders(String method, String url, String jsonBody,
+                                                   Map<String, String> headers) {
         try {
             HttpRequest req = "POST".equalsIgnoreCase(method) ? HttpRequest.post(url) : HttpRequest.get(url);
             req.timeout(10000);
             req.header("Accept", "application/json");
-            if (bearer != null && !bearer.isEmpty()) {
-                req.header("Authorization", "Bearer " + bearer);
+            if (headers != null) {
+                for (Map.Entry<String, String> e : headers.entrySet()) {
+                    if (e.getKey() != null && e.getValue() != null) {
+                        req.header(e.getKey(), e.getValue());
+                    }
+                }
             }
             if (jsonBody != null) {
                 req.header("Content-Type", "application/json");
@@ -693,7 +679,6 @@ public class EnterprisePlatformService {
             throw new IllegalStateException("platform api call failed: " + e.getMessage());
         }
     }
-
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> asMap(Object raw) {
