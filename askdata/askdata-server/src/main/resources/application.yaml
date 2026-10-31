@@ -1,5 +1,10 @@
 server:
   port: 8000
+  # 开启响应压缩：前端 JS/CSS 经花生壳等慢速隧道时，gzip 可把 ~6MB 主包压到 ~2MB，显著缩短首屏。
+  compression:
+    enabled: true
+    mime-types: text/html,text/xml,text/plain,text/css,text/javascript,application/javascript,application/json,image/svg+xml
+    min-response-size: 1024
 
 # Actuator：对外暴露 /health（base-path 设为根，使外部探针 path=/health 命中；
 # 默认挂载在 /actuator/health）。show-details 仅对鉴权用户可见，避免泄露内部组件状态。
@@ -21,13 +26,15 @@ management:
 spring:
   application:
     name: askdata-server
-  # 本地 UAT 期间禁止浏览器缓存前端静态资源（index.html 未带 hash，易被缓存导致“改了不生效”）。
-  # 生产可移除此段或改为带 hash 的资源与合适 max-age。
+  # 静态资源缓存：本地 UAT 原本 no-store（防改了不生效），但经慢速隧道每次全量重下太慢。
+  # 改为短 max-age + must-revalidate：资源在有效期内直接从浏览器缓存读取（秒开），
+  # 过期后发起 304 轻量校验；index.html 等无 hash 资源最多延迟 5 分钟生效（必要时强刷）。
   web:
     resources:
       cache:
         cachecontrol:
-          no-store: true
+          max-age: 300s
+          must-revalidate: true
   # 排除 Spring Boot 自带的 Redis 自动配置：它在 spring-data-redis 位于 classpath 时会无条件创建
   # StringRedisTemplate，而框架 McpAutoConfiguration.RedisClusterConfiguration 以
   # @ConditionalOnBean(StringRedisTemplate) 为条件，会注册启动期即连接 Redis 的

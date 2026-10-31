@@ -18,11 +18,16 @@ import org.springframework.stereotype.Service;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 /**
  * 企业 IM 平台（企业微信 / 钉钉 / 飞书 / LarkSuite）开放能力：客户端信息、组织树、扫码登录换用户。
@@ -194,8 +199,10 @@ public class EnterprisePlatformService {
             case ORIGIN_DINGTALK: {
                 String token = dingtalkToken(config);
                 String deptId = pid == null || pid.isEmpty() ? "1" : pid;
-                Map<String, Object> res = postJson(dingtalkBase(config) + "/topapi/v2/department/listsub",
-                        Maps.of("dept_id", Long.parseLong(deptId), "language", "zh_CN"), token);
+                // 钉钉 topapi 接口要求 access_token 作为 URL 查询参数（非 Authorization Bearer 头）
+                Map<String, Object> res = postJson(dingtalkBase(config)
+                                + "/topapi/v2/department/listsub?access_token=" + token,
+                        Maps.of("dept_id", Long.parseLong(deptId), "language", "zh_CN"), null);
                 List<Map<String, Object>> out = new ArrayList<>();
                 for (Map<String, Object> m : mapList(res.get("result"))) {
                     out.add(node(m.get("dept_id"), m.get("name")));
@@ -238,8 +245,9 @@ public class EnterprisePlatformService {
             }
             case ORIGIN_DINGTALK: {
                 String token = dingtalkToken(config);
-                Map<String, Object> res = postJson(dingtalkBase(config) + "/topapi/v2/user/list",
-                        Maps.of("dept_id", Long.parseLong(deptId), "cursor", 0L, "size", 100), token);
+                Map<String, Object> res = postJson(dingtalkBase(config)
+                                + "/topapi/v2/user/list?access_token=" + token,
+                        Maps.of("dept_id", Long.parseLong(deptId), "cursor", 0L, "size", 100), null);
                 List<Map<String, Object>> out = new ArrayList<>();
                 Map<String, Object> result = asMap(res.get("result"));
                 if (result != null) {
@@ -281,7 +289,8 @@ public class EnterprisePlatformService {
      */
     public Map<String, Object> platformUserByCode(int origin, Map<String, Object> body) {
         Map<String, Object> config = requireEnabledConfig(origin);
-        String code = text(body, "code");
+        // 钉钉 DTFrameLogin 扫码登录回调用 authCode（同时回传 code，二者等值）；其余平台仍用 code。
+        String code = firstNonEmpty(text(body, "authCode"), text(body, "code"));
         if (code == null || code.isEmpty()) {
             throw new IllegalStateException("missing code for platform login: " + platformName(origin));
         }
@@ -300,9 +309,10 @@ public class EnterprisePlatformService {
                 return feishuUser(justAuthUser(new AuthFeishuRequest(
                         toImAuthConfig(origin, config, redirectUri)), callback));
             case ORIGIN_DINGTALK:
-                // 钉钉「网站应用扫码登录」(DTFrameLogin, scope=openid) 走 OAuth2 流程，与 JustAuth 的
-                // sns(qrconnect/tmp_auth_code) 流程不兼容，故保留官方协议实现（已走 hutool SDK HTTP 客户端）。
-                return dingtalkUserByCode(config, code);
+                // 钉钉扫码登录有两类来源：网页 DTFrameLogin(scope=openid) 回传 SNS 临时 code；
+                // 钉钉客户端内 JSAPI 免登(dd.runtime.permission.requestAuthCode) 回传内部 code。
+                // 二者共用 /system/platform/sso/7，靠 state 区分（client 内免登 state 含 "client"）。
+                return dingtalkUserByCode(config, code, text(body, "state"));
             case ORIGIN_LARKSUITE:
                 // LarkSuite：JustAuth 1.16.6 无对应 AuthRequest（飞书类写死 open.feishu.cn 基址，无法指向
                 // open.larksuite.com）；沿用官方协议 + hutool SDK HTTP 客户端。官方 Lark Open SDK
@@ -345,17 +355,32 @@ public class EnterprisePlatformService {
         return out;
     }
 
-    private Map<String, Object> dingtalkUserByCode(Map<String, Object> config, String code) {
+    private Map<String, Object> dingtalkUserByCode(Map<String, Object> config, String code, String state) {
+        // 钉钉扫码登录两类来源共用本方法，靠 state 区分：
+        //  - 钉钉客户端内 JSAPI 免登（dd.runtime.permission.requestAuthCode）：state 含 "client"，
+        //    回传内部 code，须走 topapi/v2/user/getuserinfo（内部流程）。
+        //  - 网页 DTFrameLogin 扫码（scope=openid）：state 为 fit2cloud-dingtalk-qr，
+        //    回传 SNS 临时 code（authCode），须走 sns 流程（sns/getuserinfo_bycode）。
+        if (state != null && state.contains("client")) {
+            return dingtalkUserByInternalCode(config, code);
+        }
+        return dingtalkUserBySnsCode(config, code);
+    }
+
+    /** 钉钉客户端内 JSAPI 免登（内部 code）。 */
+    private Map<String, Object> dingtalkUserByInternalCode(Map<String, Object> config, String code) {
         String token = dingtalkToken(config);
-        Map<String, Object> info = postJson(dingtalkBase(config) + "/topapi/v2/user/getuserinfo",
-                Maps.of("code", code), token);
+        Map<String, Object> info = postJson(dingtalkBase(config)
+                        + "/topapi/v2/user/getuserinfo?access_token=" + token,
+                Maps.of("code", code), null);
         Map<String, Object> result = asMap(info.get("result"));
         String userId = result == null ? null : text(result, "userid");
         if (userId == null) {
-            throw new IllegalStateException("dingtalk login failed: userid not found");
+            throw new IllegalStateException("dingtalk login failed: userid not found; dingtalk_resp=" + info);
         }
-        Map<String, Object> user = postJson(dingtalkBase(config) + "/topapi/v2/user/get",
-                Maps.of("userid", userId, "language", "zh_CN"), token);
+        Map<String, Object> user = postJson(dingtalkBase(config)
+                        + "/topapi/v2/user/get?access_token=" + token,
+                Maps.of("userid", userId, "language", "zh_CN"), null);
         Map<String, Object> u = asMap(user.get("result"));
         if (u == null) {
             u = Maps.of();
@@ -368,97 +393,104 @@ public class EnterprisePlatformService {
         return out;
     }
 
-    private Map<String, Object> larksuiteUserByCode(Map<String, Object> config, String code) {
-        String appToken = larkToken(ORIGIN_LARKSUITE, config);
-        Map<String, Object> tokenRes = postJson(larkBase(ORIGIN_LARKSUITE, config)
-                        + "/open-apis/authen/v1/oidc/access_token",
-                Maps.of("grant_type", "authorization_code", "code", code), appToken);
-        Map<String, Object> data = asMap(tokenRes.get("data"));
-        String accessToken = data == null ? null : text(data, "access_token");
-        if (accessToken == null) {
-            throw new IllegalStateException("lark login failed: access_token not found");
+    /**
+     * 钉钉网页扫码登录（DTFrameLogin, scope=openid）走 SNS 流程：企业内部应用的
+     * AppKey/AppSecret 即 SNS 的 appid/appsecret。sns/getuserinfo_bycode 需带
+     * timestamp 与 signature = base64(HmacSHA256(timestamp + code, appSecret))。
+     */
+    private Map<String, Object> dingtalkUserBySnsCode(Map<String, Object> config, String code) {
+        String snsToken = dingtalkSnsToken(config);
+        String secret = text(config, "client_secret");
+        String timestamp = String.valueOf(System.currentTimeMillis());
+        String signature = dingtalkSnsSignature(code, secret, timestamp);
+        String url = dingtalkBase(config)
+                + "/sns/getuserinfo_bycode?access_token=" + snsToken
+                + "&code=" + encode(code)
+                + "&timestamp=" + timestamp
+                + "&signature=" + encode(signature);
+        Map<String, Object> info = get(url, null);
+        Object errcodeObj = info == null ? null : info.get("errcode");
+        int errcode;
+        if (errcodeObj == null) {
+            errcode = 0;
+        } else {
+            try {
+                errcode = Integer.parseInt(String.valueOf(errcodeObj).trim().split("\\.")[0]);
+            } catch (NumberFormatException e) {
+                errcode = -1;
+            }
         }
-        Map<String, Object> userRes = get(larkBase(ORIGIN_LARKSUITE, config) + "/open-apis/authen/v1/user_info",
-                accessToken);
-        Map<String, Object> u = asMap(userRes.get("data"));
-        if (u == null) {
-            u = Maps.of();
+        if (errcode != 0) {
+            throw new IllegalStateException("dingtalk sns login failed: " + info);
         }
+        Map<String, Object> userInfo = asMap(info.get("user_info"));
+        if (userInfo == null) {
+            throw new IllegalStateException("dingtalk sns login failed: user_info not found; dingtalk_resp=" + info);
+        }
+        String userId = text(userInfo, "userid");
+        String unionid = text(userInfo, "unionid");
+        String nick = text(userInfo, "nick");
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("platform_uid", text(u, "open_id"));
-        out.put("account", text(u, "name") == null ? text(u, "open_id") : text(u, "name"));
-        out.put("name", text(u, "name"));
-        out.put("email", text(u, "email"));
+        if (userId != null && !userId.isEmpty()) {
+            // 有内部 userid 时用 topapi 补全姓名/邮箱；失败则退用 sns 昵称。
+            out.put("platform_uid", userId);
+            out.put("account", userId);
+            try {
+                String token = dingtalkToken(config);
+                Map<String, Object> user = postJson(dingtalkBase(config)
+                                + "/topapi/v2/user/get?access_token=" + token,
+                        Maps.of("userid", userId, "language", "zh_CN"), null);
+                Map<String, Object> u = asMap(user.get("result"));
+                if (u != null) {
+                    out.put("name", text(u, "name"));
+                    out.put("email", text(u, "email"));
+                } else {
+                    out.put("name", nick);
+                }
+            } catch (Exception e) {
+                out.put("name", nick);
+            }
+        } else {
+            // 极少数情况无 userid（如外部联系人），退化为 unionid 作为平台唯一标识。
+            out.put("platform_uid", unionid);
+            out.put("account", unionid);
+            out.put("name", nick);
+        }
         return out;
     }
 
-    private AuthConfig toImAuthConfig(int origin, Map<String, Object> config, String redirectUri) {
-        AuthConfig.AuthConfigBuilder builder = AuthConfig.builder();
-        if (origin == ORIGIN_WECOM) {
-            builder.clientId(text(config, "corpid"));
-            builder.clientSecret(text(config, "corpsecret"));
-            String agentId = text(config, "agent_id");
-            if (agentId != null && !agentId.isEmpty()) {
-                builder.agentId(agentId);
-            }
-        } else {
-            builder.clientId(text(config, "client_id"));
-            builder.clientSecret(text(config, "client_secret"));
-        }
-        String eff = redirectUri;
-        if (eff == null || eff.isEmpty()) {
-            eff = text(config, "redirect_uri");
-        }
-        builder.redirectUri(eff);
-        builder.ignoreCheckState(true);
-        return builder.build();
-    }
-
-    private static String firstNonEmpty(String... values) {
-        for (String value : values) {
-            if (value != null && !value.isEmpty()) {
-                return value;
-            }
-        }
-        return null;
-    }
-
-    private static String rawStr(AuthUser authUser, String field) {
-        if (authUser.getRawUserInfo() != null) {
-            Object v = authUser.getRawUserInfo().get(field);
-            if (v != null) {
-                return String.valueOf(v);
-            }
-        }
-        return null;
-    }
-
-    // ------------------------------------------------------------------
-    // 平台 token
-    // ------------------------------------------------------------------
-
-    private String wecomToken(Map<String, Object> config) {
-        return cached(ORIGIN_WECOM + "|" + wecomBase(config), () -> {
-            String url = wecomBase(config) + "/cgi-bin/gettoken?corpid="
-                    + text(config, "corpid") + "&corpsecret=" + text(config, "corpsecret");
-            Map<String, Object> res = get(url, null);
-            return text(res, "access_token");
-        });
-    }
-
-    private String dingtalkToken(Map<String, Object> config) {
-        return cached(ORIGIN_DINGTALK + "|" + dingtalkBase(config), () -> {
-            // 钉钉 oapi gettoken：与 topapi 同 host（oapi.dingtalk.com），返回 access_token。
-            // 原实现请求 api.dingtalk.com 的 /v1.0/oauth2/accessToken，与后续 topapi 调用的
-            // oapi host 不一致（该 token 端点在 oapi 上 404），导致真实登录换 token 失败。
-            String url = dingtalkBase(config) + "/gettoken?appkey="
+    private String dingtalkSnsToken(Map<String, Object> config) {
+        return cached(ORIGIN_DINGTALK + "|sns|" + dingtalkBase(config), () -> {
+            String url = dingtalkBase(config) + "/sns/gettoken?appid="
                     + text(config, "client_id") + "&appsecret=" + text(config, "client_secret");
             Map<String, Object> res = get(url, null);
             return text(res, "access_token");
         });
     }
 
-    private String larkToken(int origin, Map<String, Object> config) {
+    private static String dingtalkSnsSignature(String code, String secret, String timestamp) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] raw = mac.doFinal((timestamp + code).getBytes(StandardCharsets.UTF_8));
+            return Base64.getEncoder().encodeToString(raw);
+        } catch (Exception e) {
+            throw new IllegalStateException("dingtalk sns signature failed: " + e.getMessage());
+        }
+    }
+
+    private static String encode(String value) {
+        if (value == null) {
+            return "";
+        }
+        try {
+            return URLEncoder.encode(value, "UTF-8");
+        } catch (Exception e) {
+            return value;
+        }
+    }
+
+        private String larkToken(int origin, Map<String, Object> config) {
         return cached(origin + "|" + larkBase(origin, config), () -> {
             Map<String, Object> res = postJson(larkBase(origin, config) + "/open-apis/auth/v3/app_access_token/internal",
                     Maps.of("app_id", text(config, "client_id"), "app_secret", text(config, "client_secret")),
@@ -500,7 +532,6 @@ public class EnterprisePlatformService {
                     return result;
                 }
                 case ORIGIN_DINGTALK: {
-                    // 直接请求钉钉 oapi gettoken 校验 appKey+appSecret（与 topapi 同 host）。
                     Map<String, Object> res = get(dingtalkBase(config) + "/gettoken?appkey="
                             + text(config, "client_id") + "&appsecret=" + text(config, "client_secret"), null);
                     String token = res == null ? null : text(res, "access_token");
@@ -758,4 +789,90 @@ public class EnterprisePlatformService {
                 return "unknown-" + origin;
         }
     }
+
+    private Map<String, Object> larksuiteUserByCode(Map<String, Object> config, String code) {
+        String appToken = larkToken(ORIGIN_LARKSUITE, config);
+        Map<String, Object> tokenRes = postJson(larkBase(ORIGIN_LARKSUITE, config)
+                        + "/open-apis/authen/v1/oidc/access_token",
+                Maps.of("grant_type", "authorization_code", "code", code), appToken);
+        Map<String, Object> data = asMap(tokenRes.get("data"));
+        String accessToken = data == null ? null : text(data, "access_token");
+        if (accessToken == null) {
+            throw new IllegalStateException("lark login failed: access_token not found");
+        }
+        Map<String, Object> userRes = get(larkBase(ORIGIN_LARKSUITE, config) + "/open-apis/authen/v1/user_info",
+                accessToken);
+        Map<String, Object> u = asMap(userRes.get("data"));
+        if (u == null) {
+            u = Maps.of();
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("platform_uid", text(u, "open_id"));
+        out.put("account", text(u, "name") == null ? text(u, "open_id") : text(u, "name"));
+        out.put("name", text(u, "name"));
+        out.put("email", text(u, "email"));
+        return out;
+    }
+
+    private AuthConfig toImAuthConfig(int origin, Map<String, Object> config, String redirectUri) {
+        AuthConfig.AuthConfigBuilder builder = AuthConfig.builder();
+        if (origin == ORIGIN_WECOM) {
+            builder.clientId(text(config, "corpid"));
+            builder.clientSecret(text(config, "corpsecret"));
+            String agentId = text(config, "agent_id");
+            if (agentId != null && !agentId.isEmpty()) {
+                builder.agentId(agentId);
+            }
+        } else {
+            builder.clientId(text(config, "client_id"));
+            builder.clientSecret(text(config, "client_secret"));
+        }
+        String eff = redirectUri;
+        if (eff == null || eff.isEmpty()) {
+            eff = text(config, "redirect_uri");
+        }
+        builder.redirectUri(eff);
+        builder.ignoreCheckState(true);
+        return builder.build();
+    }
+
+    private static String firstNonEmpty(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isEmpty()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private static String rawStr(AuthUser authUser, String field) {
+        if (authUser.getRawUserInfo() != null) {
+            Object v = authUser.getRawUserInfo().get(field);
+            if (v != null) {
+                return String.valueOf(v);
+            }
+        }
+        return null;
+    }
+
+
+    private String wecomToken(Map<String, Object> config) {
+        return cached(ORIGIN_WECOM + "|" + wecomBase(config), () -> {
+            String url = wecomBase(config) + "/cgi-bin/gettoken?corpid="
+                    + text(config, "corpid") + "&corpsecret=" + text(config, "corpsecret");
+            Map<String, Object> res = get(url, null);
+            return text(res, "access_token");
+        });
+    }
+
+    private String dingtalkToken(Map<String, Object> config) {
+        return cached(ORIGIN_DINGTALK + "|" + dingtalkBase(config), () -> {
+            // 钉钉 oapi gettoken：与 topapi 同 host（oapi.dingtalk.com），返回 access_token。
+            String url = dingtalkBase(config) + "/gettoken?appkey="
+                    + text(config, "client_id") + "&appsecret=" + text(config, "client_secret");
+            Map<String, Object> res = get(url, null);
+            return text(res, "access_token");
+        });
+    }
+
 }
