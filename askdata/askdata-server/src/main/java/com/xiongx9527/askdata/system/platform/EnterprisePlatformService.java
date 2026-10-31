@@ -147,6 +147,9 @@ public class EnterprisePlatformService {
         if (depth > 8) {
             return nodes;
         }
+        // 直属成员：pid 指定时取该部门，pid 为空取根部门。作为叶子节点与子部门并列返回，
+        // 使懒加载展开部门时能看到「本部门成员」，而不是只看到子部门。
+        nodes.addAll(listUsers(origin, config, pid));
         List<Map<String, Object>> departments = listDepartments(origin, config, pid);
         for (Map<String, Object> dept : departments) {
             String deptId = String.valueOf(dept.get("id"));
@@ -156,20 +159,10 @@ public class EnterprisePlatformService {
             Map<String, Object> options = new LinkedHashMap<>();
             options.put("is_user", false);
             node.put("options", options);
-            List<Map<String, Object>> users = listUsers(origin, config, deptId);
-            if (!users.isEmpty()) {
-                node.put("children", users);
-            }
             if (!lazy) {
                 List<Map<String, Object>> children = buildTree(origin, config, deptId, lazy, depth + 1);
                 if (!children.isEmpty()) {
-                    @SuppressWarnings("unchecked")
-                    List<Map<String, Object>> existing = (List<Map<String, Object>>) node.get("children");
-                    if (existing == null) {
-                        existing = new ArrayList<>();
-                        node.put("children", existing);
-                    }
-                    existing.addAll(children);
+                    node.put("children", children);
                 }
             }
             nodes.add(node);
@@ -185,6 +178,7 @@ public class EnterprisePlatformService {
                 String parent = pid == null || pid.isEmpty() ? "1" : pid;
                 Map<String, Object> res = get(wecomBase(config) + "/cgi-bin/department/simplelist"
                         + "?access_token=" + token + "&id=" + parent, null);
+                requireOk(res, "wecom department/simplelist");
                 List<Map<String, Object>> out = new ArrayList<>();
                 for (Map<String, Object> item : mapList(res.get("department_id"))) {
                     out.add(node(item.get("id"), item.get("name")));
@@ -198,6 +192,7 @@ public class EnterprisePlatformService {
                 Map<String, Object> res = postJson(dingtalkBase(config)
                                 + "/topapi/v2/department/listsub?access_token=" + token,
                         Maps.of("dept_id", Long.parseLong(deptId), "language", "zh_CN"), null);
+                requireOk(res, "dingtalk department/listsub");
                 List<Map<String, Object>> out = new ArrayList<>();
                 for (Map<String, Object> m : mapList(res.get("result"))) {
                     out.add(node(m.get("dept_id"), m.get("name")));
@@ -229,9 +224,11 @@ public class EnterprisePlatformService {
     private List<Map<String, Object>> listUsers(int origin, Map<String, Object> config, String deptId) {
         switch (origin) {
             case ORIGIN_WECOM: {
+                String dept = (deptId == null || deptId.isEmpty()) ? "1" : deptId;
                 String token = wecomToken(config);
                 Map<String, Object> res = get(wecomBase(config) + "/cgi-bin/user/simplelist"
-                        + "?access_token=" + token + "&department_id=" + deptId + "&fetch_child=0", null);
+                        + "?access_token=" + token + "&department_id=" + dept + "&fetch_child=0", null);
+                requireOk(res, "wecom user/simplelist");
                 List<Map<String, Object>> out = new ArrayList<>();
                 for (Map<String, Object> item : mapList(res.get("userlist"))) {
                     out.add(userNode(item.get("userid"), item.get("name"), item.get("email")));
@@ -239,10 +236,12 @@ public class EnterprisePlatformService {
                 return out;
             }
             case ORIGIN_DINGTALK: {
+                String dept = (deptId == null || deptId.isEmpty()) ? "1" : deptId;
                 String token = dingtalkToken(config);
                 Map<String, Object> res = postJson(dingtalkBase(config)
                                 + "/topapi/v2/user/list?access_token=" + token,
-                        Maps.of("dept_id", Long.parseLong(deptId), "cursor", 0L, "size", 100), null);
+                        Maps.of("dept_id", Long.parseLong(dept), "cursor", 0L, "size", 100), null);
+                requireOk(res, "dingtalk user/list");
                 List<Map<String, Object>> out = new ArrayList<>();
                 Map<String, Object> result = asMap(res.get("result"));
                 if (result != null) {
@@ -254,15 +253,19 @@ public class EnterprisePlatformService {
             }
             case ORIGIN_LARK:
             case ORIGIN_LARKSUITE: {
+                String dept = (deptId == null || deptId.isEmpty()) ? "0" : deptId;
                 String token = larkToken(origin, config);
                 Map<String, Object> res = get(larkBase(origin, config)
-                        + "/open-apis/contact/v3/users/find_by_department?department_id=" + deptId
+                        + "/open-apis/contact/v3/users/find_by_department?department_id=" + dept
                         + "&page_size=50", token);
+                requireOk(res, "lark find_by_department");
                 List<Map<String, Object>> out = new ArrayList<>();
                 Map<String, Object> data = asMap(res.get("data"));
                 if (data != null) {
                     for (Map<String, Object> item : mapList(data.get("items"))) {
-                        out.add(userNode(item.get("open_id"), item.get("name"), item.get("email")));
+                        // 节点 id 用可读的 user_id（回退 open_id），与登录账号对齐
+                        out.add(userNode(firstNonEmpty(text(item, "user_id"), text(item, "open_id")),
+                                item.get("name"), item.get("email")));
                     }
                 }
                 return out;
@@ -272,7 +275,6 @@ public class EnterprisePlatformService {
         }
     }
 
-    // ------------------------------------------------------------------
     // A31：扫码登录换平台用户
     // ------------------------------------------------------------------
 
@@ -301,7 +303,7 @@ public class EnterprisePlatformService {
                         toImAuthConfig(origin, config, redirectUri)), callback));
             case ORIGIN_LARK:
                 // 飞书 OAuth2 扫码登录：JustAuth 走官方 app_access_token -> oidc/access_token -> user_info
-                return feishuUser(justAuthUser(new AuthFeishuRequest(
+                return feishuUser(config, justAuthUser(new AuthFeishuRequest(
                         toImAuthConfig(origin, config, redirectUri)), callback));
             case ORIGIN_DINGTALK:
                 // 钉钉扫码登录有两类来源：网页 DTFrameLogin(scope=openid) 回传 SNS 临时 code；
@@ -338,16 +340,52 @@ public class EnterprisePlatformService {
         return out;
     }
 
-    private Map<String, Object> feishuUser(AuthUser authUser) {
-        // 与原实现一致：platform_uid = open_id（而非 union_id），account = 姓名 || open_id
-        Map<String, Object> out = new LinkedHashMap<>();
+    private Map<String, Object> feishuUser(Map<String, Object> config, AuthUser authUser) {
+        // 登录 user_info 未必含 user_id/open_id/mobile，用 contact API 按 union_id 补全。
+        // account 优先邮箱（可读唯一），无邮箱回退 user_id > mobile > open_id > union_id。
+        // platform_uid 用 union_id（稳定，兼容历史绑定）。
+        String unionId = firstNonEmpty(rawStr(authUser, "union_id"), authUser.getUuid());
         String openId = rawStr(authUser, "open_id");
-        String name = rawStr(authUser, "name");
-        out.put("platform_uid", firstNonEmpty(openId, authUser.getUuid()));
-        out.put("account", firstNonEmpty(name, openId, authUser.getUuid()));
-        out.put("name", name);
-        out.put("email", authUser.getEmail());
+        String userId = rawStr(authUser, "user_id");
+        String mobile = rawStr(authUser, "mobile");
+        String name = firstNonEmpty(rawStr(authUser, "name"), authUser.getUsername(), authUser.getNickname());
+        String email = firstNonEmpty(rawStr(authUser, "email"), rawStr(authUser, "enterprise_email"),
+                authUser.getEmail());
+        if (unionId != null && !unionId.isEmpty()) {
+            try {
+                String tenantToken = feishuTenantToken(config);
+                Map<String, Object> res = get(larkBase(ORIGIN_LARK, config)
+                        + "/open-apis/contact/v3/users/" + unionId + "?user_id_type=union_id", tenantToken);
+                Map<String, Object> data = asMap(res.get("data"));
+                Map<String, Object> u = data == null ? null : asMap(data.get("user"));
+                if (u != null) {
+                    name = firstNonEmpty(text(u, "name"), name);
+                    email = firstNonEmpty(text(u, "email"), text(u, "enterprise_email"), email);
+                    userId = firstNonEmpty(text(u, "user_id"), userId);
+                    mobile = firstNonEmpty(text(u, "mobile"), mobile);
+                    openId = firstNonEmpty(text(u, "open_id"), openId);
+                }
+            } catch (Exception ignored) {
+                // contact API 不可用时回退登录 user_info
+            }
+        }
+        String account = firstNonEmpty(email, userId, mobile, openId, unionId);
+        Map<String, Object> out = new LinkedHashMap<>();
+        // platform_uid 用 user_id（与组织树节点 id、用户同步绑定一致），union_id/open_id 回退
+        out.put("platform_uid", firstNonEmpty(userId, unionId, openId));
+        out.put("account", account);
+        out.put("name", name == null ? account : name);
+        out.put("email", email);
         return out;
+    }
+
+    private String feishuTenantToken(Map<String, Object> config) {
+        return cached(ORIGIN_LARK + "|tenant|" + larkBase(ORIGIN_LARK, config), () -> {
+            Map<String, Object> res = postJson(larkBase(ORIGIN_LARK, config)
+                            + "/open-apis/auth/v3/tenant_access_token/internal",
+                    Maps.of("app_id", text(config, "client_id"), "app_secret", text(config, "client_secret")), null);
+            return text(res, "tenant_access_token");
+        });
     }
 
     private Map<String, Object> dingtalkUserByCode(Map<String, Object> config, String code, String state) {
@@ -382,7 +420,7 @@ public class EnterprisePlatformService {
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("platform_uid", userId);
-        out.put("account", text(u, "userid"));
+        out.put("account", firstNonEmpty(text(u, "email"), userId));
         out.put("name", text(u, "name"));
         out.put("email", text(u, "email"));
         return out;
@@ -415,47 +453,41 @@ public class EnterprisePlatformService {
         String nick = text(me, "nick");
         String email = text(me, "email");
         String userId = null;
+        String name = nick;
+        String detailEmail = email;
         if (unionId != null && !unionId.isEmpty()) {
             try {
                 String token = dingtalkToken(config);
                 Map<String, Object> byUnion = postJson(dingtalkBase(config)
-                                + "/topapi/v2/user/getbyunionid?access_token=" + token,
+                                + "/topapi/user/getbyunionid?access_token=" + token,
                         Maps.of("unionid", unionId), null);
                 Map<String, Object> r = asMap(byUnion.get("result"));
                 if (r != null) {
                     userId = text(r, "userid");
                 }
-            } catch (Exception ignored) {
-                // 换不到 userid 时退化为 unionId 作为平台唯一标识
-            }
-        }
-        Map<String, Object> out = new LinkedHashMap<>();
-        if (userId != null && !userId.isEmpty()) {
-            out.put("platform_uid", userId);
-            out.put("account", userId);
-            try {
-                String token = dingtalkToken(config);
-                Map<String, Object> user = postJson(dingtalkBase(config)
-                                + "/topapi/v2/user/get?access_token=" + token,
-                        Maps.of("userid", userId, "language", "zh_CN"), null);
-                Map<String, Object> u = asMap(user.get("result"));
-                if (u != null) {
-                    out.put("name", text(u, "name"));
-                    out.put("email", text(u, "email"));
-                } else {
-                    out.put("name", nick);
-                    out.put("email", email);
+                if (userId != null && !userId.isEmpty()) {
+                    Map<String, Object> user = postJson(dingtalkBase(config)
+                                    + "/topapi/v2/user/get?access_token=" + token,
+                            Maps.of("userid", userId, "language", "zh_CN"), null);
+                    Map<String, Object> u = asMap(user.get("result"));
+                    if (u != null) {
+                        name = firstNonEmpty(text(u, "name"), nick);
+                        detailEmail = firstNonEmpty(text(u, "email"), email);
+                    }
                 }
-            } catch (Exception e) {
-                out.put("name", nick);
-                out.put("email", email);
+            } catch (Exception ignored) {
+                // 换不到 userid/明细时退化为 unionId + me 字段
             }
-        } else {
-            out.put("platform_uid", unionId);
-            out.put("account", unionId);
-            out.put("name", nick);
-            out.put("email", email);
         }
+        // platform_uid 用 userid（与组织树节点 id、用户同步绑定一致）；unionId 仅作回退，
+        // 否则登录与同步会给同一个人写两条不同的平台绑定。
+        String platformUid = firstNonEmpty(userId, unionId);
+        String account = firstNonEmpty(detailEmail, userId, platformUid);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("platform_uid", platformUid);
+        out.put("account", account);
+        out.put("name", name == null ? account : name);
+        out.put("email", detailEmail);
         return out;
     }
 
@@ -760,6 +792,21 @@ public class EnterprisePlatformService {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 平台返回非 0 错误码时抛出可读异常。
+     *
+     * <p>企业微信/钉钉用 {@code errcode}，飞书用 {@code code}；不校验的话接口失败会退化成
+     * “组织树为空”，看不出是 IP 白名单、权限或凭证问题。</p>
+     */
+    private static void requireOk(Map<String, Object> res, String api) {
+        Object code = res.get("errcode") != null ? res.get("errcode") : res.get("code");
+        if (code instanceof Number && ((Number) code).intValue() != 0) {
+            String msg = firstNonEmpty(text(res, "errmsg"), text(res, "msg"));
+            throw new IllegalStateException(api + " failed: errcode " + code
+                    + (msg == null ? "" : " " + msg));
+        }
+    }
+
     public static String platformName(int origin) {
         switch (origin) {
             case ORIGIN_WECOM:
@@ -791,11 +838,17 @@ public class EnterprisePlatformService {
         if (u == null) {
             u = Maps.of();
         }
+        String openId = text(u, "open_id");
+        String unionId = text(u, "union_id");
+        String userId = text(u, "user_id");
+        String name = text(u, "name");
+        String email = firstNonEmpty(text(u, "email"), text(u, "enterprise_email"));
+        String account = firstNonEmpty(email, userId, openId, unionId);
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("platform_uid", text(u, "open_id"));
-        out.put("account", text(u, "name") == null ? text(u, "open_id") : text(u, "name"));
-        out.put("name", text(u, "name"));
-        out.put("email", text(u, "email"));
+        out.put("platform_uid", firstNonEmpty(openId, unionId));
+        out.put("account", account);
+        out.put("name", name == null ? account : name);
+        out.put("email", email);
         return out;
     }
 

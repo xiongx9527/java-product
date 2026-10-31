@@ -53,7 +53,7 @@ public class PlatformSyncService {
      * 批量同步企业平台用户。
      *
      * @param body {@code {user_list:[{id,name,email}], origin, cover}}
-     * @return {@code {total, created, updated, skipped}}
+     * @return {@code {total, created, updated, skipped, successCount, errorCount, users}}
      */
     @Transactional
     public Map<String, Object> sync(Map<String, Object> body) {
@@ -85,10 +85,14 @@ public class PlatformSyncService {
                 continue;
             }
             platformUid = platformUid.trim();
-            String account = Rows.str(platformUser, "name");
+            String name = Rows.str(platformUser, "name");
             String email = Rows.str(platformUser, "email");
+            String account = Rows.str(platformUser, "account");
             if (account == null || account.trim().isEmpty()) {
-                account = platformUid;
+                account = (email != null && !email.trim().isEmpty()) ? email.trim() : platformUid;
+            }
+            if (name == null || name.trim().isEmpty()) {
+                name = account;
             }
 
             Optional<Map<String, Object>> binding = platformRepository.findBinding(origin, platformUid);
@@ -104,7 +108,7 @@ public class PlatformSyncService {
                 long uid = idGenerator.nextId();
                 // A10：同步新建用户不再写 md5("")（空口令即可登录），改为随机不可用口令。
                 String randomPassword = java.util.UUID.randomUUID() + "-" + java.util.UUID.randomUUID();
-                userRepository.insert(uid, account, account, CryptoUtil.md5Hex(randomPassword), email, oid, 1,
+                userRepository.insert(uid, account, name, CryptoUtil.md5Hex(randomPassword), email, oid, 1,
                         System.currentTimeMillis(), "zh-CN", origin, null);
                 localUser = userRepository.findById(uid).orElse(null);
                 platformRepository.upsertBinding(idGenerator.nextId(), uid, origin, platformUid);
@@ -112,7 +116,7 @@ public class PlatformSyncService {
             } else {
                 long uid = Rows.lng(localUser, "id", 0L);
                 if (cover) {
-                    userRepository.updateProfile(uid, account, email, Rows.intg(localUser, "status", 1),
+                    userRepository.updateProfile(uid, name, email, Rows.intg(localUser, "status", 1),
                             origin, Rows.str(localUser, "system_variables"));
                 }
                 platformRepository.upsertBinding(idGenerator.nextId(), uid, origin, platformUid);
@@ -132,6 +136,9 @@ public class PlatformSyncService {
         result.put("created", created);
         result.put("updated", updated);
         result.put("skipped", skipped);
+        // 前端用户列表用 successCount 判断是否提示“同步完成”并刷新列表；skipped 是跳过项，不算失败。
+        result.put("successCount", created + updated);
+        result.put("errorCount", 0);
         result.put("users", results);
         return result;
     }

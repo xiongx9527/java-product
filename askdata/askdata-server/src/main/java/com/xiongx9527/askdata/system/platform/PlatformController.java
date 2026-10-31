@@ -103,7 +103,7 @@ public class PlatformController {
     @PostMapping({"/system/platform/org/{id}"})
     public Result<Map<String, Object>> org(@PathVariable int id,
                                           @RequestBody(required = false) Map<String, Object> body) {
-        boolean lazy = body != null && Boolean.parseBoolean(String.valueOf(body.get("lazy")));
+        boolean lazy = body != null && truthy(body.get("lazy"));
         Object pid = body == null ? null : body.get("pid");
         return Result.ok(enterprisePlatformService.orgTree(id, lazy, pid == null ? null : String.valueOf(pid)));
     }
@@ -129,6 +129,21 @@ public class PlatformController {
         platformInfo.put("account", Rows.str(user, "account"));
         result.put("platform_info", platformInfo);
         return Result.ok(result);
+    }
+
+    /** 前端传 {@code lazy: 1/0}（数字），{@link Boolean#parseBoolean} 只认 "true"，这里统一识别。 */
+    private static boolean truthy(Object value) {
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).intValue() != 0;
+        }
+        if (value == null) {
+            return false;
+        }
+        String text = String.valueOf(value).trim();
+        return "1".equals(text) || "true".equalsIgnoreCase(text);
     }
 
     /** POST /system/platform/user/sync：批量同步企业平台用户到本地 sys_user（幂等）。 */

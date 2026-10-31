@@ -6,6 +6,7 @@ import com.xiongx9527.askdata.system.platform.EnterprisePlatformService;
 import com.xiongx9527.askdata.system.platform.PlatformRepository;
 import com.xiongx9527.askdata.system.repository.UserRepository;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
+import javax.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -50,6 +51,7 @@ class AuthenticationSsoLoginTest {
     private SsoAuthenticator ssoAuthenticator;
     private EnterprisePlatformService enterprisePlatformService;
     private AuthenticationService service;
+    private final HttpServletRequest request = mock(HttpServletRequest.class);
 
     @BeforeEach
     void setUp() {
@@ -93,7 +95,7 @@ class AuthenticationSsoLoginTest {
         when(repository.findByType(SsoAuthenticator.TYPE_CAS)).thenReturn(Optional.of(source(4, true)));
         when(casSsoClient.authorizeUrl(any(), any())).thenReturn("https://cas.example/login?service=x");
 
-        assertEquals("https://cas.example/login?service=x", service.toLogin(SsoAuthenticator.TYPE_CAS));
+        assertEquals("https://cas.example/login?service=x", service.toLogin(SsoAuthenticator.TYPE_CAS, request));
     }
 
     @Test
@@ -101,7 +103,7 @@ class AuthenticationSsoLoginTest {
         when(repository.findByType(SsoAuthenticator.TYPE_SAML2)).thenReturn(Optional.of(source(5, true)));
         when(saml2SsoClient.authorizeUrl(any(), any())).thenReturn("https://idp.example/saml?sso=1");
 
-        assertEquals("https://idp.example/saml?sso=1", service.toLogin(SsoAuthenticator.TYPE_SAML2));
+        assertEquals("https://idp.example/saml?sso=1", service.toLogin(SsoAuthenticator.TYPE_SAML2, request));
     }
 
     @Test
@@ -111,14 +113,14 @@ class AuthenticationSsoLoginTest {
                 .thenReturn("https://idp.example/authorize?client_id=cid");
 
         assertEquals("https://idp.example/authorize?client_id=cid",
-                service.toLogin(SsoAuthenticator.TYPE_OIDC));
+                service.toLogin(SsoAuthenticator.TYPE_OIDC, request));
     }
 
     @Test
     void toLoginRejectsDisabledSourceReadably() {
         when(repository.findByType(SsoAuthenticator.TYPE_CAS)).thenReturn(Optional.of(source(4, false)));
         IllegalStateException e = assertThrows(IllegalStateException.class,
-                () -> service.toLogin(SsoAuthenticator.TYPE_CAS));
+                () -> service.toLogin(SsoAuthenticator.TYPE_CAS, request));
         assertTrue(e.getMessage().contains("disabled"), e.getMessage());
         verify(casSsoClient, org.mockito.Mockito.never()).authorizeUrl(any(), any());
     }
@@ -127,7 +129,7 @@ class AuthenticationSsoLoginTest {
     void toLoginRejectsMissingSourceReadably() {
         when(repository.findByType(SsoAuthenticator.TYPE_OIDC)).thenReturn(Optional.empty());
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> service.toLogin(SsoAuthenticator.TYPE_OIDC));
+                () -> service.toLogin(SsoAuthenticator.TYPE_OIDC, request));
         assertTrue(e.getMessage().contains("not found"), e.getMessage());
     }
 
@@ -135,7 +137,7 @@ class AuthenticationSsoLoginTest {
     void toLoginRejectsLdapRedirectReadibly() {
         when(repository.findByType(SsoAuthenticator.TYPE_LDAP)).thenReturn(Optional.of(source(3, true)));
         UnsupportedOperationException e = assertThrows(UnsupportedOperationException.class,
-                () -> service.toLogin(SsoAuthenticator.TYPE_LDAP));
+                () -> service.toLogin(SsoAuthenticator.TYPE_LDAP, request));
         assertTrue(e.getMessage().contains("LDAP"), e.getMessage());
     }
 
@@ -167,7 +169,7 @@ class AuthenticationSsoLoginTest {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("username", "alice");
         body.put("password", "Passw0rd!");
-        Map<String, Object> user = service.ssoLogin(SsoAuthenticator.TYPE_LDAP, body);
+        Map<String, Object> user = service.ssoLogin(SsoAuthenticator.TYPE_LDAP, body, request);
 
         assertEquals("alice", user.get("account"));
         verify(platformRepository).upsertBinding(anyLong(), anyLong(), eq(SsoAuthenticator.TYPE_LDAP),
@@ -180,7 +182,7 @@ class AuthenticationSsoLoginTest {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("username", "alice");
         IllegalStateException e = assertThrows(IllegalStateException.class,
-                () -> service.ssoLogin(SsoAuthenticator.TYPE_LDAP, body));
+                () -> service.ssoLogin(SsoAuthenticator.TYPE_LDAP, body, request));
         assertTrue(e.getMessage().contains("disabled"), e.getMessage());
     }
 
@@ -193,7 +195,7 @@ class AuthenticationSsoLoginTest {
         body.put("username", "bob");
         body.put("password", "x");
         IllegalStateException e = assertThrows(IllegalStateException.class,
-                () -> service.ssoLogin(SsoAuthenticator.TYPE_LDAP, body));
+                () -> service.ssoLogin(SsoAuthenticator.TYPE_LDAP, body, request));
         assertTrue(e.getMessage().contains("account"), e.getMessage());
     }
 
@@ -211,7 +213,7 @@ class AuthenticationSsoLoginTest {
         body.put("username", "carol");
         body.put("password", "x");
         IllegalStateException e = assertThrows(IllegalStateException.class,
-                () -> service.ssoLogin(SsoAuthenticator.TYPE_LDAP, body));
+                () -> service.ssoLogin(SsoAuthenticator.TYPE_LDAP, body, request));
         assertTrue(e.getMessage().contains("disabled"), e.getMessage());
     }
 
@@ -228,7 +230,7 @@ class AuthenticationSsoLoginTest {
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("code", "auth-code");
-        Map<String, Object> user = service.ssoLogin(EnterprisePlatformService.ORIGIN_WECOM, body);
+        Map<String, Object> user = service.ssoLogin(EnterprisePlatformService.ORIGIN_WECOM, body, request);
         assertEquals("wxuser", user.get("account"));
         verify(enterprisePlatformService).platformUserByCode(eq(EnterprisePlatformService.ORIGIN_WECOM),
                 eq(body));

@@ -405,6 +405,18 @@ public class AuthenticationService {
         if (binding.isPresent()) {
             user = userRepository.findById(Rows.lng(binding.get(), "uid", 0L))
                     .orElseThrow(() -> new IllegalStateException("SSO login failed: bound user not found"));
+            // 已绑定用户每次登录用平台最新信息刷新姓名/邮箱/账号（仅非空值），
+            // 修正首次建号时字段缺失（如邮箱为空、账号用了复杂 uid）后无法自动纠正的问题。
+            if (origin >= EnterprisePlatformService.ORIGIN_WECOM) {
+                // 账号仍等于平台原始 ID（未被手动改过）时，同步为更友好的账号；手动改过则保留。
+                String currentAccount = Rows.str(user, "account");
+                String newAccount = str(platformUser, "account");
+                String accountToSet = currentAccount != null && currentAccount.equals(platformUid)
+                        && newAccount != null && !newAccount.equals(currentAccount) ? newAccount : null;
+                userRepository.refreshProfile(Rows.lng(user, "id", 0L),
+                        str(platformUser, "name"), str(platformUser, "email"), accountToSet);
+                user = userRepository.findById(Rows.lng(user, "id", 0L)).orElse(user);
+            }
         } else {
             user = userRepository.findByAccount(account).orElse(null);
             if (user == null) {

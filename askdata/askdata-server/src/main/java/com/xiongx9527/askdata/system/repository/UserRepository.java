@@ -224,6 +224,27 @@ public class UserRepository {
             @CacheEvict(cacheNames = CacheNames.USER_INFO, key = "#id"),
             @CacheEvict(cacheNames = CacheNames.USER_INFO_BY_ACCOUNT, allEntries = true)
     })
+    public void refreshProfile(long id, String name, String email, String account) {
+        if (name != null && !name.isEmpty()) {
+            jdbc.update("UPDATE sys_user SET name = ? WHERE id = ?", name, id);
+        }
+        if (email != null && !email.isEmpty()) {
+            jdbc.update("UPDATE sys_user SET email = ? WHERE id = ?", email, id);
+        }
+        if (account != null && !account.isEmpty()) {
+            Long count = jdbc.queryForObject("SELECT COUNT(*) FROM sys_user WHERE account = ? AND id <> ?",
+                    Long.class, account, id);
+            if (count == null || count == 0L) {
+                jdbc.update("UPDATE sys_user SET account = ? WHERE id = ?", account, id);
+            }
+        }
+    }
+
+
+    @Caching(evict = {
+            @CacheEvict(cacheNames = CacheNames.USER_INFO, key = "#id"),
+            @CacheEvict(cacheNames = CacheNames.USER_INFO_BY_ACCOUNT, allEntries = true)
+    })
     public void updateOid(long id, long oid) {
         jdbc.update("UPDATE sys_user SET oid = ? WHERE id = ?", oid, id);
     }

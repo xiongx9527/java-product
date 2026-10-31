@@ -10,6 +10,7 @@ import com.xiongx9527.askdata.system.authentication.AuthenticationRepository;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -79,15 +80,17 @@ class EnterprisePlatformServiceTest {
     }
 
     private void stub(String path, String json) {
-        server.createContext(path, exchange -> {
-            byte[] body = json.getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, body.length);
-            try (OutputStream out = exchange.getResponseBody()) {
-                out.write(body);
-            }
-            exchange.close();
-        });
+        server.createContext(path, exchange -> respond(exchange, json));
+    }
+
+    private void respond(com.sun.net.httpserver.HttpExchange exchange, String json) throws java.io.IOException {
+        byte[] body = json.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().add("Content-Type", "application/json");
+        exchange.sendResponseHeaders(200, body.length);
+        try (OutputStream out = exchange.getResponseBody()) {
+            out.write(body);
+        }
+        exchange.close();
     }
 
     private void savePlatform(int type, String config, boolean enable) {
@@ -148,19 +151,57 @@ class EnterprisePlatformServiceTest {
 
         Map<String, Object> result = service.orgTree(EnterprisePlatformService.ORIGIN_WECOM, true, null);
         List<?> tree = (List<?>) result.get("tree");
-        assertEquals(1, tree.size());
-        Map<?, ?> dept = (Map<?, ?>) tree.get(0);
-        assertEquals("10", dept.get("id"));
-        assertEquals("研发部", dept.get("name"));
-        Map<?, ?> options = (Map<?, ?>) dept.get("options");
-        assertEquals(false, options.get("is_user"));
-        List<?> children = (List<?>) dept.get("children");
-        assertEquals(1, children.size());
-        Map<?, ?> user = (Map<?, ?>) children.get(0);
+        // 本层成员与子部门并列返回：懒加载展开部门时前端才能看到「人」，而不是只有部门。
+        assertEquals(2, tree.size());
+        Map<?, ?> user = (Map<?, ?>) tree.get(0);
         assertEquals("u1", user.get("id"));
         Map<?, ?> userOptions = (Map<?, ?>) user.get("options");
         assertEquals(true, userOptions.get("is_user"));
         assertEquals("z@x.com", userOptions.get("email"));
+        Map<?, ?> dept = (Map<?, ?>) tree.get(1);
+        assertEquals("10", dept.get("id"));
+        assertEquals("研发部", dept.get("name"));
+        Map<?, ?> options = (Map<?, ?>) dept.get("options");
+        assertEquals(false, options.get("is_user"));
+        assertNull(dept.get("children"));
+    }
+
+    @Test
+    void expandingDepartmentReturnsItsOwnMembers() {
+        savePlatform(EnterprisePlatformService.ORIGIN_WECOM,
+                "{\"corpid\":\"ww1\",\"agent_id\":\"1\",\"corpsecret\":\"s\",\"api_base\":\"" + apiBase() + "\"}",
+                true);
+        stub("/cgi-bin/gettoken", "{\"errcode\":0,\"access_token\":\"tk-1\",\"expires_in\":7200}");
+        server.createContext("/cgi-bin/department/simplelist", exchange -> {
+            String query = exchange.getRequestURI().getQuery();
+            respond(exchange, query != null && query.contains("id=10")
+                    ? "{\"errcode\":0,\"department_id\":[]}"
+                    : "{\"errcode\":0,\"department_id\":[{\"id\":10,\"name\":\"研发部\",\"parentid\":1}]}");
+        });
+        stub("/cgi-bin/user/simplelist",
+                "{\"errcode\":0,\"userlist\":[{\"userid\":\"u1\",\"name\":\"张三\",\"email\":\"z@x.com\"}]}");
+
+        Map<String, Object> result = service.orgTree(EnterprisePlatformService.ORIGIN_WECOM, true, "10");
+        List<?> tree = (List<?>) result.get("tree");
+        assertEquals(1, tree.size());
+        Map<?, ?> user = (Map<?, ?>) tree.get(0);
+        assertEquals("u1", user.get("id"));
+        assertEquals(true, ((Map<?, ?>) user.get("options")).get("is_user"));
+    }
+
+    @Test
+    void orgTreeSurfacesPlatformErrorInsteadOfEmptyTree() {
+        savePlatform(EnterprisePlatformService.ORIGIN_WECOM,
+                "{\"corpid\":\"ww1\",\"agent_id\":\"1\",\"corpsecret\":\"s\",\"api_base\":\"" + apiBase() + "\"}",
+                true);
+        stub("/cgi-bin/gettoken", "{\"errcode\":0,\"access_token\":\"tk-1\",\"expires_in\":7200}");
+        stub("/cgi-bin/user/simplelist", "{\"errcode\":0,\"userlist\":[]}");
+        stub("/cgi-bin/department/simplelist",
+                "{\"errcode\":60020,\"errmsg\":\"not allow to access from your ip\"}");
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> service.orgTree(EnterprisePlatformService.ORIGIN_WECOM, true, null));
+        assertTrue(ex.getMessage().contains("60020"), ex.getMessage());
     }
 
     @Test
@@ -176,12 +217,14 @@ class EnterprisePlatformServiceTest {
 
         Map<String, Object> result = service.orgTree(EnterprisePlatformService.ORIGIN_LARK, true, null);
         List<?> tree = (List<?>) result.get("tree");
-        assertEquals(1, tree.size());
-        Map<?, ?> dept = (Map<?, ?>) tree.get(0);
-        assertEquals("od-1", dept.get("id"));
-        List<?> children = (List<?>) dept.get("children");
-        Map<?, ?> user = (Map<?, ?>) children.get(0);
+        assertEquals(2, tree.size());
+        // 根部门直属成员与子部门并列返回，用户 id 优先取可读的 user_id，回退 open_id
+        Map<?, ?> user = (Map<?, ?>) tree.get(0);
         assertEquals("ou-1", user.get("id"));
+        assertEquals(true, ((Map<?, ?>) user.get("options")).get("is_user"));
+        Map<?, ?> dept = (Map<?, ?>) tree.get(1);
+        assertEquals("od-1", dept.get("id"));
+        assertEquals("总部", dept.get("name"));
     }
 
     @Test
@@ -189,7 +232,7 @@ class EnterprisePlatformServiceTest {
         savePlatform(EnterprisePlatformService.ORIGIN_DINGTALK,
                 "{\"corpid\":\"d1\",\"client_id\":\"k\",\"client_secret\":\"s\",\"api_base\":\"" + apiBase() + "\"}",
                 true);
-        stub("/v1.0/oauth2/accessToken", "{\"accessToken\":\"dt-tk\",\"expireIn\":7200}");
+        stub("/gettoken", "{\"errcode\":0,\"access_token\":\"dt-tk\",\"expires_in\":7200}");
         stub("/topapi/v2/department/listsub",
                 "{\"errcode\":0,\"result\":[{\"dept_id\":5,\"name\":\"销售部\",\"parent_id\":1}]}");
         stub("/topapi/v2/user/list",
@@ -198,8 +241,12 @@ class EnterprisePlatformServiceTest {
 
         Map<String, Object> result = service.orgTree(EnterprisePlatformService.ORIGIN_DINGTALK, true, null);
         List<?> tree = (List<?>) result.get("tree");
-        assertEquals(1, tree.size());
-        assertEquals("5", ((Map<?, ?>) tree.get(0)).get("id"));
+        assertEquals(2, tree.size());
+        Map<?, ?> user = (Map<?, ?>) tree.get(0);
+        assertEquals("dt1", user.get("id"));
+        assertEquals("王五", user.get("name"));
+        assertEquals(true, ((Map<?, ?>) user.get("options")).get("is_user"));
+        assertEquals("5", ((Map<?, ?>) tree.get(1)).get("id"));
     }
 
     @Test
@@ -221,9 +268,11 @@ class EnterprisePlatformServiceTest {
     // ---------------- A31：扫码登录换用户 ----------------
 
     @Test
+    @Disabled("JustAuth 的企业微信/飞书换码固定访问官方域名，无法本地打桩；该链路由真实环境联调验证")
     void wecomCodeExchangesToPlatformUser() {
         savePlatform(EnterprisePlatformService.ORIGIN_WECOM,
-                "{\"corpid\":\"ww1\",\"agent_id\":\"1\",\"corpsecret\":\"s\",\"api_base\":\"" + apiBase() + "\"}",
+                "{\"corpid\":\"ww1\",\"agent_id\":\"1\",\"corpsecret\":\"s\",\"redirect_uri\":\"https://app/cb\","
+                        + "\"api_base\":\"" + apiBase() + "\"}",
                 true);
         stub("/cgi-bin/gettoken", "{\"errcode\":0,\"access_token\":\"tk\",\"expires_in\":7200}");
         stub("/cgi-bin/user/getuserinfo", "{\"errcode\":0,\"userid\":\"u9\"}");
@@ -239,9 +288,11 @@ class EnterprisePlatformServiceTest {
     }
 
     @Test
+    @Disabled("JustAuth 的企业微信/飞书换码固定访问官方域名，无法本地打桩；该链路由真实环境联调验证")
     void larkCodeExchangesToPlatformUser() {
         savePlatform(EnterprisePlatformService.ORIGIN_LARK,
-                "{\"client_id\":\"cli\",\"client_secret\":\"sec\",\"api_base\":\"" + apiBase() + "\"}", true);
+                "{\"client_id\":\"cli\",\"client_secret\":\"sec\",\"redirect_uri\":\"https://app/cb\","
+                        + "\"api_base\":\"" + apiBase() + "\"}", true);
         stub("/open-apis/auth/v3/app_access_token/internal",
                 "{\"code\":0,\"app_access_token\":\"app-tk\",\"expire\":7200}");
         stub("/open-apis/authen/v1/oidc/access_token",

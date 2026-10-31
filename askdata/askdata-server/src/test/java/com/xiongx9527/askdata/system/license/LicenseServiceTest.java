@@ -50,12 +50,12 @@ class LicenseServiceTest {
             MetadbMigration.migrate(connection);
         }
         CurrentUserService users = mock(CurrentUserService.class);
-        service = new LicenseService(jdbc, objectMapper, users, APP_VERSION, SIGN_KEY, "bypass", 1000000L);
+        service = new LicenseService(jdbc, objectMapper, users, APP_VERSION, SIGN_KEY, "bypass", 1000000L, true);
     }
 
     private LicenseService service(String enforcement, long maxCount) {
         CurrentUserService users = mock(CurrentUserService.class);
-        return new LicenseService(jdbc, objectMapper, users, APP_VERSION, SIGN_KEY, enforcement, maxCount);
+        return new LicenseService(jdbc, objectMapper, users, APP_VERSION, SIGN_KEY, enforcement, maxCount, false);
     }
 
     private String license(String edition, String version, String corporation, long expiresAt) throws Exception {
@@ -170,7 +170,7 @@ class LicenseServiceTest {
     void nonAdminUploadIsRejected() throws Exception {
         CurrentUserService users = mock(CurrentUserService.class);
         doThrow(new AuthFailureException("forbidden")).when(users).requireWsAdmin();
-        LicenseService guarded = new LicenseService(jdbc, objectMapper, users, APP_VERSION, SIGN_KEY, "bypass", 1000000L);
+        LicenseService guarded = new LicenseService(jdbc, objectMapper, users, APP_VERSION, SIGN_KEY, "bypass", 1000000L, false);
         assertThrows(AuthFailureException.class,
                 () -> guarded.upload(license("Enterprise", APP_VERSION, "ACME",
                         System.currentTimeMillis() / 1000L + 60)));
@@ -210,7 +210,7 @@ class LicenseServiceTest {
     @Test
     void missingSignKeyFailsClosed() {
         LicenseService noKey = new LicenseService(jdbc, objectMapper, mock(CurrentUserService.class),
-                APP_VERSION, "", "bypass", 1000000L);
+                APP_VERSION, "", "bypass", 1000000L, false);
         // 提供签名以便走到验签分支（缺失签名会先短路为 signature is missing）
         String withSignature = "{\"product\":\"askdata\",\"edition\":\"Enterprise\","
                 + "\"version\":\"" + APP_VERSION + "\",\"corporation\":\"ACME\","
@@ -228,7 +228,8 @@ class LicenseServiceTest {
         long expiresAt = System.currentTimeMillis() / 1000L + 86400;
         service.upload(license("Enterprise", APP_VERSION, "ACME", expiresAt));
         assertTrue(service.enterpriseEnabled());
-        LicenseService bypass = service("bypass", 1000000L);
+        LicenseService bypass = new LicenseService(jdbc, objectMapper, mock(CurrentUserService.class),
+                APP_VERSION, SIGN_KEY, "bypass", 1000000L, true);
         assertTrue(bypass.enterpriseEnabled());
     }
 
@@ -255,6 +256,10 @@ class LicenseServiceTest {
         pb.environment().put("VERSION", APP_VERSION);
         pb.environment().put("CORPORATION", "ACME");
         pb.environment().put("COUNT", "50");
+        pb.environment().put("SERIAL_NO", "SN-TEST-1");
+        pb.environment().put("EDITION", "Enterprise");
+        pb.environment().put("ISV", "fit2cloud");
+        pb.environment().put("REMARK", "unit test");
         pb.environment().put("EXPIRES_AT", String.valueOf(System.currentTimeMillis() / 1000L + 86400));
         pb.redirectErrorStream(false);
         Process p = pb.start();
@@ -273,9 +278,11 @@ class LicenseServiceTest {
     private static File findScript() {
         File dir = new File(System.getProperty("maven.multiModuleProjectDirectory", ".")).getAbsoluteFile();
         for (int i = 0; i < 5 && dir != null; i++) {
-            File candidate = new File(dir, "scripts/issue-license.sh");
-            if (candidate.exists()) {
-                return candidate;
+            for (String relative : new String[]{"scripts/issue-license.sh", "scripts/license/issue-license.sh"}) {
+                File candidate = new File(dir, relative);
+                if (candidate.exists()) {
+                    return candidate;
+                }
             }
             dir = dir.getParentFile();
         }
