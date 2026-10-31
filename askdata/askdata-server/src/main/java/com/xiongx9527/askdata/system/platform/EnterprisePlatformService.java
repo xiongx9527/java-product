@@ -105,9 +105,14 @@ public class EnterprisePlatformService {
             result.put("state", text(config, "state"));
             result.put("redirect_uri", text(config, "redirect_uri"));
         } else if (origin == ORIGIN_DINGTALK) {
+            // 钉钉扫码登录（DTFrameLogin）需要 client_id(=AppKey) 与 redirect_uri；corpid 供展示
             result.put("corpid", text(config, "corpid"));
-        } else {
             result.put("client_id", text(config, "client_id"));
+            result.put("redirect_uri", text(config, "redirect_uri"));
+        } else {
+            // 飞书 / LarkSuite 扫码登录：返回 client_id 与固定 redirect_uri（避免按访问 origin 动态生成导致与后台登记不一致）
+            result.put("client_id", text(config, "client_id"));
+            result.put("redirect_uri", text(config, "redirect_uri"));
         }
         return result;
     }

@@ -36,7 +36,7 @@
             </div>
             <div class="inner-card-btn">
               <el-button secondary @click="editInfo(item)">{{ t('datasource.edit') }}</el-button>
-              <el-button class="card-validate-btn" secondary @click="validate(item.id)">{{
+              <el-button class="card-validate-btn" secondary :disabled="!item.id" @click="validate(item)">{{
                 t('ds.test_connection')
               }}</el-button>
             </div>
@@ -89,16 +89,19 @@ const init = (needLoading: boolean) => {
   request
     .get(url)
     .then((res) => {
-      if (res) {
-        const templateArray = ['ldap', 'oidc', 'cas', 'oauth2']
-        const resultList = [...(res as CardInfo[])].filter((item) => item.name !== 'saml2')
-        let resultMap = {} as any
-        resultList.forEach((item: any) => {
+      const list = Array.isArray(res) ? (res as CardInfo[]) : []
+      const templateArray = ['ldap', 'oidc', 'cas', 'oauth2']
+      const resultMap: Record<string, CardInfo> = {}
+      list
+        .filter((item) => item && item.name !== 'saml2')
+        .forEach((item: CardInfo) => {
           resultMap[item.name] = item
         })
-        infos.value = templateArray.map((item: string) => resultMap[item])
-        showInfos.value = [...infos.value]
-      }
+      // 未配置的方法给出缺省占位对象，避免模板读取 undefined.name 抛错导致整页空白
+      infos.value = templateArray.map(
+        (name) => resultMap[name] || ({ id: null, name, valid: false, enable: false } as CardInfo)
+      )
+      showInfos.value = [...infos.value]
       loading.value = false
     })
     .catch((e) => {
@@ -124,26 +127,31 @@ const switchEnable = (item: CardInfo) => {
 }
 const editInfo = (item: CardInfo) => {
   if (item.name === 'oidc') {
-    oidcEdit.value?.edit()
+    oidcEdit.value?.edit(item)
   } else if (item.name === 'cas') {
-    casEdit.value?.edit()
+    casEdit.value?.edit(item)
   } else if (item.name === 'ldap') {
-    ldapEdit.value?.edit()
+    ldapEdit.value?.edit(item)
   } else if (item.name === 'oauth2') {
-    oauth2Edit.value?.edit()
+    oauth2Edit.value?.edit(item)
   } else if (item.name === 'saml2') {
-    saml2Edit.value?.edit()
+    saml2Edit.value?.edit(item)
   }
 }
-const validate = (id: any) => {
+const typeByName = { cas: 1, oidc: 2, ldap: 3, oauth2: 4, saml2: 5 }
+const validate = (item: any) => {
   loading.value = true
+  const type = typeByName[item?.name] ?? 0
   request
-    .patch('/system/authentication/status', { type: id, name: '', config: '' })
+    .patch('/system/authentication/status', { type, name: item?.name, config: '' })
     .then((res) => {
-      if (res) {
+      if (res && res.valid) {
         ElMessage.success(t('ds.connection_success'))
       } else {
-        ElMessage.error(t('ds.connection_failed'))
+        const reason = res && res.reason ? res.reason : ''
+        ElMessage.error(
+          (res && res.msg ? t(res.msg) : t('ds.connection_failed')) + (reason ? '：' + reason : '')
+        )
       }
       init(false)
     })

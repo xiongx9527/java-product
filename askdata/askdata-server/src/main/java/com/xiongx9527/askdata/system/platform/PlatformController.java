@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import javax.servlet.http.HttpServletRequest;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -115,8 +117,9 @@ public class PlatformController {
      */
     @PostMapping({"/system/platform/sso/{type}"})
     public Result<Map<String, Object>> sso(@PathVariable int type,
-                                           @RequestBody(required = false) Map<String, Object> body) {
-        Map<String, Object> user = authenticationService.ssoLogin(type, body == null ? new LinkedHashMap<>() : body);
+                                           @RequestBody(required = false) Map<String, Object> body,
+                                           HttpServletRequest request) {
+        Map<String, Object> user = authenticationService.ssoLogin(type, body == null ? new LinkedHashMap<>() : body, request);
         StpUtil.login(Rows.lng(user, "id", 0L));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("access_token", StpUtil.getTokenValue());

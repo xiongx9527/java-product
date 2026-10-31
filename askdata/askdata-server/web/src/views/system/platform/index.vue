@@ -21,15 +21,37 @@ const state = reactive({
   cardList: [] as PlatformCard[],
 })
 
+const KNOWN_PLATFORM_TYPES = [6, 7, 8]
+const PLATFORM_TYPE_NAME: Record<number, string> = { 6: 'wecom', 7: 'dingtalk', 8: 'lark' }
+
 const loadData = () => {
   const url = '/system/platform'
   request.get(url).then((res: any) => {
-    state.cardList = res
-      .map((item: any) => {
-        item.config = JSON.parse(item.config)
-        return item
-      })
-      .filter((card: any) => card.type < 9)
+    const backendMap: Record<number, any> = {}
+    const list = Array.isArray(res) ? res : []
+    list.forEach((item: any) => {
+      backendMap[item.type] = item
+    })
+    state.cardList = KNOWN_PLATFORM_TYPES.map((type) => {
+      const backend = backendMap[type]
+      if (backend) {
+        let config = {}
+        try {
+          config = backend.config ? JSON.parse(backend.config) : {}
+        } catch (e) {
+          config = {}
+        }
+        return Object.assign({}, backend, { config })
+      }
+      return {
+        id: null,
+        type: type,
+        name: PLATFORM_TYPE_NAME[type] || String(type),
+        config: {},
+        enable: false,
+        valid: false,
+      }
+    })
   })
 }
 onMounted(() => {

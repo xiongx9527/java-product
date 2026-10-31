@@ -86,10 +86,15 @@ const rule = reactive<FormRules>({
   ],
 })
 
-const edit = () => {
+const edit = (item) => {
+  id.value = item && item.id != null ? Number(item.id) : null
+  dialogVisible.value = true
+  if (id.value == null) {
+    return
+  }
   showLoading()
   request
-    .get('/system/authentication/3')
+    .get('/system/authentication/' + id.value)
     .then((res) => {
       if (!res?.config) {
         return
@@ -103,7 +108,6 @@ const edit = () => {
     .finally(() => {
       closeLoading()
     })
-  dialogVisible.value = true
 }
 
 const emits = defineEmits(['saved'])
@@ -113,7 +117,7 @@ const submitForm = async (formEl: FormInstance | undefined) => {
     if (valid) {
       const param = { ...state.form }
       const data = {
-        id: 3,
+        id: id.value,
         type: 3,
         config: JSON.stringify(param),
         name: 'ldap',
@@ -177,11 +181,19 @@ const validate = () => {
   request
     .patch(url, data)
     .then((res) => {
-      if (res) {
+
+      if (res && res.valid) {
+
         ElMessage.success(t('ds.connection_success'))
+
       } else {
-        ElMessage.error(t('ds.connection_failed'))
+
+        const reason = res && res.reason ? res.reason : ''
+
+        ElMessage.error((res && res.msg ? t(res.msg) : t('ds.connection_failed')) + (reason ? '：' + reason : ''))
+
       }
+
     })
     .finally(() => {
       closeLoading()

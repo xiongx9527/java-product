@@ -199,10 +199,15 @@ const rule = reactive<FormRules>({
   mapping: [{ required: false, validator: validateMapping, trigger: 'blur' }],
 })
 
-const edit = () => {
+const edit = (item) => {
+  id.value = item && item.id != null ? Number(item.id) : null
+  dialogVisible.value = true
+  if (id.value == null) {
+    return
+  }
   showLoading()
   request
-    .get('/system/authentication/4')
+    .get('/system/authentication/' + id.value)
     .then((res) => {
       if (!res?.config) {
         return
@@ -212,11 +217,13 @@ const edit = () => {
       for (const key in data) {
         state.form[key] = data[key] as any
       }
+      if (!state.form.redirect_url) {
+        state.form.redirect_url = getSQLBotAddr()
+      }
     })
     .finally(() => {
       closeLoading()
     })
-  dialogVisible.value = true
 }
 
 const emits = defineEmits(['saved'])
@@ -226,7 +233,7 @@ const submitForm = async (formEl: FormInstance | undefined) => {
     if (valid) {
       const param = { ...state.form }
       const data = {
-        id: 4,
+        id: id.value,
         type: 4,
         config: JSON.stringify(param),
         name: 'oauth2',
@@ -290,11 +297,19 @@ const validate = () => {
   request
     .patch(url, data)
     .then((res) => {
-      if (res) {
+
+      if (res && res.valid) {
+
         ElMessage.success(t('ds.connection_success'))
+
       } else {
-        ElMessage.error(t('ds.connection_failed'))
+
+        const reason = res && res.reason ? res.reason : ''
+
+        ElMessage.error((res && res.msg ? t(res.msg) : t('ds.connection_failed')) + (reason ? '：' + reason : ''))
+
       }
+
     })
     .finally(() => {
       closeLoading()

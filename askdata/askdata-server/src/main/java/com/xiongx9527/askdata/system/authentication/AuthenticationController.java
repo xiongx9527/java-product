@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import javax.servlet.http.HttpServletRequest;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -99,8 +101,8 @@ public class AuthenticationController {
 
     /** GET /system/authentication/login/{type}：第三方授权跳转 URL（公共路径）。 */
     @GetMapping({"/system/authentication/login/{type}"})
-    public Result<String> login(@PathVariable int type) {
-        return Result.ok(authenticationService.toLogin(type));
+    public Result<String> login(@PathVariable int type, HttpServletRequest request) {
+        return Result.ok(authenticationService.toLogin(type, request));
     }
 
     /**
@@ -110,8 +112,9 @@ public class AuthenticationController {
      * {@code res.access_token} / {@code res.exp} / {@code res.platform_info}。</p>
      */
     @PostMapping({"/system/authentication/sso/{type}"})
-    public Result<Map<String, Object>> sso(@PathVariable int type, @RequestBody Map<String, Object> body) {
-        Map<String, Object> user = authenticationService.ssoLogin(type, body);
+    public Result<Map<String, Object>> sso(@PathVariable int type, @RequestBody Map<String, Object> body,
+                                           HttpServletRequest request) {
+        Map<String, Object> user = authenticationService.ssoLogin(type, body, request);
         StpUtil.login(longOf(user.get("id"), 0L));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("access_token", StpUtil.getTokenValue());

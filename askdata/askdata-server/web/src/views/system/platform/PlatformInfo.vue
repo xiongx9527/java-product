@@ -148,17 +148,18 @@ const validateHandler = () => {
   request
     .patch('/system/authentication/status', { type: origin.value, name: '', config: '' })
     .then((res) => {
-      if (res) {
+      if (res && res.valid) {
         info.value.valid = true
         ElMessage.success(t('ds.connection_success'))
       } else {
-        ElMessage.error(t('ds.connection_failed'))
-        info.value.enable = false
+        const reason = res && res.reason ? res.reason : ''
+        ElMessage.error(
+          (res && res.msg ? t(res.msg) : t('ds.connection_failed')) + (reason ? '：' + reason : '')
+        )
         info.value.valid = false
       }
     })
     .catch(() => {
-      info.value.enable = false
       info.value.valid = false
     })
 }

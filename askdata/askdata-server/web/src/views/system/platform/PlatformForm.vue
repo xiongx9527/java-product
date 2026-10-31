@@ -137,11 +137,19 @@ const validate = async (formEl: FormInstance | undefined) => {
     request
       .patch(url, data)
       .then((res) => {
-        if (res) {
+
+        if (res && res.valid) {
+
           ElMessage.success(t('ds.connection_success'))
+
         } else {
-          ElMessage.error(t('ds.connection_failed'))
+
+          const reason = res && res.reason ? res.reason : ''
+
+          ElMessage.error((res && res.msg ? t(res.msg) : t('ds.connection_failed')) + (reason ? '：' + reason : ''))
+
         }
+
       })
       .finally(() => {
         closeLoading()
