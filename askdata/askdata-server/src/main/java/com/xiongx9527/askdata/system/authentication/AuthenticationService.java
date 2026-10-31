@@ -164,8 +164,21 @@ public class AuthenticationService {
      * <p>请求体 {@code {type, name, config}}：带 config 时校验该 config，
      * 否则校验已保存的认证源。校验通过则把 valid 置 true。</p>
      */
+    /** 校验结果：是否有效 + 失败原因（供前端展示）。 */
+    private static final class ValidationResult {
+        final boolean valid;
+        final String msg;
+        final String reason;
+
+        ValidationResult(boolean valid, String msg, String reason) {
+            this.valid = valid;
+            this.msg = msg;
+            this.reason = reason;
+        }
+    }
+
     @Transactional
-    public boolean validate(Map<String, Object> body) {
+    public Map<String, Object> validate(Map<String, Object> body) {
         currentUserService.requireAdmin();
         int type = intOf(body.get("type"), 0);
         String configJson = str(body, "config");
@@ -173,36 +186,62 @@ public class AuthenticationService {
         if (configJson != null && !configJson.trim().isEmpty()) {
             config = ssoAuthenticator.parseConfig(configJson);
         } else {
-            Map<String, Object> stored = authenticationRepository.findByType(type)
-                    .orElseThrow(() -> new IllegalArgumentException("authentication not found for type: " + type));
+            Map<String, Object> stored = authenticationRepository.findByType(type).orElse(null);
+            if (stored == null) {
+                // 未配置该类型认证源：返回干净失败（带 type 信息），不再抛出原始异常
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("valid", false);
+                result.put("msg", "ds.connection_failed");
+                result.put("reason", "authentication source not found for type: " + type);
+                return result;
+            }
             config = ssoAuthenticator.parseConfig(Rows.str(stored, "config"));
         }
-        boolean valid = doValidate(type, config);
+        ValidationResult vr = doValidate(type, config);
         Map<String, Object> stored = authenticationRepository.findByType(type).orElse(null);
         if (stored != null) {
-            authenticationRepository.updateValid(Rows.lng(stored, "id", 0L), valid);
+            authenticationRepository.updateValid(Rows.lng(stored, "id", 0L), vr.valid);
         }
-        return valid;
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("valid", vr.valid);
+        result.put("msg", vr.valid ? null : vr.msg);
+        result.put("reason", vr.valid ? null : vr.reason);
+        return result;
     }
 
-    private boolean doValidate(int type, Map<String, Object> config) {
+    private ValidationResult doValidate(int type, Map<String, Object> config) {
         try {
+            boolean ok;
             switch (type) {
                 case SsoAuthenticator.TYPE_CAS:
-                    return casSsoClient.validate(config);
+                    ok = casSsoClient.validate(config);
+                    break;
                 case SsoAuthenticator.TYPE_LDAP:
-                    return ldapSsoClient.validate(config);
+                    ok = ldapSsoClient.validate(config);
+                    break;
                 case SsoAuthenticator.TYPE_SAML2:
-                    return saml2SsoClient.validate(config);
+                    ok = saml2SsoClient.validate(config);
+                    break;
                 case SsoAuthenticator.TYPE_OIDC:
                 case SsoAuthenticator.TYPE_OAUTH2:
-                    return validateOAuth2(config);
-                default:
-                    // 企业 IM（6..9）等类型未接入在线连通性探测，按“配置完整即视为可用”处理。
-                    return !config.isEmpty();
+                    ok = validateOAuth2(config);
+                    break;
+                default: {
+                    Map<String, Object> r = enterprisePlatformService.validateConfig(type, config);
+                    boolean v = Boolean.TRUE.equals(r.get("valid"));
+                    Object reasonObj = r.get("reason");
+                    String reason = v ? null : (reasonObj == null ? null : String.valueOf(reasonObj));
+                    // validateConfig 不再返回 msg（与前端 t('ds.connection_failed') 兜底重复）；
+                    // 由前端统一用 t('ds.connection_failed') 作为前缀，reason 为真实错误说明。
+                    return new ValidationResult(v, null, reason);
+                }
             }
+            if (ok) {
+                return new ValidationResult(true, null, null);
+            }
+            return new ValidationResult(false, "ds.connection_failed", null);
         } catch (Exception e) {
-            return false;
+            return new ValidationResult(false, "ds.connection_failed", e.getMessage());
         }
     }
 
@@ -210,7 +249,7 @@ public class AuthenticationService {
     private boolean validateOAuth2(Map<String, Object> config) {
         String tokenUrl = str(config, "token_url");
         if (tokenUrl == null || tokenUrl.isEmpty()) {
-            return false;
+            throw new IllegalStateException("missing token_url in OIDC/OAuth2 config");
         }
         try {
             java.net.HttpURLConnection connection =
@@ -223,7 +262,7 @@ public class AuthenticationService {
             // 端点可达即视为可用（4xx/5xx 说明服务在但拒绝无凭据请求）
             return status > 0;
         } catch (Exception e) {
-            return false;
+            throw new IllegalStateException("OIDC/OAuth2 token endpoint unreachable: " + e.getMessage(), e);
         }
     }
 

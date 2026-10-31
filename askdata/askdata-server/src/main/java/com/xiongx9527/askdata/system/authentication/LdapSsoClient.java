@@ -87,14 +87,12 @@ public class LdapSsoClient implements SsoClient {
         String bindDn = str(config, "bind_dn");
         String bindPwd = str(config, "bind_pwd");
         if (serverAddress == null || bindDn == null) {
-            return false;
+            throw new IllegalStateException("missing server_address / bind_dn in LDAP config");
         }
         DirContext context = null;
         try {
             context = bind(serverAddress, bindDn, bindPwd);
             return true;
-        } catch (Exception e) {
-            return false;
         } finally {
             close(context);
         }

@@ -11,6 +11,7 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
@@ -30,9 +31,11 @@ import java.util.TreeMap;
  * isv, expires_at, signature}，signature 是对其余字段（按 key 排序的规范化 JSON）的 HMAC-SHA256，
  * 密钥来自配置 askdata.license.sign-key。
  *
- * 门控：askdata.license.enforcement 默认 bypass（企业能力保持可用）；设为 enforce 后，仅当许可证
- * 状态为 valid（未过期、未失效）时企业能力才可用。签名密钥未配置时校验链 fail-closed：上传直接返回
- * invalid 并给出可读配置提示，不再生成随机密钥掩盖问题。
+ * 门控（A27）：企业能力是否可用由 askdata.enterprise-enabled 决定——
+ *   true  → 企业能力始终可用（绕过 License 校验，便于开发/试用）；
+ *   false → 由 License 决定企业版/社区版：持有有效许可证为企业版（enterprise=true），否则社区版（enterprise=false）。
+ *   缺省 false（License 决定）。askdata.license.enforcement 仅保留用于契约兼容，实际门控以 enterprise-enabled 为准。
+ * 签名密钥未配置时校验链 fail-closed：上传直接返回 invalid 并给出可读配置提示，不再生成随机密钥掩盖问题。
  */
 @Service
 public class LicenseService {
@@ -49,13 +52,15 @@ public class LicenseService {
     private final String configuredSignKey;
     private final String enforcement;
     private final long maxCount;
+    private final boolean enterpriseConfigEnabled;
 
     public LicenseService(JdbcTemplate jdbc, ObjectMapper objectMapper,
                           CurrentUserService currentUserService,
                           @Value("${askdata.app.version:1.0.0}") String appVersion,
                           @Value("${askdata.license.sign-key:}") String configuredSignKey,
                           @Value("${askdata.license.enforcement:bypass}") String enforcement,
-                          @Value("${askdata.license.max-count:1000000}") long maxCount) {
+                          @Value("${askdata.license.max-count:1000000}") long maxCount,
+                          @Value("${askdata.enterprise-enabled:true}") boolean enterpriseEnabled) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.currentUserService = currentUserService;
@@ -63,6 +68,7 @@ public class LicenseService {
         this.configuredSignKey = configuredSignKey;
         this.enforcement = enforcement == null ? "bypass" : enforcement.trim();
         this.maxCount = maxCount;
+        this.enterpriseConfigEnabled = enterpriseEnabled;
     }
 
     public Map<String, Object> upload(String licenseKey) {
@@ -107,6 +113,34 @@ public class LicenseService {
         return view(status, license, null);
     }
 
+    /**
+     * 本地签发 License：按入参（corporation / expiresAt / version / serialNo / remark / count / edition / isv）
+     * 组装自描述 JSON，并用配置的 {@code askdata.license.sign-key} 做 HMAC-SHA256 签名，返回可直接上传的
+     * 完整 License 字符串（含 signature）。sign-key 未配置时 fail-closed（与上传校验一致）。
+     */
+    public String generate(Map<String, Object> req) {
+        signKey();
+        Map<String, Object> lic = new TreeMap<>();
+        lic.put("product", "askdata");
+        lic.put("edition", text(req, "edition", "enterprise"));
+        lic.put("version", text(req, "version", appVersion));
+        lic.put("corporation", text(req, "corporation", ""));
+        lic.put("count", intOf(req.get("count"), 0));
+        lic.put("serialNo", text(req, "serialNo", ""));
+        lic.put("remark", text(req, "remark", ""));
+        lic.put("isv", text(req, "isv", ""));
+        Object expiresRaw = req.get("expiresAt") != null ? req.get("expiresAt") : req.get("expires_at");
+        lic.put("expires_at", parseExpiresAt(expiresRaw));
+        String canonical = canonical(lic);
+        String signature = sign(canonical);
+        lic.put("signature", signature);
+        try {
+            return objectMapper.writeValueAsString(lic);
+        } catch (Exception e) {
+            throw new IllegalStateException("unable to serialize generated license: " + e.getMessage());
+        }
+    }
+
     public Map<String, Object> status() {
         Map<String, Object> row = findRow();
         if (row == null) {
@@ -138,14 +172,14 @@ public class LicenseService {
     }
 
     public boolean enterpriseEnabled() {
-        if (!"enforce".equalsIgnoreCase(enforcement)) {
+        // 企业功能总开关（askdata.enterprise-enabled）：
+        //  true  → 绕过 License，企业能力始终可用（开发/试用/演示 bypass）；
+        //  false → 由 License 决定企业版/社区版：持有有效许可证为企业版，否则社区版。
+        if (enterpriseConfigEnabled) {
             return true;
         }
         Map<String, Object> row = findRow();
-        if (row == null) {
-            return false;
-        }
-        return "valid".equals(String.valueOf(row.get("status")));
+        return row != null && "valid".equals(String.valueOf(row.get("status")));
     }
 
     private Map<String, Object> invalid(String reason) {
@@ -264,6 +298,35 @@ public class LicenseService {
     private static String text(Map<String, Object> map, String key) {
         Object value = map == null ? null : map.get(key);
         return value == null ? null : String.valueOf(value);
+    }
+
+    private static String text(Map<String, Object> map, String key, String dflt) {
+        String v = text(map, key);
+        return v == null ? dflt : v;
+    }
+
+    /** 解析过期时间：支持 epoch 秒（数字）或 yyyy-MM-dd 日期字符串（取当天 23:59:59）。 */
+    private static long parseExpiresAt(Object raw) {
+        if (raw == null) {
+            return 0L;
+        }
+        if (raw instanceof Number) {
+            return ((Number) raw).longValue();
+        }
+        String s = String.valueOf(raw).trim();
+        if (s.isEmpty()) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(s);
+        } catch (NumberFormatException ignore) {
+            // 尝试 yyyy-MM-dd
+        }
+        try {
+            return LocalDate.parse(s).atTime(23, 59, 59).atZone(ZoneId.systemDefault()).toEpochSecond();
+        } catch (Exception ignore) {
+            return 0L;
+        }
     }
 
     private static int intOf(Object value, int fallback) {

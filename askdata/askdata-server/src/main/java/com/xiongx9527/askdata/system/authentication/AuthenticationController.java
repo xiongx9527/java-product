@@ -87,7 +87,7 @@ public class AuthenticationController {
     }
 
     @PatchMapping({"/system/authentication/status"})
-    public Result<Boolean> validate(@RequestBody Map<String, Object> body) {
+    public Result<Map<String, Object>> validate(@RequestBody Map<String, Object> body) {
         return Result.ok(authenticationService.validate(body));
     }
 

@@ -144,12 +144,12 @@ public class Saml2SsoClient implements SsoClient {
     public boolean validate(Map<String, Object> config) {
         String idpMetaUrl = str(config, "idpMetaUrl");
         if (idpMetaUrl == null || idpMetaUrl.isEmpty()) {
-            return false;
+            throw new IllegalStateException("missing idpMetaUrl in SAML2 config");
         }
         try {
             return readSsoEndpoint(idpMetaUrl) != null;
         } catch (Exception e) {
-            return false;
+            throw new IllegalStateException("SAML2 metadata unreadable: " + e.getMessage(), e);
         }
     }
 

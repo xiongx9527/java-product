@@ -6,12 +6,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.system.authentication.AuthenticationRepository;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
+import me.zhyd.oauth.config.AuthConfig;
+import me.zhyd.oauth.model.AuthCallback;
+import me.zhyd.oauth.model.AuthResponse;
+import me.zhyd.oauth.model.AuthUser;
+import me.zhyd.oauth.request.AuthRequest;
+import me.zhyd.oauth.request.AuthWeChatEnterpriseQrcodeRequest;
+import me.zhyd.oauth.request.AuthDingTalkRequest;
+import me.zhyd.oauth.request.AuthFeishuRequest;
 import org.springframework.stereotype.Service;
+import cn.hutool.http.HttpRequest;
+import cn.hutool.http.HttpResponse;
 
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -274,73 +280,152 @@ public class EnterprisePlatformService {
         if (code == null || code.isEmpty()) {
             throw new IllegalStateException("missing code for platform login: " + platformName(origin));
         }
+        String redirectUri = firstNonEmpty(text(body, "redirect_uri"), text(config, "redirect_uri"));
+        AuthCallback callback = AuthCallback.builder()
+                .code(code)
+                .state(text(body, "state"))
+                .build();
         switch (origin) {
-            case ORIGIN_WECOM: {
-                String token = wecomToken(config);
-                Map<String, Object> info = get(wecomBase(config) + "/cgi-bin/user/getuserinfo"
-                        + "?access_token=" + token + "&code=" + code, null);
-                String userId = text(info, "userid");
-                if (userId == null) {
-                    throw new IllegalStateException("wecom login failed: " + text(info, "errmsg"));
-                }
-                Map<String, Object> user = get(wecomBase(config) + "/cgi-bin/user/get"
-                        + "?access_token=" + token + "&userid=" + userId, null);
-                Map<String, Object> out = new LinkedHashMap<>();
-                out.put("platform_uid", userId);
-                out.put("account", text(user, "userid"));
-                out.put("name", text(user, "name"));
-                out.put("email", text(user, "email"));
-                return out;
-            }
-            case ORIGIN_DINGTALK: {
-                String token = dingtalkToken(config);
-                Map<String, Object> info = postJson(dingtalkBase(config) + "/topapi/v2/user/getuserinfo",
-                        Maps.of("code", code), token);
-                Map<String, Object> result = asMap(info.get("result"));
-                String userId = result == null ? null : text(result, "userid");
-                if (userId == null) {
-                    throw new IllegalStateException("dingtalk login failed: userid not found");
-                }
-                Map<String, Object> user = postJson(dingtalkBase(config) + "/topapi/v2/user/get",
-                        Maps.of("userid", userId, "language", "zh_CN"), token);
-                Map<String, Object> u = asMap(user.get("result"));
-                if (u == null) {
-                    u = Maps.of();
-                }
-                Map<String, Object> out = new LinkedHashMap<>();
-                out.put("platform_uid", userId);
-                out.put("account", text(u, "userid"));
-                out.put("name", text(u, "name"));
-                out.put("email", text(u, "email"));
-                return out;
-            }
+            case ORIGIN_WECOM:
+                // 企业微信 CorpApp 扫码登录：JustAuth 走官方 qrConnect -> gettoken -> auth/getuserinfo -> user/get
+                return wecomUser(justAuthUser(new AuthWeChatEnterpriseQrcodeRequest(
+                        toImAuthConfig(origin, config, redirectUri)), callback));
             case ORIGIN_LARK:
-            case ORIGIN_LARKSUITE: {
-                String appToken = larkToken(origin, config);
-                Map<String, Object> tokenRes = postJson(larkBase(origin, config)
-                        + "/open-apis/authen/v1/oidc/access_token",
-                        Maps.of("grant_type", "authorization_code", "code", code), appToken);
-                Map<String, Object> data = asMap(tokenRes.get("data"));
-                String accessToken = data == null ? null : text(data, "access_token");
-                if (accessToken == null) {
-                    throw new IllegalStateException("lark login failed: access_token not found");
-                }
-                Map<String, Object> userRes = get(larkBase(origin, config) + "/open-apis/authen/v1/user_info",
-                        accessToken);
-                Map<String, Object> u = asMap(userRes.get("data"));
-                if (u == null) {
-                    u = Maps.of();
-                }
-                Map<String, Object> out = new LinkedHashMap<>();
-                out.put("platform_uid", text(u, "open_id"));
-                out.put("account", text(u, "name") == null ? text(u, "open_id") : text(u, "name"));
-                out.put("name", text(u, "name"));
-                out.put("email", text(u, "email"));
-                return out;
-            }
+                // 飞书 OAuth2 扫码登录：JustAuth 走官方 app_access_token -> oidc/access_token -> user_info
+                return feishuUser(justAuthUser(new AuthFeishuRequest(
+                        toImAuthConfig(origin, config, redirectUri)), callback));
+            case ORIGIN_DINGTALK:
+                // 钉钉「网站应用扫码登录」(DTFrameLogin, scope=openid) 走 OAuth2 流程，与 JustAuth 的
+                // sns(qrconnect/tmp_auth_code) 流程不兼容，故保留官方协议实现（已走 hutool SDK HTTP 客户端）。
+                return dingtalkUserByCode(config, code);
+            case ORIGIN_LARKSUITE:
+                // LarkSuite：JustAuth 1.16.6 无对应 AuthRequest（飞书类写死 open.feishu.cn 基址，无法指向
+                // open.larksuite.com）；沿用官方协议 + hutool SDK HTTP 客户端。官方 Lark Open SDK
+                // (com.lark.oapi:lark-core) 需联网拉取并真实应用联调后接入。
+                return larksuiteUserByCode(config, code);
             default:
                 throw new IllegalStateException("unsupported platform: " + origin);
         }
+    }
+
+    private AuthUser justAuthUser(AuthRequest request, AuthCallback callback) {
+        AuthResponse<AuthUser> response = request.login(callback);
+        if (response == null || !response.ok() || response.getData() == null) {
+            throw new IllegalStateException("sso login failed: "
+                    + (response == null ? "no response" : String.valueOf(response.getMsg())));
+        }
+        return response.getData();
+    }
+
+    private Map<String, Object> wecomUser(AuthUser authUser) {
+        // 与原实现一致：platform_uid/account = 企业微信 UserId；name = 姓名；email = 邮箱
+        Map<String, Object> out = new LinkedHashMap<>();
+        String userId = authUser.getUuid();
+        out.put("platform_uid", userId);
+        out.put("account", userId);
+        out.put("name", authUser.getUsername());
+        out.put("email", authUser.getEmail());
+        return out;
+    }
+
+    private Map<String, Object> feishuUser(AuthUser authUser) {
+        // 与原实现一致：platform_uid = open_id（而非 union_id），account = 姓名 || open_id
+        Map<String, Object> out = new LinkedHashMap<>();
+        String openId = rawStr(authUser, "open_id");
+        String name = rawStr(authUser, "name");
+        out.put("platform_uid", firstNonEmpty(openId, authUser.getUuid()));
+        out.put("account", firstNonEmpty(name, openId, authUser.getUuid()));
+        out.put("name", name);
+        out.put("email", authUser.getEmail());
+        return out;
+    }
+
+    private Map<String, Object> dingtalkUserByCode(Map<String, Object> config, String code) {
+        String token = dingtalkToken(config);
+        Map<String, Object> info = postJson(dingtalkBase(config) + "/topapi/v2/user/getuserinfo",
+                Maps.of("code", code), token);
+        Map<String, Object> result = asMap(info.get("result"));
+        String userId = result == null ? null : text(result, "userid");
+        if (userId == null) {
+            throw new IllegalStateException("dingtalk login failed: userid not found");
+        }
+        Map<String, Object> user = postJson(dingtalkBase(config) + "/topapi/v2/user/get",
+                Maps.of("userid", userId, "language", "zh_CN"), token);
+        Map<String, Object> u = asMap(user.get("result"));
+        if (u == null) {
+            u = Maps.of();
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("platform_uid", userId);
+        out.put("account", text(u, "userid"));
+        out.put("name", text(u, "name"));
+        out.put("email", text(u, "email"));
+        return out;
+    }
+
+    private Map<String, Object> larksuiteUserByCode(Map<String, Object> config, String code) {
+        String appToken = larkToken(ORIGIN_LARKSUITE, config);
+        Map<String, Object> tokenRes = postJson(larkBase(ORIGIN_LARKSUITE, config)
+                        + "/open-apis/authen/v1/oidc/access_token",
+                Maps.of("grant_type", "authorization_code", "code", code), appToken);
+        Map<String, Object> data = asMap(tokenRes.get("data"));
+        String accessToken = data == null ? null : text(data, "access_token");
+        if (accessToken == null) {
+            throw new IllegalStateException("lark login failed: access_token not found");
+        }
+        Map<String, Object> userRes = get(larkBase(ORIGIN_LARKSUITE, config) + "/open-apis/authen/v1/user_info",
+                accessToken);
+        Map<String, Object> u = asMap(userRes.get("data"));
+        if (u == null) {
+            u = Maps.of();
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("platform_uid", text(u, "open_id"));
+        out.put("account", text(u, "name") == null ? text(u, "open_id") : text(u, "name"));
+        out.put("name", text(u, "name"));
+        out.put("email", text(u, "email"));
+        return out;
+    }
+
+    private AuthConfig toImAuthConfig(int origin, Map<String, Object> config, String redirectUri) {
+        AuthConfig.AuthConfigBuilder builder = AuthConfig.builder();
+        if (origin == ORIGIN_WECOM) {
+            builder.clientId(text(config, "corpid"));
+            builder.clientSecret(text(config, "corpsecret"));
+            String agentId = text(config, "agent_id");
+            if (agentId != null && !agentId.isEmpty()) {
+                builder.agentId(agentId);
+            }
+        } else {
+            builder.clientId(text(config, "client_id"));
+            builder.clientSecret(text(config, "client_secret"));
+        }
+        String eff = redirectUri;
+        if (eff == null || eff.isEmpty()) {
+            eff = text(config, "redirect_uri");
+        }
+        builder.redirectUri(eff);
+        builder.ignoreCheckState(true);
+        return builder.build();
+    }
+
+    private static String firstNonEmpty(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isEmpty()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private static String rawStr(AuthUser authUser, String field) {
+        if (authUser.getRawUserInfo() != null) {
+            Object v = authUser.getRawUserInfo().get(field);
+            if (v != null) {
+                return String.valueOf(v);
+            }
+        }
+        return null;
     }
 
     // ------------------------------------------------------------------
@@ -372,6 +457,100 @@ public class EnterprisePlatformService {
                     null);
             return text(res, "app_access_token");
         });
+    }
+
+    /**
+     * 企业 IM（企业微信/钉钉/飞书/LarkSuite）"测试连接"的真实连通性校验：
+     * 直接请求各自 token 端点，能拿到 token 才算配置有效；不走 token 缓存，
+     * 避免缓存命中导致错误配置被误判为有效。
+     */
+    public Map<String, Object> validateConfig(int origin, Map<String, Object> config) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("valid", false);
+        result.put("reason", null);
+        if (config == null || config.isEmpty()) {
+            result.put("reason", "config is empty");
+            return result;
+        }
+        try {
+            switch (origin) {
+                case ORIGIN_WECOM:
+                case ORIGIN_DINGTALK: {
+                    // 企业微信/钉钉：使用 JustAuth（开源 SDK）校验应用凭据。
+                    // login 流程的第一步即校验 app 凭据（corpid+corpsecret / appKey+appSecret），
+                    // 凭据错误会在此处直接暴露真实原因；无真实扫码 code 时按失败处理，
+                    // 但只要凭据正确就不会误报“连接成功”。
+                    // 测试连接没有真实回调地址，用占位 redirect_uri 让 SDK 跳过地址校验，
+                    // 真正去校验 app 凭据（corpid+corpsecret / appKey+appSecret）。
+                    AuthConfig authConfig = toImAuthConfig(origin, config,
+                            firstNonEmpty(text(config, "redirect_uri"), "https://localhost/callback"));
+                    AuthRequest request;
+                    if (origin == ORIGIN_WECOM) {
+                        request = new AuthWeChatEnterpriseQrcodeRequest(authConfig);
+                    } else if (origin == ORIGIN_DINGTALK) {
+                        request = new AuthDingTalkRequest(authConfig);
+                    } else {
+                        request = new AuthFeishuRequest(authConfig);
+                    }
+                    AuthCallback callback = AuthCallback.builder().code("__validate__").state("x").build();
+                    AuthResponse<AuthUser> response = request.login(callback);
+                    if (response != null && response.ok() && response.getData() != null) {
+                        result.put("valid", true);
+                        result.put("reason", null);
+                    } else {
+                        String detail;
+                        if (response == null) {
+                            detail = "no response";
+                        } else if (response.getMsg() != null) {
+                            detail = response.getMsg();
+                        } else {
+                            detail = "code=" + response.getCode() + ", data=" + response.getData();
+                        }
+                        result.put("reason", detail);
+                    }
+                    return result;
+                }
+                case ORIGIN_LARK:
+                case ORIGIN_LARKSUITE: {
+                    // 飞书/LarkSuite：JustAuth 的 AuthFeishuRequest.login() 不回传飞书真实错误文案
+                    // （仅 code=5000、msg=null），无法直接给出说明。故直接请求官方
+                    // app_access_token 端点，以拿到真实的 msg/错误说明。
+                    // （官方 Lark Open SDK 待接入：com.lark.oapi:lark-core，需联网拉取并用真实应用联调）
+                    Map<String, Object> res = postJson(larkBase(origin, config)
+                            + "/open-apis/auth/v3/app_access_token/internal",
+                            Maps.of("app_id", text(config, "client_id"), "app_secret", text(config, "client_secret")),
+                            null);
+                    String token = res == null ? null : text(res, "app_access_token");
+                    String err = res == null ? null : firstPresent(res, "msg", "error_description", "error");
+                    if (token != null && !token.isEmpty()) {
+                        result.put("valid", true);
+                        result.put("reason", null);
+                    } else {
+                        result.put("reason", err == null ? "no app_access_token" : err);
+                    }
+                    return result;
+                }
+                default:
+                    result.put("reason", "unsupported type: " + origin);
+                    return result;
+            }
+        } catch (Exception e) {
+            result.put("reason", e.getMessage());
+            return result;
+        }
+    }
+
+    private static String firstPresent(Map<String, Object> map, String... keys) {
+        if (map == null) {
+            return null;
+        }
+        for (String k : keys) {
+            Object v = map.get(k);
+            if (v != null && !String.valueOf(v).isEmpty()) {
+                return String.valueOf(v);
+            }
+        }
+        return null;
     }
 
     private String cached(String cacheKey, java.util.function.Supplier<String> loader) {
@@ -448,24 +627,19 @@ public class EnterprisePlatformService {
     @SuppressWarnings("unchecked")
     private Map<String, Object> request(String method, String url, String jsonBody, String bearer) {
         try {
-            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
-            connection.setRequestMethod(method);
-            connection.setConnectTimeout(10000);
-            connection.setReadTimeout(10000);
-            connection.setRequestProperty("Accept", "application/json");
+            HttpRequest req = "POST".equalsIgnoreCase(method) ? HttpRequest.post(url) : HttpRequest.get(url);
+            req.timeout(10000);
+            req.header("Accept", "application/json");
             if (bearer != null && !bearer.isEmpty()) {
-                connection.setRequestProperty("Authorization", "Bearer " + bearer);
+                req.header("Authorization", "Bearer " + bearer);
             }
             if (jsonBody != null) {
-                connection.setDoOutput(true);
-                connection.setRequestProperty("Content-Type", "application/json");
-                try (OutputStream out = connection.getOutputStream()) {
-                    out.write(jsonBody.getBytes(StandardCharsets.UTF_8));
-                }
+                req.header("Content-Type", "application/json");
+                req.body(jsonBody);
             }
-            int status = connection.getResponseCode();
-            String body = read(status >= 400 ? connection.getErrorStream() : connection.getInputStream());
-            connection.disconnect();
+            HttpResponse resp = req.execute();
+            int status = resp.getStatus();
+            String body = resp.body();
             Map<String, Object> parsed;
             try {
                 parsed = objectMapper.readValue(body,
@@ -485,18 +659,6 @@ public class EnterprisePlatformService {
         }
     }
 
-    private static String read(java.io.InputStream in) throws Exception {
-        if (in == null) {
-            return "";
-        }
-        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-        byte[] buffer = new byte[8192];
-        int n;
-        while ((n = in.read(buffer)) > 0) {
-            out.write(buffer, 0, n);
-        }
-        return new String(out.toByteArray(), StandardCharsets.UTF_8);
-    }
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> asMap(Object raw) {

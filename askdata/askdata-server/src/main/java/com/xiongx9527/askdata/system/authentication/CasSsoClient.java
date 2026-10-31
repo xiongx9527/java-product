@@ -76,7 +76,7 @@ public class CasSsoClient implements SsoClient {
     public boolean validate(Map<String, Object> config) {
         String idpUri = str(config, "idpUri");
         if (idpUri == null || idpUri.isEmpty()) {
-            return false;
+            throw new IllegalStateException("missing idpUri in CAS config");
         }
         try {
             // CAS 2.0 之前的探测端点；取不到不致命（3.0 移除了该端点），只要求主机可达。
@@ -84,7 +84,7 @@ public class CasSsoClient implements SsoClient {
             get(base + "/login");
             return true;
         } catch (Exception e) {
-            return false;
+            throw new IllegalStateException("CAS idp unreachable: " + e.getMessage(), e);
         }
     }
 
