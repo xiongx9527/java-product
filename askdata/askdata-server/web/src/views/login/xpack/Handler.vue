@@ -298,6 +298,15 @@ const getCurLocation = () => {
   }
   return queryRedirectPath
 }
+const clearCallbackParams = () => {
+  if (!window.history?.replaceState) {
+    return
+  }
+  const url = new URL(window.location.href)
+  ;['code', 'state', 'ticket'].forEach((key) => url.searchParams.delete(key))
+  const search = url.searchParams.toString()
+  window.history.replaceState({}, '', `${url.pathname}${search ? `?${search}` : ''}${url.hash}`)
+}
 const third_party_authentication = (state?: string) => {
   if (!state) {
     return null
@@ -313,6 +322,11 @@ const third_party_authentication = (state?: string) => {
     return null
   }
   const urlParams = getUrlParams()
+  // CAS 用一次性 ticket 换属性，地址栏清理前先留存（下面写进 platform_info 供退出登录用）
+  const casTicket = urlParams?.ticket || getQueryString('ticket')
+  // 回调参数只消费一次：立刻从地址栏去掉 code/state/ticket，避免刷新或退出登录时
+  // 重放已失效的授权码（MaxKey 会返回空用户信息，表现为 “missing account”）。
+  clearCallbackParams()
   const urlFlag = findKey && findKey > 5 ? 'platform' : 'authentication'
   const ssoUrl = `/system/${urlFlag}/sso/${findKey}`
   if (!urlParams?.redirect_uri) {
@@ -337,8 +351,7 @@ const third_party_authentication = (state?: string) => {
         platform_info_param['data'] = JSON.stringify(platform_info)
       }
       if (originName === 'cas') {
-        const ticket = getQueryString('ticket')
-        platform_info_param['data'] = ticket
+        platform_info_param['data'] = casTicket
       }
       userStore.setPlatformInfo(platform_info_param)
       const queryRedirectPath = getCurLocation()
@@ -362,7 +375,16 @@ const queryCategoryStatus = () => {
 }
 
 const callBackType = () => {
-  return getQueryString('state')
+  const state = getQueryString('state')
+  if (state) {
+    return state
+  }
+  // CAS 协议没有 state，回调只带 ticket（{service}?ticket=ST-xxx）；用认证源名称充当
+  // 标记，让后面的 third_party_authentication 按 cas 走换票登录。
+  if (getQueryString('ticket') && loginCategory.value.cas) {
+    return 'fit2cloud-cas'
+  }
+  return null
 }
 const loginTypeParam = (): number | null => {
   let login_type = getQueryString('login_type')

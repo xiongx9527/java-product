@@ -35,11 +35,14 @@ const validateUrl = (rule, value, callback) => {
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-expect-error
 const validateCbUrl = (rule, value, callback) => {
-  const addr = getSQLBotAddr()
-  if (value === addr || `${value}/` === addr) {
-    callback()
+  // 回调地址可以是已登记的公网/隧道域名，不再强制等于当前访问域名（本地 127.0.0.1 调试时
+  // 需要填 IdP 里登记的那个域名），这里只校验 URL 形态。
+  const reg = new RegExp(/(http|https):\/\/[\w.-]+(:\d+)?(\/\S*)?$/)
+  if (!value || !reg.test(String(value).trim())) {
+    callback(new Error(t('authentication.incorrect_please_re_enter')))
+    return
   }
-  callback(new Error(t('authentication.callback_domain_name_error')))
+  callback()
 }
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-expect-error

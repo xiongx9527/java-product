@@ -27,9 +27,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.TestPropertySource;
 
+import javax.servlet.http.HttpServletRequest;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -130,7 +132,7 @@ class SystemDetailsTest {
     @Test
     void ssoLogoutReturnsIdpLogoutUrl() {
         // 本地登录：不跳转 IdP
-        assertNull(loginController.logout(logoutRequest(0L)).getData(), "本地登出无 IdP 跳转地址");
+        assertNull(loginController.logout(logoutRequest(0L), logoutRequest()).getData(), "本地登出无 IdP 跳转地址");
 
         // CAS 来源：按 idpUri 派生 /logout
         jdbc.update("DELETE FROM sys_authentication WHERE id = ?", (long) SsoAuthenticator.TYPE_CAS);
@@ -141,7 +143,8 @@ class SystemDetailsTest {
                 true, true, System.currentTimeMillis());
         try {
             StpUtil.login(1L);
-            String casUrl = loginController.logout(logoutRequest((long) SsoAuthenticator.TYPE_CAS)).getData();
+            String casUrl = loginController.logout(logoutRequest((long) SsoAuthenticator.TYPE_CAS),
+                    logoutRequest()).getData();
             assertNotNull(casUrl, "SSO 来源登出应返回 IdP 登出地址");
             assertTrue(casUrl.startsWith("https://cas.example.com/cas/logout"), casUrl);
             assertTrue(casUrl.contains("service="), "CAS 登出应带 service 回跳参数");
@@ -158,8 +161,11 @@ class SystemDetailsTest {
                 true, true, System.currentTimeMillis());
         try {
             StpUtil.login(1L);
-            assertEquals("https://idp.example.com/oidc/logout?post_logout_redirect_uri=x",
-                    loginController.logout(logoutRequest((long) SsoAuthenticator.TYPE_OIDC)).getData());
+            String oidcUrl = loginController.logout(logoutRequest((long) SsoAuthenticator.TYPE_OIDC),
+                    logoutRequest()).getData();
+            // 配置里的 post_logout_redirect_uri 保留，另外补上 MaxKey 认的 redirect_uri（登出后回到本系统）
+            assertTrue(oidcUrl.startsWith("https://idp.example.com/oidc/logout?post_logout_redirect_uri=x&"), oidcUrl);
+            assertTrue(oidcUrl.contains("redirect_uri=https%3A%2F%2Fapp.example.com%2F"), oidcUrl);
         } finally {
             jdbc.update("DELETE FROM sys_authentication WHERE id = ?", (long) SsoAuthenticator.TYPE_OIDC);
         }
@@ -333,6 +339,13 @@ class SystemDetailsTest {
         jdbc.update("INSERT INTO sys_user (id, account, name, password, email, oid, status, create_time, "
                 + "language, origin) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 id, account, name, "x", email, 1, 1, 1672531199000L, "zh-CN", 0);
+    }
+
+    /** 登出请求：带上浏览器访问来源，登出后回跳到这个地址。 */
+    private static HttpServletRequest logoutRequest() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Origin", "https://app.example.com");
+        return request;
     }
 
     private static LogoutRequest logoutRequest(long origin) {

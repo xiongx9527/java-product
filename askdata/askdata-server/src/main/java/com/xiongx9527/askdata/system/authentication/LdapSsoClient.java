@@ -65,8 +65,13 @@ public class LdapSsoClient implements SsoClient {
             if (userDn == null) {
                 throw new IllegalStateException("LDAP user not found: " + username);
             }
-            // 2) 以用户 DN bind 校验口令
-            userContext = bind(serverAddress, userDn, password);
+            // 2) 以用户 DN bind 校验口令。失败要指明是哪个账号口令不对，
+            //    否则只能看到笼统的 "LDAP bind failed"，分不清是服务账号还是用户口令的问题。
+            try {
+                userContext = bind(serverAddress, userDn, password);
+            } catch (IllegalStateException e) {
+                throw new IllegalStateException("LDAP login failed: invalid credentials for " + username, e);
+            }
             // 3) 取回属性
             Map<String, Object> attributes = readAttributes(userContext, userDn);
             Map<String, Object> result = new LinkedHashMap<>();

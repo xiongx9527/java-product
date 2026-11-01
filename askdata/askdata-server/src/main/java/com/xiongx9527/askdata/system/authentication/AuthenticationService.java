@@ -319,7 +319,7 @@ public class AuthenticationService {
         // 回调地址按当前访问来源动态生成（不写死到配置）：前端同源请求带来的 Origin 头即
         // 公网/内网入口，确保 authorize 跳转里的 redirect_uri 与浏览器实际落点一致，
         // 也与该来源在后端 ssoLogin 回调换码时使用的 redirect_uri 一致。
-        String redirect = redirectUri(request);
+        String redirect = resolveRedirect(config, request);
         switch (type) {
             case SsoAuthenticator.TYPE_CAS:
                 config.put("casCallbackDomain", redirect);
@@ -330,8 +330,12 @@ public class AuthenticationService {
             case SsoAuthenticator.TYPE_OAUTH2:
                 config.put("redirect_uri", redirect);
                 config.put("redirect_url", redirect);
+                // state 里带认证源标记：回调落到前端后靠它识别是哪个 SSO 源
+                // （JustAuth 默认的随机 state 不含标记，前端会当成普通访问而不发起换码登录）。
+                String state = "fit2cloud-" + ssoTypeName(type) + "-"
+                        + java.util.UUID.randomUUID().toString().replace("-", "");
                 return ssoAuthenticator.authorizeUrl(type, config,
-                        me.zhyd.oauth.model.AuthCallback.builder().state(null).build());
+                        me.zhyd.oauth.model.AuthCallback.builder().state(state).build());
             case SsoAuthenticator.TYPE_LDAP:
                 throw new UnsupportedOperationException("LDAP login does not use an authorization redirect");
             default:
@@ -356,8 +360,8 @@ public class AuthenticationService {
             throw new IllegalStateException("authentication source is disabled: " + type);
         }
         Map<String, Object> config = ssoAuthenticator.parseConfig(Rows.str(stored, "config"));
-        // 与 toLogin 同一来源推导回调地址，保证 authorize 与 exchange 两端 redirect_uri 一致。
-        String redirect = redirectUri(request);
+        // 与 toLogin 同一来源：配置里写了回调地址就用配置，保证 authorize 与 exchange 两端一致。
+        String redirect = resolveRedirect(config, request);
 
         Map<String, Object> platformUser;
         if (type >= EnterprisePlatformService.ORIGIN_WECOM) {
@@ -513,72 +517,50 @@ public class AuthenticationService {
      * <p>回调地址因此不必写死在配置里：访问域名变化（如 localhost ↔ 花生壳域名）时自动适配，
      * 且与前端 {@code getSQLBotAddr()}（origin + pathname）保持一致。</p>
      */
+    /**
+     * 回调地址：配置里显式填写时优先使用（对齐 IdP 后台登记的回调域名），否则按当前访问来源推导。
+     *
+     * <p>IdP 只登记了隧道/公网域名时，用 127.0.0.1 等其它入口访问也不会被 IdP 以
+     * “Invalid redirect” 拒绝；配置留空时保持原来的动态推导行为。</p>
+     */
+    private String resolveRedirect(Map<String, Object> config, HttpServletRequest request) {
+        String configured = firstNonBlank(Rows.str(config, "redirect_uri"), Rows.str(config, "redirect_url"),
+                Rows.str(config, "casCallbackDomain"));
+        return isNotBlank(configured) ? configured.trim() : redirectUri(request);
+    }
+
+    /** SSO 认证源标识（与前端 {@code origin_mapping} 的名称一致）。 */
+    private static String ssoTypeName(int type) {
+        switch (type) {
+            case SsoAuthenticator.TYPE_CAS:
+                return "cas";
+            case SsoAuthenticator.TYPE_OIDC:
+                return "oidc";
+            case SsoAuthenticator.TYPE_LDAP:
+                return "ldap";
+            case SsoAuthenticator.TYPE_OAUTH2:
+                return "oauth2";
+            case SsoAuthenticator.TYPE_SAML2:
+                return "saml2";
+            default:
+                return "sso";
+        }
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (isNotBlank(value)) {
+                return value;
+            }
+        }
+        return null;
+    }
+
     private String redirectUri(HttpServletRequest request) {
-        String base = null;
-        if (request != null) {
-            String proto = request.getHeader("X-Forwarded-Proto");
-            String fhost = request.getHeader("X-Forwarded-Host");
-            if (isNotBlank(proto) && isNotBlank(fhost)) {
-                base = buildBase(proto, fhost, request.getHeader("X-Forwarded-Port"));
-            }
-            if (base == null) {
-                String origin = request.getHeader("Origin");
-                if (isNotBlank(origin)) {
-                    base = origin.endsWith("/") ? origin.substring(0, origin.length() - 1) : origin;
-                }
-            }
-            if (base == null) {
-                String referer = request.getHeader("Referer");
-                if (isNotBlank(referer)) {
-                    try {
-                        java.net.URI uri = java.net.URI.create(referer);
-                        base = buildBase(uri.getScheme(), uri.getHost(),
-                                uri.getPort() > 0 ? String.valueOf(uri.getPort()) : null);
-                    } catch (Exception ignored) {
-                        base = null;
-                    }
-                }
-            }
-            if (base == null) {
-                base = buildBase(request.getScheme(), request.getServerName(),
-                        request.getServerPort() > 0 ? String.valueOf(request.getServerPort()) : null);
-            }
-        }
-        if (base == null) {
-            base = "";
-        }
-        String ctx = request != null ? request.getContextPath() : "";
-        if (ctx != null && !ctx.isEmpty() && !base.endsWith(ctx)) {
-            base = base + ctx;
-        }
-        return base + "/";
+        return RequestBaseUrl.resolve(request);
     }
 
     private static boolean isNotBlank(String s) {
         return s != null && !s.trim().isEmpty();
-    }
-
-    private static String buildBase(String scheme, String host, String port) {
-        if (!isNotBlank(scheme) || !isNotBlank(host)) {
-            return null;
-        }
-        StringBuilder sb = new StringBuilder();
-        sb.append(scheme).append("://").append(host);
-        int p = -1;
-        if (isNotBlank(port)) {
-            try {
-                p = Integer.parseInt(port.trim());
-            } catch (NumberFormatException ignored) {
-                p = -1;
-            }
-        }
-        if (p > 0) {
-            boolean standard = ("https".equalsIgnoreCase(scheme) && p == 443)
-                    || ("http".equalsIgnoreCase(scheme) && p == 80);
-            if (!standard) {
-                sb.append(":").append(p);
-            }
-        }
-        return sb.toString();
     }
 }

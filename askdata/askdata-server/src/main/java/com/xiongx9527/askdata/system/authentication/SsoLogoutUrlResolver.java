@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.util.Rows;
 import org.springframework.stereotype.Service;
 
+import javax.servlet.http.HttpServletRequest;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -53,6 +55,35 @@ public class SsoLogoutUrlResolver {
      * @return 可跳转的登出地址；无联动端点时返回 null
      */
     public String resolve(long origin) {
+        return resolve(origin, null);
+    }
+
+    /**
+     * 解析来源对应的 IdP 登出地址，并附带登出后的回跳地址。
+     *
+     * <p>登出是浏览器整页跳到 IdP 的，IdP 若不能把用户送回本系统，浏览器就会停在 IdP 自己的
+     * 登出页（MaxKey 表现为跳到 {@code /#/passport/logout}）。MaxKey 的
+     * {@code /sign/force/logout} 支持 {@code redirect_uri} 参数（其 {@code LogoutEndpoint.forceLogout}
+     * 会把它拼到登出页地址上，前端登出组件再 {@code location.href} 跳回），标准 OIDC 则用
+     * {@code post_logout_redirect_uri}；两者都带上，不认识的 IdP 会忽略。</p>
+     *
+     * @param origin  登录来源（{@code sys_authentication.type}；0 表示本地登录）
+     * @param request 当前登出请求，用于推导回跳地址；为空时回退到认证源配置里的回调地址
+     * @return 可跳转的登出地址；无联动端点时返回 null
+     */
+    public String resolve(long origin, HttpServletRequest request) {
+        String url = rawResolve(origin);
+        if (url == null) {
+            return null;
+        }
+        String backTo = returnTo(origin, request);
+        if (backTo == null) {
+            return url;
+        }
+        return appendRedirect(url, backTo);
+    }
+
+    private String rawResolve(long origin) {
         if (origin <= 0) {
             return null;
         }
@@ -75,6 +106,50 @@ public class SsoLogoutUrlResolver {
             default:
                 return null;
         }
+    }
+
+    /** 登出后回到本系统登录页：优先当前访问来源，其次认证源里登记的回调地址。 */
+    private String returnTo(long origin, HttpServletRequest request) {
+        if (request != null && text(request.getHeader("Origin")) != null) {
+            return RequestBaseUrl.resolve(request);
+        }
+        Optional<Map<String, Object>> stored = authenticationRepository.findByType((int) origin);
+        if (stored.isPresent()) {
+            Map<String, Object> config = parseConfig(Rows.str(stored.get(), "config"));
+            String configured = firstNonBlank(text(config.get("redirect_uri")), text(config.get("redirect_url")),
+                    text(config.get("casCallbackDomain")));
+            if (configured != null) {
+                return configured;
+            }
+        }
+        return request == null ? null : RequestBaseUrl.resolve(request);
+    }
+
+    private static String appendRedirect(String url, String backTo) {
+        StringBuilder sb = new StringBuilder(url);
+        char sep = url.indexOf('?') >= 0 ? '&' : '?';
+        // 按参数名边界判断：post_logout_redirect_uri 里也含有 redirect_uri 子串
+        if (!hasParam(url, "redirect_uri")) {
+            sb.append(sep).append("redirect_uri=").append(urlEncode(backTo));
+            sep = '&';
+        }
+        if (!hasParam(url, "post_logout_redirect_uri")) {
+            sb.append(sep).append("post_logout_redirect_uri=").append(urlEncode(backTo));
+        }
+        return sb.toString();
+    }
+
+    private static boolean hasParam(String url, String name) {
+        return java.util.regex.Pattern.compile("[?&]" + name + "=").matcher(url).find();
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.trim().isEmpty()) {
+                return value;
+            }
+        }
+        return null;
     }
 
     /** CAS：{@code {idpUri}/logout[?service=...]}。 */

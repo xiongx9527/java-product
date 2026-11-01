@@ -181,17 +181,29 @@ public final class SsoClientFactory {
             if (json == null) {
                 throw new IllegalStateException("Invalid userinfo response");
             }
+            // 有些 IdP（如 MaxKey 的 /me）把用户信息包在 {code,message,data:{...}} 里，先解包
+            JSONObject body = json;
+            Object wrapped = json.get("data");
+            if (wrapped instanceof JSONObject) {
+                JSONObject data = (JSONObject) wrapped;
+                if (data.getString("username") != null || data.getString("user") != null
+                        || data.getString("displayName") != null || data.getString("userId") != null) {
+                    body = data;
+                }
+            }
             return AuthUser.builder()
-                    .uuid(firstNonEmpty(json.getString("sub"), json.getString("id"), json.getString("uuid"),
-                            json.getString("user_id"), json.getString("openid")))
-                    .username(firstNonEmpty(json.getString("preferred_username"), json.getString("username"),
-                            json.getString("login"), json.getString("name"), json.getString("email")))
-                    .nickname(firstNonEmpty(json.getString("nickname"), json.getString("name"),
-                            json.getString("display_name"), json.getString("cn_name")))
-                    .email(firstNonEmpty(json.getString("email"), json.getString("mail")))
-                    .avatar(firstNonEmpty(json.getString("avatar_url"), json.getString("picture"),
-                            json.getString("avatar")))
-                    .rawUserInfo(json)
+                    .uuid(firstNonEmpty(body.getString("sub"), body.getString("id"), body.getString("uuid"),
+                            body.getString("user_id"), body.getString("openid")))
+                    .username(firstNonEmpty(body.getString("preferred_username"), body.getString("username"),
+                            body.getString("user"), body.getString("login"), body.getString("name"),
+                            body.getString("email")))
+                    .nickname(firstNonEmpty(body.getString("nickname"), body.getString("name"),
+                            body.getString("displayName"), body.getString("display_name"),
+                            body.getString("cn_name")))
+                    .email(firstNonEmpty(body.getString("email"), body.getString("mail")))
+                    .avatar(firstNonEmpty(body.getString("avatar_url"), body.getString("picture"),
+                            body.getString("avatar")))
+                    .rawUserInfo(body)
                     .token(authToken)
                     .build();
         }

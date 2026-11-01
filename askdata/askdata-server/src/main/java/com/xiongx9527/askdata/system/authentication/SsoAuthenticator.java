@@ -149,10 +149,17 @@ public class SsoAuthenticator {
     public Map<String, Object> toLocalUser(AuthUser authUser, Map<String, Object> config) {
         Map<String, Object> result = new LinkedHashMap<>();
         Map<String, Object> mapping = parseConfig(asString(config.get("mapping")));
-        result.put("account", resolve(mapping, "account", authUser, "username", "email", "uuid"));
-        result.put("name", resolve(mapping, "name", authUser, "nickname", "username", "uuid"));
-        result.put("email", resolve(mapping, "email", authUser, "email", "username"));
-        result.put("platform_uid", resolve(mapping, "platform_uid", authUser, "uuid", "username", "email"));
+        // account 取「登录名」而不是昵称/显示名：MaxKey 的 preferred_username/name 都是 displayName，
+        // 真正的登录名在 user 声明里；通用 OIDC 则用 preferred_username。email 不再回退到用户名。
+        result.put("account", resolve(mapping, "account", authUser,
+                "user", "preferred_username", "userId", "uuid", "email", "username"));
+        result.put("name", resolve(mapping, "name", authUser,
+                "name", "displayName", "nickname", "username", "uuid"));
+        result.put("email", resolve(mapping, "email", authUser, "email"));
+        // platform_uid 优先用登录名（与组织树/用户同步的绑定一致），数字 ID 只作回退，
+        // 否则同一个人的绑定会在不同入口之间漂移。
+        result.put("platform_uid", resolve(mapping, "platform_uid", authUser,
+                "uuid", "sub", "username", "userId", "email"));
         return result;
     }
 
@@ -179,30 +186,44 @@ public class SsoAuthenticator {
         if (authUser == null || field == null) {
             return null;
         }
+        String value = null;
         switch (field) {
             case "uuid":
-                return authUser.getUuid();
+                value = authUser.getUuid();
+                break;
             case "username":
-                return authUser.getUsername();
+                value = authUser.getUsername();
+                break;
             case "nickname":
-                return authUser.getNickname();
+                value = authUser.getNickname();
+                break;
             case "email":
-                return authUser.getEmail();
+                value = authUser.getEmail();
+                break;
             case "avatar":
-                return authUser.getAvatar();
+                value = authUser.getAvatar();
+                break;
             case "company":
-                return authUser.getCompany();
+                value = authUser.getCompany();
+                break;
             case "location":
-                return authUser.getLocation();
+                value = authUser.getLocation();
+                break;
             case "remark":
-                return authUser.getRemark();
+                value = authUser.getRemark();
+                break;
             default:
                 break;
         }
+        if (value != null && !value.trim().isEmpty()) {
+            return value;
+        }
         if (authUser.getRawUserInfo() != null) {
-            Object value = authUser.getRawUserInfo().get(field);
-            if (value != null) {
-                return String.valueOf(value);
+            Object raw = authUser.getRawUserInfo().get(field);
+            // 只接受标量，避免把对象/数组字段 String 化成一串 JSON 写进账号
+            if (raw instanceof CharSequence || raw instanceof Number) {
+                String text = String.valueOf(raw).trim();
+                return text.isEmpty() ? null : text;
             }
         }
         return null;

@@ -161,11 +161,12 @@ public class LoginController {
      * @return data = IdP 登出地址（无联动端点或本地登录时为 null）
      */
     @PostMapping({"/login/logout"})
-    public Result<String> logout(@RequestBody(required = false) LogoutRequest dto) {
+    public Result<String> logout(@RequestBody(required = false) LogoutRequest dto,
+                                 javax.servlet.http.HttpServletRequest request) {
         long origin = dto == null ? 0L : toLong(dto.getOrigin());
         StpUtil.logout();
         if (origin != 0L) {
-            return Result.ok(ssoLogoutUrlResolver.resolve(origin));
+            return Result.ok(ssoLogoutUrlResolver.resolve(origin, request));
         }
         return Result.ok((String) null);
     }

@@ -58,17 +58,22 @@ public class CasSsoClient implements SsoClient {
         String url = base + "/serviceValidate?service=" + urlEncode(service) + "&ticket=" + urlEncode(ticket);
         String xml = get(url);
 
-        String user = between(xml, "<cas:user>", "</cas:user>");
-        if (user == null || user.isEmpty()) {
-            throw new IllegalStateException("CAS validation failed: no user in response");
+        String user = userFrom(xml);
+        if (user == null) {
+            // CAS 校验失败时返回 <cas:authenticationFailure code="INVALID_TICKET">…</…>，
+            // 把 code 透出来（票据过期/被重放/服务不匹配都能直接看出来），不要只说“没取到用户”。
+            String failure = failureFrom(xml);
+            throw new IllegalStateException("CAS validation failed: "
+                    + (failure == null ? "no user in response" : failure));
         }
         Map<String, Object> attributes = parseAttributes(xml);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("platform_uid", user);
-        result.put("account", pick(attributes, config, "account", "username", "uid", "email", user));
-        result.put("name", pick(attributes, config, "name", "cn", "displayName", "realName", user));
-        result.put("email", pick(attributes, config, "email", "mail", "emailAddress", null));
+        // 候选属性名按优先级取，都取不到才回落到 <cas:user>（登录名）/ null（邮箱）。
+        result.put("account", pick(attributes, config, "account", user, "username", "uid", "email"));
+        result.put("name", pick(attributes, config, "name", user, "displayName", "cn", "realName", "username"));
+        result.put("email", pick(attributes, config, "email", null, "email", "mail", "emailAddress"));
         return result;
     }
 
@@ -88,9 +93,17 @@ public class CasSsoClient implements SsoClient {
         }
     }
 
-    /** 解析 {@code <cas:attributes>} 下的简单 XML 属性。 */
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> parseAttributes(String xml) {
+    /**
+     * 解析 {@code <cas:attributes>} 下的简单 XML 属性。
+     *
+     * <p>两个必须处理的细节（MaxKey 实测）：</p>
+     * <ol>
+     *   <li>元素带命名空间前缀（{@code <cas:username>}），入库时去掉前缀存 {@code username}，
+     *       否则按 {@code username} 取值永远取不到，表现为「missing account」；</li>
+     *   <li>中文等非 ASCII 值被编码成 {@code base64:xxxx}，需要解码成原文。</li>
+     * </ol>
+     */
+    Map<String, Object> parseAttributes(String xml) {
         Map<String, Object> attributes = new LinkedHashMap<>();
         int start = xml.indexOf("<cas:attributes>");
         int end = xml.indexOf("</cas:attributes>");
@@ -118,15 +131,45 @@ public class CasSsoClient implements SsoClient {
                 cursor = close + 1;
                 continue;
             }
-            String value = block.substring(close + 1, tagEnd);
-            attributes.put(tag, value);
+            String value = decodeValue(block.substring(close + 1, tagEnd));
+            if (value != null) {
+                attributes.put(localName(tag), value);
+            }
             cursor = tagEnd + tag.length() + 3;
         }
         return attributes;
     }
 
+    /** {@code cas:username} → {@code username}；无前缀时原样返回。 */
+    private static String localName(String tag) {
+        int colon = tag.indexOf(':');
+        return colon < 0 ? tag : tag.substring(colon + 1);
+    }
+
+    /** 解 {@code base64:} 编码；{@code null} 字面量视为空值。 */
+    private static String decodeValue(String raw) {
+        String value = raw == null ? null : raw.trim();
+        if (value == null || value.isEmpty() || "null".equalsIgnoreCase(value)) {
+            return null;
+        }
+        if (value.startsWith("base64:")) {
+            try {
+                byte[] bytes = java.util.Base64.getDecoder().decode(value.substring("base64:".length()));
+                return new String(bytes, StandardCharsets.UTF_8);
+            } catch (IllegalArgumentException ignored) {
+                return value;
+            }
+        }
+        return value;
+    }
+
+    /**
+     * 按「用户属性映射 → 候选属性名 → 默认值」的顺序取一个字段。
+     *
+     * @param fallback 所有候选都取不到时的默认值（账号默认登录名、邮箱默认空）
+     */
     private String pick(Map<String, Object> attributes, Map<String, Object> config, String localKey,
-                        String... candidates) {
+                        String fallback, String... candidates) {
         Object mapping = config.get("mapping");
         if (mapping != null) {
             try {
@@ -151,7 +194,43 @@ public class CasSsoClient implements SsoClient {
                 return String.valueOf(value);
             }
         }
-        return null;
+        return fallback;
+    }
+
+    /** 取 CAS 校验响应里的登录名（{@code <cas:user>}）；没有则返回 null。 */
+    static String userFrom(String xml) {
+        String user = between(xml, "<cas:user>", "</cas:user>");
+        if (user == null) {
+            return null;
+        }
+        user = user.trim();
+        return user.isEmpty() ? null : user;
+    }
+
+    /** 取 CAS 校验失败原因（{@code code} + 文本）；没有失败节点时返回 null。 */
+    static String failureFrom(String xml) {
+        int start = xml.indexOf("<cas:authenticationFailure");
+        if (start < 0) {
+            return null;
+        }
+        int openEnd = xml.indexOf('>', start);
+        int close = xml.indexOf("</cas:authenticationFailure>", start);
+        if (openEnd < 0 || close < openEnd) {
+            return null;
+        }
+        String code = between(xml.substring(start, openEnd + 1), "code=\"", "\"");
+        String message = xml.substring(openEnd + 1, close).trim();
+        // MaxKey 应用未配置适配器时返回 code="null"、内容 "null"：这时要把「没有失败原因」
+        // 明确说出来，否则界面上只能看到一串 null，无法判断是应用侧配置问题。
+        boolean noCode = code == null || "null".equalsIgnoreCase(code);
+        boolean noMessage = message.isEmpty() || "null".equalsIgnoreCase(message);
+        if (noCode && noMessage) {
+            return "IdP returned no failure detail (check the CAS application registration, e.g. adapter)";
+        }
+        if (noCode) {
+            return message;
+        }
+        return noMessage ? code : code + " " + message;
     }
 
     private static String between(String text, String open, String close) {
