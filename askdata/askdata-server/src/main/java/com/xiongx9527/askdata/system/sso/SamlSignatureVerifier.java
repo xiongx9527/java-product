@@ -66,7 +66,23 @@ public final class SamlSignatureVerifier {
         assertAudience(doc, audience);
     }
 
+    /** 去除 XML 声明前的 UTF-8 BOM/空白，避免 “Content is not allowed in prolog”。 */
+    private static String stripPrologJunk(String xml) {
+        if (xml == null || xml.isEmpty()) {
+            return xml;
+        }
+        if (xml.charAt(0) == '\uFEFF') {
+            xml = xml.substring(1);
+        }
+        int decl = xml.indexOf("<?xml");
+        if (decl > 0) {
+            xml = xml.substring(decl);
+        }
+        return xml;
+    }
+
     private static Document parse(String xml) {
+        xml = stripPrologJunk(xml);
         try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             factory.setNamespaceAware(true);

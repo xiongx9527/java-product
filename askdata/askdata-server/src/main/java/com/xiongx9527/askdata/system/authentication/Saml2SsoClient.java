@@ -81,11 +81,99 @@ public class Saml2SsoClient implements SsoClient {
      *
      * @param base64Response base64 编码的 SAMLResponse XML
      */
+    /**
+     * 去除 SAML XML 声明（{@code <?xml}）之前的杂散内容：UTF-8 BOM、前置空白/换行等。
+     * 否则 XML 解析会报 “Content is not allowed in prolog”。部分 IdP（如 Casdoor）的
+     * SAMLResponse 首部会带 BOM。
+     */
+    private static String stripXmlPrologJunk(String xml) {
+        if (xml == null || xml.isEmpty()) {
+            return xml;
+        }
+        if (xml.charAt(0) == '\uFEFF') {
+            xml = xml.substring(1);
+        }
+        int decl = xml.indexOf("<?xml");
+        if (decl > 0) {
+            xml = xml.substring(decl);
+        }
+        return xml;
+    }
+
+    /**
+     * 解码 SAMLResponse 为 XML 文本。兼容：
+     * <ul>
+     *   <li>标准 HTTP-POST 绑定：base64(明文 XML)；</li>
+     *   <li>部分 IdP 对 POST 响应也做 DEFLATE 压缩（如 Casdoor 的 enable_saml_compress=1）：
+     *       base64(deflate(XML))，需先 inflate 再按 UTF-8 解码，否则会报
+     *       “Content is not allowed in prolog”；</li>
+     *   <li>XML 声明前的 UTF-8 BOM/空白杂散内容。</li>
+     * </ul>
+     */
+    private static String decodeSamlXml(String base64Response) {
+        byte[] raw;
+        try {
+            raw = Base64.getMimeDecoder().decode(base64Response);
+        } catch (IllegalArgumentException e) {
+            raw = Base64.getDecoder().decode(base64Response.replaceAll("\\s", ""));
+        }
+        String xml = new String(raw, StandardCharsets.UTF_8);
+        if (looksLikeXml(xml)) {
+            return stripXmlPrologJunk(xml);
+        }
+        // 可能被 DEFLATE 压缩：inflate 后重试
+        byte[] inflated = inflate(raw);
+        if (inflated != null) {
+            String inflatedXml = new String(inflated, StandardCharsets.UTF_8);
+            if (looksLikeXml(inflatedXml)) {
+                return stripXmlPrologJunk(inflatedXml);
+            }
+        }
+        if (log != null) {
+            log.warn("SAML2 response did not decode to XML after base64/inflate (b64len={}, rawLen={})",
+                    base64Response.length(), raw.length);
+        }
+        return stripXmlPrologJunk(xml);
+    }
+
+    /** 去除 BOM/空白后是否以 '<' 开头（粗略判断是否为 XML）。 */
+    private static boolean looksLikeXml(String s) {
+        if (s == null) {
+            return false;
+        }
+        int i = 0;
+        while (i < s.length()) {
+            char c = s.charAt(i);
+            if (c == '\uFEFF' || Character.isWhitespace(c)) {
+                i++;
+                continue;
+            }
+            return c == '<';
+        }
+        return false;
+    }
+
+    /** zlib(DEFLATE) 解压；失败返回 null。 */
+    private static byte[] inflate(byte[] data) {
+        try (java.util.zip.InflaterInputStream in =
+                     new java.util.zip.InflaterInputStream(new ByteArrayInputStream(data))) {
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                out.write(buf, 0, n);
+            }
+            return out.toByteArray();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     public Map<String, Object> parseResponse(String base64Response, Map<String, Object> config) {
         if (base64Response == null || base64Response.isEmpty()) {
             throw new IllegalStateException("Missing SAMLResponse");
         }
-        String xml = new String(Base64.getMimeDecoder().decode(base64Response), StandardCharsets.UTF_8);
+        String xml = decodeSamlXml(base64Response);
         // SAML assertion signature verification (reuse A7 SamlSignatureVerifier, fail-closed)
         String cert = str(config, "certificate");
         String spEntityId = str(config, "spEntityId");
@@ -139,18 +227,22 @@ public class Saml2SsoClient implements SsoClient {
                 String name = attribute.getAttribute("Name");
                 NodeList values = attribute.getElementsByTagNameNS("*", "AttributeValue");
                 if (name != null && !name.isEmpty() && values.getLength() > 0) {
-                    attributes.put(name, values.item(0).getTextContent());
+                    String attrValue = values.item(0).getTextContent();
+                    attributes.put(name, attrValue);
+                    // 同时存小写键，兼容大小写不敏感匹配（如 Casdoor 默认的 Name/Email）
+                    attributes.put(name.toLowerCase(), attrValue);
                 }
             }
         } catch (Exception e) {
             throw new IllegalStateException("Invalid SAMLResponse: " + e.getMessage(), e);
         }
 
+        Map<String, Object> mapping = parseMapping(str(config, "mapping"));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("platform_uid", nameId);
-        result.put("account", pick(attributes, config(nameId), "account", "uid", "name", "email", nameId));
-        result.put("name", pick(attributes, config(nameId), "name", "cn", "displayName", "realName", nameId));
-        result.put("email", pick(attributes, config(nameId), "email", "mail", "emailAddress", null));
+        result.put("account", pick(attributes, mapping, "account", nameId, "uid", "name", "email"));
+        result.put("name", pick(attributes, mapping, "name", nameId, "cn", "displayName", "realName"));
+        result.put("email", pick(attributes, mapping, "email", null, "mail", "emailAddress"));
         return result;
     }
 
@@ -266,23 +358,47 @@ public class Saml2SsoClient implements SsoClient {
         }
     }
 
-    private Map<String, Object> config(String nameId) {
-        Map<String, Object> config = new LinkedHashMap<>();
-        config.put("nameId", nameId);
-        return config;
+    /** 解析 SAML2 配置里的字段映射（{@code {"account":"attrName", ...}}），无效/为空返回空 Map。 */
+    private Map<String, Object> parseMapping(String mappingJson) {
+        if (mappingJson == null || mappingJson.trim().isEmpty()) {
+            return new LinkedHashMap<>();
+        }
+        try {
+            return objectMapper.readValue(mappingJson,
+                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
+                    });
+        } catch (Exception e) {
+            return new LinkedHashMap<>();
+        }
     }
 
-    private String pick(Map<String, Object> attributes, Map<String, Object> config, String localKey,
-                        String... candidates) {
-        // localKey 本身就是首选候选（如 account / name / email 这些 SAML Attribute 的 Name）。
-        // 之前这里漏掉了 localKey，只遍历 candidates（uid/name/email...），导致 account 字段
-        // 错位取到 name 属性的值，name/email 反而取不到。修复：把 localKey 作为第一个候选。
+    /**
+     * 按映射与候选名从断言属性中取字段值。
+     *
+     * @param mapping  用户配置的字段映射：本地字段名 → SAML Attribute Name
+     * @param localKey 本地字段名（也是默认的 Attribute Name 候选）
+     * @param fallback 兜底值（如 NameID），作为最后手段返回
+     */
+    private String pick(Map<String, Object> attributes, Map<String, Object> mapping, String localKey,
+                        String fallback, String... candidates) {
+        // 1) 用户配置的映射优先：localKey -> Attribute Name
+        if (mapping != null) {
+            Object mapped = mapping.get(localKey);
+            if (mapped != null) {
+                Object v = attributes.get(String.valueOf(mapped));
+                if (v != null && !String.valueOf(v).isEmpty()) {
+                    return String.valueOf(v);
+                }
+            }
+        }
+        // 2) 同名属性
         if (localKey != null) {
             Object v = attributes.get(localKey);
             if (v != null && !String.valueOf(v).isEmpty()) {
                 return String.valueOf(v);
             }
         }
+        // 3) 常见候选属性名
         for (String candidate : candidates) {
             if (candidate == null) {
                 continue;
@@ -291,6 +407,10 @@ public class Saml2SsoClient implements SsoClient {
             if (value != null && !String.valueOf(value).isEmpty()) {
                 return String.valueOf(value);
             }
+        }
+        // 4) 兜底（如 NameID）
+        if (fallback != null && !fallback.isEmpty()) {
+            return fallback;
         }
         return null;
     }
