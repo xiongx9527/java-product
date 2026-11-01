@@ -149,7 +149,7 @@ public class SsoAuthenticator {
     public Map<String, Object> toLocalUser(AuthUser authUser, Map<String, Object> config) {
         Map<String, Object> result = new LinkedHashMap<>();
         Map<String, Object> mapping = parseConfig(asString(config.get("mapping")));
-        // account 取「登录名」而不是昵称/显示名：MaxKey 的 preferred_username/name 都是 displayName，
+        // account 取「登录名」而不是昵称/显示名：某些 IdP 的 preferred_username/name 都是 displayName，
         // 真正的登录名在 user 声明里；通用 OIDC 则用 preferred_username。email 不再回退到用户名。
         result.put("account", resolve(mapping, "account", authUser,
                 "user", "preferred_username", "userId", "uuid", "email", "username"));

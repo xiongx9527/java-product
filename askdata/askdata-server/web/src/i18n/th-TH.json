@@ -904,6 +904,15 @@
     "callback_domain_name_error": "ที่อยู่เรียกกลับต้องเป็นโดเมนที่ใช้เข้าถึงอยู่ในปัจจุบัน",
     "field_mapping": "การจับคู่คุณสมบัติผู้ใช้",
     "field_mapping_placeholder": "เช่น {'{'}\"account\": \"saml2Account\", \"name\": \"saml2Name\", \"email\": \"email\"{'}'}",
+    "saml": {
+      "title": "การตั้งค่า SAML2",
+      "idp_meta_url": "URL ข้อมูลเมตาของ IdP",
+      "enable_request_sign": "เปิดใช้การลงนามคำขอ",
+      "enable_assertion_sign": "เปิดใช้การลงนามแอสเซอร์ชัน",
+      "sp_private_key": "SP PrivateKey",
+      "sp_certificate": "SP Certificate"
+    },
+    "saml2name": "ตัวอย่าง: {\"account\": \"uid\", \"name\": \"cn\", \"email\": \"mail\"}",
     "incorrect_please_re_enter": "รูปแบบไม่ถูกต้อง โปรดกรอกใหม่",
     "in_json_format": "โปรดกรอกในรูปแบบ json",
     "authorize_url": "ที่อยู่การอนุญาต",

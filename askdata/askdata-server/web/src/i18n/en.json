@@ -904,6 +904,15 @@
     "callback_domain_name_error": "Callback URL must match the current access domain",
     "field_mapping": "User Attribute Mapping",
     "field_mapping_placeholder": "Example: {'{'}\"account\": \"saml2Account\", \"name\": \"saml2Name\", \"email\": \"email\"{'}'}",
+    "saml": {
+      "title": "SAML2 Settings",
+      "idp_meta_url": "IdP MetaData URL",
+      "enable_request_sign": "Enable request signing",
+      "enable_assertion_sign": "Enable assertion signing",
+      "sp_private_key": "SP PrivateKey",
+      "sp_certificate": "SP Certificate"
+    },
+    "saml2name": "Example: {\"account\": \"uid\", \"name\": \"cn\", \"email\": \"mail\"}",
     "incorrect_please_re_enter": "Incorrect format, please re-enter",
     "in_json_format": "Please enter JSON format",
     "authorize_url": "Authorization URL",

@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 /**
  * 第三方用户信息 → 本地用户字段的映射（账号取登录名，不能取显示名）。
  *
- * <p>回归点：MaxKey 的 OIDC userinfo 把 {@code name} 与 {@code preferred_username} 都填成
+ * <p>回归点：部分 IdP 的 OIDC userinfo 把 {@code name} 与 {@code preferred_username} 都填成
  * displayName（如“孙尚香”），真正的登录名在 {@code user} 声明里（如 {@code sunsx}）；
  * 之前账号、邮箱都被写成了显示名。</p>
  */
@@ -24,7 +24,7 @@ class SsoAuthenticatorTest {
     private final SsoAuthenticator authenticator = new SsoAuthenticator(new ObjectMapper());
 
     @Test
-    void maxkeyOidcUsesLoginNameAsAccountNotDisplayName() {
+    void oidcUsesLoginNameAsAccountNotDisplayName() {
         JSONObject raw = new JSONObject();
         raw.put("sub", "sunsx");
         raw.put("userId", "622227747934179401");

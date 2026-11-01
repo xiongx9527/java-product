@@ -58,6 +58,32 @@ public final class RequestBaseUrl {
         if (base == null) {
             base = "";
         }
+        return withContext(base, request);
+    }
+
+    /**
+     * 只按「请求实际到达的主机」推导基础地址，忽略 {@code Origin} / {@code Referer}。
+     *
+     * <p>SAML2 的 ACS 是 IdP 用表单 POST 过来的跨站请求，浏览器会带上 IdP 自己的
+     * {@code Origin}；此时用 {@link #resolve} 会把回跳地址推导成 IdP 域名，
+     * 因此这类端点必须走本方法。</p>
+     */
+    public static String ofHost(HttpServletRequest request) {
+        if (request == null) {
+            return "/";
+        }
+        String proto = request.getHeader("X-Forwarded-Proto");
+        String fhost = request.getHeader("X-Forwarded-Host");
+        String base = isNotBlank(proto) && isNotBlank(fhost)
+                ? buildBase(proto, fhost, request.getHeader("X-Forwarded-Port")) : null;
+        if (base == null) {
+            base = buildBase(request.getScheme(), request.getServerName(),
+                    request.getServerPort() > 0 ? String.valueOf(request.getServerPort()) : null);
+        }
+        return withContext(base == null ? "" : base, request);
+    }
+
+    private static String withContext(String base, HttpServletRequest request) {
         String ctx = request != null ? request.getContextPath() : "";
         if (ctx != null && !ctx.isEmpty() && !base.endsWith(ctx)) {
             base = base + ctx;

@@ -904,6 +904,15 @@
     "callback_domain_name_error": "回調位址必須是目前的存取網域名稱",
     "field_mapping": "使用者屬性對應",
     "field_mapping_placeholder": "例如：{'{'}\"account\": \"saml2Account\", \"name\": \"saml2Name\", \"email\": \"email\"{'}'}",
+    "saml": {
+      "title": "SAML2 設定",
+      "idp_meta_url": "IdP 元資料網址",
+      "enable_request_sign": "開啟請求簽章",
+      "enable_assertion_sign": "開啟斷言簽章",
+      "sp_private_key": "SP 私密金鑰",
+      "sp_certificate": "SP 憑證"
+    },
+    "saml2name": "例如：{\"account\": \"uid\", \"name\": \"cn\", \"email\": \"mail\"}",
     "incorrect_please_re_enter": "格式錯誤，請重新填寫",
     "in_json_format": "請輸入json格式",
     "authorize_url": "授權位址",

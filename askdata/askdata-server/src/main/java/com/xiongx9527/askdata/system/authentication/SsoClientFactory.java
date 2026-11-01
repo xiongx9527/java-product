@@ -181,7 +181,7 @@ public final class SsoClientFactory {
             if (json == null) {
                 throw new IllegalStateException("Invalid userinfo response");
             }
-            // 有些 IdP（如 MaxKey 的 /me）把用户信息包在 {code,message,data:{...}} 里，先解包
+            // 有些 IdP 把用户信息包在 {code,message,data:{...}} 里（如部分 IdP 的 /me 端点），先解包
             JSONObject body = json;
             Object wrapped = json.get("data");
             if (wrapped instanceof JSONObject) {

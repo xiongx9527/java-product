@@ -280,14 +280,22 @@ public class AuthenticationService {
         for (Map<String, Object> row : authenticationRepository.list()) {
             int type = Rows.intg(row, "type", 0);
             boolean enable = Rows.bool(row, "enable", false);
+            // 登录页入口只在「已启用且已配置」时出现：避免仅打开发布开关、
+            // 但 IdP 元数据/证书等尚未填写时，登录页出现点了会失败的 SSO 入口
+            // （即「SAML2 还没生效却已在登录页出现」的问题）。
+            boolean configured = configHasContent(type, Rows.str(row, "config"));
+            boolean showOnLogin = enable && configured;
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", Rows.lng(row, "id", 0L));
-            item.put("name", Rows.str(row, "name"));
+            // name 用类型对应的规范名（cas/oidc/ldap/oauth2/saml2/wecom/...）：
+            // 登录页按 loginCategory[name] 渲染入口，若沿用库里可自定义的 name，
+            // 名字被改过或大小写不一致时入口就不显示了。
+            item.put("name", ssoTypeName(type));
             item.put("type", type);
-            item.put("enable", enable);
+            item.put("enable", showOnLogin);
             item.put("valid", Rows.bool(row, "valid", false));
             result.add(item);
-            if (type >= 6 && enable) {
+            if (type >= 6 && showOnLogin) {
                 anyQrEnable = true;
             }
         }
@@ -505,6 +513,34 @@ public class AuthenticationService {
     }
 
     /**
+     * 认证源是否已真正配置：config JSON 含至少一个非空字段（非空串/非零数字/true 布尔）。
+     * 用于 {@code platformStatus()} 决定是否在登录页渲染该 SSO 入口——仅打开发布开关
+     * 而未填写任何配置的行不渲染，避免登录页出现点了会失败的入口。
+     */
+    private boolean configHasContent(int type, String configJson) {
+        Map<String, Object> config = ssoAuthenticator.parseConfig(configJson);
+        for (Map.Entry<String, Object> e : config.entrySet()) {
+            Object v = e.getValue();
+            if (v == null) {
+                continue;
+            }
+            if (v instanceof Boolean) {
+                if (Boolean.TRUE.equals(v)) {
+                    return true;
+                }
+                continue;
+            }
+            if (v instanceof Number) {
+                return true;
+            }
+            if (!String.valueOf(v).trim().isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * 从请求推导当前访问基础地址（scheme://host[:port][contextPath]），用于动态生成 SSO 回调地址。
      *
      * <p>优先级：</p>
@@ -542,6 +578,14 @@ public class AuthenticationService {
                 return "oauth2";
             case SsoAuthenticator.TYPE_SAML2:
                 return "saml2";
+            case EnterprisePlatformService.ORIGIN_WECOM:
+                return "wecom";
+            case EnterprisePlatformService.ORIGIN_DINGTALK:
+                return "dingtalk";
+            case EnterprisePlatformService.ORIGIN_LARK:
+                return "lark";
+            case EnterprisePlatformService.ORIGIN_LARKSUITE:
+                return "larksuite";
             default:
                 return "sso";
         }

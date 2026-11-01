@@ -25,6 +25,11 @@
         <Oidc v-if="loginCategory.oidc" @switch-category="switcherCategory" />
         <Oauth2 v-if="loginCategory.oauth2" @switch-category="switcherCategory" />
         <Cas v-if="loginCategory.cas" @switch-category="switcherCategory" />
+        <Saml2
+          v-if="loginCategory.saml2"
+          ref="saml2Handler"
+          @switch-category="switcherCategory"
+        />
       </div>
     </el-form-item>
   </div>
@@ -59,9 +64,11 @@ import LdapLoginForm from './LdapLoginForm.vue'
 
 import Oidc from './Oidc.vue'
 import Cas from './Cas.vue'
+import Saml2 from './Saml2.vue'
 import Oauth2 from './Oauth2.vue'
 import QrTab from './QrTab.vue'
 import { request } from '@/utils/request'
+import { ElMessage } from 'element-plus-secondary'
 import { useCache } from '@/utils/useCache'
 
 import router from '@/router'
@@ -432,7 +439,46 @@ const auto2Platform = async () => {
   }
 }
 
-onMounted(() => {
+/**
+ * 消费 SAML2 ACS 回跳带回的一次性参数。
+ *
+ * ACS（{@code /saml/sso}）换完用户后 302 到 {@code #/login?saml_token=<token>}；token 放在
+ * hash 里不会发给服务端，这里取到后立刻写本地存储并把参数从地址栏去掉，避免刷新重放。
+ *
+ * @returns 是否已处理（处理过就不再走普通登录页逻辑）
+ */
+const consumeSamlLogin = async (): Promise<boolean> => {
+  const query = router.currentRoute.value.query as Record<string, string>
+  const token = query.saml_token
+  const error = query.saml_error
+  if (!token && !error) {
+    return false
+  }
+  router.replace({ path: router.currentRoute.value.path, query: {} })
+  if (error) {
+    ElMessage.error(String(error).replace(/\+/g, ' '))
+    updateLoading(false, 100)
+    return true
+  }
+  userStore.setToken(token)
+  userStore.setTime(Date.now())
+  userStore.setPlatformInfo({ flag: 'saml2', origin: 5 })
+  try {
+    await userStore.info()
+  } catch (e: any) {
+    userStore.setToken('')
+    ElMessage.error(e?.message || String(e))
+    updateLoading(false, 100)
+    return true
+  }
+  router.push('/')
+  return true
+}
+
+onMounted(async () => {
+  if (await consumeSamlLogin()) {
+    return
+  }
   if (adminLogin.value) {
     updateLoading(false, 100)
     return

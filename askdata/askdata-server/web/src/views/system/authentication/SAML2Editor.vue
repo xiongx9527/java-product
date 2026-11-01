@@ -122,9 +122,9 @@ const validate = () => {
     .post(url, data)
     .then((res) => {
       if (res?.data === 'true') {
-        ElMessage.success(t('commons.test_connect') + t('report.last_status_success'))
+        ElMessage.success(t('ds.test_connection') + t('ds.connection_success'))
       } else {
-        ElMessage.error(t('commons.test_connect') + t('report.last_status_fail'))
+        ElMessage.error(t('ds.test_connection') + t('ds.connection_failed'))
       }
     })
     .finally(() => {
@@ -141,7 +141,7 @@ defineExpose({
 <template>
   <el-drawer
     v-model="dialogVisible"
-    :title="t('system.saml.title')"
+    :title="t('authentication.saml.title')"
     modal-class="platform-info-drawer"
     size="600px"
     direction="rtl"
@@ -154,21 +154,21 @@ defineExpose({
       label-width="80px"
       label-position="top"
     >
-      <el-form-item label="Idp MetaData Url" prop="idpMetaUrl">
+      <el-form-item :label="t('authentication.saml.idp_meta_url')" prop="idpMetaUrl">
         <el-input v-model="state.form.idpMetaUrl" :placeholder="t('common.please_input')" />
       </el-form-item>
 
-      <el-form-item label="开启请求签名" prop="wantAuthnRequestsSigned">
+      <el-form-item :label="t('authentication.saml.enable_request_sign')" prop="wantAuthnRequestsSigned">
         <el-switch v-model="state.form.wantAuthnRequestsSigned" />
       </el-form-item>
 
-      <el-form-item label="开启断言签名" prop="wantAssertionsSigned">
+      <el-form-item :label="t('authentication.saml.enable_assertion_sign')" prop="wantAssertionsSigned">
         <el-switch v-model="state.form.wantAssertionsSigned" />
       </el-form-item>
 
       <el-form-item
         v-if="state.form.wantAuthnRequestsSigned || state.form.wantAssertionsSigned"
-        label="SP PrivateKey"
+        :label="t('authentication.saml.sp_private_key')"
         prop="privateKey"
       >
         <el-input
@@ -181,7 +181,7 @@ defineExpose({
 
       <el-form-item
         v-if="state.form.wantAuthnRequestsSigned || state.form.wantAssertionsSigned"
-        label="SP Certificate"
+        :label="t('authentication.saml.sp_certificate')"
         prop="certificate"
       >
         <el-input
@@ -192,15 +192,15 @@ defineExpose({
         />
       </el-form-item>
 
-      <el-form-item :label="t('system.field_mapping')" prop="mapping">
-        <el-input v-model="state.form.mapping" :placeholder="t('system.saml2name')" />
+      <el-form-item :label="t('authentication.field_mapping')" prop="mapping">
+        <el-input v-model="state.form.mapping" :placeholder="t('authentication.saml2name')" />
       </el-form-item>
 
       <!-- <el-form-item label="SP MetaData Url">
         <el-input
           v-model="spMetaDataUrl"
           readonly
-          :placeholder="t('system.saml2name')"
+          :placeholder="t('authentication.saml2name')"
         />
       </el-form-item> -->
     </el-form>
@@ -208,10 +208,10 @@ defineExpose({
       <span class="dialog-footer">
         <el-button secondary @click="resetForm(samlForm)">{{ t('common.cancel') }}</el-button>
         <el-button secondary :disabled="!state.form.idpMetaUrl" @click="validate">
-          {{ t('commons.test_connect') }}
+          {{ t('ds.test_connection') }}
         </el-button>
         <el-button type="primary" @click="submitForm(samlForm)">
-          {{ t('commons.save') }}
+          {{ t('common.save') }}
         </el-button>
       </span>
     </template>

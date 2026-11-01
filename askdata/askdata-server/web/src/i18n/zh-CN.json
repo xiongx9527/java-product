@@ -904,6 +904,15 @@
     "callback_domain_name_error": "回调地址必须是当前访问域名",
     "field_mapping": "用户属性映射",
     "field_mapping_placeholder": "例如：{'{'}\"account\": \"saml2Account\", \"name\": \"saml2Name\", \"email\": \"email\"{'}'}",
+    "saml": {
+      "title": "SAML2 设置",
+      "idp_meta_url": "IdP 元数据地址",
+      "enable_request_sign": "开启请求签名",
+      "enable_assertion_sign": "开启断言签名",
+      "sp_private_key": "SP 私钥",
+      "sp_certificate": "SP 证书"
+    },
+    "saml2name": "例如：{\"account\": \"uid\", \"name\": \"cn\", \"email\": \"mail\"}",
     "incorrect_please_re_enter": "格式错误，请重新填写",
     "in_json_format": "请输入json格式",
     "authorize_url": "授权地址",

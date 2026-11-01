@@ -122,6 +122,17 @@ public class AuthWhitelist {
     public static final List<String> PUBLIC_METADATA_PATHS = Collections.unmodifiableList(Arrays.asList(
             "/system/license/version"));
 
+    /**
+     * SAML2 断言消费端点（ACS）。
+     *
+     * <p>IdP 用 HTTP-POST 绑定把 {@code SAMLResponse} 表单 POST 到 {@code /saml/sso}（配置页写入的
+     * spAcs）。该请求来自 IdP 服务器、不带任何登录态，必须免登录，否则 IdP 回调会被鉴权过滤器拦成
+     * 401 导致整条 SAML2 登录链路断在最后一步。不并入 {@link #DEFAULT_PATHS}（与 SQLBot
+     * whitelist.py 逐条等价，35 条），单独维护。</p>
+     */
+    public static final List<String> SAML_SSO_PATHS = Collections.unmodifiableList(Arrays.asList(
+            "/saml/sso"));
+
     private final List<String> paths;
 
     /** 精确匹配集合（{@link #DEFAULT_PATHS} + {@link #API_DOCS_PATHS} 中的无通配条目）。 */
@@ -143,6 +154,7 @@ public class AuthWhitelist {
         effective.addAll(API_DOCS_PATHS);
         effective.addAll(CHART_IMAGE_PATHS);
         effective.addAll(PUBLIC_METADATA_PATHS);
+        effective.addAll(SAML_SSO_PATHS);
         this.compiledPatterns = compile(effective);
         this.exactPaths = new HashSet<>(effective);
     }

@@ -186,8 +186,12 @@ const handleEditModel = (row: any) => {
   activeStep.value = 1
   editModel.value = true
   activeType.value = row.supplier
-  activeName.value = row.supplier_item.name
-  activeNameI18nKey.value = row.supplier_item.i18nKey
+  // supplier_item 只在「系统默认模型」弹层渲染时补到列表项上，直接点编辑时可能不存在；
+  // 用供应商表兜底（supplier=0 表示列表里没有的自定义供应商），避免 row.supplier_item.name
+  // 抛 TypeError 导致编辑抽屉打不开。
+  const supplier = row.supplier_item || get_supplier(row.supplier)
+  activeName.value = supplier?.name || row.name || ''
+  activeNameI18nKey.value = supplier?.i18nKey || ''
   modelApi.query(row.id).then((res: any) => {
     modelConfigvVisible.value = true
     nextTick(() => {
@@ -443,7 +447,9 @@ const submit = (item: any) => {
       <template #header="{ close }">
         <span style="white-space: nowrap">{{
           editModel
-            ? $t('dashboard.edit') + $t('common.empty') + $t(activeNameI18nKey)
+            ? $t('dashboard.edit') +
+              $t('common.empty') +
+              (activeNameI18nKey ? $t(activeNameI18nKey) : activeName)
             : t('model.add_model')
         }}</span>
         <div v-if="!editModel" class="flex-center" style="width: 100%">

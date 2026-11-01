@@ -62,7 +62,7 @@ public class SsoLogoutUrlResolver {
      * 解析来源对应的 IdP 登出地址，并附带登出后的回跳地址。
      *
      * <p>登出是浏览器整页跳到 IdP 的，IdP 若不能把用户送回本系统，浏览器就会停在 IdP 自己的
-     * 登出页（MaxKey 表现为跳到 {@code /#/passport/logout}）。MaxKey 的
+     * 登出页（部分 IdP 表现为跳到 {@code /#/passport/logout}）。某些 IdP 的
      * {@code /sign/force/logout} 支持 {@code redirect_uri} 参数（其 {@code LogoutEndpoint.forceLogout}
      * 会把它拼到登出页地址上，前端登出组件再 {@code location.href} 跳回），标准 OIDC 则用
      * {@code post_logout_redirect_uri}；两者都带上，不认识的 IdP 会忽略。</p>

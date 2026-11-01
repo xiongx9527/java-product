@@ -40,7 +40,7 @@ class CasSsoClientTest {
     }
 
     /**
-     * MaxKey 应用没配适配器时返回 code="null" 内容 "null"：不能把 null 当成原因抛给用户。
+     * 部分 IdP 应用没配适配器时返回 code="null" 内容 "null"：不能把 null 当成原因抛给用户。
      */
     @Test
     void blankFailureCodeIsReportedAsMissingDetail() {

@@ -17,7 +17,7 @@ import static org.mockito.Mockito.when;
 /**
  * 登出联动地址：IdP 登出后要能把浏览器送回本系统，而不是停在 IdP 自己的登出页。
  *
- * <p>回归点：MaxKey 的 {@code /sign/force/logout} 会整页跳转，忽略
+ * <p>回归点：部分 IdP 的 {@code /sign/force/logout} 会整页跳转，忽略
  * {@code post_logout_redirect_uri}，只认 {@code redirect_uri}（拼到登出页地址上，
  * 前端登出组件再 {@code location.href} 跳回）；不带上回跳地址，用户就停在
  * {@code /#/passport/logout}。</p>
@@ -43,14 +43,14 @@ class SsoLogoutUrlResolverTest {
     }
 
     @Test
-    void appendsReturnToUrlForMaxKeyForceLogout() throws Exception {
+    void appendsReturnToUrlForIdPForceLogout() throws Exception {
         Map<String, Object> config = new LinkedHashMap<>();
-        config.put("end_session_endpoint", "http://127.0.0.1:19527/sign/force/logout");
+        config.put("end_session_endpoint", "http://idp.example.com/sign/force/logout");
         SsoLogoutUrlResolver resolver = resolver(config);
 
         String url = resolver.resolve(SsoAuthenticator.TYPE_OIDC, requestFrom("https://25946kt718.goho.co"));
 
-        assertTrue(url.startsWith("http://127.0.0.1:19527/sign/force/logout?"), url);
+        assertTrue(url.startsWith("http://idp.example.com/sign/force/logout?"), url);
         assertTrue(url.contains("redirect_uri=https%3A%2F%2F25946kt718.goho.co%2F"), url);
         assertTrue(url.contains("post_logout_redirect_uri=https%3A%2F%2F25946kt718.goho.co%2F"), url);
     }
@@ -70,7 +70,7 @@ class SsoLogoutUrlResolverTest {
     @Test
     void fallsBackToConfiguredRedirectWhenNoOriginHeader() throws Exception {
         Map<String, Object> config = new LinkedHashMap<>();
-        config.put("end_session_endpoint", "http://127.0.0.1:19527/sign/force/logout");
+        config.put("end_session_endpoint", "http://idp.example.com/sign/force/logout");
         config.put("redirect_uri", "https://25946kt718.goho.co/");
         SsoLogoutUrlResolver resolver = resolver(config);
 

@@ -90,12 +90,13 @@ const init = (needLoading: boolean) => {
     .get(url)
     .then((res) => {
       const list = Array.isArray(res) ? (res as CardInfo[]) : []
-      const templateArray = ['ldap', 'oidc', 'cas', 'oauth2']
+      const templateArray = ['ldap', 'oidc', 'cas', 'oauth2', 'saml2']
       const resultMap: Record<string, CardInfo> = {}
       list
-        .filter((item) => item && item.name !== 'saml2')
+        .filter((item) => item && item.name)
         .forEach((item: CardInfo) => {
-          resultMap[item.name] = item
+          // 库里 name 大小写历史上不统一（SAML2 曾写成大写），统一按小写归位
+          resultMap[item.name.toLowerCase()] = item
         })
       // 未配置的方法给出缺省占位对象，避免模板读取 undefined.name 抛错导致整页空白
       infos.value = templateArray.map(

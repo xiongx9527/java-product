@@ -96,7 +96,7 @@ public class CasSsoClient implements SsoClient {
     /**
      * 解析 {@code <cas:attributes>} 下的简单 XML 属性。
      *
-     * <p>两个必须处理的细节（MaxKey 实测）：</p>
+     * <p>两个必须处理的细节（对接多个 IdP 实测）：</p>
      * <ol>
      *   <li>元素带命名空间前缀（{@code <cas:username>}），入库时去掉前缀存 {@code username}，
      *       否则按 {@code username} 取值永远取不到，表现为「missing account」；</li>
@@ -220,7 +220,7 @@ public class CasSsoClient implements SsoClient {
         }
         String code = between(xml.substring(start, openEnd + 1), "code=\"", "\"");
         String message = xml.substring(openEnd + 1, close).trim();
-        // MaxKey 应用未配置适配器时返回 code="null"、内容 "null"：这时要把「没有失败原因」
+        // 部分 IdP 应用未配置适配器时返回 code="null"、内容 "null"：这时要把「没有失败原因」
         // 明确说出来，否则界面上只能看到一串 null，无法判断是应用侧配置问题。
         boolean noCode = code == null || "null".equalsIgnoreCase(code);
         boolean noMessage = message.isEmpty() || "null".equalsIgnoreCase(message);

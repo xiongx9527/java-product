@@ -88,9 +88,28 @@ public class Saml2SsoClient implements SsoClient {
         String xml = new String(Base64.getMimeDecoder().decode(base64Response), StandardCharsets.UTF_8);
         // SAML assertion signature verification (reuse A7 SamlSignatureVerifier, fail-closed)
         String cert = str(config, "certificate");
+        String spEntityId = str(config, "spEntityId");
         boolean wantSigned = Boolean.parseBoolean(str(config, "wantAssertionsSigned"));
+        // 签名校验交给 SamlSignatureVerifier（命名空间感知，fail-closed）。
+        // 原先用 xml.indexOf("<Signature") 的裸字符串判断，会把 <ds:Signature> 这类带前缀的
+        // 写法（Casdoor 及绝大多数 IdP 的默认输出）误判为“未签名”，从而把合法断言拒绝掉。
         if (cert != null && !cert.trim().isEmpty()) {
-            SamlSignatureVerifier.verify(xml, cert, str(config, "spEntityId"));
+            try {
+                SamlSignatureVerifier.verify(xml, cert, spEntityId);
+            } catch (IllegalStateException e) {
+                if (e.getMessage() != null && e.getMessage().contains("not signed")) {
+                    // 响应里根本没有 <Signature>：按 wantAssertionsSigned 决定拒绝或放行
+                    if (wantSigned) {
+                        throw new IllegalStateException(
+                                "SAML2 wantAssertionsSigned is true but the IdP response is not signed; refusing");
+                    }
+                    log.warn("SAML2 response is unsigned while an IdP certificate is configured; "
+                            + "signature NOT verified (wantAssertionsSigned=false)");
+                } else {
+                    // 真正的验签失败（签名无效 / 过期 / Audience 不匹配）：fail-closed 拒绝
+                    throw e;
+                }
+            }
         } else if (wantSigned) {
             throw new IllegalStateException(
                     "SAML2 wantAssertionsSigned is true but no IdP certificate configured; refusing unverified assertion");
@@ -255,6 +274,15 @@ public class Saml2SsoClient implements SsoClient {
 
     private String pick(Map<String, Object> attributes, Map<String, Object> config, String localKey,
                         String... candidates) {
+        // localKey 本身就是首选候选（如 account / name / email 这些 SAML Attribute 的 Name）。
+        // 之前这里漏掉了 localKey，只遍历 candidates（uid/name/email...），导致 account 字段
+        // 错位取到 name 属性的值，name/email 反而取不到。修复：把 localKey 作为第一个候选。
+        if (localKey != null) {
+            Object v = attributes.get(localKey);
+            if (v != null && !String.valueOf(v).isEmpty()) {
+                return String.valueOf(v);
+            }
+        }
         for (String candidate : candidates) {
             if (candidate == null) {
                 continue;

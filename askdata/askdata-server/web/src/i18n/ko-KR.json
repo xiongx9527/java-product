@@ -904,6 +904,15 @@
     "callback_domain_name_error": "콜백 URL은 현재 접속 도메인과 일치해야 합니다",
     "field_mapping": "사용자 속성 매핑",
     "field_mapping_placeholder": "예: {'{'}\"account\": \"saml2Account\", \"name\": \"saml2Name\", \"email\": \"email\"{'}'}",
+    "saml": {
+      "title": "SAML2 설정",
+      "idp_meta_url": "IdP 메타데이터 URL",
+      "enable_request_sign": "요청 서명 사용",
+      "enable_assertion_sign": "어설션 서명 사용",
+      "sp_private_key": "SP 개인키",
+      "sp_certificate": "SP 인증서"
+    },
+    "saml2name": "예: {\"account\": \"uid\", \"name\": \"cn\", \"email\": \"mail\"}",
     "incorrect_please_re_enter": "형식이 잘못되었습니다. 다시 입력해 주세요",
     "in_json_format": "JSON 형식으로 입력해 주세요",
     "authorize_url": "인증 URL",

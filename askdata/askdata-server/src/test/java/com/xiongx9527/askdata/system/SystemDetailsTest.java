@@ -163,7 +163,7 @@ class SystemDetailsTest {
             StpUtil.login(1L);
             String oidcUrl = loginController.logout(logoutRequest((long) SsoAuthenticator.TYPE_OIDC),
                     logoutRequest()).getData();
-            // 配置里的 post_logout_redirect_uri 保留，另外补上 MaxKey 认的 redirect_uri（登出后回到本系统）
+            // 配置里的 post_logout_redirect_uri 保留，另外补上部分 IdP 认的 redirect_uri（登出后回到本系统）
             assertTrue(oidcUrl.startsWith("https://idp.example.com/oidc/logout?post_logout_redirect_uri=x&"), oidcUrl);
             assertTrue(oidcUrl.contains("redirect_uri=https%3A%2F%2Fapp.example.com%2F"), oidcUrl);
         } finally {

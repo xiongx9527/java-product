@@ -117,7 +117,9 @@ const rules = computed(() => ({
   ],
   api_key: [
     {
-      required: !currentSupplier.value?.is_private,
+      // 供应商不在内置列表里（supplier=0，例如自定义 / 本机 Ollama）时不强制填 Key，
+      // 否则这类模型的编辑页永远保存不了。
+      required: !!currentSupplier.value && !currentSupplier.value.is_private,
       message: t('datasource.please_enter') + t('common.empty') + 'API Key',
       trigger: 'blur',
     },

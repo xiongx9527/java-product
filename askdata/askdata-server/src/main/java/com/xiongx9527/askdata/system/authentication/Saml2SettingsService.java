@@ -44,7 +44,8 @@ public class Saml2SettingsService {
     /** 认证源类型：SAML2。 */
     private static final int SAML2_TYPE = SsoAuthenticator.TYPE_SAML2;
 
-    private static final String SAML2_NAME = "SAML2";
+    /** 认证源名称：与其它源保持一致用小写（前端按 name 匹配卡片与登录入口）。 */
+    private static final String SAML2_NAME = "saml2";
 
     private final AuthenticationRepository authenticationRepository;
 
