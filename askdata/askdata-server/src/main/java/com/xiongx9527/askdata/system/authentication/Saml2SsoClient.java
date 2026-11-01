@@ -275,6 +275,54 @@ public class Saml2SsoClient implements SsoClient {
         }
     }
 
+    /** 当前会话在 IdP 侧的用户标识（SAML2 的 NameID），登出构造 LogoutRequest 时使用。 */
+    public static final String SESSION_NAME_ID = "saml_name_id";
+
+    /**
+     * 构造 SAML2 单点登出跳转地址（HTTP-Redirect 绑定：{@code SAMLRequest=base64(deflate(LogoutRequest))}）。
+     *
+     * <p>Casdoor 等 IdP 的 SLO 端点在缺少 {@code SAMLRequest} 时无法识别请求，会直接返回
+     * {@code unexpected EOF}（历史缺陷：登出只跳了裸端点地址）。这里按 SAML 2.0 协议生成
+     * {@code LogoutRequest}，带上 {@code Issuer}（SP EntityID）与 {@code NameID}（登录时的平台用户标识），
+     * 让 IdP 能定位并终止对应的单点会话。</p>
+     *
+     * @param config SAML2 认证源配置（需 {@code idpMetaUrl} / {@code spEntityId}）
+     * @param nameId 登录时保存的 NameID；为空时省略 NameID 元素
+     * @return 可跳转的 SLO 地址；元数据不可读或未声明 SingleLogoutService 时返回 null
+     */
+    public String buildLogoutRequestUrl(Map<String, Object> config, String nameId) {
+        String sloUrl = logoutEndpointFromMetadata(str(config, "idpMetaUrl"));
+        if (sloUrl == null) {
+            return null;
+        }
+        String issuer = str(config, "spEntityId");
+        StringBuilder xml = new StringBuilder();
+        xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
+                .append("<samlp:LogoutRequest xmlns:samlp=\"urn:oasis:names:tc:SAML:2.0:protocol\" ")
+                .append("ID=\"askdata-logout-").append(System.currentTimeMillis()).append("\" Version=\"2.0\" ")
+                .append("IssueInstant=\"").append(java.time.Instant.now()).append("\" ")
+                .append("Destination=\"").append(escapeXml(sloUrl)).append("\">")
+                .append("<saml:Issuer xmlns:saml=\"urn:oasis:names:tc:SAML:2.0:assertion\">")
+                .append(escapeXml(issuer == null ? "" : issuer)).append("</saml:Issuer>");
+        if (nameId != null && !nameId.trim().isEmpty()) {
+            xml.append("<saml:NameID xmlns:saml=\"urn:oasis:names:tc:SAML:2.0:assertion\" ")
+                    .append("Format=\"urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified\">")
+                    .append(escapeXml(nameId.trim())).append("</saml:NameID>");
+        }
+        xml.append("</samlp:LogoutRequest>");
+        String encoded = base64Deflate(xml.toString());
+        return sloUrl + (sloUrl.contains("?") ? "&" : "?") + "SAMLRequest=" + urlEncode(encoded);
+    }
+
+    /** 最小 XML 文本转义（属性值/元素文本）。 */
+    private static String escapeXml(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                .replace("\"", "&quot;").replace("'", "&apos;");
+    }
+
     /**
      * A24：从 IdP 元数据读出 SingleLogoutService 的 Location（SLO 端点），
      * 供 SSO 登出联动 IdP 登出使用。元数据不可读或未声明 SLO 时返回 null（登出仍清本地会话）。

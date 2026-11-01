@@ -23,7 +23,8 @@ import java.util.Optional;
  *   <li>配置里显式给出的登出地址优先（{@code logoutUrl} / {@code logout_url} /
  *       {@code endSessionEndpoint} / {@code end_session_endpoint} / {@code sloUrl} / {@code slo_url}）；</li>
  *   <li>CAS：{@code {idpUri}/logout}（带 {@code service=casCallbackDomain} 便于回跳）；</li>
- *   <li>SAML2：IdP 元数据的 {@code SingleLogoutService/@Location}；</li>
+ *   <li>SAML2：IdP 元数据的 {@code SingleLogoutService/@Location} + 按协议生成的
+ *       {@code LogoutRequest}（{@code SAMLRequest=base64(deflate(xml))}）；</li>
  *   <li>LDAP / 企业 IM 无标准登出端点，返回 null（前端回落到登录页）。</li>
  * </ol>
  */
@@ -72,7 +73,33 @@ public class SsoLogoutUrlResolver {
      * @return 可跳转的登出地址；无联动端点时返回 null
      */
     public String resolve(long origin, HttpServletRequest request) {
-        String url = rawResolve(origin);
+        return resolve(origin, null, request);
+    }
+
+    /**
+     * 解析来源对应的 IdP 登出地址（带平台侧用户标识）。
+     *
+     * <p>SAML2 的 SLO 必须在地址里带 {@code LogoutRequest}，其中 {@code NameID} 取自登录时保存的
+     * 平台用户标识（{@link Saml2SsoClient#SESSION_NAME_ID}）；缺失时 IdP 无法定位会话，
+     * Casdoor 会直接返回 {@code unexpected EOF}。</p>
+     *
+     * @param origin      登录来源（{@code sys_authentication.type}）
+     * @param platformUid 平台侧用户标识（SAML2 即 NameID），其他协议忽略
+     * @param request     当前登出请求，用于推导回跳地址
+     */
+    public String resolve(long origin, String platformUid, HttpServletRequest request) {
+        if (origin <= 0) {
+            return null;
+        }
+        Map<String, Object> config = configOf(origin);
+        if (config == null) {
+            return null;
+        }
+        if ((int) origin == SsoAuthenticator.TYPE_SAML2) {
+            // SAML2：协议要求带 LogoutRequest，回跳由 IdP 侧 saml_single_logout_url 决定
+            return saml2SsoClient.buildLogoutRequestUrl(config, platformUid);
+        }
+        String url = rawResolve(origin, config);
         if (url == null) {
             return null;
         }
@@ -83,15 +110,15 @@ public class SsoLogoutUrlResolver {
         return appendRedirect(url, backTo);
     }
 
-    private String rawResolve(long origin) {
+    private Map<String, Object> configOf(long origin) {
+        Optional<Map<String, Object>> stored = authenticationRepository.findByType((int) origin);
+        return stored.isPresent() ? parseConfig(Rows.str(stored.get(), "config")) : null;
+    }
+
+    private String rawResolve(long origin, Map<String, Object> config) {
         if (origin <= 0) {
             return null;
         }
-        Optional<Map<String, Object>> stored = authenticationRepository.findByType((int) origin);
-        if (!stored.isPresent()) {
-            return null;
-        }
-        Map<String, Object> config = parseConfig(Rows.str(stored.get(), "config"));
         for (String key : EXPLICIT_KEYS) {
             String value = text(config.get(key));
             if (value != null) {
@@ -101,8 +128,6 @@ public class SsoLogoutUrlResolver {
         switch ((int) origin) {
             case SsoAuthenticator.TYPE_CAS:
                 return casLogout(config);
-            case SsoAuthenticator.TYPE_SAML2:
-                return saml2SsoClient.logoutEndpointFromMetadata(text(config.get("idpMetaUrl")));
             default:
                 return null;
         }

@@ -164,11 +164,27 @@ public class LoginController {
     public Result<String> logout(@RequestBody(required = false) LogoutRequest dto,
                                  javax.servlet.http.HttpServletRequest request) {
         long origin = dto == null ? 0L : toLong(dto.getOrigin());
+        // SAML2 的 IdP 登出请求需要 NameID，必须在销毁会话前取出来
+        String platformUid = currentSessionNameId();
         StpUtil.logout();
         if (origin != 0L) {
-            return Result.ok(ssoLogoutUrlResolver.resolve(origin, request));
+            return Result.ok(ssoLogoutUrlResolver.resolve(origin, platformUid, request));
         }
         return Result.ok((String) null);
+    }
+
+    /** 读取当前会话里保存的 SAML2 NameID（非 SAML2 登录或已失效时为 null）。 */
+    private static String currentSessionNameId() {
+        try {
+            if (!StpUtil.isLogin()) {
+                return null;
+            }
+            Object value = StpUtil.getSession()
+                    .get(com.xiongx9527.askdata.system.authentication.Saml2SsoClient.SESSION_NAME_ID);
+            return value == null ? null : String.valueOf(value);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @GetMapping({"/login/health"})

@@ -51,6 +51,11 @@ public final class SamlSignatureVerifier {
         for (int i = 0; i < signatures.getLength() && !valid; i++) {
             DOMValidateContext context = new DOMValidateContext(publicKey, signatures.item(i));
             context.setProperty("javax.xml.crypto.dsig.cacheReference", Boolean.TRUE);
+            // JDK 17+ 默认开启 XML-DSig secure validation，会直接判 SHA-1 签名无效（JDK 8 不判），
+            // 导致同一份 Casdoor 断言在 JDK 8 上能过、在 JDK 17 上必失败（saml assertion signature is invalid）。
+            // SAML2 生态里 rsa-sha1 仍是主流（Casdoor 即如此），且这里已按 IdP 证书固定校验，
+            // 故显式关闭 secure validation，让验签结果不随 JDK 版本漂移。
+            context.setProperty("org.jcp.xml.dsig.secureValidation", Boolean.FALSE);
             try {
                 XMLSignature signature = XMLSignatureFactory.getInstance("DOM").unmarshalXMLSignature(context);
                 valid = signature.validate(context);

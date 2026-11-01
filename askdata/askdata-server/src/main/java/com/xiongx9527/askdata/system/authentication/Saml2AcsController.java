@@ -48,6 +48,11 @@ public class Saml2AcsController {
             Map<String, Object> user = authenticationService.ssoLogin(
                     SsoAuthenticator.TYPE_SAML2, body, request);
             StpUtil.login(Rows.lng(user, "id", 0L));
+            // 记住 IdP 侧用户标识（NameID），登出时用它构造 SAML LogoutRequest 终止单点会话
+            String nameId = Rows.str(user, "platform_uid");
+            if (nameId != null && !nameId.isEmpty()) {
+                StpUtil.getSession().set(Saml2SsoClient.SESSION_NAME_ID, nameId);
+            }
             // exp 随跳回登录页一并带上（hash 段不会发到服务端，也不会进 Referer）；
             // 与第三方登录 sso 端点返回的 exp 同源，避免前端拿不到 exp 而误判 token 过期。
             long exp = StpUtil.getTokenTimeout();

@@ -399,7 +399,11 @@ public class AuthenticationService {
             platformUser = ssoAuthenticator.toLocalUser(authUser, config);
         }
 
-        Map<String, Object> result = resolveLocalUser(type, platformUser);
+        Map<String, Object> resolved = resolveLocalUser(type, platformUser);
+        // 带上平台侧用户标识（SAML2 即 NameID）：登出构造 IdP 单点登出请求（SLO）时需要，
+        // ACS 会把它写进 Sa-Token 会话，LogoutRequest 的 NameID 就取自这里。
+        Map<String, Object> result = new LinkedHashMap<>(resolved);
+        result.put("platform_uid", str(platformUser, "platform_uid"));
         return result;
     }
 

@@ -11,6 +11,8 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -77,6 +79,44 @@ class SsoLogoutUrlResolverTest {
         String url = resolver.resolve(SsoAuthenticator.TYPE_OIDC, mock(HttpServletRequest.class));
 
         assertTrue(url.contains("redirect_uri=https%3A%2F%2F25946kt718.goho.co%2F"), url);
+    }
+
+    /**
+     * SAML2 的 SLO 必须带 {@code LogoutRequest}：只跳 IdP 的 SingleLogoutService 裸地址时，
+     * Casdoor 解析不到请求直接返回 {@code unexpected EOF}（线上报错来源）。
+     */
+    @Test
+    void saml2LogoutUsesLogoutRequestWithNameId() throws Exception {
+        AuthenticationRepository repository = mock(AuthenticationRepository.class);
+        Map<String, Object> config = new LinkedHashMap<>();
+        config.put("spEntityId", "https://25946kt718.goho.co/saml/metadata");
+        Map<String, Object> stored = new LinkedHashMap<>();
+        stored.put("type", SsoAuthenticator.TYPE_SAML2);
+        stored.put("config", objectMapper.writeValueAsString(config));
+        when(repository.findByType(SsoAuthenticator.TYPE_SAML2)).thenReturn(Optional.of(stored));
+
+        Saml2SsoClient saml2 = mock(Saml2SsoClient.class);
+        when(saml2.buildLogoutRequestUrl(anyMap(), eq("admin")))
+                .thenReturn("https://idp.example.com/saml/logout?SAMLRequest=abc");
+        SsoLogoutUrlResolver resolver = new SsoLogoutUrlResolver(repository, saml2, objectMapper);
+
+        assertEquals("https://idp.example.com/saml/logout?SAMLRequest=abc",
+                resolver.resolve(SsoAuthenticator.TYPE_SAML2, "admin",
+                        requestFrom("https://25946kt718.goho.co")));
+    }
+
+    @Test
+    void saml2LogoutWithoutSloEndpointReturnsNull() throws Exception {
+        AuthenticationRepository repository = mock(AuthenticationRepository.class);
+        Map<String, Object> stored = new LinkedHashMap<>();
+        stored.put("type", SsoAuthenticator.TYPE_SAML2);
+        stored.put("config", objectMapper.writeValueAsString(new LinkedHashMap<>()));
+        when(repository.findByType(SsoAuthenticator.TYPE_SAML2)).thenReturn(Optional.of(stored));
+
+        SsoLogoutUrlResolver resolver = new SsoLogoutUrlResolver(repository,
+                mock(Saml2SsoClient.class), objectMapper);
+
+        assertNull(resolver.resolve(SsoAuthenticator.TYPE_SAML2, "admin", mock(HttpServletRequest.class)));
     }
 
     @Test
