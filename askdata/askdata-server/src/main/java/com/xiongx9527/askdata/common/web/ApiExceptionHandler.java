@@ -3,8 +3,8 @@ package com.xiongx9527.askdata.common.web;
 import com.xiongx9527.askdata.common.util.Maps;
 
 import cn.dev33.satoken.exception.NotLoginException;
-import com.xiongx9527.askdata.common.debounce.DebounceBlockedException;
-import com.xiongx9527.askdata.common.debounce.DebounceProperties;
+import com.xiongx9527.fw.plus.common.debounce.DebounceBlockedException;
+import com.xiongx9527.fw.plus.common.debounce.DebounceProperties;
 import com.xiongx9527.askdata.common.web.Result;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
