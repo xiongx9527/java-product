@@ -8,32 +8,34 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
 /**
  * 向量存储后端装配。
  *
- * <p>当前实现只有 {@link DbVectorStore}（DB JSON 列 + 应用内余弦），不依赖任何外部向量库客户端，
- * 因此可运行在 Java 8 / Spring Boot 2.7 平台上。</p>
+ * <p>后端由 {@code askdata.vector-store.type} 选择，缺省 {@code qdrant}（当前唯一实现，REST）。
+ * 预留的在线后端取值（milvus / weaviate / pgvector / elasticsearch / redis）尚未实现：
+ * 显式配置这些值会在启动期失败并给出明确提示，不会静默退回本地存储。</p>
  *
- * <p>历史版本曾按 {@code askdata.vector-store.type} 装配 qdrant / milvus / weaviate / pgvector /
- * elasticsearch / redis 等在线后端（基于 langchain4j 1.x 的 {@code EmbeddingStore} 写接口，
- * 需要指定 point id 与 metadata 同时写入）。langchain4j 0.35（Java 8 线）不提供该写接口，
- * 故这些在线后端在 Java 8 版本中不提供；配置为这些取值时统一回落 {@link DbVectorStore} 并给出告警。</p>
+ * <p><b>没有本地后端</b>：向量不落 DB 的 embedding JSON 列，避免出现「看起来配置了在线库、
+ * 实际却存在本地」的隐性路径。未配置 {@code qdrant.url} 时装配占位实现：应用仍可启动
+ * （其它功能不受影响），但任何向量读写都会抛出带明确指引的异常。</p>
+ *
+ * <p>新增后端只需两步：实现 {@link VectorStore}，并在 {@link #vectorStore} 里加一个分支。</p>
  */
 @Configuration
 public class VectorStoreAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(VectorStoreAutoConfiguration.class);
 
-    /** 历史在线后端取值：Java 8 版本不再提供，配置后回落 DB 后端。 */
-    private static final Set<String> LEGACY_ONLINE_TYPES = new HashSet<>(Arrays.asList(
-            "qdrant", "milvus", "weaviate", "pgvector", "elasticsearch", "redis"));
+    /** 预留但尚未实现的在线后端：配置后启动期显式失败，避免误以为已生效。 */
+    private static final Set<String> PLANNED_TYPES = new HashSet<>(Arrays.asList(
+            "milvus", "weaviate", "pgvector", "elasticsearch", "redis"));
 
     private final Environment env;
 
@@ -44,15 +46,88 @@ public class VectorStoreAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(VectorStore.class)
-    public VectorStore vectorStore(JdbcTemplate jdbc, ObjectMapper objectMapper) {
-        String type = env.getProperty("askdata.vector-store.type", "none");
+    public VectorStore vectorStore(ObjectMapper objectMapper) {
         String prefix = env.getProperty("askdata.vector-store.collection-prefix", "askdata");
-        String normalized = type == null ? "none" : type.toLowerCase(Locale.ROOT);
-        if (LEGACY_ONLINE_TYPES.contains(normalized)) {
-            log.warn("向量存储后端 {} 在当前版本不可用（需 langchain4j 1.x 写接口），回落到 DB JSON 列 + 应用内余弦", type);
-        } else {
-            log.info("向量存储后端：DB JSON 列 + 应用内余弦（type={}）", type);
+        String type = env.getProperty("askdata.vector-store.type", "qdrant");
+        String normalized = type == null ? "qdrant" : type.trim().toLowerCase(Locale.ROOT);
+        if ("qdrant".equals(normalized)) {
+            return qdrant(prefix, objectMapper);
         }
-        return new DbVectorStore(jdbc, objectMapper, prefix);
+        if (PLANNED_TYPES.contains(normalized)) {
+            throw new IllegalStateException("向量存储后端 " + type + " 尚未实现；当前仅支持 qdrant");
+        }
+        if ("none".equals(normalized) || "db".equals(normalized)) {
+            throw new IllegalStateException(
+                    "本地向量存储已移除（askdata.vector-store.type=" + type + "）；请改用 qdrant");
+        }
+        throw new IllegalStateException("未知的向量存储后端：askdata.vector-store.type=" + type
+                + "（当前仅支持 qdrant）");
+    }
+
+    private VectorStore qdrant(String prefix, ObjectMapper objectMapper) {
+        String url = env.getProperty("askdata.vector-store.qdrant.url", "");
+        if (url == null || url.trim().isEmpty()) {
+            log.error("未配置在线向量存储（askdata.vector-store.qdrant.url），向量读写将不可用；"
+                    + "本版本不再支持本地向量存储");
+            return new UnconfiguredVectorStore(prefix);
+        }
+        String apiKey = env.getProperty("askdata.vector-store.qdrant.api-key", "");
+        log.info("向量存储后端：Qdrant REST（{}，集合前缀 '{}'）", url, prefix);
+        return new QdrantVectorStore(url, apiKey, prefix, objectMapper);
+    }
+
+    /** 未配置 Qdrant 时的占位实现：任何读写都显式失败，绝不静默降级到本地存储。 */
+    static final class UnconfiguredVectorStore implements VectorStore {
+
+        private final String prefix;
+
+        UnconfiguredVectorStore(String prefix) {
+            this.prefix = prefix == null ? "askdata" : prefix;
+        }
+
+        @Override
+        public String collectionPrefix() {
+            return prefix;
+        }
+
+        @Override
+        public boolean configured() {
+            return false;
+        }
+
+        @Override
+        public boolean health() {
+            return false;
+        }
+
+        @Override
+        public void ensureCollection(String collection, int dimension) {
+            throw unavailable();
+        }
+
+        @Override
+        public void dropCollection(String collection) {
+            throw unavailable();
+        }
+
+        @Override
+        public void upsert(String collection, long id, double[] vector) {
+            throw unavailable();
+        }
+
+        @Override
+        public void delete(String collection, long id) {
+            throw unavailable();
+        }
+
+        @Override
+        public List<IdScore> query(String collection, double[] vector, int topK, List<Long> candidateIds) {
+            throw unavailable();
+        }
+
+        private IllegalStateException unavailable() {
+            return new IllegalStateException(
+                    "未配置在线向量存储：请设置 askdata.vector-store.qdrant.url 指向 Qdrant 服务");
+        }
     }
 }

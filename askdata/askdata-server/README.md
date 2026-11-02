@@ -8,9 +8,39 @@ Java 17 + Spring Boot 3.5.8 单体工程；前端（SQLBot frontend 拷贝）作
 
 ```bash
 # 仓库根（三级 POM：根聚合 askdata-root → askdata → askdata-server）
-mvn -Pskip-test package
+mvn package                 # 默认执行测试（maven.test.skip=false）
+mvn package -Dmaven.test.skip=true   # 只打包、不跑测试
 # 产物：askdata/askdata-server/target/askdata-server.jar
 ```
+
+### 测试
+
+测试默认执行。Spring 上下文测试与集成测试连**真实依赖**（元数据库是真实 MySQL 8 的临时
+schema，不再使用 H2；模型/向量也是真实服务），依赖不可达的用例整类 assume-skip：
+
+```bash
+export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home
+# 元数据库：MySQL 8.0+（Flyway 社区版不支持 5.7）
+export ASKDATA_DB_HOST=127.0.0.1 ASKDATA_DB_PORT=3306 ASKDATA_DB_NAME=askdata_it_app \
+       ASKDATA_DB_USER=askdata ASKDATA_DB_PASSWORD='***'
+# 向量存储 + 向量模型（缺省即 skip 向量用例）
+export ASKDATA_QDRANT_URL=http://127.0.0.1:6333 ASKDATA_QDRANT_API_KEY='***'
+export ASKDATA_IT_MYSQL_URL=jdbc:mysql://127.0.0.1:3306 ASKDATA_IT_MYSQL_USER=root ASKDATA_IT_MYSQL_PASSWORD='***'
+export ASKDATA_IT_EMBEDDING_URL=http://127.0.0.1:9528 ASKDATA_IT_EMBEDDING_MODEL=bge-m3
+# 跨实例防抖（Redis 开启 requirepass 时必填；端口缺省 6379）
+export ASKDATA_TEST_REDIS_HOST=127.0.0.1 ASKDATA_TEST_REDIS_PORT=6379 ASKDATA_TEST_REDIS_PASSWORD='***'
+# 真实 ES 联调（缺省探测本机 9200；集群开了 xpack.security 时给只读测试账号）
+export ASKDATA_ES_HOST=127.0.0.1 ASKDATA_ES_PORT=9200 ASKDATA_ES_USER=es_test_rw ASKDATA_ES_PASS='***'
+# 真实 LLM 生成 SQL（缺省探测本机 Ollama 11434）
+export ASKDATA_LLM_DOMAIN=http://127.0.0.1:11434 ASKDATA_LLM_MODEL=gpt-oss:120b-cloud
+mvn -o test
+```
+
+集成测试每次创建 `askdata_it_*` 临时 schema，结束即删除，不污染既有库。
+
+真实服务类用例（Redis / ES / LLM / Qdrant / bge-m3）在缺省参数下会先探测本机默认端口，
+探测不到才 assume-skip 并打印配置方式；白名单 parity 用例使用仓库内固定夹具
+`src/test/resources/sqlbot-reference/whitelist.py`（SQLBot 源码原样拷贝），无需克隆外部仓库。
 
 依赖版本管理：
 
@@ -38,26 +68,22 @@ java -jar target/askdata-server.jar
 # 种子管理员：admin / SQLBot@123456（MD5 口令落库）
 ```
 
-元数据库：默认 H2 文件库 `./data/askdata`。首次启动由 Flyway 执行
-`src/main/resources/db/migration/common`（种子）与 `db/migration/{vendor}`（方言 baseline）自动建表并写入种子；
-旧 `schema.sql` 已移除，运行期不再由 `spring.sql.init` 执行建表脚本。
-
-切换 PostgreSQL / MySQL 只需启用对应 profile 并提供连接配置（详见
-[`docs/sqlbot-parity/metadb.md`](../../docs/sqlbot-parity/metadb.md)）：
+元数据库：**MySQL 8.0+**（Flyway 社区版已不支持 MySQL 5.7）。连接参数走环境变量，
+缺省 `jdbc:mysql://127.0.0.1:3306/askdata`（用户 `root`、空口令）：
 
 ```bash
-# PostgreSQL（空库；Flyway 自动迁移）
-SPRING_PROFILES_ACTIVE=postgresql \
-ASKDATA_DB_URL='jdbc:postgresql://127.0.0.1:5432/askdata' \
-ASKDATA_DB_USERNAME=askdata ASKDATA_DB_PASSWORD='***' \
-java -jar target/askdata-server.jar
-
-# MySQL（空库；Flyway 自动迁移）
-SPRING_PROFILES_ACTIVE=mysql \
-ASKDATA_DB_URL='jdbc:mysql://127.0.0.1:3306/askdata?useUnicode=true&characterEncoding=utf8&useSSL=false' \
-ASKDATA_DB_USERNAME=askdata ASKDATA_DB_PASSWORD='***' \
+ASKDATA_DB_HOST=127.0.0.1 ASKDATA_DB_PORT=3306 ASKDATA_DB_NAME=askdata \
+ASKDATA_DB_USER=askdata ASKDATA_DB_PASSWORD='***' \
 java -jar target/askdata-server.jar
 ```
+
+首次启动由 Flyway 执行 `src/main/resources/db/migration/common`（种子）与 `db/migration/{vendor}`
+（方言 baseline）自动建表并写入种子；旧 `schema.sql` 已移除，运行期不再由 `spring.sql.init` 执行建表脚本。
+
+**元数据库只支持 MySQL（含 MariaDB 等衍生版本）与 PostgreSQL**：迁移前由
+`MetadataDatabaseGuard` 读取真实数据库产品与版本，MySQL < 8.0、MariaDB < 10.2、
+PostgreSQL < 10、H2 以及其它产品一律拒绝启动并给出明确提示（Flyway 社区版对 MySQL 5.7
+只报 Teams 版文案）。H2 已完全移除：既不是元数据库，也不再是数据源类型。
 
 ## MCP 兼容层（SQLBot）
 
@@ -82,66 +108,40 @@ java -jar target/askdata-server.jar
   `{"success":false,"message":...}`；其他工具错误 → 400 `{"detail"}`；`datasource_id` / `chat_id` /
   `custom_model` 格式非法 → 400 `{"detail"}`。
 
-## 向量存储（可插拔后端）
+## 向量存储（在线 Qdrant）
 
-术语 / SQL 示例 / 表 / 数据源四类对象的向量，统一经 `EmbeddingService` 写入与召回，
-底层后端由 `askdata.vector-store.type` 决定（`ai/vector/` 包）：
-
-| type | 后端 | 说明 |
-| --- | --- | --- |
-| `none`（缺省） | `DbVectorStore` | DB `embedding` JSON 列 + 应用内余弦；与既有行为完全一致 |
-| `qdrant` | `Langchain4jQdrantVectorStore` | 在线向量库；基于 langchain4j 的 `QdrantEmbeddingStore`（gRPC），ANN 检索 |
-| `milvus` | `Langchain4jMilvusVectorStore` | 在线向量库；基于 langchain4j 的 `MilvusEmbeddingStore`，ANN 检索（集合首次写入自动创建） |
-| `weaviate` | `Langchain4jWeaviateVectorStore` | 在线向量库；基于 langchain4j 的 `WeaviateEmbeddingStore`（类需显式创建；search 忽略服务端 filter，由基类客户端兜底候选过滤） |
-| `pgvector` | `Langchain4jPgVectorVectorStore` | 在线向量库；基于 langchain4j 的 `PgVectorEmbeddingStore`（JDBC + Postgres 向量扩展，每张集合表首次写入自动建表） |
-| `elasticsearch` | `Langchain4jElasticsearchVectorStore` | 在线向量库；基于 langchain4j 的 `ElasticsearchEmbeddingStore`（kNN 检索 + metadata 过滤；索引需显式创建，`vector` 映射为 `dense_vector`） |
-| `redis` | `Langchain4jRedisVectorStore` | 在线向量库；基于 langchain4j 社区版 `langchain4j-community-redis` 的 `RedisEmbeddingStore`（Jedis；**需 Redis Stack**：RediSearch 向量字段 + RedisJSON） |
+术语 / SQL 示例 / 表 / 数据源四类对象的向量，统一经 `EmbeddingService` 写入与召回。
+**唯一后端是 Qdrant（REST）**，没有本地后端：向量不落 DB 的 `embedding` JSON 列，也不会在
+在线库不可达时退回应用内余弦——同一份向量只能有一个真相，否则切换维度或迁移集合时会静默漏召回。
 
 ```yaml
 askdata:
   vector-store:
-    type: none                    # none | qdrant | milvus | weaviate | pgvector | elasticsearch | redis
+    type: ${ASKDATA_VECTOR_STORE_TYPE:qdrant}   # qdrant 已实现；milvus/weaviate/pgvector/es/redis 预留
     collection-prefix: askdata    # 集合名 = {prefix}-{object-type}
     qdrant:
-      url: ${ASKDATA_QDRANT_URL:}         # REST 基址，如 http://qdrant:6333（仅用于健康检查）
+      url: ${ASKDATA_QDRANT_URL:}         # REST 基址，如 http://qdrant:6333；必填
       api-key: ${ASKDATA_QDRANT_API_KEY:} # 开启鉴权时必填
-      grpc-port: ${ASKDATA_QDRANT_GRPC_PORT:6334}  # gRPC 端口，与 REST 相互独立
-    milvus:
-      host: ${ASKDATA_MILVUS_HOST:}       # Milvus gRPC 主机
-      port: ${ASKDATA_MILVUS_PORT:19530}  # gRPC 端口
-      token: ${ASKDATA_MILVUS_TOKEN:}     # 鉴权 token（API Key 或 user:password），开启鉴权时必填
-      database: ${ASKDATA_MILVUS_DATABASE:default}
-      health-url: ${ASKDATA_MILVUS_HEALTH_URL:}  # RESTful 健康检查基址，如 http://milvus:9091；留空则不探测
-      metric-type: ${ASKDATA_MILVUS_METRIC_TYPE:COSINE}
-      index-type: ${ASKDATA_MILVUS_INDEX_TYPE:AUTOINDEX}
-      consistency-level: ${ASKDATA_MILVUS_CONSISTENCY:STRONG}
-    weaviate:
-      scheme: ${ASKDATA_WEAVIATE_SCHEME:http}   # http / https
-      host: ${ASKDATA_WEAVIATE_HOST:}           # Weaviate 主机
-      port: ${ASKDATA_WEAVIATE_PORT:8080}       # REST/gRPC 端口
-      api-key: ${ASKDATA_WEAVIATE_API_KEY:}     # 开启鉴权时必填
-      consistency-level: ${ASKDATA_WEAVIATE_CONSISTENCY:QUORUM}
-    pgvector:
-      host: ${ASKDATA_PGVECTOR_HOST:}         # Postgres 主机（需已装 vector 扩展）
-      port: ${ASKDATA_PGVECTOR_PORT:5432}
-      database: ${ASKDATA_PGVECTOR_DATABASE:}
-      user: ${ASKDATA_PGVECTOR_USER:}
-      password: ${ASKDATA_PGVECTOR_PASSWORD:}
-      use-index: ${ASKDATA_PGVECTOR_USE_INDEX:false}
-    elasticsearch:
-      server-url: ${ASKDATA_ELASTICSEARCH_URL:}          # ES 基址，如 http://es:9200
-      api-key: ${ASKDATA_ELASTICSEARCH_API_KEY:}         # 可选：ES8+ ApiKey
-      username: ${ASKDATA_ELASTICSEARCH_USERNAME:}       # 可选：Basic 用户名
-      password: ${ASKDATA_ELASTICSEARCH_PASSWORD:}       # 可选：Basic 口令
-      refresh: ${ASKDATA_ELASTICSEARCH_REFRESH:WaitFor}  # 写入可见性：WaitFor（写后即查）/ True / False
-    redis:
-      host: ${ASKDATA_VECTOR_REDIS_HOST:}        # Redis 向量库主机（需 Redis Stack）
-      port: ${ASKDATA_VECTOR_REDIS_PORT:6379}
-      username: ${ASKDATA_VECTOR_REDIS_USERNAME:}
-      password: ${ASKDATA_VECTOR_REDIS_PASSWORD:}
-      ssl: ${ASKDATA_VECTOR_REDIS_SSL:false}
-      database: ${ASKDATA_VECTOR_REDIS_DATABASE:0}
 ```
+
+要点：
+
+- **未配置 `url`**：应用仍可启动（其它功能不受影响），但启动日志打印错误，且任何向量读写都会抛出
+  「未配置在线向量存储」异常；绝不静默写本地。
+- **向量模型**：只使用 `ai_model` 中 `model_type=1` 且 `enable=1`、`valid=1` 的在线模型
+  （OpenAI 兼容 `/v1/embeddings`）。本地 ONNX 模型已移除。
+- **集合维度取自向量本身**（`ensureCollection(collection, vector.length)`），与模型维度自动对齐；
+  维度不一致时**拒绝写入并保留既有向量**（记 error 并提示重建），绝不隐式删除集合。
+  切换向量模型后执行「向量索引重建」即可：重建会先删除四类集合并按新维度全量回填。
+- **模型解析缓存**：默认向量模型解析结果缓存 60s，模型配置保存/删除/设默认/连通校验后立即失效。
+- **不镜像 DB 向量列**：`terminology.embedding` / `core_table.table_embedding` 等列不再写入，
+  召回候选也不再以 `embedding IS NOT NULL` 过滤。
+- **启动期回填**：无法用 DB 列判断「是否已回填」，因此按业务范围全量重算；upsert 以记录 id 为
+  point id，重复写入即覆盖，保证幂等。重建任务按工作空间逐个执行，单空间失败不影响其它空间。
+- **失败即显式失败**：Qdrant 不可达时写入返回 false、召回返回空表，由调用方降级为词法召回，
+  日志中可见原因；不会出现「配置了在线库、实际却写本地」的隐性路径。
+- **真实环境测试**：向量用例直接打真实 Qdrant / MySQL / bge-m3（依赖不可达时整类 skip），
+  环境变量见 `docs/comet/specs/vector-store/spec.md` 的「验证」一节。
 
 ## 单 worker 启动守卫（锁后端可配置 + 防抖）
 
@@ -201,29 +201,6 @@ spring:
 - **Redis 可选**：未启用 Redis 时容器内不存在任何 Redis bean，框架的 MCP Redis 集群模式不会激活，**应用无需部署 Redis 也能启动**。
 - **API 文档元数据**：`askdata.openapi.{title,version,description}` 可配置；`version` 缺省取构建版本（随构建自动更新），token 头名取自 `sa-token.token-name`。
 
-> 新增后端成本极低：所有 langchain4j 向量存储都实现同一个 `EmbeddingStore<TextSegment>` 接口，
-> 共用逻辑已抽到 `AbstractLangchain4jVectorStore`（upsert / query / delete / 命中 id 解析 / 候选过滤），
-> 子类只需提供客户端构造（`createStore`）、连通性探测（`health`）与可选的集合创建（`ensureCollection`）。
-
-要点：
-
-- **向量模型不随之后端变化**：仍由 `ai_model` 表中 `model_type=1` 的远程模型（OpenAI 兼容
-  `/v1/embeddings`）优先，其次本地 ONNX `shibing624/text2vec-base-chinese`（768 维，
-  `askdata.embedding.model-path`）；两者都不可用时召回降级为词法，主链路不报错。
-- **集合维度取自向量本身**（`ensureCollection(collection, vector.length)`），自动匹配模型维度；
-  中途更换不同维度的模型需重建集合。
-- **REST 与 gRPC 是两个端口**：Qdrant 缺省 REST `6333` / gRPC `6334`。`url` 只用于健康检查，
-  向量读写走 `grpc-port`；部署若把两者合并到同一端口，需同步改 `grpc-port`。
-- 在线库启用时向量**只落在在线库**，不写 DB 向量列——DB 列宽度（`VARCHAR(10000)`，约 768 维）
-  装不下高维远程模型（bge-m3 1024 维约 12.7K 字符），且在线库启用时该列本就不参与召回。
-  相应地，召回候选不再以 `embedding IS NOT NULL` 过滤（见
-  `EmbeddingService.candidateRequiresEmbeddingColumn()`）。
-- 启动期回填：`type=none` 按 DB 向量列为空选取（既有行为）；在线库启用时全量选取——
-  无法用 DB 列判断是否已回填，而 upsert 以记录 id 为 point id，重复写入即覆盖，保证幂等。
-- Qdrant 不可达 / 集合缺失 / 连接失败均不抛异常，仅记日志并回落，问数主链路可用。
-- 新增后端（如 Weaviate）只需实现 `VectorStore` 并在 `VectorStoreAutoConfiguration` 注册，
-  不改动 `EmbeddingService` 与各召回调用点。
-
 ## 文件存储平台（local / MinIO / OSS / COS / S3）
 
 文件存储基于 x-file-storage，默认 `local`（`./data/files`，离线可用）。切换平台只需设置环境变量并重启，无需改代码：
@@ -243,7 +220,7 @@ spring:
 
 ## 多实例集群（`--spring.profiles.active=cluster`）
 
-单实例是默认形态（H2 + 本地文件 + 进程内会话）。多实例必须把「进程内状态」换成共享基础设施：
+单实例是默认形态（本地文件 + 进程内会话）。多实例必须把「进程内状态」换成共享基础设施：
 
 | 依赖 | 用途 | 不共享的症状 |
 | --- | --- | --- |

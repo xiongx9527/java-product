@@ -31,8 +31,32 @@ public class AiModelController {
 
     private final AiModelService aiModelService;
 
-    public AiModelController(AiModelService aiModelService) {
+    private final com.xiongx9527.askdata.ai.EmbeddingIndexService embeddingIndexService;
+
+    private final com.xiongx9527.askdata.system.service.CurrentUserService currentUserService;
+
+    public AiModelController(AiModelService aiModelService,
+                             com.xiongx9527.askdata.ai.EmbeddingIndexService embeddingIndexService,
+                             com.xiongx9527.askdata.system.service.CurrentUserService currentUserService) {
         this.aiModelService = aiModelService;
+        this.embeddingIndexService = embeddingIndexService;
+        this.currentUserService = currentUserService;
+    }
+
+    /** 向量索引状态：是否待重建、进度与上次结果（管理员）。 */
+    @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.VIEW)
+    @GetMapping({"/system/aimodel/embedding/status"})
+    public Result<Map<String, Object>> embeddingStatus() {
+        currentUserService.requireAdmin();
+        return Result.ok(embeddingIndexService.status());
+    }
+
+    /** 一键重新向量：全空间强制重算；任务进行中时返回 started=false（管理员）。 */
+    @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.UPDATE)
+    @PostMapping({"/system/aimodel/embedding/rebuild"})
+    public Result<Map<String, Object>> embeddingRebuild() {
+        currentUserService.requireAdmin();
+        return Result.ok(embeddingIndexService.rebuild());
     }
 
     @GetMapping({"/system/aimodel"})
@@ -60,11 +84,27 @@ public class AiModelController {
         return Result.ok();
     }
 
+    /** 默认模型状态：区分「未配置」与「已配置但不可用」（前端 chat/ds 提示分流用）。 */
+    @GetMapping({"/system/aimodel/default/status"})
+    public Result<Map<String, Object>> defaultStatus() {
+        return Result.ok(aiModelService.defaultStatus());
+    }
+
     @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.UPDATE)
     @PutMapping({"/system/aimodel/default/{id}"})
     public Result<Void> setDefault(@PathVariable long id) {
         aiModelService.setDefault(id);
         return Result.ok();
+    }
+
+    /**
+     * 上游模型列表拉取：代理请求 {@code /models}，返回 {@code {source, models[], error?}}。
+     * source 为 remote / preset / none；preset 表示前端回退供应商静态清单。
+     */
+    @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.UPDATE)
+    @PostMapping({"/system/aimodel/models"})
+    public Result<Map<String, Object>> models(@RequestBody Map<String, Object> body) {
+        return Result.ok(aiModelService.listModels(body));
     }
 
     @GetMapping({"/system/aimodel/list/by_ws"})

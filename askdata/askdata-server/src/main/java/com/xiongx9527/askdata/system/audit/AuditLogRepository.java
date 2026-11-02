@@ -35,7 +35,7 @@ public class AuditLogRepository {
                         + "FROM sys_logs WHERE 1 = 1");
         List<Object> args = new ArrayList<>();
         if (name != null && !name.isEmpty()) {
-            sql.append(" AND user_name LIKE ? ESCAPE '\\'");
+            sql.append(" AND user_name LIKE ?");
             args.add("%" + escapeLike(name) + "%");
         }
         if (optTypeList != null && !optTypeList.isEmpty()) {
@@ -73,7 +73,7 @@ public class AuditLogRepository {
         StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM sys_logs WHERE 1 = 1");
         List<Object> args = new ArrayList<>();
         if (name != null && !name.isEmpty()) {
-            sql.append(" AND user_name LIKE ? ESCAPE '\\'");
+            sql.append(" AND user_name LIKE ?");
             args.add("%" + escapeLike(name) + "%");
         }
         if (optTypeList != null && !optTypeList.isEmpty()) {
@@ -114,7 +114,7 @@ public class AuditLogRepository {
                         + "FROM sys_logs WHERE 1 = 1");
         List<Object> args = new ArrayList<>();
         if (name != null && !name.isEmpty()) {
-            sql.append(" AND user_name LIKE ? ESCAPE '\\'");
+            sql.append(" AND user_name LIKE ?");
             args.add("%" + escapeLike(name) + "%");
         }
         if (optTypeList != null && !optTypeList.isEmpty()) {
@@ -145,7 +145,7 @@ public class AuditLogRepository {
         return jdbc.queryForList(sql.toString(), args.toArray());
     }
 
-    /** 操作类型选项（get_options；与前端 tree-select 的 value/label 契约一致；value 为 H2 保留字，用 opt_value 别名）。 */
+    /** 操作类型选项（get_options；与前端 tree-select 的 value/label 契约一致；value 为保留字，用 opt_value 别名）。 */
     public List<Map<String, Object>> operationTypeOptions() {
         return jdbc.queryForList("SELECT DISTINCT operation_type AS opt_value FROM sys_logs "
                 + "WHERE operation_type IS NOT NULL ORDER BY operation_type");

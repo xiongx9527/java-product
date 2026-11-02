@@ -298,11 +298,20 @@ public class EnterprisePlatformService {
                 .build();
         switch (origin) {
             case ORIGIN_WECOM:
-                // 企业微信 CorpApp 扫码登录：JustAuth 走官方 qrConnect -> gettoken -> auth/getuserinfo -> user/get
+                // 企业微信 CorpApp 扫码登录：官方 gettoken -> user/getuserinfo -> user/get。
+                // 配置了 api_base（私有化/代理/测试）时走本地可重定向的 REST 实现；
+                // 否则交给 JustAuth（其域名写死 qyapi.weixin.qq.com）。
+                if (apiBaseConfigured(config)) {
+                    return wecomUserByCode(config, code);
+                }
                 return wecomUser(justAuthUser(new AuthWeChatEnterpriseQrcodeRequest(
                         toImAuthConfig(origin, config, redirectUri)), callback));
             case ORIGIN_LARK:
-                // 飞书 OAuth2 扫码登录：JustAuth 走官方 app_access_token -> oidc/access_token -> user_info
+                // 飞书 OAuth2 扫码登录：官方 app_access_token -> oidc/access_token -> user_info。
+                // 同企业微信：配置 api_base 时走 REST 实现（JustAuth 写死 open.feishu.cn）。
+                if (apiBaseConfigured(config)) {
+                    return feishuUserByCode(config, code);
+                }
                 return feishuUser(config, justAuthUser(new AuthFeishuRequest(
                         toImAuthConfig(origin, config, redirectUri)), callback));
             case ORIGIN_DINGTALK:
@@ -337,6 +346,74 @@ public class EnterprisePlatformService {
         out.put("account", userId);
         out.put("name", authUser.getUsername());
         out.put("email", authUser.getEmail());
+        return out;
+    }
+
+    /**
+     * 企业微信扫码 code 换用户（{@code api_base} 指向的 REST 实现）。
+     *
+     * <p>与企业微信官方 CorpApp 扫码登录同构：{@code gettoken} 取应用 token →
+     * {@code user/getuserinfo} 用 code 换 UserId → {@code user/get} 补全姓名/邮箱。
+     * 用于私有化部署、API 代理与测试（JustAuth 的域名写死，无法指向自建网关）。</p>
+     */
+    private Map<String, Object> wecomUserByCode(Map<String, Object> config, String code) {
+        String token = wecomToken(config);
+        Map<String, Object> info = get(wecomBase(config) + "/cgi-bin/user/getuserinfo?access_token="
+                + urlEncode(token) + "&code=" + urlEncode(code), null);
+        requireOk(info, "wecom user/getuserinfo");
+        String userId = firstNonEmpty(text(info, "userid"), text(info, "UserId"));
+        if (userId == null || userId.isEmpty()) {
+            throw new IllegalStateException("wecom login failed: userid not found; wecom_resp=" + info);
+        }
+        Map<String, Object> detail = get(wecomBase(config) + "/cgi-bin/user/get?access_token="
+                + urlEncode(token) + "&userid=" + urlEncode(userId), null);
+        requireOk(detail, "wecom user/get");
+        String name = firstNonEmpty(text(detail, "name"), text(detail, "alias"), userId);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("platform_uid", userId);
+        out.put("account", userId);
+        out.put("name", name);
+        out.put("email", text(detail, "email"));
+        return out;
+    }
+
+    /**
+     * 飞书扫码 code 换用户（{@code api_base} 指向的 REST 实现）。
+     *
+     * <p>与飞书官方 OAuth2 同构：{@code app_access_token} 取应用 token →
+     * {@code authen/v1/oidc/access_token} 用 code 换用户 token → {@code authen/v1/user_info} 取资料。</p>
+     */
+    private Map<String, Object> feishuUserByCode(Map<String, Object> config, String code) {
+        String base = larkBase(ORIGIN_LARK, config);
+        Map<String, Object> appRes = postJson(base + "/open-apis/auth/v3/app_access_token/internal",
+                Maps.of("app_id", text(config, "client_id"), "app_secret", text(config, "client_secret")), null);
+        String appToken = firstNonEmpty(text(appRes, "app_access_token"), text(appRes, "tenant_access_token"));
+        if (appToken == null || appToken.isEmpty()) {
+            throw new IllegalStateException("feishu login failed: app_access_token not found; resp=" + appRes);
+        }
+        Map<String, Object> tokenRes = postJson(base + "/open-apis/authen/v1/oidc/access_token",
+                Maps.of("grant_type", "authorization_code", "code", code), appToken);
+        Map<String, Object> tokenData = asMap(tokenRes.get("data"));
+        String userToken = tokenData == null ? null : text(tokenData, "access_token");
+        if (userToken == null || userToken.isEmpty()) {
+            throw new IllegalStateException("feishu login failed: user access_token not found; resp=" + tokenRes);
+        }
+        Map<String, Object> infoRes = get(base + "/open-apis/authen/v1/user_info", userToken);
+        Map<String, Object> u = asMap(infoRes.get("data"));
+        if (u == null) {
+            throw new IllegalStateException("feishu login failed: user_info not found; resp=" + infoRes);
+        }
+        String userId = text(u, "user_id");
+        String unionId = text(u, "union_id");
+        String openId = text(u, "open_id");
+        String mobile = text(u, "mobile");
+        String email = firstNonEmpty(text(u, "email"), text(u, "enterprise_email"));
+        String account = firstNonEmpty(email, userId, mobile, openId, unionId);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("platform_uid", firstNonEmpty(userId, unionId, openId));
+        out.put("account", account);
+        out.put("name", firstNonEmpty(text(u, "name"), account));
+        out.put("email", email);
         return out;
     }
 
@@ -632,6 +709,24 @@ public class EnterprisePlatformService {
     private static String larkBase(int origin, Map<String, Object> config) {
         return baseOf(config, origin == ORIGIN_LARKSUITE ? "https://open.larksuite.com"
                 : "https://open.feishu.cn");
+    }
+
+    /** 是否显式配置了 API 基址（私有化/代理/测试场景）。 */
+    private static boolean apiBaseConfigured(Map<String, Object> config) {
+        String configured = text(config, "api_base");
+        return configured != null && !configured.trim().isEmpty();
+    }
+
+    /** 查询参数编码（URL 里拼 code/userid 等外部值）。 */
+    private static String urlEncode(String value) {
+        if (value == null) {
+            return "";
+        }
+        try {
+            return java.net.URLEncoder.encode(value, "UTF-8");
+        } catch (java.io.UnsupportedEncodingException e) {
+            return value;
+        }
     }
 
     private static String baseOf(Map<String, Object> config, String fallback) {

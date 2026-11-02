@@ -17,8 +17,7 @@
     <description>问数单体后端（Spring Boot 3.5.8，前后端一体：前端 dist 经资源目录挂入 static）。</description>
 
     <properties>
-        <maven.test.skip>true</maven.test.skip>
-        <!-- Token 头部约定（与 SQLBot 前端逐字兼容） -->
+        <!-- 测试默认执行（继承根 POM 的 maven.test.skip=false），此处不覆盖 -->
         <java.version>1.8</java.version>
         <!-- 平台：Java8 / Spring Boot 2.7（fw-plus 0.1.1 线） -->
         <maven.compiler.source>1.8</maven.compiler.source>
@@ -86,13 +85,6 @@
         <!-- 注：不再直接依赖 fw-plus-ai-model（原 AiChatModel 契约已移除，ChatModelClient 改为自包含
              OpenAI 兼容客户端）。该构件仍由 fw-plus MCP starter 传递引入，版本在下方 dependencyManagement 锁定。 -->
 
-        <!-- langchain4j 模型接入（AssistantBuilder 所需 ChatModel/StreamingChatModel/EmbeddingModel；OpenAI 兼容） -->
-        <dependency>
-            <groupId>com.xiongx9527.fw.plus</groupId>
-            <artifactId>fw-plus-ai-langchain4j-openai</artifactId>
-            <!-- fw-plus-dependencies 未收录该构件，版本单独声明 -->
-            <version>${revision}</version>
-        </dependency>
         <!-- 缓存层：Spring Cache 抽象（后端由 askdata.cache.type 决定：memory / redis / none） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -142,12 +134,7 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-aop</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
-            <scope>runtime</scope>
-        </dependency>
-        <!-- 元数据库版本化迁移（A9）：common 种子 + h2/postgresql/mysql 方言 baseline。
+        <!-- 元数据库版本化迁移（A9）：common 种子 + postgresql/mysql 方言 baseline。
              方言模块由 Flyway 按 JDBC URL 自动匹配，切换元数据库只需改连接配置。 -->
         <dependency>
             <groupId>org.flywaydb</groupId>
@@ -209,7 +196,7 @@
             <artifactId>aws-java-sdk-s3</artifactId>
         </dependency>
 
-        <!-- 数据源引擎 JDBC 驱动（A8：mysql/pg/h2/sqlite 随包提供；
+        <!-- 数据源引擎 JDBC 驱动（A8：mysql/pg/sqlite 随包提供；
              oracle/mssql/clickhouse/hive/kingbase/dm 一并进入 runtime，前端可选即可用） -->
         <dependency>
             <groupId>com.mysql</groupId>
@@ -343,16 +330,6 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- 本地 embedding 模型（D8/A6）：ONNX Runtime 驱动 shibing624_text2vec-base-chinese
-             （768 维归一化）。模型权重不进 git（793MB），运行时从可配置目录加载
-             （askdata.embedding.model-path，默认 /opt/askdata/models）；
-             模型缺失/加载失败时 ai/LocalEmbeddingModel 降级为不可用，
-             向量召回回落词法，问数主链路不报错。 -->
-        <dependency>
-            <groupId>com.microsoft.onnxruntime</groupId>
-            <artifactId>onnxruntime</artifactId>
-            <version>1.20.0</version>
-        </dependency>
         <!-- SSO 第三方授权（brief D9）：JustAuth 统一抽象授权跳转/回调/用户信息。
              坐标以本机 ~/.m2 实际存在者为准：me.zhyd.oauth:JustAuth。
              justauth-spring-boot-starter 传递的 hutool-core:5.6.5 本机缺失，改由项目已有的

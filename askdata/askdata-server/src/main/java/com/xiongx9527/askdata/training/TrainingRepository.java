@@ -39,7 +39,7 @@ public class TrainingRepository {
         List<Object> args = new ArrayList<>();
         args.add(oid);
         if (question != null && !question.isEmpty()) {
-            sql.append(" AND question LIKE ? ESCAPE '\\'");
+            sql.append(" AND question LIKE ?");
             args.add("%" + escapeLike(question) + "%");
         }
         if (dsList != null && !dsList.isEmpty()) {
@@ -61,7 +61,7 @@ public class TrainingRepository {
         List<Object> args = new ArrayList<>();
         args.add(oid);
         if (question != null && !question.isEmpty()) {
-            sql.append(" AND question LIKE ? ESCAPE '\\'");
+            sql.append(" AND question LIKE ?");
             args.add("%" + escapeLike(question) + "%");
         }
         if (dsList != null && !dsList.isEmpty()) {
@@ -82,7 +82,7 @@ public class TrainingRepository {
         List<Object> args = new ArrayList<>();
         args.add(oid);
         if (question != null && !question.isEmpty()) {
-            sql.append(" AND question LIKE ? ESCAPE '\\'");
+            sql.append(" AND question LIKE ?");
             args.add("%" + escapeLike(question) + "%");
         }
         if (dsList != null && !dsList.isEmpty()) {

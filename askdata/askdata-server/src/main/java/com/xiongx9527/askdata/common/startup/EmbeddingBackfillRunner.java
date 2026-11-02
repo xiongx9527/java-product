@@ -22,13 +22,14 @@ import java.util.Map;
 /**
  * 启动期向量回填（对齐 SQLBot {@code main.py} 的三个 {@code init_*_embedding_data}）。
  *
- * <p><b>回填对象</b>：术语（父术语与同义词）、SQL 示例、表、数据源——四类对象中
- * {@code embedding} 为空的记录。</p>
+ * <p><b>回填对象</b>：术语（父术语与同义词）、SQL 示例、表、数据源。向量只存在在线库，
+ * DB 的 embedding 列不再写入，因此不能靠「列值为空」挑选记录——启动回填按范围全量重算，
+ * upsert 以记录 id 为 point id，重复写入即覆盖。</p>
  *
  * <p><b>集群内只执行一次</b>：由 {@link SingleWorkerGuard} 保证（单次尝试、不重试；
  * 未获得守卫的实例跳过）。应用关闭时释放守卫。</p>
  *
- * <p><b>降级</b>：无任何可用 embedding 模型（远程未配置且本地模型缺失）时整体跳过；
+ * <p><b>降级</b>：无可用在线 embedding 模型时整体跳过；
  * 单类回填失败只记日志，不影响问数主链路可用性。</p>
  */
 @Component
@@ -80,7 +81,7 @@ public class EmbeddingBackfillRunner {
             return;
         }
         if (!embeddingService.available()) {
-            log.info("无可用 embedding 模型（远程未配置且本地模型缺失），跳过启动期向量回填"
+            log.info("无可用在线 embedding 模型，跳过启动期向量回填"
                     + "（向量召回降级为词法，问数主链路不受影响）");
             return;
         }
@@ -88,8 +89,7 @@ public class EmbeddingBackfillRunner {
             log.info("本次启动未获得单 worker 守卫，跳过向量回填（不重试）");
             return;
         }
-        log.info("启动期向量回填开始：存储后端={}（集合前缀 '{}'）",
-                embeddingService.isVectorStoreOnline() ? "在线向量库" : "DB JSON 列",
+        log.info("启动期向量回填开始：在线向量库（集合前缀 '{}'）",
                 embeddingService.vectorStoreCollectionPrefix());
         try {
             backfillTerminology();
@@ -111,15 +111,36 @@ public class EmbeddingBackfillRunner {
     // 四类回填
     // ------------------------------------------------------------------
 
+    /** 重建入口：按工作空间对四类向量做全量强制重算（忽略「向量为空」过滤）。 */
+    public int rebuildWorkspace(long oid) {
+        int count = 0;
+        count += backfillTerminology(oid);
+        count += backfillTraining(oid);
+        count += backfillTables(oid);
+        count += backfillDatasources(oid);
+        return count;
+    }
+
     /** 术语回填：父术语（pid 为空）与同义词（pid 非空）各自的向量。 */
     public int backfillTerminology() {
+        return backfillTerminology(null);
+    }
+
+    /**
+     * 术语回填（可指定工作空间）。
+     *
+     * @param oid   为 null 时覆盖全部工作空间
+     */
+    public int backfillTerminology(Long oid) {
         try {
+            Object[] args = oid == null ? new Object[0] : new Object[] {oid};
             List<Map<String, Object>> parents = jdbc.queryForList(
-                    "SELECT id FROM terminology" + pendingFilter("pid IS NULL"));
+                    "SELECT id FROM terminology" + where("pid IS NULL", oid != null), args);
             List<Long> ids = idsOf(parents);
             terminologyRecallService.saveEmbeddings(ids);
             List<Map<String, Object>> children = jdbc.queryForList(
-                    "SELECT DISTINCT pid AS id FROM terminology" + pendingFilter("pid IS NOT NULL"));
+                    "SELECT DISTINCT pid AS id FROM terminology" + where("pid IS NOT NULL", oid != null),
+                    args);
             List<Long> childParents = idsOf(children);
             terminologyRecallService.saveEmbeddings(childParents);
             int total = ids.size() + childParents.size();
@@ -135,9 +156,15 @@ public class EmbeddingBackfillRunner {
 
     /** SQL 示例回填。 */
     public int backfillTraining() {
+        return backfillTraining(null);
+    }
+
+    /** SQL 示例回填（可指定工作空间）。 */
+    public int backfillTraining(Long oid) {
         try {
+            Object[] args = oid == null ? new Object[0] : new Object[] {oid};
             List<Map<String, Object>> rows = jdbc.queryForList(
-                    "SELECT id FROM data_training" + pendingFilter(null));
+                    "SELECT id FROM data_training" + where(null, oid != null), args);
             List<Long> ids = idsOf(rows);
             trainingRecallService.saveEmbeddings(ids);
             if (!ids.isEmpty()) {
@@ -152,9 +179,16 @@ public class EmbeddingBackfillRunner {
 
     /** 表向量回填（{@code core_table.table_embedding}）。 */
     public int backfillTables() {
+        return backfillTables(null);
+    }
+
+    /** 表向量回填（按数据源所属工作空间过滤）。 */
+    public int backfillTables(Long oid) {
         try {
+            Object[] args = oid == null ? new Object[0] : new Object[] {oid};
+            String dsFilter = oid == null ? null : "ds_id IN (SELECT id FROM core_datasource WHERE oid = ?)";
             List<Map<String, Object>> rows = jdbc.queryForList(
-                    "SELECT id FROM core_table" + pendingFilter(null));
+                    "SELECT id FROM core_table" + where(dsFilter, false), args);
             int count = 0;
             for (Map<String, Object> row : rows) {
                 long id = Rows.lng(row, "id", 0L);
@@ -175,9 +209,15 @@ public class EmbeddingBackfillRunner {
 
     /** 数据源向量回填（{@code core_datasource.embedding}）。 */
     public int backfillDatasources() {
+        return backfillDatasources(null);
+    }
+
+    /** 数据源向量回填（可指定工作空间）。 */
+    public int backfillDatasources(Long oid) {
         try {
+            Object[] args = oid == null ? new Object[0] : new Object[] {oid};
             List<Map<String, Object>> rows = jdbc.queryForList(
-                    "SELECT id FROM core_datasource" + pendingFilter(null));
+                    "SELECT id FROM core_datasource" + where(null, oid != null), args);
             int count = 0;
             for (Map<String, Object> row : rows) {
                 long id = Rows.lng(row, "id", 0L);
@@ -238,20 +278,24 @@ public class EmbeddingBackfillRunner {
     }
 
     /**
-     * 待回填记录的 WHERE 子句（直接拼在 SELECT 之后）。
+     * 回填 / 重建的 WHERE 子句。
      *
-     * <p>{@code type=none} 时按 DB 向量列为空筛选（既有行为，写库后自然收敛）；
-     * 在线库启用时不再写 DB 向量列，无法据此判断是否已回填，故全量选取——
-     * upsert 以记录 id 为 point id，重复写入即覆盖，保证幂等。</p>
+     * <p>向量只存在在线库，DB 的 embedding 列不再写入，因此不能再用「{@code embedding IS NULL}」
+     * 判断哪些记录缺向量——该列恒为空会把所有记录都当成待回填。这里只按业务条件筛选，
+     * 是否重算由调用方（启动回填 / 重建任务）决定。</p>
      *
-     * @param extra 附加条件（如 {@code "pid IS NULL"}），可为 {@code null}
+     * @param extra   附加条件（可为 null）
+     * @param withOid 是否追加 {@code oid = ?}（参数由调用方按占位顺序提供）
      */
-    private String pendingFilter(String extra) {
-        if (embeddingService.isVectorStoreOnline()) {
-            return extra == null ? "" : " WHERE " + extra;
+    private String where(String extra, boolean withOid) {
+        List<String> conditions = new ArrayList<>();
+        if (extra != null) {
+            conditions.add(extra);
         }
-        String base = extra == null ? "embedding IS NULL" : "embedding IS NULL AND " + extra;
-        return " WHERE " + base;
+        if (withOid) {
+            conditions.add("oid = ?");
+        }
+        return conditions.isEmpty() ? "" : " WHERE " + String.join(" AND ", conditions);
     }
 
     private static List<Long> idsOf(List<Map<String, Object>> rows) {

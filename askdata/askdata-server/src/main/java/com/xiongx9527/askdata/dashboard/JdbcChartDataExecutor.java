@@ -104,7 +104,7 @@ public class JdbcChartDataExecutor implements ChartDataExecutor {
         return config;
     }
 
-    /** 数据类型 → JDBC URL（覆盖 P2 的 mysql/h2/postgresql；其余类型按 jdbc:<type> 约定兜底）。 */
+    /** 数据类型 → JDBC URL（覆盖 P2 的 mysql/postgresql；其余类型按 jdbc:<type> 约定兜底）。 */
     static String jdbcUrl(String type, Map<String, Object> config) {
         String host = str(config.get("host"));
         Object portValue = config.get("port");
@@ -120,9 +120,6 @@ public class JdbcChartDataExecutor implements ChartDataExecutor {
         if ("postgresql".equals(t)) {
             return "jdbc:postgresql://" + host + (port.isEmpty() ? "" : ":" + port) + "/" + database
                     + (extra == null || extra.isEmpty() ? "" : "?" + extra);
-        }
-        if ("h2".equals(t)) {
-            return database == null || database.isEmpty() ? "jdbc:h2:mem:" : database;
         }
         // excel/doris/ck 等：无通用 JDBC 形态，返回空串交由调用方报错
         return "jdbc:" + t + "://" + host + (port.isEmpty() ? "" : ":" + port) + "/" + database;

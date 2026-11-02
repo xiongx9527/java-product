@@ -40,14 +40,14 @@ public class CustomPromptRepository {
             args.add(type);
         }
         if (name != null && !name.isEmpty()) {
-            sql.append(" AND name LIKE ? ESCAPE '\\'");
+            sql.append(" AND name LIKE ?");
             args.add("%" + escapeLike(name) + "%");
         }
         if (dsList != null && !dsList.isEmpty()) {
             sql.append(" AND (specific_ds = FALSE");
             for (Long dsId : dsList) {
-                sql.append(" OR INSTR(',' || COALESCE(REPLACE(REPLACE(datasource_ids, '[', ''), ']', ''), '') "
-                        + "|| ',', ',' || ? || ',') > 0");
+                sql.append(" OR CONCAT(',', COALESCE(REPLACE(REPLACE(datasource_ids, '[', ''), ']', ''), ''), ',') "
+                        + "LIKE CONCAT('%,', ?, ',%')");
                 args.add(String.valueOf(dsId));
             }
             sql.append(")");
@@ -71,14 +71,14 @@ public class CustomPromptRepository {
             args.add(type);
         }
         if (name != null && !name.isEmpty()) {
-            sql.append(" AND name LIKE ? ESCAPE '\\'");
+            sql.append(" AND name LIKE ?");
             args.add("%" + escapeLike(name) + "%");
         }
         if (dsList != null && !dsList.isEmpty()) {
             sql.append(" AND (specific_ds = FALSE");
             for (Long dsId : dsList) {
-                sql.append(" OR INSTR(',' || COALESCE(REPLACE(REPLACE(datasource_ids, '[', ''), ']', ''), '') "
-                        + "|| ',', ',' || ? || ',') > 0");
+                sql.append(" OR CONCAT(',', COALESCE(REPLACE(REPLACE(datasource_ids, '[', ''), ']', ''), ''), ',') "
+                        + "LIKE CONCAT('%,', ?, ',%')");
                 args.add(String.valueOf(dsId));
             }
             sql.append(")");
@@ -102,14 +102,14 @@ public class CustomPromptRepository {
             args.add(type);
         }
         if (name != null && !name.isEmpty()) {
-            sql.append(" AND name LIKE ? ESCAPE '\\'");
+            sql.append(" AND name LIKE ?");
             args.add("%" + escapeLike(name) + "%");
         }
         if (dsList != null && !dsList.isEmpty()) {
             sql.append(" AND (specific_ds = FALSE");
             for (Long dsId : dsList) {
-                sql.append(" OR INSTR(',' || COALESCE(REPLACE(REPLACE(datasource_ids, '[', ''), ']', ''), '') "
-                        + "|| ',', ',' || ? || ',') > 0");
+                sql.append(" OR CONCAT(',', COALESCE(REPLACE(REPLACE(datasource_ids, '[', ''), ']', ''), ''), ',') "
+                        + "LIKE CONCAT('%,', ?, ',%')");
                 args.add(String.valueOf(dsId));
             }
             sql.append(")");

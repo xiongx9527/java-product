@@ -16,7 +16,7 @@ import java.sql.Timestamp;
  * <p>框架实现用 {@code PreparedStatement#setObject} 写入 {@link java.util.Date}；PostgreSQL JDBC
  * 无法推断该类型（{@code Can't infer the SQL type to use for an instance of java.util.Date}），
  * 导致元数据库切到 PostgreSQL 时 UID 生成器无法启动。这里显式使用 JDBC 的字符串/时间戳类型，
- * H2 / PostgreSQL / MySQL 均可执行，表结构与列含义保持不变。</p>
+ * PostgreSQL / MySQL 均可执行，表结构与列含义保持不变。</p>
  */
 public class PortableWorkerIdAssigner implements WorkerIdAssigner {
 

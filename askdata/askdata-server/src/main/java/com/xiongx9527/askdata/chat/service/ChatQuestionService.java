@@ -153,6 +153,14 @@ public class ChatQuestionService {
 
     private final DsGrantService dsGrantService;
 
+    /**
+     * 向量索引就绪校验（决策 14/15）：无可用在线向量模型或索引待重建时阻断问答。
+     *
+     * <p>用字段注入而非构造参数：该依赖是运行期门禁，测试夹具无需感知。</p>
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.xiongx9527.askdata.ai.EmbeddingIndexService embeddingIndexService;
+
     public ChatQuestionService(ChatRepository chatRepository,
                                RecommendedQuestionRepository recommendedQuestionRepository,
                                DatasourceRepository datasourceRepository, DatasourceService datasourceService,
@@ -245,17 +253,27 @@ public class ChatQuestionService {
             return;
         }
 
+        // 决策 14/15：无可用在线向量模型或索引未对齐时统一阻断，不静默降级
+        String blockKey = embeddingIndexService == null ? null : embeddingIndexService.chatBlockReasonKey();
+        if (blockKey != null) {
+            emitError(writer, messageResolver.get(blockKey));
+            return;
+        }
+
         AtomicLong totalTokens = new AtomicLong(0L);
             AtomicLong currentRecordId = new AtomicLong(0L);
             try {
                 // A3/D9：custom_model 在流式与非流式均生效；不可用时明确报错，不回退默认模型
                 Long customModelId = Rows.lngOrNull(body, "custom_model");
                 Optional<ModelRef> model = customModelId == null
-                        ? modelRouter.defaultChatModel() : modelRouter.chatModelById(customModelId);
+                        ? modelRouter.defaultChatModel(oid) : modelRouter.chatModelById(customModelId, oid);
+                if (!model.isPresent() && customModelId != null) {
+                    // 对齐 SQLBot：指定模型不可用（已删除 / 停用 / 未授权当前空间）时静默回退默认模型
+                    log.info("指定模型 {} 不可用，回退默认对话模型（oid={}）", customModelId, oid);
+                    model = modelRouter.defaultChatModel(oid);
+                }
                 if (!model.isPresent() || !model.get().usable()) {
-                    emitError(writer, customModelId == null
-                            ? messageResolver.get("scheduled.no.default.model")
-                            : messageResolver.get("mcp.error.custom.model.unavailable", customModelId));
+                    emitError(writer, messageResolver.get("scheduled.no.default.model"));
                     return;
                 }
                 ModelRef aiModel = model.get();
@@ -295,7 +313,7 @@ public class ChatQuestionService {
                 boolean isFirstRecord = !chatRepository.hasUserRecord(chatId);
                 boolean firstChat = Rows.bool(body, "first_chat", false);
                 long recordId = chatRepository.insertRecord(chatId, question, uid, oid, dsId, firstChat,
-                        regenerateRecordId);
+                        regenerateRecordId, aiModel.id, aiModel.name);
                 chatRepository.touchChat(chatId);
                 if (dsId != null && Rows.lng(chat, "datasource", 0L) <= 0L) {
                     chatRepository.setChatDatasource(chatId, dsId, dsTypeName, dsType);
@@ -773,7 +791,9 @@ public class ChatQuestionService {
             try {
                 Optional<ModelRef> model = modelRouter.defaultChatModel();
                 if (!model.isPresent() || !model.get().usable()) {
-                    emitError(writer, messageResolver.get("scheduled.no.default.model"));
+                    int available = modelRouter.workspaceModelCount(oid);
+                    emitError(writer, messageResolver.get(available > 1
+                            ? "aimodel.default.ambiguous" : "scheduled.no.default.model"));
                     return;
                 }
                 ModelRef aiModel = model.get();
@@ -1278,7 +1298,7 @@ public class ChatQuestionService {
                     : schemaContextBuilder.buildSqlFixMessages(question, dsId,
                             brokenSql == null ? "" : brokenSql, error);
             String text = modelClient.generate(aiModel.apiDomain, aiModel.apiKey, aiModel.baseModel,
-                    fixMessages, aiModel.params);
+                    fixMessages, aiModel.params, aiModel.upstreamFormat);
             if (text == null) {
                 return null;
             }
@@ -1737,7 +1757,7 @@ public class ChatQuestionService {
                                             String chartHint, List<String> history, TokenUsage usage) {
         String text = modelClient.generate(aiModel.apiDomain, aiModel.apiKey, aiModel.baseModel,
                 schemaContextBuilder.buildRecommendMessages(question, articlesNumber, chartHint, history),
-                aiModel.params, toClientUsage(usage));
+                aiModel.params, aiModel.upstreamFormat, toClientUsage(usage));
         return parseStringList(text, objectMapper);
     }
 
@@ -1779,7 +1799,7 @@ public class ChatQuestionService {
         final AtomicReference<long[]> lastUsage = new AtomicReference<>(null);
         // §2.3: protocol（1=openai 兼容 / 2=vllm）随模型解析下发，端点形态（含 Azure）在 client 内分发
         modelClient.streamCompletion(aiModel.apiDomain, aiModel.apiKey, aiModel.baseModel, messages,
-                aiModel.params, aiModel.protocol, new TokenHandler() {
+                aiModel.params, aiModel.protocol, aiModel.upstreamFormat, new TokenHandler() {
                     @Override
                     public void onToken(String token, String reasoningToken) {
                         if (token != null) {

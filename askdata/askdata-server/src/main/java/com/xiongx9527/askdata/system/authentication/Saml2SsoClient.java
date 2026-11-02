@@ -186,17 +186,13 @@ public class Saml2SsoClient implements SsoClient {
                 SamlSignatureVerifier.verify(xml, cert, spEntityId);
             } catch (IllegalStateException e) {
                 if (e.getMessage() != null && e.getMessage().contains("not signed")) {
-                    // 响应里根本没有 <Signature>：按 wantAssertionsSigned 决定拒绝或放行
-                    if (wantSigned) {
-                        throw new IllegalStateException(
-                                "SAML2 wantAssertionsSigned is true but the IdP response is not signed; refusing");
-                    }
-                    log.warn("SAML2 response is unsigned while an IdP certificate is configured; "
-                            + "signature NOT verified (wantAssertionsSigned=false)");
-                } else {
-                    // 真正的验签失败（签名无效 / 过期 / Audience 不匹配）：fail-closed 拒绝
-                    throw e;
+                    // 配了 IdP 证书就说明该连接要求验签：未签名断言一律拒绝。
+                    // 否则攻击者可提交自造的未签名断言绕过验签（配置证书即表达「必须签名」的意图）。
+                    throw new IllegalStateException(
+                            "SAML2 IdP certificate configured but the response is not signed; refusing");
                 }
+                // 真正的验签失败（签名无效 / 过期 / Audience 不匹配）：fail-closed 拒绝
+                throw e;
             }
         } else if (wantSigned) {
             throw new IllegalStateException(

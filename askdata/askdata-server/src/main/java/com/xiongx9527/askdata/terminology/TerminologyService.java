@@ -249,7 +249,12 @@ public class TerminologyService {
     public void delete(List<Long> ids) {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
+        List<Long> childIds = terminologyRepository.findChildIds(oid, ids);
         terminologyRepository.deleteByIds(oid, ids);
+        // 业务行删除后同步清理在线向量，避免 Qdrant 里留下孤儿 point
+        List<Long> deleted = new java.util.ArrayList<>(ids);
+        deleted.addAll(childIds);
+        terminologyRecallService.deleteEmbeddings(deleted);
     }
 
     /** GET /system/terminology/{id}/enable/{enabled}（父与子记录同步启停）。 */

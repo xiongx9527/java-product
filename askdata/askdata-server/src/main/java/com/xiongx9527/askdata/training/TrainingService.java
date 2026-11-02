@@ -216,6 +216,8 @@ public class TrainingService {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
         trainingRepository.deleteByIds(oid, ids);
+        // 业务行删除后同步清理在线向量，避免 Qdrant 里留下孤儿 point
+        trainingRecallService.deleteEmbeddings(ids);
     }
 
     /** GET /system/data-training/{id}/enable/{enabled}。 */

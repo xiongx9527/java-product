@@ -128,8 +128,8 @@ public class UserWsRepository {
     private void appendKeyword(StringBuilder sql, java.util.List<Object> args, String keyword) {
         if (keyword != null && !keyword.isEmpty()) {
             String pattern = "%" + UserRepository.escapeLike(keyword.toLowerCase()) + "%";
-            sql.append(" AND (LOWER(u.account) LIKE ? ESCAPE '\\' OR LOWER(u.name) LIKE ? ESCAPE '\\'"
-                    + " OR LOWER(u.email) LIKE ? ESCAPE '\\')");
+            sql.append(" AND (LOWER(u.account) LIKE ? OR LOWER(u.name) LIKE ?"
+                    + " OR LOWER(u.email) LIKE ?)");
             args.add(pattern);
             args.add(pattern);
             args.add(pattern);
@@ -139,7 +139,7 @@ public class UserWsRepository {
     private void appendOptionKeyword(StringBuilder sql, java.util.List<Object> args, String keyword, boolean fuzzy) {
         if (keyword != null && !keyword.isEmpty()) {
             String pattern = "%" + UserRepository.escapeLike(keyword.toLowerCase()) + "%";
-            sql.append(" AND (LOWER(u.account) LIKE ? ESCAPE '\\' OR LOWER(u.name) LIKE ? ESCAPE '\\')");
+            sql.append(" AND (LOWER(u.account) LIKE ? OR LOWER(u.name) LIKE ?)");
             args.add(pattern);
             args.add(pattern);
         }

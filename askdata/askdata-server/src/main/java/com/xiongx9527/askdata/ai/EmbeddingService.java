@@ -7,7 +7,6 @@ import com.xiongx9527.askdata.chat.service.ChatModelRouter;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter.ModelRef;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -18,61 +17,72 @@ import java.util.Optional;
 /**
  * 向量服务（统一入口）：术语 / SQL 示例 / 表 / 数据源 四类对象的向量写入与召回。
  *
- * <p><b>模型优先级</b>（对齐 spec「本地 embedding 模型」场景）：</p>
- * <ol>
- *   <li>远程 embedding 模型（{@code ai_model.model_type=1}）已配置且可用 → 用远程；</li>
- *   <li>否则用 {@link LocalEmbeddingModel}（本地 ONNX，768 维归一化）；</li>
- *   <li>两者都不可用 → {@link #embed(String)} 返回 {@code null}，调用方降级为词法召回，
- *       <b>不抛异常</b>（问数主链路必须仍能返回结果）。</li>
- * </ol>
+ * <p><b>模型来源</b>：只使用在线向量模型（{@code ai_model.model_type=1} 且 {@code enable=1}、
+ * {@code valid=1}）。本地 ONNX 模型已移除（D7）——未配置可用在线向量模型时
+ * {@link #embed(String)} 返回 {@code null}，问答入口按统一错误阻断，不再静默降级为词法召回。</p>
  *
- * <p>向量经可插拔的 {@link VectorStore} 后端持久化与召回（{@code askdata.vector-store.type}）：
- * {@code none}（缺省）为 DB JSON 列 + 应用内余弦；{@code qdrant} 为基于 langchain4j 的在线向量库
- * （ANN 检索）。在线库不可达时回落 DB 路径，问数主链路不报错。</p>
+ * <p>向量只持久化在在线 Qdrant（{@link VectorStore} 唯一实现）：DB 的 embedding 列不再存向量，
+ * 也不再回落应用内余弦。在线库不可达时向量写入/召回显式失败并由调用方降级为词法，不静默写本地。</p>
  */
 @Service
 public class EmbeddingService {
 
     private static final Logger log = LoggerFactory.getLogger(EmbeddingService.class);
 
-    /** DB 向量列镜像的长度上限（列宽 VARCHAR(10000)，留出余量）。 */
-    private static final int MIRROR_MAX_CHARS = 9000;
-
-    private final LocalEmbeddingModel localEmbeddingModel;
-
     private final ChatModelRouter modelRouter;
 
     private final ChatModelClient modelClient;
 
-    private final JdbcTemplate jdbc;
-
     private final ObjectMapper objectMapper;
 
     /**
-     * 向量存储后端（可插拔）。构造期默认用 {@link com.xiongx9527.askdata.ai.vector.DbVectorStore}
-     * 保留既有行为；Spring 装配时由 {@link #setVectorStore} 覆盖为配置指定的后端（none=DB / qdrant=在线）。
+     * 向量存储后端（在线 Qdrant）。由 Spring 注入；直接构造的单元测试必须显式
+     * {@link #setVectorStore} 传入替身，未设置时向量读写会失败而不是静默落本地。
      */
     private VectorStore vectorStore;
 
-    public EmbeddingService(LocalEmbeddingModel localEmbeddingModel, ChatModelRouter modelRouter,
-                            ChatModelClient modelClient, JdbcTemplate jdbc, ObjectMapper objectMapper) {
-        this.localEmbeddingModel = localEmbeddingModel;
+    /**
+     * 已确认维度的集合（collection → dimension）。
+     *
+     * <p>在线向量库的集合维度是建集合时固定的：切换默认向量模型导致维度变化时，必须先按新维度
+     * 重建集合（旧维度数据随之作废），否则后续 upsert 会因维度不匹配被拒。</p>
+     */
+    private final java.util.Map<String, Integer> ensuredDimensions = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * 维度不一致的集合（collection → 期望维度）。
+     *
+     * <p>记录后同一维度不再反复打后端：一次维度误配会让每次写入都失败，回填上千张表时
+     * 不应产生上千条重复告警；运维执行重建后由 {@link #resetCollections()} 清空。</p>
+     */
+    private final java.util.Map<String, Integer> brokenDimensions = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** 已告警过的损坏集合（避免回填时同一原因重复刷屏）。 */
+    private final java.util.Set<String> brokenLogged =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    public EmbeddingService(ChatModelRouter modelRouter,
+                            ChatModelClient modelClient, ObjectMapper objectMapper) {
         this.modelRouter = modelRouter;
         this.modelClient = modelClient;
-        this.jdbc = jdbc;
         this.objectMapper = objectMapper;
-        this.vectorStore = new com.xiongx9527.askdata.ai.vector.DbVectorStore(jdbc, objectMapper, "askdata");
     }
 
-    /** Spring 装配：注入配置指定的向量存储后端（覆盖构造期默认）。 */
+    /** Spring 装配：注入在线向量存储后端。 */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setVectorStore(VectorStore vectorStore) {
         this.vectorStore = vectorStore;
     }
 
-    /** 当前向量存储后端是否为在线库（供启动日志 / 诊断观测）。 */
-    public boolean isVectorStoreOnline() {
-        return vectorStore != null && vectorStore.isOnline();
+    /**
+     * 当前默认向量模型 id；无可用模型返回 {@code null}。
+     *
+     * <p>向量模型是全局配置（不按工作空间选择），写入向量时把它记到业务行上，
+     * 模型切换后即可判定该行向量是否失效。</p>
+     */
+    public Long currentEmbeddingModelId() {
+        Optional<ModelRef> embedding = modelRouter.embeddingModel();
+        return embedding.isPresent() && embedding.get().usable() ? embedding.get().id : null;
     }
 
     /** 当前向量存储后端的集合名前缀（诊断用）。 */
@@ -93,40 +103,24 @@ public class EmbeddingService {
         if (text == null || text.trim().isEmpty()) {
             return null;
         }
-        double[] remote = embedRemote(text);
-        if (remote != null) {
-            return remote;
-        }
-        return embedLocal(text);
+        List<double[]> vectors = embedRemote(Collections.singletonList(text));
+        return vectors == null || vectors.isEmpty() ? null : vectors.get(0);
     }
 
-    /** 批量文本向量（远程优先，其次本地）。 */
+    /** 批量文本向量（只用在线向量模型；不可用返回 null，由调用方按降级路径处理）。 */
     public List<double[]> embedAll(List<String> texts) {
         if (texts == null || texts.isEmpty()) {
             return new ArrayList<>();
         }
-        List<double[]> remote = embedRemote(texts);
-        if (remote != null) {
-            return remote;
-        }
-        List<double[]> local = localEmbeddingModel.embedAll(texts);
-        return local == null ? null : local;
+        return embedRemote(texts);
     }
 
-    /** 远程 embedding 模型向量（未配置/不可用返回 null）。 */
-    private double[] embedRemote(String text) {
-        Optional<ModelRef> embedding = modelRouter.embeddingModel();
-        if (!embedding.isPresent() || !embedding.get().usable()) {
-            return null;
-        }
-        List<double[]> vectors = embedRemote(Collections.singletonList(text));
-        if (vectors == null || vectors.isEmpty()) {
-            return null;
-        }
-        return vectors.get(0);
-    }
-
-    /** 远程 embedding 模型批量向量。 */
+    /**
+     * 远程 embedding 模型批量向量（全项目唯一的「取模型 → usable 校验 → 调端点 → 失败返 null」实现）。
+     *
+     * <p>表级召回（{@code TableEmbeddingService}）与 schema 上下文（{@code SchemaContextBuilder}）
+     * 都委托到这里，避免同一段降级逻辑抄三份、改一处漏两处。</p>
+     */
     private List<double[]> embedRemote(List<String> texts) {
         Optional<ModelRef> embedding = modelRouter.embeddingModel();
         if (!embedding.isPresent() || !embedding.get().usable()) {
@@ -140,45 +134,25 @@ public class EmbeddingService {
             }
             return vectors;
         } catch (Exception e) {
-            log.info("远程 embedding 调用失败（回落到本地模型）: {}", e.getMessage());
+            log.warn("远程 embedding 调用失败（降级为词法/空结果）: {}", e.getMessage());
             return null;
         }
     }
 
-    /** 本地 ONNX 模型向量。 */
-    private double[] embedLocal(String text) {
-        try {
-            return localEmbeddingModel.embed(text);
-        } catch (Exception e) {
-            log.info("本地 embedding 推理失败（降级为词法召回）: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    /** 是否存在可用向量模型（远程或本地）。 */
+    /**
+     * 是否存在可用向量模型。
+     *
+     * <p>只反映在线向量模型（{@code enable=1 && valid=1}）；本地 ONNX 已移除，
+     * 不允许以本地模型掩盖「配置未生效」。</p>
+     */
     public boolean available() {
         Optional<ModelRef> embedding = modelRouter.embeddingModel();
-        if (embedding.isPresent() && embedding.get().usable()) {
-            return true;
-        }
-        return localEmbeddingModel.available();
+        return embedding.isPresent() && embedding.get().usable();
     }
 
     // ------------------------------------------------------------------
     // 向量读写
     // ------------------------------------------------------------------
-
-    /** 向量序列化为 JSON 数组文本。 */
-    public String toJson(double[] vector) {
-        if (vector == null) {
-            return null;
-        }
-        try {
-            return objectMapper.writeValueAsString(vector);
-        } catch (Exception e) {
-            return null;
-        }
-    }
 
     /** 解析 JSON 数组文本为向量；非法/缺失返回 {@code null}。 */
     public double[] parseVector(String json) {
@@ -201,60 +175,121 @@ public class EmbeddingService {
     }
 
     /**
-     * 写入向量：委托给当前 {@link VectorStore} 后端（在线库或 DB 回退）。
+     * 确认集合维度（同维度只确认一次，避免每次写入都远程调用）。
      *
-     * <p>在线库启用时同步镜像 DB 向量列，使启动回填的「{@code embedding IS NULL}」判定保持幂等，
-     * 并支持切回 {@code type=none} 时直接回落，无需重建。</p>
+     * <p>维度不一致时后端抛错，这里把「该集合 + 该维度」记为已知损坏并短路后续写入：
+     * 回填上千行不会产生上千次远程探测，也不会刷屏。损坏状态只由显式重建清除。</p>
+     */
+    private void ensureCollection(String collection, int dimension) {
+        Integer ensured = ensuredDimensions.get(collection);
+        if (ensured != null && ensured == dimension) {
+            return;
+        }
+        Integer broken = brokenDimensions.get(collection);
+        if (broken != null && broken == dimension) {
+            throw new IllegalStateException("集合 " + collection + " 维度未就绪（需 " + dimension
+                    + "）：请执行向量索引重建");
+        }
+        try {
+            vectorStore.ensureCollection(collection, dimension);
+        } catch (VectorStore.DimensionMismatchException e) {
+            // 只有「维度不对」才是需要重建的持久状态；后端不可达等临时故障不得短路后续写入
+            brokenDimensions.put(collection, dimension);
+            throw e;
+        }
+        brokenDimensions.remove(collection);
+        ensuredDimensions.put(collection, dimension);
+    }
+
+    /**
+     * 清空在线集合与维度缓存，供显式重建调用。
      *
-     * @param table    表名（白名单内的业务表）
-     * @param id       记录 id
-     * @param vector   向量
+     * <p>重建是全量重算，旧 point 一律作废；先删集合再回填，既保证维度按新模型生效，
+     * 也顺带清理业务行删除后遗留的孤儿点。删除失败只记日志：集合可能本就不存在。</p>
+     */
+    public void resetCollections() {
+        ensuredDimensions.clear();
+        brokenDimensions.clear();
+        brokenLogged.clear();
+        if (vectorStore == null) {
+            log.warn("未注入向量存储，跳过集合清理");
+            return;
+        }
+        for (String objectType : WRITABLE_TABLES) {
+            try {
+                vectorStore.dropCollection(vectorStore.collectionFor(objectType));
+            } catch (Exception e) {
+                log.warn("清理集合 {} 失败（继续重建）: {}", objectType, e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 写入向量：委托给在线向量库。
+     *
+     * <p>不镜像 DB 向量列：在线库是唯一存储，避免出现「配了在线库却实际存在本地」的隐性路径。</p>
+     *
+     * @param table  表名（白名单内的业务表）
+     * @param id     记录 id
+     * @param vector 向量
      * @return 是否写入成功（失败仅记日志，不影响调用方主链路）
      */
     public boolean writeEmbedding(String table, long id, double[] vector) {
         if (vector == null || !isWritableTable(table)) {
             return false;
         }
-        boolean online = vectorStore.isOnline();
-        try {
-            vectorStore.upsert(vectorStore.collectionFor(table), id, vector);
-        } catch (Exception e) {
-            log.info("写入向量库失败 {}/{}（回落主链路）: {}", table, id, e.getMessage());
+        if (vectorStore == null) {
+            log.warn("未注入向量存储，跳过写入 {}/{}", table, id);
             return false;
         }
-        if (online) {
-            String json = toJson(vector);
-            // DB 向量列宽度有限（VARCHAR(10000)）：768 维放得下，1024 维及以上放不下。
-            // 镜像只为「切回 type=none 免重填」提供便利，放不下就跳过——在线库仍是唯一存储。
-            if (json != null && json.length() <= MIRROR_MAX_CHARS) {
-                try {
-                    jdbc.update("UPDATE " + table + " SET " + embeddingColumn(table) + " = ? WHERE id = ?",
-                            json, id);
-                } catch (Exception e) {
-                    log.info("镜像写入向量列失败 {}/{}（不影响在线库）: {}", table, id, e.getMessage());
-                }
-            }
+        try {
+            ensureCollection(vectorStore.collectionFor(table), vector.length);
+            vectorStore.upsert(vectorStore.collectionFor(table), id, vector);
+        } catch (Exception e) {
+            logWriteFailure(table, id, e);
+            return false;
         }
         return true;
     }
 
+    /** 写入失败日志：同一集合的「维度未就绪」只告警一次，避免回填上千行时刷屏。 */
+    private void logWriteFailure(String table, long id, Exception e) {
+        String collection = vectorStore.collectionFor(table);
+        if (brokenDimensions.containsKey(collection) && !brokenLogged.add(collection)) {
+            log.debug("写入向量库失败 {}/{}（同一集合已告警，等待重建）: {}", table, id, e.getMessage());
+            return;
+        }
+        log.warn("写入向量库失败 {}/{}（不回落本地存储）: {}", table, id, e.getMessage());
+    }
+
     /**
-     * 召回候选是否仍要求 DB 向量列非空。
+     * 删除向量：业务行删除后同步清理在线库中的 point，避免孤儿点。
      *
-     * <p>在线库启用时向量只存在于在线库（DB 列可能因宽度限制写不进而为空），
-     * 若仍以 {@code embedding IS NOT NULL} 过滤候选，会把有向量的记录全部漏掉；
-     * 仅 DB 回退路径才需要该门槛（用于把无向量记录排除在候选外）。</p>
+     * <p>失败只记日志：业务删除已提交，向量残留由后续重建（重建集合）兜底，不回滚业务。</p>
+     *
+     * @param table 对象类型（即表名）
+     * @param id    记录 id
      */
-    public boolean candidateRequiresEmbeddingColumn() {
-        return !isVectorStoreOnline();
+    public void deleteEmbedding(String table, long id) {
+        if (!isWritableTable(table)) {
+            return;
+        }
+        if (vectorStore == null) {
+            log.warn("未注入向量存储，跳过删除 {}/{}", table, id);
+            return;
+        }
+        try {
+            vectorStore.delete(vectorStore.collectionFor(table), id);
+        } catch (Exception e) {
+            log.warn("删除向量失败 {}/{}（孤儿点由重建清理）: {}", table, id, e.getMessage());
+        }
     }
 
     /**
      * 查询各候选记录的向量相似度（不截断、不设阈值）。
      *
-     * <p>供需要把向量分与其它信号（如显式提及分）混合排序的调用方使用；在线库走 ANN，
-     * {@code type=none} 走 DB 向量列 + 应用内余弦。无可用 embedding 模型或后端不可用时返回空表，
-     * 调用方据此降级，<b>不抛异常</b>。</p>
+     * <p>供需要把向量分与其它信号（如显式提及分）混合排序的调用方使用。无可用 embedding 模型
+     * 或向量库不可用时返回空表，调用方据此降级，<b>不抛异常</b>。</p>
      *
      * @param table        对象类型（即表名）
      * @param question     查询文本
@@ -271,6 +306,10 @@ public class EmbeddingService {
         if (queryVector == null) {
             return scores;
         }
+        if (vectorStore == null) {
+            log.warn("未注入向量存储，跳过向量相似度查询 {}", table);
+            return scores;
+        }
         try {
             int topK = Math.min(candidateIds.size(), 1000);
             for (VectorStore.IdScore hit : vectorStore.query(
@@ -278,23 +317,18 @@ public class EmbeddingService {
                 scores.put(hit.id(), hit.score());
             }
         } catch (Exception e) {
-            log.info("向量相似度查询失败 {}（降级）: {}", table, e.getMessage());
+            log.warn("向量相似度查询失败 {}（降级）: {}", table, e.getMessage());
         }
         return scores;
     }
 
-    /** 可写入向量的表白名单（防 SQL 注入）。 */
-    private static boolean isWritableTable(String table) {
-        if (table == null) {
-            return false;
-        }
-        return "terminology".equals(table) || "data_training".equals(table)
-                || "core_table".equals(table) || "core_datasource".equals(table);
-    }
+    /** 可写入向量的对象类型白名单（同时是集合名的后缀）。 */
+    private static final List<String> WRITABLE_TABLES = Collections.unmodifiableList(
+            java.util.Arrays.asList("terminology", "data_training", "core_table", "core_datasource"));
 
-    /** 各对象类型的向量列名：表级为 {@code table_embedding}，其余为 {@code embedding}。 */
-    private static String embeddingColumn(String table) {
-        return "core_table".equals(table) ? "table_embedding" : "embedding";
+    /** 是否是可写入向量的对象类型（白名单，防 SQL 注入 / 任意集合名）。 */
+    private static boolean isWritableTable(String table) {
+        return table != null && WRITABLE_TABLES.contains(table);
     }
 
     // ------------------------------------------------------------------
@@ -304,14 +338,14 @@ public class EmbeddingService {
     /**
      * 按相似度召回向量记录（委托当前 {@link VectorStore} 后端）。
      *
-     * <p>在线库启用时走 ANN 查询；{@code type=none} 或在线库不可达时回落 DB JSON 列 + 应用内余弦
-     * （与既有语义一致：对齐 SQLBot 的 {@code embedding <=> :embedding}）。</p>
+     * <p>走在线库 ANN 查询（对齐 SQLBot 的 {@code embedding <=> :embedding} 语义）；向量库不可用时
+     * 返回空表，调用方降级，<b>不抛异常</b>。</p>
      *
      * <p>由于结果已按相似度降序，先取前 {@code topCount} 再按 {@code threshold} 过滤，
      * 与「先过滤再取前 N」等价（阈值过滤只会削掉降序尾部）。</p>
      *
      * @param table      对象类型（即表名，决定集合 / 向量列）
-     * @param candidates 候选记录（至少含 {@code id}；回退路径另含 {@code embedding} 文本）
+     * @param candidates 候选记录（至少含 {@code id}）
      * @param question   查询文本（先算向量）
      * @param threshold  相似度阈值（低于则不返回）
      * @param topCount   返回条数上限
@@ -325,6 +359,10 @@ public class EmbeddingService {
         }
         double[] queryVector = embed(question);
         if (queryVector == null) {
+            return new ArrayList<>();
+        }
+        if (vectorStore == null) {
+            log.warn("未注入向量存储，跳过向量召回 {}", table);
             return new ArrayList<>();
         }
         java.util.Map<Long, java.util.Map<String, Object>> byId =
@@ -353,7 +391,7 @@ public class EmbeddingService {
                 hits.add(out);
             }
         } catch (Exception e) {
-            log.info("向量召回失败 {}（降级为空）: {}", table, e.getMessage());
+            log.warn("向量召回失败 {}（降级为空）: {}", table, e.getMessage());
             return new ArrayList<>();
         }
         hits.sort((a, b) -> Double.compare(

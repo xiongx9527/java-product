@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.ai.EmbeddingService;
 import com.xiongx9527.askdata.chat.service.ChatModelClient;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter;
-import com.xiongx9527.askdata.chat.service.ChatModelRouter.ModelRef;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.datasource.repository.FieldRepository;
 import com.xiongx9527.askdata.datasource.repository.TableRepository;
@@ -108,16 +107,19 @@ public class TableEmbeddingService {
     private final ObjectMapper objectMapper;
 
     /**
-     * 向量存储后端（可插拔）。构造期默认 {@link com.xiongx9527.askdata.ai.vector.DbVectorStore}
-     * 保留既有行为；Spring 装配时由 {@link #setVectorStore} 覆盖为配置指定的后端（none=DB / qdrant=在线）。
+     * 向量存储后端（在线 Qdrant）。由 Spring 注入；直接构造的单元测试必须显式
+     * {@link #setVectorStore} 传入替身，未设置时向量读写会失败而不是静默落本地。
      */
     private com.xiongx9527.askdata.ai.vector.VectorStore vectorStore;
 
     /**
-     * 统一向量服务（A20）：远程不可用时经其回退到与问数一致的本地 ONNX 模型。
-     * Spring 装配注入；离线单测可不注入（退化为仅远程）。
+     * 统一向量服务（A20）：复用问数同一条在线向量模型链路。
+     * Spring 装配注入；离线单测可不注入（仅保留本类自身的远程调用）。
      */
     private EmbeddingService embeddingService;
+
+    /** 直接构造（无 Spring）时自建的统一向量服务，避免每次调用新建。 */
+    private volatile EmbeddingService fallbackEmbedding;
 
     public TableEmbeddingService(TableRepository tableRepository, FieldRepository fieldRepository,
                                  ChatModelRouter modelRouter, ChatModelClient modelClient,
@@ -128,16 +130,15 @@ public class TableEmbeddingService {
         this.modelClient = modelClient;
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
-        this.vectorStore = new com.xiongx9527.askdata.ai.vector.DbVectorStore(jdbc, objectMapper, "askdata");
     }
 
-    /** Spring 装配：注入配置指定的向量存储后端（覆盖构造期默认）。 */
+    /** Spring 装配：注入在线向量存储后端。 */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setVectorStore(com.xiongx9527.askdata.ai.vector.VectorStore vectorStore) {
         this.vectorStore = vectorStore;
     }
 
-    /** Spring 装配：统一向量服务（远程 → 本地模型回退，A20）。 */
+    /** Spring 装配：统一向量服务（与问数共用在线模型，A20）。 */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setEmbeddingService(EmbeddingService embeddingService) {
         this.embeddingService = embeddingService;
@@ -183,30 +184,29 @@ public class TableEmbeddingService {
         if (text == null || text.trim().isEmpty()) {
             return null;
         }
-        // A20：统一入口保证「远程优先 → 本地模型（与问数一致）→ 词法降级」的同一路径
+        double[] vector = embedding().embed(text);
+        if (vector == null) {
+            log.warn("表级向量召回降级为词法：在线 embedding 不可用");
+        }
+        return vector;
+    }
+
+    /**
+     * 统一向量服务：Spring 注入优先；直接构造（单测 / 离线）时按同一构造参数自建一份。
+     *
+     * <p>「取模型 → usable 校验 → 调端点 → 失败返 null」只允许存在一份实现
+     * （{@link EmbeddingService}），本类不再复制该逻辑。</p>
+     */
+    private EmbeddingService embedding() {
         if (embeddingService != null) {
-            double[] vector = embeddingService.embed(text);
-            if (vector == null) {
-                log.warn("表级向量召回降级为词法：远程与本地 embedding 均不可用");
-            }
-            return vector;
+            return embeddingService;
         }
-        Optional<ModelRef> embedding = modelRouter.embeddingModel();
-        if (!embedding.isPresent() || !embedding.get().usable()) {
-            return null;
+        EmbeddingService fallback = fallbackEmbedding;
+        if (fallback == null) {
+            fallback = new EmbeddingService(modelRouter, modelClient, objectMapper);
+            fallbackEmbedding = fallback;
         }
-        ModelRef model = embedding.get();
-        try {
-            List<double[]> vectors = modelClient.embed(model.apiDomain, model.apiKey, model.baseModel,
-                    Collections.singletonList(text));
-            if (vectors == null || vectors.isEmpty() || vectors.get(0) == null || vectors.get(0).length == 0) {
-                return null;
-            }
-            return vectors.get(0);
-        } catch (Exception e) {
-            log.warn("embedding 调用失败（表级召回降级为词法）: {}", e.getMessage());
-            return null;
-        }
+        return fallback;
     }
 
     // ------------------------------------------------------------------
@@ -243,10 +243,10 @@ public class TableEmbeddingService {
                 ? (question == null ? "" : question) : matchText;
         double[] questionVector = embed(q);
         if (questionVector == null) {
-            // A20：远程与本地 embedding 均不可用时才退化为词法，并记录降级原因
-            log.info("表级向量召回降级为词法：远程与本地 embedding 均不可用（ds={}）", dsId);
+            // 在线 embedding 不可用时退化为词法，并记录降级原因
+            log.warn("表级向量召回降级为词法：在线 embedding 不可用（ds={}）", dsId);
         }
-        // 向量相似度经统一向量存储后端获取（在线库走 ANN，type=none 走 DB 列 + 应用内余弦）：
+        // 向量相似度经在线向量库获取（ANN）：
         // 表级排序要把向量分与显式提及分混合，故取「不截断、不设阈值」的逐表相似度。
         List<Long> candidateIds = new ArrayList<>(tables.size());
         for (Map<String, Object> table : tables) {
@@ -288,25 +288,35 @@ public class TableEmbeddingService {
     }
 
     /**
-     * 异步回填写入点：对勾选表计算并写回 {@code table_embedding}。
+     * 异步回填写入点：对勾选表计算并写入在线向量库。
      * 独立守护线程执行，失败仅 {@code log.warn}（吞异常），不影响调用方主链路。
      */
     public void backfill(long dsId) {
         Thread worker = new Thread(() -> {
             try {
+                // 直接构造（离线单测）时没有统一服务，集合只确认一次，避免每张表一次 GET /collections
+                boolean collectionEnsured = false;
                 for (Map<String, Object> table : tableRepository.listByDsIdChecked(dsId)) {
                     long tableId = Rows.lng(table, "id", 0L);
                     double[] vector = embed(tableDoc(tableId));
                     if (vector == null) {
                         continue;
                     }
-                    // 在线库启用时写入向量库；随后镜像 DB 列（保持回落与既有回填写入点可用）
+                    // 在线库是唯一存储：不镜像 DB 列（DB 列不再保存向量）
                     try {
-                        vectorStore.upsert(vectorStore.collectionFor("core_table"), tableId, vector);
+                        if (embeddingService != null) {
+                            embeddingService.writeEmbedding("core_table", tableId, vector);
+                        } else {
+                            if (!collectionEnsured) {
+                                vectorStore.ensureCollection(vectorStore.collectionFor("core_table"),
+                                        vector.length);
+                                collectionEnsured = true;
+                            }
+                            vectorStore.upsert(vectorStore.collectionFor("core_table"), tableId, vector);
+                        }
                     } catch (Exception e) {
                         log.warn("表级向量写入在线库失败 ds={} tbl={}: {}", dsId, tableId, e.getMessage());
                     }
-                    tableRepository.updateEmbedding(tableId, objectMapper.writeValueAsString(vector));
                 }
             } catch (Exception e) {
                 log.warn("表级向量回填失败 ds={}（不影响勾选/同步主链路）: {}", dsId, e.getMessage());
@@ -664,9 +674,7 @@ public class TableEmbeddingService {
     /**
      * 经向量存储后端取各勾选表的相似度（不截断、不设阈值）。
      *
-     * <p>在线库走 ANN；{@code type=none} 回落 DB {@code table_embedding} 列 + 应用内余弦
-     * （{@link com.xiongx9527.askdata.ai.vector.DbVectorStore} 自持读取与余弦，语义不变）。
-     * 后端不可用/查询失败时返回空表，调用方降级为纯提及排序，<b>不抛错</b>。</p>
+     * <p>走在线库 ANN；后端不可用/查询失败时返回空表，调用方降级为纯提及排序，<b>不抛错</b>。</p>
      */
     private Map<Long, Double> vectorStoreScores(double[] questionVector, List<Long> candidateIds) {
         Map<Long, Double> result = new HashMap<>();
@@ -677,7 +685,7 @@ public class TableEmbeddingService {
                 result.put(hit.id(), hit.score());
             }
         } catch (Exception e) {
-            log.info("表级向量查询失败（降级为提及召回）: {}", e.getMessage());
+            log.warn("表级向量查询失败（降级为提及召回）: {}", e.getMessage());
         }
         return result;
     }

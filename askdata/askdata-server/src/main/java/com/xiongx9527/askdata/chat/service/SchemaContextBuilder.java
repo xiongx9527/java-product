@@ -84,6 +84,12 @@ public class SchemaContextBuilder {
 
     private final ChatModelRouter modelRouter;
 
+    /** 统一向量服务（Spring 注入优先；直接构造时按同一构造参数自建）。 */
+    private com.xiongx9527.askdata.ai.EmbeddingService embeddingService;
+
+    /** 直接构造（无 Spring）时自建的统一向量服务，避免每次调用新建。 */
+    private volatile com.xiongx9527.askdata.ai.EmbeddingService fallbackEmbedding;
+
     private final JdbcTemplate jdbc;
 
     private final ObjectMapper objectMapper;
@@ -922,7 +928,7 @@ public class SchemaContextBuilder {
             return "";
         }
         try {
-            String sql = type.previewSql(fieldNames, tableName, conf, null);
+            String sql = datasourceService.previewSql(type, conf, fieldNames, tableName, null);
             Map<String, Object> preview = datasourceService.execSqlTransient(type, conf, sql);
             List<Map<String, Object>> data = Rows.mapList(preview.get("data"));
             if (data.isEmpty()) {
@@ -1162,20 +1168,39 @@ public class SchemaContextBuilder {
     // 内部：RAG 计算
     // ------------------------------------------------------------------
 
+    /** Spring 装配：统一向量服务（与问数、表级召回共用同一份模型解析与降级逻辑）。 */
+    @Autowired(required = false)
+    public void setEmbeddingService(com.xiongx9527.askdata.ai.EmbeddingService embeddingService) {
+        this.embeddingService = embeddingService;
+    }
+
     /** 批量向量：[0]=问题，其后依次为各文档；不可用时返回 null。 */
     private List<double[]> embedAll(String question, List<String> docs) {
         if (docs.isEmpty()) {
             return null;
         }
-        Optional<ModelRef> embedding = modelRouter.embeddingModel();
-        if (!embedding.isPresent() || !embedding.get().usable()) {
-            return null;
-        }
-        ModelRef model = embedding.get();
         List<String> inputs = new ArrayList<>();
         inputs.add(question);
         inputs.addAll(docs);
-        return modelClient.embed(model.apiDomain, model.apiKey, model.baseModel, inputs);
+        return embedding().embedAll(inputs);
+    }
+
+    /**
+     * 统一向量服务：Spring 注入优先；直接构造（单测 / 离线）时按同一构造参数自建一份。
+     *
+     * <p>「取模型 → usable 校验 → 调端点 → 失败返 null」只允许存在一份实现
+     * （{@link com.xiongx9527.askdata.ai.EmbeddingService}），本类不再复制该逻辑。</p>
+     */
+    private com.xiongx9527.askdata.ai.EmbeddingService embedding() {
+        if (embeddingService != null) {
+            return embeddingService;
+        }
+        com.xiongx9527.askdata.ai.EmbeddingService fallback = fallbackEmbedding;
+        if (fallback == null) {
+            fallback = new com.xiongx9527.askdata.ai.EmbeddingService(modelRouter, modelClient, objectMapper);
+            fallbackEmbedding = fallback;
+        }
+        return fallback;
     }
 
     private List<String> topK(String question, List<Map<String, Object>> rows, List<String> texts) {

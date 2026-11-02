@@ -58,6 +58,10 @@ public class ScheduledTaskExecutor {
 
     private final ScheduledTaskProperties properties;
 
+    /** 向量索引就绪校验（决策 14/15）：与网页会话共用同一阻断口径。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.xiongx9527.askdata.ai.EmbeddingIndexService embeddingIndexService;
+
     private final ObjectMapper objectMapper;
 
     private final MessageResolver messageResolver;
@@ -116,6 +120,10 @@ public class ScheduledTaskExecutor {
         String exportPath = null;
         String error = null;
         try {
+            String blockKey = embeddingIndexService == null ? null : embeddingIndexService.chatBlockReasonKey();
+            if (blockKey != null) {
+                throw new IllegalStateException(messageResolver.get(blockKey));
+            }
             Optional<ModelRef> model = modelRouter.defaultChatModel();
             if (!model.isPresent() || !model.get().usable()) {
                 throw new IllegalStateException(messageResolver.get("scheduled.no.default.model"));
@@ -129,7 +137,7 @@ public class ScheduledTaskExecutor {
             int genLeft = MAX_SQL_GEN_RETRY;
             while (true) {
                 String text = modelClient.generate(aiModel.apiDomain, aiModel.apiKey, aiModel.baseModel, messages,
-                        aiModel.params);
+                        aiModel.params, aiModel.upstreamFormat);
                 sql = ChatQuestionService.extractSqlFromOutput(text, objectMapper);
                 if (sql != null) {
                     break;

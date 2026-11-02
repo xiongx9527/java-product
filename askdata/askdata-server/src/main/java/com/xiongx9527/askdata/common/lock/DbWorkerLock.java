@@ -16,7 +16,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * DB 版单 worker 守卫锁：元数据库表行独占锁（默认后端）。
  *
  * <p><b>为何不用 PostgreSQL advisory lock</b>：SQLBot 用 {@code pg_try_advisory_lock}，
- * 但 askdata 的元数据库是 H2，<b>没有 advisory lock 语义</b>。故采用表行独占锁：</p>
+ * 但 askdata 的元数据库同时支持 MySQL 与 PostgreSQL，MySQL 没有等价的 advisory lock 语义，
+ * 为保持两套方言行为一致，统一采用表行独占锁：</p>
  * <ul>
  *   <li>守卫表 {@link #LOCK_TABLE}（一行，键为任务名）；</li>
  *   <li>获取锁 = 在<b>独立连接</b>上 {@code SELECT ... FOR UPDATE} 锁定该行，
@@ -25,8 +26,8 @@ import java.util.concurrent.ConcurrentHashMap;
  *       即「未获得锁」。</li>
  * </ul>
  *
- * <p><b>作用域</b>：H2 的行锁只在<b>同一数据库文件</b>内有效，故多实例共享同一元数据库时
- * 提供跨实例互斥；各实例各用本地库时退化为按库互斥（各自回填自己的库，语义正确）。</p>
+ * <p><b>作用域</b>：行锁只在<b>同一元数据库实例</b>内有效，故多实例共享同一元数据库时
+ * 提供跨实例互斥。</p>
  */
 public class DbWorkerLock implements WorkerLock {
 

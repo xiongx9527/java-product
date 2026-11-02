@@ -34,6 +34,22 @@ public class DatasourceEmbeddingService {
 
     private final JdbcTemplate jdbc;
 
+    /** 删除数据源及其表的向量（业务行删除后调用，避免在线库留下孤儿 point）。 */
+    public void deleteEmbeddings(long dsId, java.util.List<Long> tableIds) {
+        embeddingService.deleteEmbedding("core_datasource", dsId);
+        deleteTableEmbeddings(tableIds);
+    }
+
+    /** 删除表向量（表被取消勾选 / 同步移除时调用）。 */
+    public void deleteTableEmbeddings(java.util.List<Long> tableIds) {
+        if (tableIds == null) {
+            return;
+        }
+        for (Long tableId : tableIds) {
+            embeddingService.deleteEmbedding("core_table", tableId);
+        }
+    }
+
     public DatasourceEmbeddingService(EmbeddingService embeddingService, JdbcTemplate jdbc) {
         this.embeddingService = embeddingService;
         this.jdbc = jdbc;
@@ -58,11 +74,13 @@ public class DatasourceEmbeddingService {
                 return;
             }
             double[] vector = embeddingService.embed(doc);
-            if (vector != null) {
-                embeddingService.writeEmbedding("core_datasource", datasourceId, vector);
+            if (vector != null && embeddingService.writeEmbedding("core_datasource", datasourceId, vector)) {
+                // 记录本次向量由哪个模型生成：向量模型是全局配置，切换后据此判定该行向量已失效
+                jdbc.update("UPDATE core_datasource SET embedding_model_id = ? WHERE id = ?",
+                        embeddingService.currentEmbeddingModelId(), datasourceId);
             }
         } catch (Exception e) {
-            log.info("数据源向量写入失败 ds={}（不影响主链路）: {}", datasourceId, e.getMessage());
+            log.warn("数据源向量写入失败 ds={}（不影响主链路）: {}", datasourceId, e.getMessage());
         }
     }
 
@@ -114,7 +132,7 @@ public class DatasourceEmbeddingService {
             }
             return sb.toString();
         } catch (Exception e) {
-            log.info("数据源文档构建失败 ds={}: {}", datasourceId, e.getMessage());
+            log.warn("数据源文档构建失败 ds={}: {}", datasourceId, e.getMessage());
             return "";
         }
     }
@@ -136,12 +154,15 @@ public class DatasourceEmbeddingService {
         }
         try {
             StringBuilder sql = new StringBuilder(
-                    "SELECT id, embedding FROM core_datasource WHERE ");
-            if (embeddingService.candidateRequiresEmbeddingColumn()) {
-                sql.append("embedding IS NOT NULL AND ");
+                    "SELECT id FROM core_datasource WHERE ");
+            // 只召回当前向量模型产出的向量；历史行（未记录模型）保留，由维度校验兜底
+            Long modelId = embeddingService.currentEmbeddingModelId();
+            List<Object> args = new ArrayList<>();
+            if (modelId != null) {
+                sql.append("(embedding_model_id IS NULL OR embedding_model_id = ?) AND ");
+                args.add(modelId);
             }
             sql.append("id IN (");
-            List<Object> args = new ArrayList<>();
             for (int i = 0; i < dsIds.size(); i++) {
                 sql.append(i > 0 ? ",?" : "?");
             }
@@ -158,7 +179,7 @@ public class DatasourceEmbeddingService {
             }
             return result;
         } catch (Exception e) {
-            log.info("数据源向量召回失败（降级为词法）: {}", e.getMessage());
+            log.warn("数据源向量召回失败（降级为词法）: {}", e.getMessage());
             return new ArrayList<>();
         }
     }

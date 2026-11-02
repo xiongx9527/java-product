@@ -31,7 +31,7 @@ public class ChatRepository {
             "id, chat_id, question, create_by, oid, create_time, update_time, finish_time, sql_answer, %SQL%, "
                     + "datasource, data, chart_answer, chart, analysis, analysis_thinking, predict, predict_content, "
                     + "predict_data, finish, error, run_time, first_chat, recommended_question, analysis_record_id, "
-                    + "predict_record_id, regenerate_record_id, duration, total_tokens";
+                    + "predict_record_id, regenerate_record_id, duration, total_tokens, ai_modal_id, ai_modal_name";
 
     private final JdbcTemplate jdbc;
 
@@ -165,12 +165,23 @@ public class ChatRepository {
 
     public long insertRecord(long chatId, String question, long createBy, long oid, Long datasource,
                              boolean firstChat, Long regenerateRecordId) {
+        return insertRecord(chatId, question, createBy, oid, datasource, firstChat, regenerateRecordId,
+                null, null);
+    }
+
+    /**
+     * 建记录并落「本次使用的模型」（对齐 SQLBot {@code chat_question.ai_modal_id / ai_modal_name}）：
+     * 事后可追溯每条问答由哪个模型生成，切换默认模型后仍能分辨历史记录。
+     */
+    public long insertRecord(long chatId, String question, long createBy, long oid, Long datasource,
+                             boolean firstChat, Long regenerateRecordId, Long aiModelId, String aiModelName) {
         long id = idGenerator.nextId();
         Timestamp now = new Timestamp(System.currentTimeMillis());
         jdbc.update("INSERT INTO chat_record (id, chat_id, question, create_by, oid, create_time, update_time, "
-                        + "datasource, finish, first_chat, regenerate_record_id) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, FALSE, ?, ?)",
-                id, chatId, question, createBy, oid, now, now, datasource, firstChat, regenerateRecordId);
+                        + "datasource, finish, first_chat, regenerate_record_id, ai_modal_id, ai_modal_name) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, FALSE, ?, ?, ?, ?)",
+                id, chatId, question, createBy, oid, now, now, datasource, firstChat, regenerateRecordId,
+                aiModelId, aiModelName);
         return id;
     }
 

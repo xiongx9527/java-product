@@ -107,7 +107,7 @@ public class DashboardService {
         String id = Rows.str(body, "id");
         Map<String, Object> row = requireVisible(id, user);
         Map<String, Object> result = new LinkedHashMap<>();
-        // 逐字段输出小写键名（H2 可能返回大写列名；前端按 SQLBot 字段名消费）
+        // 逐字段输出小写键名（不同方言的列标签大小写不一致；前端按 SQLBot 字段名消费）
         result.put("id", Rows.str(row, "id"));
         result.put("name", Rows.str(row, "name"));
         result.put("pid", Rows.str(row, "pid"));

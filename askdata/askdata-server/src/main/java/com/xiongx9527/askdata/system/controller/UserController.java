@@ -231,8 +231,8 @@ public class UserController {
         if (user == null) {
             throw new BadRequestException(messageResolver.get("user.login.not.exists"));
         }
-        // 用 Rows 取值（大小写不敏感）：H2 在 MySQL 兼容模式下返回大写列标签（ID/ACCOUNT/…），
-        // 直接 map.get("id") 会取不到值。支线通道的用户视图是小写键，主通道是 H2 大写键，两条路径都要覆盖。
+        // 用 Rows 取值（大小写不敏感）：不同方言返回的列标签大小写不一致（ID/ACCOUNT 与 id/account），
+        // 直接 map.get("id") 可能取不到值。支线通道的用户视图是小写键，主通道方言可能大写，两条路径都要覆盖。
         long id = Rows.lng(user, "id", 0L);
         String account = Rows.str(user, "account");
         long oid = Rows.lng(user, "oid", 0L);

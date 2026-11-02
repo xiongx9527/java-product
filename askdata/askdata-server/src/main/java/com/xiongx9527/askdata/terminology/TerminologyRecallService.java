@@ -59,6 +59,16 @@ public class TerminologyRecallService {
      *
      * @param ids 术语 id 列表（父记录 id；同义词子记录一并写入）
      */
+    /** 删除术语向量（含级联删除的子术语 id）。 */
+    public void deleteEmbeddings(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        for (Long id : ids) {
+            embeddingService.deleteEmbedding("terminology", id);
+        }
+    }
+
     public void saveEmbeddings(List<Long> ids) {
         if (ids == null || ids.isEmpty() || !embeddingService.available()) {
             return;
@@ -159,8 +169,8 @@ public class TerminologyRecallService {
                             + "WHERE t.oid = ? AND t.enabled = TRUE AND ("
                             + "LOWER(t.word) LIKE ? OR LOWER(c.word) LIKE ?"
                             // 词为句子的子串（SQLBot 语义；NULL/空词不命中）
-                            + " OR (LENGTH(t.word) > 0 AND INSTR(LOWER(?), LOWER(t.word)) > 0)"
-                            + " OR (LENGTH(c.word) > 0 AND INSTR(LOWER(?), LOWER(c.word)) > 0))");
+                            + " OR (LENGTH(t.word) > 0 AND POSITION(LOWER(t.word) IN LOWER(?)) > 0)"
+                            + " OR (LENGTH(c.word) > 0 AND POSITION(LOWER(c.word) IN LOWER(?)) > 0))");
             String lower = sentence.toLowerCase(java.util.Locale.ROOT);
             String pattern = "%" + escapeLike(lower) + "%";
             List<Object> args = new ArrayList<>();
@@ -185,13 +195,9 @@ public class TerminologyRecallService {
         List<Long> result = new ArrayList<>();
         try {
             StringBuilder sql = new StringBuilder(
-                    "SELECT t.id, t.embedding FROM terminology t WHERE t.oid = ? AND t.enabled = TRUE");
+                    "SELECT t.id FROM terminology t WHERE t.oid = ? AND t.enabled = TRUE");
             List<Object> args = new ArrayList<>();
             args.add(oid);
-            // 在线库启用时向量不在 DB 列，不能再以 embedding IS NOT NULL 过滤候选
-            if (embeddingService.candidateRequiresEmbeddingColumn()) {
-                sql.append(" AND t.embedding IS NOT NULL");
-            }
             appendScope(sql, args, datasource, advancedApp);
             List<Map<String, Object>> candidates = jdbc.queryForList(sql.toString(), args.toArray());
             if (candidates.isEmpty()) {
@@ -216,8 +222,8 @@ public class TerminologyRecallService {
         }
         if (datasource != null) {
             sql.append(" AND (t.specific_ds = FALSE OR t.specific_ds IS NULL OR ("
-                    + "INSTR(',' || COALESCE(REPLACE(REPLACE(t.datasource_ids, '[', ''), ']', ''), '') "
-                    + "|| ',', ',' || ? || ',') > 0))");
+                    + "CONCAT(',', COALESCE(REPLACE(REPLACE(t.datasource_ids, '[', ''), ']', ''), ''), ',') "
+                    + "LIKE CONCAT('%,', ?, ',%')))");
             args.add(String.valueOf(datasource));
         } else {
             sql.append(" AND (t.specific_ds = FALSE OR t.specific_ds IS NULL)");

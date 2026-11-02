@@ -134,13 +134,13 @@ public class UserRepository {
      */
     private static String score(String column) {
         return "(CASE WHEN LOWER(" + column + ") = ? THEN 0 "
-                + "WHEN LOWER(" + column + ") LIKE ? ESCAPE '\\' THEN 1 "
-                + "WHEN LOWER(" + column + ") LIKE ? ESCAPE '\\' THEN 2 ELSE 3 END)";
+                + "WHEN LOWER(" + column + ") LIKE ? THEN 1 "
+                + "WHEN LOWER(" + column + ") LIKE ? THEN 2 ELSE 3 END)";
     }
 
     /** 命中标记表达式（1=该字段命中关键字），参数同 {@link #score(String)}。 */
     private static String matchFlag(String column) {
-        return "(CASE WHEN LOWER(" + column + ") LIKE ? ESCAPE '\\' THEN 1 ELSE 0 END)";
+        return "(CASE WHEN LOWER(" + column + ") LIKE ? THEN 1 ELSE 0 END)";
     }
 
     public long pagerCount(String keyword, Integer status, List<Integer> origins, List<Integer> oidlist) {
@@ -168,8 +168,8 @@ public class UserRepository {
         }
         if (keyword != null && !keyword.isEmpty()) {
             String pattern = "%" + escapeLike(keyword.toLowerCase()) + "%";
-            sql.append(" AND (LOWER(u.account) LIKE ? ESCAPE '\\' OR LOWER(u.name) LIKE ? ESCAPE '\\'"
-                    + " OR LOWER(u.email) LIKE ? ESCAPE '\\')");
+            sql.append(" AND (LOWER(u.account) LIKE ? OR LOWER(u.name) LIKE ?"
+                    + " OR LOWER(u.email) LIKE ?)");
             args.add(pattern);
             args.add(pattern);
             args.add(pattern);

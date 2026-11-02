@@ -30,7 +30,7 @@ public class VariableRepository {
                     "SELECT " + COLUMNS + " FROM system_variable ORDER BY type DESC, name");
         }
         return jdbc.queryForList(
-                "SELECT " + COLUMNS + " FROM system_variable WHERE LOWER(name) LIKE ? ESCAPE '\\' AND type <> 'system' "
+                "SELECT " + COLUMNS + " FROM system_variable WHERE LOWER(name) LIKE ? AND type <> 'system' "
                         + "ORDER BY type DESC, name",
                 "%" + UserRepository.escapeLike(name.toLowerCase()) + "%");
     }
@@ -43,7 +43,7 @@ public class VariableRepository {
         }
         String pattern = "%" + UserRepository.escapeLike(name.toLowerCase()) + "%";
         return jdbc.queryForList("SELECT " + COLUMNS + " FROM system_variable "
-                        + "WHERE LOWER(name) LIKE ? ESCAPE '\\' AND type <> 'system' "
+                        + "WHERE LOWER(name) LIKE ? AND type <> 'system' "
                         + "ORDER BY type DESC, name LIMIT ? OFFSET ?",
                 pattern, size, offset);
     }
@@ -54,7 +54,7 @@ public class VariableRepository {
             count = jdbc.queryForObject("SELECT COUNT(*) FROM system_variable", Long.class);
         } else {
             count = jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM system_variable WHERE LOWER(name) LIKE ? ESCAPE '\\' AND type <> 'system'",
+                    "SELECT COUNT(*) FROM system_variable WHERE LOWER(name) LIKE ? AND type <> 'system'",
                     Long.class, "%" + UserRepository.escapeLike(name.toLowerCase()) + "%");
         }
         return count == null ? 0L : count;

@@ -47,12 +47,15 @@ spring:
       # RedisConnectionFactory bean；改由 RedisClientConfig 在启用 Redis 时自行创建。
       - cn.dev33.satoken.dao.SaTokenDaoForRedisTemplate
   datasource:
-    url: jdbc:h2:file:./data/askdata;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE
-    driver-class-name: org.h2.Driver
-    username: sa
-    password: ""
+    # 元数据库：只支持 MySQL 8.0+（含 MariaDB 等衍生版本）与 PostgreSQL 10+；
+    # MetadataDatabaseGuard 在 Flyway 迁移前校验产品与版本，5.7 / H2 / 其它产品直接失败并给出中文提示
+    # （Flyway 社区版已不支持 MySQL 5.7）。
+    url: jdbc:mysql://${ASKDATA_DB_HOST:127.0.0.1}:${ASKDATA_DB_PORT:3306}/${ASKDATA_DB_NAME:askdata}?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    # 不写 driver-class-name：由 JDBC URL 推导，切换 MySQL/PostgreSQL 时无需改配置
+    username: ${ASKDATA_DB_USER:root}
+    password: ${ASKDATA_DB_PASSWORD:}
   # 元数据库版本化迁移（A9）：common 种子 + 当前方言 baseline。
-  # {vendor} 由 Flyway 按 JDBC URL 解析为 h2 / postgresql / mysql。
+  # {vendor} 由 Flyway 按 JDBC URL 解析为 postgresql / mysql。
   flyway:
     enabled: true
     locations: classpath:db/migration/common,classpath:db/migration/{vendor}
@@ -80,7 +83,7 @@ spring:
       max-request-size: 60MB
 
 # 框架 UidGenerator 开关：启用后由 UIDAutoConfiguration 创建 UidGenerator（CachedUidGenerator），
-# 底层 DisposableWorkerIdAssigner 写 WORKER_NODE 表分配 worker id（见 db/migration/h2/V1__baseline.sql）。
+# 底层 DisposableWorkerIdAssigner 写 WORKER_NODE 表分配 worker id（见 db/migration/mysql/V1__baseline.sql）。
 # epochStr 留空 → 框架默认取当日（CachedUidGenerator 默认 28 位时间戳，需贴近当前日期，
 # 与旧雪花 epoch=0/1970 的 41/5/5/12 布局不同；生成的仍是全局唯一 long，对调用方透明）。
 fw:
@@ -142,82 +145,25 @@ askdata:
     # 防抖窗口（秒，缺省 300）：一次成功执行后，窗口内的后续启动不再重复执行同一任务
     # （防「应用反复重启 → 一次性启动任务被反复触发」）；0 表示不防抖。
     debounce-seconds: ${ASKDATA_LOCK_DEBOUNCE_SECONDS:300}
-  # 本地 embedding 模型（D8/A6）：shibing624/text2vec-base-chinese（ONNX，768 维归一化）。
-  # 模型权重随构建产物交付到 model-path（不进 git，793MB）；
-  # 目录缺失或加载失败时向量召回降级为词法，问数主链路不报错。
+  # 向量能力只使用在线向量模型（ai_model.model_type=1 且 enable=1、valid=1）。
+  # 本地 ONNX 模型已移除，未配置可用在线向量模型时问答入口统一阻断。
   embedding:
-    model-path: /opt/askdata/models
     # 启动期向量回填开关（关闭则不做回填；开启时由单 worker 守卫保证集群内只跑一次）。
     backfill-enabled: true
-  # 向量存储后端（可插拔）：none（缺省，DB embedding JSON 列 + 应用内余弦）或 qdrant（在线向量库）。
-  # 向量仍由上方 embedding 模型（远程 API / 本地 ONNX）产出；此处只决定向量的持久化与 ANN 检索后端。
-  # type=qdrant 时四类对象（术语 / SQL 示例 / 表 / 数据源）的向量读写统一走在线库；
-  # Qdrant 不可达时自动回落 DB 路径，问数主链路不报错。
+  # 向量存储：只支持在线 Qdrant。向量不落 DB 的 embedding JSON 列，避免出现
+  # 「配置了在线库、实际却存在本地」的隐性路径。未配置 url 时应用仍可启动，但向量读写会显式失败。
   vector-store:
-    type: none
+    # 后端类型：当前仅实现 qdrant；milvus / weaviate / pgvector / elasticsearch / redis 为预留取值，
+    # 配置后会启动失败并提示尚未实现（不会静默退回本地存储）。本地 DB 向量列后端已移除。
+    type: ${ASKDATA_VECTOR_STORE_TYPE:qdrant}
     # 集合名前缀：集合名为 "{collection-prefix}-{object-type}"，object-type ∈
     # {terminology, data_training, core_table, core_datasource}。
     collection-prefix: askdata
     qdrant:
-      # Qdrant REST 基址，如 http://qdrant:6333（https 前缀走 TLS）。仅用于健康检查。
+      # Qdrant REST 基址，如 http://qdrant:6333（https 前缀走 TLS）。必填。
       url: ${ASKDATA_QDRANT_URL:}
-      # 可选 API Key（Qdrant 开启鉴权时必填；REST 与 gRPC 共用同一把钥匙）。
+      # 可选 API Key（Qdrant 开启鉴权时必填）。
       api-key: ${ASKDATA_QDRANT_API_KEY:}
-      # gRPC 端口：langchain4j/Qdrant Java 客户端走 gRPC，与 REST 端口相互独立，Qdrant 缺省 6334。
-      grpc-port: ${ASKDATA_QDRANT_GRPC_PORT:6334}
-    milvus:
-      # Milvus gRPC 主机与端口（缺省 19530）。health-url 留空则乐观视为可用（失败由各读写回落）。
-      host: ${ASKDATA_MILVUS_HOST:}
-      port: ${ASKDATA_MILVUS_PORT:19530}
-      # 是否走 TLS。
-      tls: ${ASKDATA_MILVUS_TLS:false}
-      # 鉴权 token（API Key 或 user:password），开启鉴权时必填。
-      token: ${ASKDATA_MILVUS_TOKEN:}
-      # 数据库名（缺省 default）。
-      database: ${ASKDATA_MILVUS_DATABASE:default}
-      # RESTful 健康检查基址（如 http://milvus:9091），用于启动期连通性探测；留空则不探测。
-      health-url: ${ASKDATA_MILVUS_HEALTH_URL:}
-      # 相似度度量 / 索引类型 / 一致性级别（缺省 COSINE / AUTO_INDEX / STRONG）。
-      metric-type: ${ASKDATA_MILVUS_METRIC_TYPE:COSINE}
-      index-type: ${ASKDATA_MILVUS_INDEX_TYPE:AUTO_INDEX}
-      consistency-level: ${ASKDATA_MILVUS_CONSISTENCY:STRONG}
-    weaviate:
-      # Weaviate scheme/host/port（REST/gRPC 同进程，缺省 http / 8080）。
-      scheme: ${ASKDATA_WEAVIATE_SCHEME:http}
-      host: ${ASKDATA_WEAVIATE_HOST:}
-      port: ${ASKDATA_WEAVIATE_PORT:8080}
-      # 可选 API Key（开启鉴权时必填）。
-      api-key: ${ASKDATA_WEAVIATE_API_KEY:}
-      # 一致性级别（缺省 QUORUM）。
-      consistency-level: ${ASKDATA_WEAVIATE_CONSISTENCY:QUORUM}
-    pgvector:
-      # Postgres 连接信息（需已安装 pgvector 扩展）。可复用问数元数据库或独立库。
-      host: ${ASKDATA_PGVECTOR_HOST:}
-      port: ${ASKDATA_PGVECTOR_PORT:5432}
-      database: ${ASKDATA_PGVECTOR_DATABASE:}
-      user: ${ASKDATA_PGVECTOR_USER:}
-      password: ${ASKDATA_PGVECTOR_PASSWORD:}
-      # 是否建 ivfflat 索引（缺省 false，避免建索引开销；大数据量可开启）。
-      use-index: ${ASKDATA_PGVECTOR_USE_INDEX:false}
-    elasticsearch:
-      # Elasticsearch 基址（如 http://es:9200）。索引由应用按集合自动创建（vector 映射为 dense_vector）。
-      server-url: ${ASKDATA_ELASTICSEARCH_URL:}
-      # 可选鉴权：api-key（ES8+ ApiKey）或 username/password（Basic），二者择一，api-key 优先。
-      api-key: ${ASKDATA_ELASTICSEARCH_API_KEY:}
-      username: ${ASKDATA_ELASTICSEARCH_USERNAME:}
-      password: ${ASKDATA_ELASTICSEARCH_PASSWORD:}
-      # 写入可见性：WaitFor（写后即查，缺省）/ True / False。
-      refresh: ${ASKDATA_ELASTICSEARCH_REFRESH:WaitFor}
-    redis:
-      # Redis 向量库连接（需 Redis Stack：RediSearch 向量字段 + RedisJSON；社区版 Redis 不支持向量检索）。
-      host: ${ASKDATA_VECTOR_REDIS_HOST:}
-      port: ${ASKDATA_VECTOR_REDIS_PORT:6379}
-      username: ${ASKDATA_VECTOR_REDIS_USERNAME:}
-      password: ${ASKDATA_VECTOR_REDIS_PASSWORD:}
-      # 是否走 TLS。
-      ssl: ${ASKDATA_VECTOR_REDIS_SSL:false}
-      # 库序号。
-      database: ${ASKDATA_VECTOR_REDIS_DATABASE:0}
   # 应用密钥（落库加密用）。不内置缺省值：必须通过环境变量 ASKDATA_SECRET_KEY 或外部配置显式设定，
   # 否则启动期随机生成（当次进程内可用，重启后历史密文不可解，并在启动日志告警）。
   secret:

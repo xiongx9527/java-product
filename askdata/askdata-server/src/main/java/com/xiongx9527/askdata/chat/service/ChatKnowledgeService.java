@@ -286,8 +286,8 @@ public class ChatKnowledgeService {
                 sql.append(" AND (specific_ds = FALSE OR specific_ds IS NULL) ORDER BY create_time");
             } else {
                 sql.append(" AND (specific_ds = FALSE OR specific_ds IS NULL OR (");
-                sql.append("INSTR(',' || COALESCE(REPLACE(REPLACE(datasource_ids, '[', ''), ']', ''), '') ");
-                sql.append("|| ',', ',' || ? || ',') > 0)) ORDER BY create_time");
+                sql.append("CONCAT(',', COALESCE(REPLACE(REPLACE(datasource_ids, '[', ''), ']', ''), ''), ',') ");
+                sql.append("LIKE CONCAT('%,', ?, ',%'))) ORDER BY create_time");
                 args.add(String.valueOf(dsId));
             }
             return jdbc.queryForList(sql.toString(), String.class, args.toArray());
@@ -331,7 +331,7 @@ public class ChatKnowledgeService {
         messages.add(new ChatModelClient.ModelMessage("user", user.toString()));
         try {
             String raw = modelClient.generate(model.apiDomain, model.apiKey, model.baseModel, messages,
-                    model.params);
+                    model.params, model.upstreamFormat);
             return parseEntities(raw);
         } catch (Exception e) {
             log.info("LLM 关键词抽取失败（退化为词法命中）: {}", e.getMessage());

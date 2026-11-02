@@ -198,7 +198,8 @@ public class PermissionEnforcer {
         }
         user.append("\n请返回注入过滤条件后的完整 SQL。");
         messages.add(new ChatModelClient.ModelMessage("user", user.toString()));
-        String text = chatModelClient.generate(model.apiDomain, model.apiKey, model.baseModel, messages, model.params);
+        String text = chatModelClient.generate(model.apiDomain, model.apiKey, model.baseModel, messages,
+                model.params, model.upstreamFormat);
         if (text == null) {
             return null;
         }

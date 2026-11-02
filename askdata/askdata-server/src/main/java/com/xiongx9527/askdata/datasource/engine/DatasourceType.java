@@ -11,15 +11,14 @@ import java.util.List;
  *
  * <p>覆盖（spec §2.2 / 验收 A12）：</p>
  * <ul>
- *   <li>首选全集（真实连通 + 元数据 + 执行）：{@link #EXCEL}、{@link #MYSQL}、{@link #PG}、{@link #H2}；</li>
+ *   <li>首选全集（真实连通 + 元数据 + 执行）：{@link #EXCEL}、{@link #MYSQL}、{@link #PG}；</li>
  *   <li>JDBC 通用可测：{@link #SQLSERVER}、{@link #SQLITE}、{@link #CK}、{@link #DORIS}、{@link #STARROCKS}；</li>
  *   <li>连接级检查 + 方言策略：{@link #ORACLE}、{@link #DM}、{@link #KINGBASE}、{@link #REDSHIFT}、
  *       {@link #ES}、{@link #HIVE}（驱动缺失或语义不保证时按 SQLBot 错误约定返回）。</li>
  * </ul>
  *
  * <p>驱动类缺失（未放扩展目录）时连接检查返回连接失败错误，行为对齐 SQLBot
- * {@code check_connection} 的 is_raise 分支。H2 为 askdata 扩展类型（元数据库即 H2，
- * 便于开箱验证；SQLBot DB 枚举无此项）。</p>
+ * {@code check_connection} 的 is_raise 分支。</p>
  */
 public enum DatasourceType {
 
@@ -55,9 +54,10 @@ public enum DatasourceType {
             String sql = "SELECT COLUMN_NAME, DATA_TYPE, COALESCE(COLUMN_COMMENT, '') AS COLUMN_COMMENT "
                     + "FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ?";
             if (tableName == null || tableName.isEmpty()) {
-                return new SqlText(sql, conf.getDatabase());
+                return new SqlText(sql + " ORDER BY TABLE_NAME, ORDINAL_POSITION", conf.getDatabase());
             }
-            return new SqlText(sql + " AND TABLE_NAME = ?", conf.getDatabase(), tableName);
+            return new SqlText(sql + " AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION",
+                    conf.getDatabase(), tableName);
         }
 
         @Override
@@ -93,9 +93,9 @@ public enum DatasourceType {
                     + "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
                     + "WHERE n.nspname = ? AND a.attnum > 0 AND NOT a.attisdropped";
             if (tableName == null || tableName.isEmpty()) {
-                return new SqlText(sql, conf.getDbSchema());
+                return new SqlText(sql + " ORDER BY c.relname, a.attnum", conf.getDbSchema());
             }
-            return new SqlText(sql + " AND c.relname = ?", conf.getDbSchema(), tableName);
+            return new SqlText(sql + " AND c.relname = ? ORDER BY a.attnum", conf.getDbSchema(), tableName);
         }
 
         @Override
@@ -107,43 +107,6 @@ public enum DatasourceType {
         public String previewSql(List<String> fields, String tableName, DatasourceConf conf, String where) {
             return "SELECT " + quoteAll(this, fields) + " FROM "
                     + quote(this, defaultSchema(conf)) + "." + quote(this, tableName)
-                    + (where == null ? "" : " " + where) + " LIMIT 100";
-        }
-    },
-
-    /** askdata 扩展：H2 数据源（开发/验证默认库）。 */
-    H2("h2", "H2", "\"", "\"", "org.h2.Driver", "H2") {
-        @Override
-        public String versionSql() {
-            return "SELECT H2VERSION()";
-        }
-
-        @Override
-        public SqlText tableSql(DatasourceConf conf, String dbVersion) {
-            return new SqlText("SELECT TABLE_NAME, COALESCE(REMARKS, '') AS TABLE_COMMENT "
-                    + "FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ? "
-                    + "AND TABLE_TYPE IN ('BASE TABLE', 'VIEW') ORDER BY TABLE_NAME", h2Schema(conf));
-        }
-
-        @Override
-        public SqlText fieldSql(DatasourceConf conf, String tableName) {
-            String sql = "SELECT COLUMN_NAME, DATA_TYPE, COALESCE(REMARKS, '') AS COLUMN_COMMENT "
-                    + "FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ?";
-            if (tableName == null || tableName.isEmpty()) {
-                return new SqlText(sql, h2Schema(conf));
-            }
-            return new SqlText(sql + " AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION", h2Schema(conf), tableName);
-        }
-
-        @Override
-        public String schemaSql() {
-            return "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA";
-        }
-
-        @Override
-        public String previewSql(List<String> fields, String tableName, DatasourceConf conf, String where) {
-            return "SELECT " + quoteAll(this, fields) + " FROM "
-                    + quote(this, h2Schema(conf)) + "." + quote(this, tableName)
                     + (where == null ? "" : " " + where) + " LIMIT 100";
         }
     },
@@ -700,11 +663,6 @@ public enum DatasourceType {
         return conf.getDbSchema() == null || conf.getDbSchema().isEmpty() ? conf.getDatabase() : conf.getDbSchema();
     }
 
-    /** H2 schema 缺省为 PUBLIC（H2 默认 schema）。 */
-    static String h2Schema(DatasourceConf conf) {
-        return conf.getDbSchema() == null || conf.getDbSchema().isEmpty() ? "PUBLIC" : conf.getDbSchema();
-    }
-
     /** 无法参数绑定的标识符内联（hive DESCRIBE）：包裹并转义引号。 */
     static String inlineIdentifier(String identifier) {
         if (identifier == null) {
@@ -746,7 +704,7 @@ public enum DatasourceType {
         throw new IllegalArgumentException("Invalid db type: " + type);
     }
 
-    /** 前端「新增数据源」下拉顺序（对齐 SQLBot frontend/src/views/ds/js/ds-type.ts；h2/sqlite 为扩展）。 */
+    /** 前端「新增数据源」下拉顺序（对齐 SQLBot frontend/src/views/ds/js/ds-type.ts；sqlite 为扩展）。 */
     public static List<DatasourceType> selectable() {
         List<DatasourceType> result = new ArrayList<>();
         result.add(EXCEL);
@@ -762,7 +720,6 @@ public enum DatasourceType {
         result.add(KINGBASE);
         result.add(STARROCKS);
         result.add(HIVE);
-        result.add(H2);
         result.add(SQLITE);
         return result;
     }

@@ -60,6 +60,16 @@ public class TrainingRecallService {
      *
      * @param ids data_training id 列表
      */
+    /** 删除 SQL 示例向量。 */
+    public void deleteEmbeddings(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        for (Long id : ids) {
+            embeddingService.deleteEmbedding("data_training", id);
+        }
+    }
+
     public void saveEmbeddings(List<Long> ids) {
         if (ids == null || ids.isEmpty() || !embeddingService.available()) {
             return;
@@ -106,14 +116,10 @@ public class TrainingRecallService {
         }
         try {
             StringBuilder sql = new StringBuilder(
-                    "SELECT id, datasource, advanced_application, question, description, embedding "
+                    "SELECT id, datasource, advanced_application, question, description "
                             + "FROM data_training WHERE oid = ? AND enabled = TRUE");
             List<Object> args = new ArrayList<>();
             args.add(oid);
-            // 在线库启用时向量不在 DB 列，不能再以 embedding IS NOT NULL 过滤候选
-            if (embeddingService.candidateRequiresEmbeddingColumn()) {
-                sql.append(" AND embedding IS NOT NULL");
-            }
             if (advancedApp != null) {
                 sql.append(" AND advanced_application = ?");
                 args.add(advancedApp);
@@ -199,12 +205,12 @@ public class TrainingRecallService {
      * A14 第一路：关键词命中。ILIKE 双向匹配（含反方向：用户句子包含存储问题）。
      *
      * <p>SQLBot 用 PG 的 {@code ILIKE}；此处用 {@code LOWER(...) LIKE LOWER(...)}
-     * 保持跨库可移植（MySQL / H2 / PG 均可执行）。</p>
+     * 保持跨库可移植（MySQL / PostgreSQL 均可执行）。</p>
      */
     private List<Map<String, Object>> keywordRecall(String sentence, long datasource, Long advancedApp) {
         try {
             StringBuilder sql = new StringBuilder(
-                    "SELECT id, datasource, advanced_application, question, description, embedding "
+                    "SELECT id, datasource, advanced_application, question, description "
                             + "FROM data_training WHERE datasource = ? AND enabled = TRUE "
                             + "AND (LOWER(question) LIKE LOWER(?) OR LOWER(?) LIKE LOWER(CONCAT('%', question, '%')))");
             List<Object> args = new ArrayList<>();
@@ -226,14 +232,10 @@ public class TrainingRecallService {
     private List<Map<String, Object>> vectorRecall(String sentence, long datasource, Long advancedApp) {
         try {
             StringBuilder sql = new StringBuilder(
-                    "SELECT id, datasource, advanced_application, question, description, embedding "
+                    "SELECT id, datasource, advanced_application, question, description "
                             + "FROM data_training WHERE datasource = ? AND enabled = TRUE");
             List<Object> args = new ArrayList<>();
             args.add(datasource);
-            // 在线库启用时向量不在 DB 列，不能再以 embedding IS NOT NULL 过滤候选
-            if (embeddingService.candidateRequiresEmbeddingColumn()) {
-                sql.append(" AND embedding IS NOT NULL");
-            }
             if (advancedApp != null) {
                 sql.append(" AND advanced_application = ?");
                 args.add(advancedApp);

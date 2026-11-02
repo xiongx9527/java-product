@@ -51,7 +51,7 @@ import org.springframework.beans.factory.annotation.Autowired;
  *       借出的连接其 {@code close()} 被拦截为「归还连接池」，
  *       故 try-with-resources 写法与连接复用可并存；</li>
  *   <li>{@code excel} 类型走应用元数据库（主 {@link DataSource}，对齐 SQLBot get_engine_config），
- *       方言按主库实际产品名（H2/MySQL/PostgreSQL）选择，保证生产切换元数据库后仍正确；</li>
+ *       方言按主库实际产品名（MySQL/PostgreSQL）选择，保证生产切换元数据库后仍正确；</li>
  *   <li>{@code es} 类型为 HTTP 协议：连接检查 ping {@code GET /}，元数据走 {@code _cat/indices} /
  *       {@code _mapping}（对齐 SQLBot es_engine.py 的行为面）；</li>
  *   <li>执行结果字段名保持原始大小写（origin_column=True，与 datasource 模块调用一致），
@@ -70,7 +70,7 @@ public class JdbcEngine {
     /** 数据源连接池（LRU 淘汰 + 归还语义；上限可配，默认 500）。 */
     private final ConnectionPoolManager poolManager;
 
-    /** 主库方言缓存（excel 类型用）：H2/MySQL/PostgreSQL。 */
+    /** 主库方言缓存（excel 类型用）：MySQL/PostgreSQL。 */
     private volatile DatasourceType appDbType;
 
     @Autowired
@@ -205,10 +205,6 @@ public class JdbcEngine {
                     url = appendParams(url, "?", "&", null, conf.getExtraJdbc());
                 }
                 break;
-            case H2:
-                url = h2Url(conf);
-                url = appendParams(url, url.contains("?") ? "&" : "?", "&", null, conf.getExtraJdbc());
-                break;
             case SQLSERVER:
                 url = "jdbc:sqlserver://" + host(conf) + ":" + port(conf) + ";databaseName=" + conf.getDatabase();
                 // A18：lowVersion 追加旧版 SQL Server 兼容参数（关闭加密协商、信任服务端证书、
@@ -273,17 +269,6 @@ public class JdbcEngine {
                 throw new DatasourceException("The datasource type not support.");
         }
         return url;
-    }
-
-    private static String h2Url(DatasourceConf conf) {
-        String database = conf.getDatabase() == null ? "" : conf.getDatabase().trim();
-        if (database.startsWith("jdbc:h2:")) {
-            return database;
-        }
-        if (conf.getHost() != null && !conf.getHost().isEmpty()) {
-            return "jdbc:h2:tcp://" + conf.getHost() + ":" + port(conf) + "/" + database;
-        }
-        return "jdbc:h2:file:./data/" + database;
     }
 
     private static String host(DatasourceConf conf) {
@@ -536,13 +521,11 @@ public class JdbcEngine {
     }
 
     /**
-     * 应用元数据库各产品的默认 schema：PG 系 {@code public}、H2 {@code PUBLIC}、
+     * 应用元数据库各产品的默认 schema：PG 系 {@code public}、
      * SQL Server {@code dbo}、MySQL 系取当前连接的 catalog。
      */
     String defaultAppSchema(DatasourceType dialect) {
         switch (dialect) {
-            case H2:
-                return "PUBLIC";
             case PG:
             case KINGBASE:
             case REDSHIFT:
@@ -599,7 +582,8 @@ public class JdbcEngine {
                     } else if (product != null && product.toLowerCase().contains("postgresql")) {
                         appDbType = DatasourceType.PG;
                     } else {
-                        appDbType = DatasourceType.H2;
+                        throw new DatasourceException("Application database only supports MySQL and PostgreSQL, got: "
+                                + product);
                     }
                 }
             }
@@ -825,23 +809,39 @@ public class JdbcEngine {
     /**
      * 应用元数据库标识符的规范化形态（excel 建表/查询共用的表名与列名）。
      *
-     * <p>H2/MySQL 等库对未加引号标识符做大小写折叠（H2 折叠为大写、PostgreSQL 折叠为小写），
-     * 若建表用带引号的小写名而后续查询（LLM 生成的 SQL）用未加引号标识符，两边形态不一致会报
-     * {@code Table "XXX" not found}。此处按方言折叠为与未加引号写法等价的形态，保证
-     * 建表 → getTables/getFields → previewData → execSql 全程一致。</p>
+     * <p>PostgreSQL 对未加引号标识符折叠为小写，若建表用带引号的小写名而后续查询
+     * （LLM 生成的 SQL）用未加引号标识符，两边形态不一致会报 {@code Table "XXX" not found}。
+     * 此处按方言折叠为与未加引号写法等价的形态，保证建表 → getTables/getFields →
+     * previewData → execSql 全程一致（MySQL 不做折叠，原样返回）。</p>
      */
     public String appIdentifier(String identifier) {
         if (identifier == null) {
             return "";
         }
         DatasourceType type = appDbType();
-        if (type == DatasourceType.H2) {
-            return identifier.toUpperCase(Locale.ROOT);
-        }
         if (type == DatasourceType.PG) {
             return identifier.toLowerCase(Locale.ROOT);
         }
         return identifier;
+    }
+
+    /**
+     * 预览 SQL（按实际执行方言生成）。
+     *
+     * <p>{@code excel} 类型的表在应用元数据库里，标识符引号必须跟主库方言走：
+     * 过去直接用 {@link DatasourceType#EXCEL} 的固定双引号，在 MySQL 主库上会生成非法 SQL
+     * （MySQL 把 {@code "x"} 当字符串字面量）。这里对 {@code usesAppDatabase()} 的类型
+     * 改用主库方言 + 默认 schema。</p>
+     */
+    public String previewSql(DatasourceType type, DatasourceConf conf, List<String> fields,
+                             String tableName, String where) {
+        if (type != null && type.usesAppDatabase()) {
+            DatasourceType appDialect = appDbType();
+            DatasourceConf appConf = conf == null ? new DatasourceConf() : conf;
+            return appDialect.previewSql(fields, tableName,
+                    appConf.withDefaultSchema(defaultAppSchema(appDialect)), where);
+        }
+        return type == null ? "" : type.previewSql(fields, tableName, conf, where);
     }
 
     /** 应用元数据库中的表是否存在（excel syncFields 存在性校验；DatabaseMetaData 跨库通用）。 */
@@ -1171,7 +1171,7 @@ public class JdbcEngine {
         if (value instanceof BigDecimal) {
             return ((BigDecimal) value).doubleValue();
         }
-        // 字符大对象：H2 的 CLOB 列经 getObject 可能返回 Clob 或 Reader，直接序列化会抛
+        // 字符大对象：部分驱动的 CLOB 列经 getObject 返回 Clob 或 Reader，直接序列化会抛
         // No serializer found for class java.io.BufferedReader（对齐 SQLBot convert_value 的文本语义）
         if (value instanceof Clob) {
             return readClob((Clob) value);
@@ -1181,6 +1181,18 @@ public class JdbcEngine {
         }
         if (value instanceof Timestamp) {
             return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format((Timestamp) value);
+        }
+        // Connector/J 8 默认把 DATETIME/TIMESTAMP 映射为 java.time 类型（getObject），
+        // 不处理会退化成 ISO 形态（2026-01-15T10:30），与 SQLBot 的 yyyy-MM-dd HH:mm:ss 契约不一致
+        if (value instanceof java.time.LocalDateTime) {
+            return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                    .format((java.time.LocalDateTime) value);
+        }
+        if (value instanceof java.time.LocalDate) {
+            return value.toString();
+        }
+        if (value instanceof java.time.LocalTime) {
+            return value.toString();
         }
         if (value instanceof java.sql.Date) {
             return ((java.sql.Date) value).toLocalDate().toString();

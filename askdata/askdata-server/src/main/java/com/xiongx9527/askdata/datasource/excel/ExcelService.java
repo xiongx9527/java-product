@@ -46,9 +46,9 @@ import java.util.UUID;
  *
  * <p>导入目标为应用元数据库（对齐 SQLBot 的 get_engine_conn：excel 类型数据表存放在应用库），
  * 建表/删表经 {@link JdbcEngine#executeAppDdl} 执行；类型映射对齐 SQLBot create_table：
- * object→text、int→bigint、float→numeric、datetime→timestamp（H2 下为 VARCHAR(1024)/BIGINT/
- * DOUBLE/TIMESTAMP）。表名与列名经 {@link JdbcEngine#appIdentifier} 规范化，与应用库未加引号
- * 标识符的折叠规则一致，避免建表后查询报 {@code Table "XXX" not found}。</p>
+ * object→text、int→bigint、float→double、datetime→timestamp。表名与列名经
+ * {@link JdbcEngine#appIdentifier} 规范化，与应用库未加引号标识符的折叠规则一致，
+ * 避免建表后查询报 {@code Table "XXX" not found}。</p>
  */
 @Service
 public class ExcelService {
@@ -59,9 +59,6 @@ public class ExcelService {
     private static final int PREVIEW_ROWS = 10;
 
     private static final int MAX_IDENTIFIER_BYTES = 63;
-
-    /** 文本列的 VARCHAR 长度（string 类型的导入列上限）。 */
-    private static final int STRING_COLUMN_LENGTH = 65535;
 
     private static final String TABLE_SHEET_NAME = com.xiongx9527.askdata.common.i18n.I18n.msg("excel.sheet.data.tables");
 
@@ -75,9 +72,6 @@ public class ExcelService {
 
     /** 共享文件存储：非空且可用时上传落对象存储，解析/导入按文件名跨实例回源。 */
     private final AskdataFileStorage fileStorage;
-
-    /** 文本列的 DDL 类型（按元数据库方言决定 VARCHAR / TEXT）。 */
-    private final String textColumnType;
 
     /** 存储路径前缀（对象存储内的目录名）。 */
     private static final String STORAGE_PATH = "excel";
@@ -99,7 +93,6 @@ public class ExcelService {
                 .toAbsolutePath().normalize();
         this.messageResolver = messageResolver;
         this.fileStorage = fileStorage;
-        this.textColumnType = resolveTextColumnType(appJdbc);
     }
 
     // ------------------------------------------------------------------
@@ -675,24 +668,11 @@ public class ExcelService {
             case "datetime":
                 return "TIMESTAMP";
             default:
-                // 文本列用 VARCHAR：CLOB 在 H2 下 getObject 返回 Clob/Reader，序列化会出现
-                // No serializer found for class java.io.BufferedReader
-                return textColumnType;
+                // 文本列统一 TEXT：MySQL 的 VARCHAR 上限是 16383 字符（utf8mb4），超出会报
+                // Column length too big；PostgreSQL 的 TEXT 无长度限制。CLOB 在部分驱动下
+                // getObject 返回 Clob/Reader，用 TEXT 避免序列化 No serializer found 问题。
+                return "TEXT";
         }
-    }
-
-    /**
-     * 文本列的 DDL 类型（按元数据库方言选择）。
-     *
-     * <p>H2 允许 {@code VARCHAR(65535)}；MySQL 的 VARCHAR 上限是 16383 字符（utf8mb4），
-     * 超出会直接报 {@code Column length too big}，因此 MySQL/PostgreSQL 统一用 {@code TEXT}。</p>
-     */
-    private static String resolveTextColumnType(JdbcTemplate jdbc) {
-        String product = com.xiongx9527.askdata.common.util.MetadbSql.databaseProduct(jdbc);
-        if (product.contains("mysql") || product.contains("mariadb") || product.contains("postgres")) {
-            return "TEXT";
-        }
-        return "VARCHAR(" + STRING_COLUMN_LENGTH + ")";
     }
 
     /** 按用户选择的字段类型转换值（对齐 SQLBot read_import_dataframe 的 int 舍入/空值语义）。 */

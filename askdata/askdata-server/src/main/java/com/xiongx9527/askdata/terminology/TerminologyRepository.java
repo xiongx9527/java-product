@@ -52,7 +52,7 @@ public class TerminologyRepository {
         List<Object> args = new ArrayList<>();
         args.add(oid);
         if (word != null && !word.isEmpty()) {
-            sql.append(" AND (t.word LIKE ? ESCAPE '\\' OR c.word LIKE ? ESCAPE '\\')");
+            sql.append(" AND (t.word LIKE ? OR c.word LIKE ?)");
             args.add("%" + escapeLike(word) + "%");
             args.add("%" + escapeLike(word) + "%");
         }
@@ -70,7 +70,7 @@ public class TerminologyRepository {
         List<Object> args = new ArrayList<>();
         args.add(oid);
         if (word != null && !word.isEmpty()) {
-            sql.append(" AND (t.word LIKE ? ESCAPE '\\' OR c.word LIKE ? ESCAPE '\\')");
+            sql.append(" AND (t.word LIKE ? OR c.word LIKE ?)");
             args.add("%" + escapeLike(word) + "%");
             args.add("%" + escapeLike(word) + "%");
         }
@@ -88,7 +88,7 @@ public class TerminologyRepository {
         List<Object> args = new ArrayList<>();
         args.add(oid);
         if (word != null && !word.isEmpty()) {
-            sql.append(" AND (t.word LIKE ? ESCAPE '\\' OR c.word LIKE ? ESCAPE '\\')");
+            sql.append(" AND (t.word LIKE ? OR c.word LIKE ?)");
             args.add("%" + escapeLike(word) + "%");
             args.add("%" + escapeLike(word) + "%");
         }
@@ -106,8 +106,8 @@ public class TerminologyRepository {
         if (dsList != null && !dsList.isEmpty()) {
             sql.append(" AND (t.specific_ds = FALSE");
             for (Long dsId : dsList) {
-                sql.append(" OR INSTR(',' || COALESCE(REPLACE(REPLACE(t.datasource_ids, '[', ''), ']', ''), '') "
-                        + "|| ',', ',' || ? || ',') > 0");
+                sql.append(" OR CONCAT(',', COALESCE(REPLACE(REPLACE(t.datasource_ids, '[', ''), ']', ''), ''), ',') "
+                        + "LIKE CONCAT('%,', ?, ',%')");
                 args.add(String.valueOf(dsId));
             }
             sql.append(")");
@@ -164,8 +164,8 @@ public class TerminologyRepository {
             args.add(advancedApp);
         } else if (dsId != null) {
             sql.append(" AND (specific_ds = FALSE OR specific_ds IS NULL");
-            sql.append(" OR INSTR(',' || COALESCE(REPLACE(REPLACE(datasource_ids, '[', ''), ']', ''), '') "
-                    + "|| ',', ',' || ? || ',') > 0)");
+            sql.append(" OR CONCAT(',', COALESCE(REPLACE(REPLACE(datasource_ids, '[', ''), ']', ''), ''), ',') "
+                    + "LIKE CONCAT('%,', ?, ',%'))");
             args.add(String.valueOf(dsId));
             sql.append(")");
         } else {
@@ -256,6 +256,24 @@ public class TerminologyRepository {
         args.addAll(ids);
         args.addAll(ids);
         return jdbc.update(sql.toString(), args.toArray());
+    }
+
+    /** 级联删除前先取出子术语 id，用于同步清理向量。 */
+    public List<Long> findChildIds(long oid, List<Long> parentIds) {
+        if (parentIds == null || parentIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+        StringBuilder sql = new StringBuilder("SELECT id FROM terminology WHERE oid = ? AND pid IN (");
+        sql.append(placeholders(parentIds.size())).append(")");
+        List<Object> args = new ArrayList<>();
+        args.add(oid);
+        args.addAll(parentIds);
+        List<Map<String, Object>> rows = jdbc.queryForList(sql.toString(), args.toArray());
+        List<Long> ids = new ArrayList<>(rows.size());
+        for (Map<String, Object> row : rows) {
+            ids.add(com.xiongx9527.askdata.common.util.Rows.lng(row, "id", 0L));
+        }
+        return ids;
     }
 
     public boolean exists(long oid, long id) {

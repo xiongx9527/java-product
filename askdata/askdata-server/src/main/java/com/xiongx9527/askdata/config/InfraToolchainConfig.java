@@ -35,7 +35,7 @@ public class InfraToolchainConfig {
 
     /**
      * 覆盖框架 {@code DisposableWorkerIdAssigner}：后者以 {@code setObject(Date)} 写 WORKER_NODE，
-     * PostgreSQL 驱动无法推断类型。此处显式绑定 JDBC 时间类型，保证 H2/PostgreSQL/MySQL 均可启动。
+     * PostgreSQL 驱动无法推断类型。此处显式绑定 JDBC 时间类型，保证 PostgreSQL/MySQL 均可启动。
      */
     @Bean
     public WorkerIdAssigner workerIdAssigner(JdbcTemplate jdbcTemplate) {

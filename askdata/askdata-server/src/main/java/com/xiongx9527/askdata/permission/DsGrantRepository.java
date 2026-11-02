@@ -51,7 +51,7 @@ public class DsGrantRepository {
         return count != null && count > 0;
     }
 
-    /** 授权（幂等：先清后插，兼容 H2 测试库与 MySQL 生产库）。 */
+    /** 授权（幂等：先清后插，兼容 MySQL 与 PostgreSQL）。 */
     public void insert(long oid, long dsId, long userId, long createBy) {
         jdbc.update("DELETE FROM ds_grant WHERE oid = ? AND ds_id = ? AND user_id = ?", oid, dsId, userId);
         jdbc.update("INSERT INTO ds_grant (id, oid, ds_id, user_id, create_by, create_time) VALUES (?, ?, ?, ?, ?, ?)",

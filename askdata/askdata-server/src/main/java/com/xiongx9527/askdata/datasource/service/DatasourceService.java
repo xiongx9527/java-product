@@ -303,9 +303,17 @@ public class DatasourceService {
                 }
             }
         }
+        java.util.List<Long> tableIds = new java.util.ArrayList<>();
+        for (Map<String, Object> table : tableRepository.listByDsId(id)) {
+            tableIds.add(Rows.lng(table, "id", 0L));
+        }
         datasourceRepository.delete(id);
         tableRepository.deleteByDsId(id);
         fieldRepository.deleteByDsId(id);
+        // 业务行删除后同步清理在线向量，避免 Qdrant 里留下孤儿 point
+        if (datasourceEmbeddingService != null) {
+            datasourceEmbeddingService.deleteEmbeddings(id, tableIds);
+        }
         // 数据源删除：关闭并移除其连接池（对齐 SQLBot remove_pool）
         poolManager.removeDatasource(id);
     }
@@ -489,9 +497,15 @@ public class DatasourceService {
 
         // -- A2：行权限（普通用户注入 WHERE；无规则时传 null）
         String where = rowFilterWhereFor(id, tableName);
-        String sql = type.previewSql(fieldNames, tableName, conf,
+        String sql = engine.previewSql(type, conf, fieldNames, tableName,
                 where == null || where.isEmpty() ? null : "WHERE " + where);
         return engine.execSql(type, conf, sql, id);
+    }
+
+    /** 预览 SQL（excel 类型按应用库方言生成，避免固定引号在 MySQL 主库上非法）。 */
+    public String previewSql(DatasourceType type, DatasourceConf conf, List<String> fields,
+                             String tableName, String where) {
+        return engine.previewSql(type, conf, fields, tableName, where);
     }
 
     /** A2：当前用户在该数据源指定表上的隐藏列集合（管理员/未配置权限时为空）。 */
@@ -806,12 +820,22 @@ public class DatasourceService {
             List<ColumnSchema> fields = engine.fields(type, conf, tableName, dsId);
             syncFieldRows(dsId, tableId, fields);
         }
+        List<Long> removedTableIds = new ArrayList<>();
+        for (Map<String, Object> row : tableRepository.listByDsId(dsId)) {
+            long tableId = Rows.lng(row, "id", 0L);
+            if (!tableIds.contains(tableId)) {
+                removedTableIds.add(tableId);
+            }
+        }
         if (tableIds.isEmpty()) {
             tableRepository.deleteByDsId(dsId);
             fieldRepository.deleteByDsId(dsId);
         } else {
             tableRepository.deleteByDsIdNotIn(dsId, tableIds);
             fieldRepository.deleteByTableIdsNotIn(dsId, tableIds);
+        }
+        if (datasourceEmbeddingService != null) {
+            datasourceEmbeddingService.deleteTableEmbeddings(removedTableIds);
         }
     }
 

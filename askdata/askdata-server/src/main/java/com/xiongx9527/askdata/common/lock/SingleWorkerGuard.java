@@ -17,8 +17,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * <p><b>锁后端可配置</b>（{@code askdata.lock.type}）：</p>
  * <ul>
- *   <li>{@code db}（缺省）：元数据库表行独占锁（{@link DbWorkerLock}）——H2 无 advisory lock
- *       的等价实现，锁作用域与被保护数据（元数据库）一致；</li>
+ *   <li>{@code db}（缺省）：元数据库表行独占锁（{@link DbWorkerLock}）——不依赖数据库专有
+ *       advisory lock，锁作用域与被保护数据（元数据库）一致；</li>
  *   <li>{@code redis}：Redis {@code SET NX PX} 锁（{@link RedisWorkerLock}）——全局作用域，
  *       仅在「共享 Redis + 各实例独立元数据库」的部署下有意义。</li>
  * </ul>

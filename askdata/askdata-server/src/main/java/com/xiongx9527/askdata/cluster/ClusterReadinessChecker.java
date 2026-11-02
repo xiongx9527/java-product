@@ -22,10 +22,10 @@ import java.util.Locale;
  *
  * <p>检查项与判据：</p>
  * <ul>
- *   <li>元数据库：H2 文件/内存库为 FAIL（各实例各一份数据）；</li>
+ *   <li>元数据库：未配置 {@code spring.datasource.url} 为 FAIL；</li>
  *   <li>应用密钥：{@code askdata.secret.key} 为空为 FAIL（每进程随机，跨实例无法解密落库密文）；</li>
  *   <li>会话与缓存：非 Redis 为 FAIL（登录态与缓存不跨实例）；</li>
- *   <li>单例锁：db 后端要求共享元数据库，redis 后端要求共享 Redis；</li>
+ *   <li>单例锁：db 后端依赖共享元数据库（MySQL/PostgreSQL），redis 后端要求共享 Redis；</li>
  *   <li>文件存储：local 平台为 FAIL（文件写在生成它的节点上）；</li>
  *   <li>雪花 workerId：关闭框架分配且未显式配置时为 WARN（PID 派生在容器内易撞号）；</li>
  *   <li>MCP SSE：无 {@code StringRedisTemplate} 时为 WARN（退化为进程内会话，需负载均衡粘性会话）。</li>
@@ -111,12 +111,6 @@ public class ClusterReadinessChecker implements ApplicationRunner {
 
     private ClusterReadinessReport.Item checkMetadataDatabase() {
         String url = environment.getProperty("spring.datasource.url", "");
-        String lower = url.toLowerCase(Locale.ROOT);
-        if (lower.startsWith("jdbc:h2:file") || lower.startsWith("jdbc:h2:mem")) {
-            return new ClusterReadinessReport.Item("元数据库", ClusterReadinessReport.Level.FAIL,
-                    "当前为 H2（" + lower.replaceAll("jdbc:h2:(file|mem):[^;?]*", "jdbc:h2:$1:…") + "），各实例各一份数据",
-                    "改用共享 MySQL/PostgreSQL（spring.datasource.url + 对应 Flyway 方言目录）");
-        }
         if (url.isEmpty()) {
             return new ClusterReadinessReport.Item("元数据库", ClusterReadinessReport.Level.FAIL,
                     "未配置 spring.datasource.url", "配置共享元数据库连接");
@@ -168,12 +162,9 @@ public class ClusterReadinessChecker implements ApplicationRunner {
                     "redis（" + (redisAvailable ? "已装配" : "未装配 StringRedisTemplate") + "）",
                     redisAvailable ? "" : "确认 Redis 连接可用，或改用 askdata.lock.type=db（需共享元数据库）");
         }
-        String url = environment.getProperty("spring.datasource.url", "").toLowerCase(Locale.ROOT);
-        boolean sharedDb = !url.startsWith("jdbc:h2:");
-        return new ClusterReadinessReport.Item("单例锁",
-                sharedDb ? ClusterReadinessReport.Level.OK : ClusterReadinessReport.Level.WARN,
-                "db 行锁（作用域=元数据库）",
-                sharedDb ? "" : "元数据库非共享时行锁不跨实例，建议 askdata.lock.type=redis");
+        // 元数据库只支持 MySQL/PostgreSQL（MetadataDatabaseGuard 启动前强制），行锁天然跨实例
+        return new ClusterReadinessReport.Item("单例锁", ClusterReadinessReport.Level.OK,
+                "db 行锁（作用域=元数据库）", "");
     }
 
     private ClusterReadinessReport.Item checkFileStorage() {

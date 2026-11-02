@@ -27,8 +27,8 @@
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
         <revision>0.1.1-SNAPSHOT</revision>
-        <!--跳过test-->
-        <maven.test.skip>true</maven.test.skip>
+        <!-- 默认执行测试：CI 与本地构建都要跑（真实环境用例在依赖不可达时自行 assume-skip） -->
+        <maven.test.skip>false</maven.test.skip>
         <!--跳过javadoc生成-->
         <maven.javadoc.skip>true</maven.javadoc.skip>
         <!--跳过install-->

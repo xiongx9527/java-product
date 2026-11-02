@@ -123,7 +123,8 @@ public class ChatModelClient {
             handler.onError("模型未配置：缺少 api_domain 或 base_model（请先到系统-AI 模型配置并设置默认模型）");
             return;
         }
-        streamCompletionImpl(apiDomain, apiKey, baseModel, messages, extraParams, protocol, handler);
+        streamCompletionImpl(apiDomain, apiKey, baseModel, messages, extraParams, protocol,
+                UpstreamFormatResolver.AUTO, handler);
     }
 
     /** 兼容旧调用方（不传额外参数）。 */
@@ -132,9 +133,81 @@ public class ChatModelClient {
         streamCompletion(apiDomain, apiKey, baseModel, messages, null, 1, handler);
     }
 
+    /**
+     * 带上游报文格式的流式补全。
+     *
+     * @param upstreamFormat {@code ai_model.upstream_format}（0 自动识别 / 1 Chat Completions /
+     *                       2 Anthropic Messages / 3 Responses / 4 Azure OpenAI）
+     */
+    public void streamCompletion(String apiDomain, String apiKey, String baseModel,
+                                 List<ModelMessage> messages, Map<String, Object> extraParams,
+                                 int protocol, int upstreamFormat, TokenHandler handler) {
+        if (apiDomain == null || apiDomain.trim().isEmpty() || baseModel == null || baseModel.trim().isEmpty()) {
+            handler.onError("模型未配置：缺少 api_domain 或 base_model（请先到系统-AI 模型配置并设置默认模型）");
+            return;
+        }
+        streamCompletionImpl(apiDomain, apiKey, baseModel, messages, extraParams, protocol, upstreamFormat, handler);
+    }
+
+    /** 带格式的非流式补全（不带 usage）。 */
+    public String generate(String apiDomain, String apiKey, String baseModel, List<ModelMessage> messages,
+                           Map<String, Object> extraParams, int upstreamFormat) {
+        return generate(apiDomain, apiKey, baseModel, messages, extraParams, upstreamFormat, null);
+    }
+
+    /** 带格式的非流式补全（Anthropic / Responses 走各自报文分支）。 */
+    public String generate(String apiDomain, String apiKey, String baseModel, List<ModelMessage> messages,
+                           Map<String, Object> extraParams, int upstreamFormat, final Usage usage) {
+        final StringBuilder sb = new StringBuilder();
+        final boolean[] failed = {false};
+        streamCompletion(apiDomain, apiKey, baseModel, messages, extraParams, 1, upstreamFormat, new TokenHandler() {
+            @Override
+            public void onToken(String content, String reasoningContent) {
+                if (content != null) {
+                    sb.append(content);
+                }
+            }
+
+            @Override
+            public void onComplete() {
+                // no-op
+            }
+
+            @Override
+            public void onError(String message) {
+                failed[0] = true;
+            }
+
+            @Override
+            public void onUsageDetail(long inputTokens, long outputTokens, long total) {
+                if (usage != null) {
+                    usage.input += inputTokens;
+                    usage.output += outputTokens;
+                    usage.total += total;
+                }
+            }
+        });
+        return failed[0] || sb.length() == 0 ? null : sb.toString();
+    }
+
     private void streamCompletionImpl(String apiDomain, String apiKey, String baseModel,
                                       List<ModelMessage> messages, Map<String, Object> extraParams,
-                                      int protocol, TokenHandler handler) {
+                                      int protocol, int upstreamFormat, TokenHandler handler) {
+        int format = UpstreamFormatResolver.resolve(apiDomain, upstreamFormat);
+        if (format == UpstreamFormatResolver.ANTHROPIC) {
+            anthropicStream(apiDomain, apiKey, baseModel, messages, extraParams, handler);
+            return;
+        }
+        if (format == UpstreamFormatResolver.RESPONSES) {
+            responsesStream(apiDomain, apiKey, baseModel, messages, extraParams, handler);
+            return;
+        }
+        streamCompletionOpenAi(apiDomain, apiKey, baseModel, messages, extraParams, handler);
+    }
+
+    private void streamCompletionOpenAi(String apiDomain, String apiKey, String baseModel,
+                                        List<ModelMessage> messages, Map<String, Object> extraParams,
+                                        TokenHandler handler) {
         HttpURLConnection connection = null;
         try {
             boolean azure = isAzureEndpoint(apiDomain);
@@ -173,6 +246,273 @@ public class ChatModelClient {
                 connection.disconnect();
             }
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Anthropic Messages
+    // ------------------------------------------------------------------
+
+    private void anthropicStream(String apiDomain, String apiKey, String baseModel,
+                                 List<ModelMessage> messages, Map<String, Object> extraParams,
+                                 TokenHandler handler) {
+        HttpURLConnection connection = null;
+        try {
+            String url = UpstreamFormatResolver.chatUrl(apiDomain, baseModel, UpstreamFormatResolver.ANTHROPIC, false);
+            connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setRequestMethod("POST");
+            connection.setDoOutput(true);
+            connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            connection.setReadTimeout(READ_TIMEOUT_MS);
+            connection.setRequestProperty("Content-Type", "application/json");
+            connection.setRequestProperty("Accept", "text/event-stream");
+            connection.setRequestProperty("anthropic-version", "2023-06-01");
+            if (apiKey != null && !apiKey.isEmpty()) {
+                connection.setRequestProperty("x-api-key", apiKey);
+            }
+            connection.getOutputStream().write(objectMapper.writeValueAsBytes(
+                    buildAnthropicPayload(baseModel, messages, extraParams)));
+            connection.getOutputStream().flush();
+            int code = connection.getResponseCode();
+            if (code >= 400) {
+                String detail = readAll(connection.getErrorStream());
+                handler.onError("模型调用失败 HTTP " + code + (detail.isEmpty() ? "" : ": " + detail));
+                return;
+            }
+            if (!readAnthropicSse(connection.getInputStream(), handler)) {
+                handler.onComplete();
+            }
+        } catch (Exception e) {
+            log.warn("Anthropic 调用异常（已降级）: {}", e.getMessage());
+            handler.onError("模型调用失败: " + (e.getMessage() == null ? e.toString() : e.getMessage()));
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    /** Anthropic Messages 请求体：system 提升为顶层字段，messages 只保留 user/assistant，max_tokens 必填。 */
+    static Map<String, Object> buildAnthropicPayload(String baseModel, List<ModelMessage> messages,
+                                                     Map<String, Object> extraParams) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("model", baseModel);
+        StringBuilder system = new StringBuilder();
+        List<Map<String, String>> msgs = new ArrayList<>();
+        for (ModelMessage message : messages) {
+            if (message == null || message.content == null) {
+                continue;
+            }
+            if ("system".equals(message.role)) {
+                if (system.length() > 0) {
+                    system.append("\n\n");
+                }
+                system.append(message.content);
+                continue;
+            }
+            Map<String, String> item = new LinkedHashMap<>();
+            item.put("role", "assistant".equals(message.role) ? "assistant" : "user");
+            item.put("content", message.content);
+            msgs.add(item);
+        }
+        if (system.length() > 0) {
+            payload.put("system", system.toString());
+        }
+        payload.put("messages", msgs);
+        payload.put("max_tokens", 4096);
+        payload.put("stream", true);
+        if (extraParams != null) {
+            for (Map.Entry<String, Object> entry : extraParams.entrySet()) {
+                String key = entry.getKey();
+                Object value = entry.getValue();
+                if (key == null || value == null) {
+                    continue;
+                }
+                // stream_options / extra_body / 部署参数在 Anthropic 下无意义
+                if ("stream_options".equals(key) || "extra_body".equals(key)
+                        || "api_version".equals(key) || "deployment_name".equals(key)
+                        || "enable_thinking".equals(key)) {
+                    continue;
+                }
+                payload.put(key, value);
+            }
+        }
+        return payload;
+    }
+
+    /**
+     * Anthropic SSE：content_block_delta 取增量文本；usage 取 message_start/message_delta。
+     *
+     * @return 是否出现错误事件（出现时调用方不再回调 onComplete）
+     */
+    private boolean readAnthropicSse(InputStream inputStream, TokenHandler handler) throws IOException {
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String trimmed = line.trim();
+                if (trimmed.isEmpty() || !trimmed.startsWith("data:")) {
+                    continue;
+                }
+                String data = trimmed.substring("data:".length()).trim();
+                if (data.isEmpty() || "[DONE]".equals(data)) {
+                    continue;
+                }
+                try {
+                    JsonNode node = objectMapper.readTree(data);
+                    String type = node.has("type") ? node.get("type").asText() : "";
+                    if ("message_start".equals(type)) {
+                        JsonNode message = node.get("message");
+                        JsonNode usage = message == null ? null : message.get("usage");
+                        if (usage != null) {
+                            long input = usage.has("input_tokens") ? usage.get("input_tokens").asLong() : 0L;
+                            handler.onUsageDetail(input, 0L, input);
+                        }
+                    } else if ("content_block_delta".equals(type)) {
+                        JsonNode delta = node.get("delta");
+                        if (delta != null && delta.has("text")) {
+                            String text = delta.get("text").asText();
+                            if (text != null && !text.isEmpty()) {
+                                handler.onToken(text, null);
+                            }
+                        }
+                    } else if ("message_delta".equals(type)) {
+                        JsonNode usage = node.get("usage");
+                        if (usage != null && usage.has("output_tokens")) {
+                            handler.onUsageDetail(0L, usage.get("output_tokens").asLong(), 0L);
+                        }
+                    } else if ("error".equals(type)) {
+                        JsonNode error = node.get("error");
+                        handler.onError(error == null ? "模型返回错误" : error.toString());
+                        return true;
+                    }
+                } catch (Exception e) {
+                    log.debug("忽略非法 Anthropic SSE 数据行: {}", data);
+                }
+            }
+        }
+        return false;
+    }
+
+    // ------------------------------------------------------------------
+    // OpenAI Responses
+    // ------------------------------------------------------------------
+
+    private void responsesStream(String apiDomain, String apiKey, String baseModel,
+                                 List<ModelMessage> messages, Map<String, Object> extraParams,
+                                 TokenHandler handler) {
+        HttpURLConnection connection = null;
+        try {
+            String url = UpstreamFormatResolver.chatUrl(apiDomain, baseModel, UpstreamFormatResolver.RESPONSES, false);
+            connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setRequestMethod("POST");
+            connection.setDoOutput(true);
+            connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            connection.setReadTimeout(READ_TIMEOUT_MS);
+            connection.setRequestProperty("Content-Type", "application/json");
+            connection.setRequestProperty("Accept", "text/event-stream");
+            if (apiKey != null && !apiKey.isEmpty()) {
+                connection.setRequestProperty("Authorization", "Bearer " + apiKey);
+            }
+            connection.getOutputStream().write(objectMapper.writeValueAsBytes(
+                    buildResponsesPayload(baseModel, messages, extraParams)));
+            connection.getOutputStream().flush();
+            int code = connection.getResponseCode();
+            if (code >= 400) {
+                String detail = readAll(connection.getErrorStream());
+                handler.onError("模型调用失败 HTTP " + code + (detail.isEmpty() ? "" : ": " + detail));
+                return;
+            }
+            if (!readResponsesSse(connection.getInputStream(), handler)) {
+                handler.onComplete();
+            }
+        } catch (Exception e) {
+            log.warn("Responses 调用异常（已降级）: {}", e.getMessage());
+            handler.onError("模型调用失败: " + (e.getMessage() == null ? e.toString() : e.getMessage()));
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    /** Responses 请求体：使用 {@code input[]} 结构，system 作为 developer/user 指令保留在 input 中。 */
+    static Map<String, Object> buildResponsesPayload(String baseModel, List<ModelMessage> messages,
+                                                     Map<String, Object> extraParams) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("model", baseModel);
+        List<Map<String, Object>> input = new ArrayList<>();
+        for (ModelMessage message : messages) {
+            if (message == null || message.content == null) {
+                continue;
+            }
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("role", "assistant".equals(message.role) ? "assistant" : "user");
+            item.put("content", message.content);
+            input.add(item);
+        }
+        payload.put("input", input);
+        payload.put("stream", true);
+        if (extraParams != null) {
+            for (Map.Entry<String, Object> entry : extraParams.entrySet()) {
+                String key = entry.getKey();
+                Object value = entry.getValue();
+                if (key == null || value == null) {
+                    continue;
+                }
+                if ("stream_options".equals(key) || "extra_body".equals(key)
+                        || "api_version".equals(key) || "deployment_name".equals(key)) {
+                    continue;
+                }
+                payload.put(key, value);
+            }
+        }
+        return payload;
+    }
+
+    /**
+     * Responses SSE：{@code response.output_text.delta} 取增量文本，{@code response.completed} 取 usage。
+     *
+     * @return 是否出现错误事件（出现时调用方不再回调 onComplete）
+     */
+    private boolean readResponsesSse(InputStream inputStream, TokenHandler handler) throws IOException {
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String trimmed = line.trim();
+                if (trimmed.isEmpty() || !trimmed.startsWith("data:")) {
+                    continue;
+                }
+                String data = trimmed.substring("data:".length()).trim();
+                if (data.isEmpty() || "[DONE]".equals(data)) {
+                    continue;
+                }
+                try {
+                    JsonNode node = objectMapper.readTree(data);
+                    String type = node.has("type") ? node.get("type").asText() : "";
+                    if ("response.output_text.delta".equals(type) && node.has("delta")) {
+                        String text = node.get("delta").asText();
+                        if (text != null && !text.isEmpty()) {
+                            handler.onToken(text, null);
+                        }
+                    } else if ("response.completed".equals(type)) {
+                        JsonNode response = node.get("response");
+                        JsonNode usage = response == null ? null : response.get("usage");
+                        if (usage != null) {
+                            long input = usage.has("input_tokens") ? usage.get("input_tokens").asLong() : 0L;
+                            long output = usage.has("output_tokens") ? usage.get("output_tokens").asLong() : 0L;
+                            handler.onUsageDetail(input, output, input + output);
+                        }
+                    } else if ("response.failed".equals(type) || "error".equals(type)) {
+                        handler.onError("模型返回错误: " + data);
+                        return true;
+                    }
+                } catch (Exception e) {
+                    log.debug("忽略非法 Responses SSE 数据行: {}", data);
+                }
+            }
+        }
+        return false;
     }
 
     /**
