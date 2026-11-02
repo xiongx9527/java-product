@@ -29,6 +29,9 @@ dist/
 hs_err_pid*
 replay_pid*
 .flattened-pom.xml
+
+# Python bytecode from scripts/license tests
+__pycache__/
 # >>> Comet managed project state >>>
 !/.comet/
 /.comet/*
@@ -53,6 +56,3 @@ replay_pid*
 .comet-state.lock
 .comet-state-transaction.json
 # <<< Comet managed project state <<<
-
-# Python bytecode from scripts/license tests
-__pycache__/
