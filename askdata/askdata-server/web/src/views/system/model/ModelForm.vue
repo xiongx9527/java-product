@@ -484,7 +484,7 @@ defineExpose({
           </el-form-item>
           <!-- API Key -->
           <!-- API Key + 测试连接：保存前即可验证接入参数连通性（12.13 测试按钮与密钥同行，不悬浮） -->
-          <el-form-item v-if="modelForm.supplier" prop="api_key" label="API Key">
+          <el-form-item prop="api_key" label="API Key">
             <div class="api-key-row">
               <el-input
                 v-model="modelForm.api_key"
@@ -494,7 +494,7 @@ defineExpose({
                 type="password"
                 show-password
               />
-              <el-button size="small" :loading="testing" @click="testConnection">
+              <el-button :loading="testing" @click="testConnection">
                 {{ t('modelCfg.test_connection') }}
               </el-button>
             </div>
@@ -539,7 +539,6 @@ defineExpose({
                 />
               </el-select>
               <el-button
-                size="small"
                 :loading="pulling"
                 @click="pullModels"
               >
