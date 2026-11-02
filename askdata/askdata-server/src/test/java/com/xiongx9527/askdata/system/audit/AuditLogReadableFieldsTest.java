@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system.audit;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.common.i18n.TestMessageResolver;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.PagerResult;
@@ -40,11 +42,7 @@ class AuditLogReadableFieldsTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        jdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:audit_readable_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = jdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
+        jdbc = MysqlTestSupport.createSchema();
         insertLog(1L, "create", null, "销售看板", "POST", "/api/v1/dashboard/create_canvas");
         insertLog(2L, "update", "修改画布布局", null, "PUT", "/api/v1/dashboard/update_canvas");
         insertLog(3L, "delete", null, null, "DELETE", "/api/v1/dashboard/delete_resource/board-1");

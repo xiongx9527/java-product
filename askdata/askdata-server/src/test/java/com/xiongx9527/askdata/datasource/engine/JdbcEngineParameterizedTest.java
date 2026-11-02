@@ -70,8 +70,8 @@ class JdbcEngineParameterizedTest {
         when(resultSetMetaData.getColumnCount()).thenReturn(0);
 
         DatasourceConf conf = new DatasourceConf();
-        conf.setDatabase("jdbc:h2:mem:param_test");
-        Map<String, Object> result = engine.execSql(DatasourceType.H2, conf, "SELECT 1", 1L);
+        conf.setDatabase("param_test");
+        Map<String, Object> result = engine.execSql(DatasourceType.MYSQL, conf, "SELECT 1", 1L);
 
         verify(connection).prepareStatement(anyString());
         verify(connection, never()).createStatement();

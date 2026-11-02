@@ -5,12 +5,14 @@ import com.xiongx9527.askdata.common.util.Maps;
 import com.xiongx9527.askdata.common.util.Sets;
 
 import com.xiongx9527.askdata.datasource.engine.DatasourceType;
+import com.xiongx9527.askdata.support.MysqlTestSupport;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -31,7 +33,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * A3 权限强制单测：行权限 WHERE 注入（过滤条件出现在执行 SQL 中）、列权限隐藏、管理员跳过、
- * 以及改写后的 SQL 在真实 H2 上确实过滤了行。
+ * 以及改写后的 SQL 在真实 MySQL 上确实过滤了行。
  */
 @ExtendWith(MockitoExtension.class)
 class PermissionEnforcerTest {
@@ -72,26 +74,21 @@ class PermissionEnforcerTest {
         assertEquals(sql, enforcer.applyRowFilters(sql, Collections.emptyMap()));
     }
 
-    // ---- 改写后的 SQL 在真实 H2 上确实过滤行 ----
+    // ---- 改写后的 SQL 在真实 MySQL 上确实过滤行 ----
 
     @Test
-    void rewrittenSqlActuallyFiltersRowsOnH2() throws Exception {
-        try (Connection c = DriverManager.getConnection("jdbc:h2:mem:perm_a3;DB_CLOSE_DELAY=-1", "sa", "")) {
-            try (Statement s = c.createStatement()) {
-                s.execute("CREATE TABLE orders (id INT, region VARCHAR(20))");
-                s.execute("INSERT INTO orders VALUES (1, 'east'), (2, 'west'), (3, 'east')");
-            }
-            Map<String, String> filters = new LinkedHashMap<>();
-            filters.put("orders", "(region = 'east')");
-            String rewritten = enforcer.applyRowFilters("SELECT id, region FROM orders", filters);
-            try (Statement s = c.createStatement(); ResultSet rs = s.executeQuery(rewritten)) {
-                int count = 0;
-                while (rs.next()) {
-                    count++;
-                    assertEquals("east", rs.getString("region"));
-                }
-                assertEquals(2, count, "row permission must filter to east region only");
-            }
+    void rewrittenSqlActuallyFiltersRowsOnMysql() {
+        JdbcTemplate target = MysqlTestSupport.createEmptySchema();
+        target.execute("CREATE TABLE orders (id INT, region VARCHAR(20))");
+        target.update("INSERT INTO orders VALUES (1, 'east'), (2, 'west'), (3, 'east')");
+
+        Map<String, String> filters = new LinkedHashMap<>();
+        filters.put("orders", "(region = 'east')");
+        String rewritten = enforcer.applyRowFilters("SELECT id, region FROM orders", filters);
+        List<Map<String, Object>> rows = target.queryForList(rewritten);
+        assertEquals(2, rows.size(), "row permission must filter to east region only");
+        for (Map<String, Object> row : rows) {
+            assertEquals("east", row.get("region"));
         }
     }
 
@@ -205,25 +202,18 @@ class PermissionEnforcerTest {
     }
 
     @Test
-    void unionRewrittenSqlActuallyFiltersRowsOnH2() throws Exception {
-        try (Connection c = DriverManager.getConnection("jdbc:h2:mem:perm_union;DB_CLOSE_DELAY=-1", "sa", "")) {
-            try (Statement s = c.createStatement()) {
-                s.execute("CREATE TABLE orders (id INT, region VARCHAR(20))");
-                s.execute("INSERT INTO orders VALUES (1, 'east'), (2, 'west'), (3, 'east'), (4, 'west')");
-            }
-            Map<String, String> filters = new LinkedHashMap<>();
-            filters.put("orders", "(region = 'east')");
-            String rewritten = enforcer.applyRowFilters(
-                    "SELECT id FROM orders UNION SELECT id FROM orders", filters);
-            try (Statement s = c.createStatement(); ResultSet rs = s.executeQuery(rewritten)) {
-                int count = 0;
-                while (rs.next()) {
-                    count++;
-                }
-                // 仅 east 行（id 1,3）存活：未过滤会是 4 行，过滤后 2 行，证明 UNION 分支未被绕过
-                assertEquals(2, count, "row permission must filter UNION to east region only");
-            }
-        }
+    void unionRewrittenSqlActuallyFiltersRowsOnMysql() {
+        JdbcTemplate target = MysqlTestSupport.createEmptySchema();
+        target.execute("CREATE TABLE orders (id INT, region VARCHAR(20))");
+        target.update("INSERT INTO orders VALUES (1, 'east'), (2, 'west'), (3, 'east'), (4, 'west')");
+
+        Map<String, String> filters = new LinkedHashMap<>();
+        filters.put("orders", "(region = 'east')");
+        String rewritten = enforcer.applyRowFilters(
+                "SELECT id FROM orders UNION SELECT id FROM orders", filters);
+        List<Map<String, Object>> rows = target.queryForList(rewritten);
+        // 仅 east 行（id 1,3）存活：未过滤会是 4 行，过滤后 2 行，证明 UNION 分支未被绕过
+        assertEquals(2, rows.size(), "row permission must filter UNION to east region only");
     }
 
     private static int countOccurrences(String haystack, String needle) {

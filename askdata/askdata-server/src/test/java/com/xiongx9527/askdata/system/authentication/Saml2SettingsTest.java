@@ -1,5 +1,11 @@
 package com.xiongx9527.askdata.system.authentication;
 
+import org.springframework.test.context.DynamicPropertySource;
+
+import org.springframework.test.context.DynamicPropertyRegistry;
+
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.common.util.Maps;
 
 import cn.dev33.satoken.context.mock.SaTokenContextMockUtil;
@@ -17,7 +23,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
@@ -37,14 +42,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * ③ save 校验必填项与证书格式并持久化；④ validate 校验证书与元数据并返回明确成功/失败原因。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
-@TestPropertySource(properties = {
-        "spring.datasource.url=jdbc:h2:mem:saml2_settings;MODE=MySQL;DB_CLOSE_DELAY=-1",
-        "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.datasource.username=sa",
-        "spring.datasource.password="
-})
 class Saml2SettingsTest {
 
+    private static JdbcTemplate mysql;
+
+    @DynamicPropertySource
+    static void mysqlDatasource(DynamicPropertyRegistry registry) {
+        mysql = MysqlTestSupport.createEmptySchema();
+        MysqlTestSupport.bindSpringDatasource(registry, mysql);
+    }
     /** 测试用自签名 X.509 证书（仅公钥证书，无私钥；用于证书解析校验）。 */
     private static final String TEST_CERTIFICATE = "-----BEGIN CERTIFICATE-----\n"
             + "MIIDGTCCAgGgAwIBAgIUOWduJNqTihq2zO48tWscbZ65998wDQYJKoZIhvcNAQEL\n"

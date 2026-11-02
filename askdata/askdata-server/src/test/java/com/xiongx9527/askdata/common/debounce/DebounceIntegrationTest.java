@@ -1,9 +1,13 @@
 package com.xiongx9527.askdata.common.debounce;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -20,6 +24,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @AutoConfigureMockMvc
 class DebounceIntegrationTest {
+
+    private static JdbcTemplate mysql;
+
+    @DynamicPropertySource
+    static void mysqlDatasource(DynamicPropertyRegistry registry) {
+        mysql = MysqlTestSupport.createEmptySchema();
+        MysqlTestSupport.bindSpringDatasource(registry, mysql);
+    }
 
     @Autowired
     private MockMvc mvc;

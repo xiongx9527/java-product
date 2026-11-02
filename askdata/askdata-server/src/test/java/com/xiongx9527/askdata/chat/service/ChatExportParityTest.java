@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.chat.service;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.support.MetadbMigration;
 
 import com.xiongx9527.askdata.chat.repository.ChatRepository;
@@ -50,11 +52,7 @@ class ChatExportParityTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        appJdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:chat_export_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = appJdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
+        appJdbc = MysqlTestSupport.createSchema();
         chatRepository = new ChatRepository(appJdbc, ids, objectMapper);
         CurrentUserService currentUserService = Mockito.mock(CurrentUserService.class);
         Mockito.when(currentUserService.currentUser())
@@ -69,7 +67,7 @@ class ChatExportParityTest {
 
     /** 建会话 + 记录，写入 data / chart / predict_data 快照。 */
     private long newRecord(String dataJson, String chartJson, String predictDataJson) {
-        long chatId = chatRepository.insertChat(1L, 1L, "导出测试", 7L, "H2", "h2", 1, "各城市销售额");
+        long chatId = chatRepository.insertChat(1L, 1L, "导出测试", 7L, "MySQL", "mysql", 1, "各城市销售额");
         long recordId = chatRepository.insertRecord(chatId, "各城市销售额", 1L, 1L, 7L, false, null);
         chatRepository.updateRecordField(recordId, "data", dataJson);
         if (chartJson != null) {

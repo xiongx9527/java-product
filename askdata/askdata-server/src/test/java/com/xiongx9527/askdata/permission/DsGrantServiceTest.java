@@ -1,5 +1,11 @@
 package com.xiongx9527.askdata.permission;
 
+import org.springframework.test.context.DynamicPropertySource;
+
+import org.springframework.test.context.DynamicPropertyRegistry;
+
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.common.util.Lists;
 import com.xiongx9527.askdata.common.util.Maps;
 
@@ -12,7 +18,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.TestPropertySource;
 
 import java.util.List;
 import java.util.Map;
@@ -28,14 +33,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 管理员始终放行；save 校验授权对象须同工作空间；空 user_ids 清空授权。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
-@TestPropertySource(properties = {
-        "spring.datasource.url=jdbc:h2:mem:ds_grant;MODE=MySQL;DB_CLOSE_DELAY=-1",
-        "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.datasource.username=sa",
-        "spring.datasource.password="
-})
 class DsGrantServiceTest {
 
+    private static JdbcTemplate mysql;
+
+    @DynamicPropertySource
+    static void mysqlDatasource(DynamicPropertyRegistry registry) {
+        mysql = MysqlTestSupport.createEmptySchema();
+        MysqlTestSupport.bindSpringDatasource(registry, mysql);
+    }
     @Autowired
     private DsGrantService dsGrantService;
 

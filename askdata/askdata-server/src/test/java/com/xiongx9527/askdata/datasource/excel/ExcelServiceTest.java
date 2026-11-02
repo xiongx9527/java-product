@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.datasource.excel;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.datasource.DatasourceException;
@@ -61,8 +63,7 @@ class ExcelServiceTest {
 
     @BeforeEach
     void setUp() {
-        appJdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:excel_test;MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
+        appJdbc = MysqlTestSupport.createSchema();
         engine = new JdbcEngine(appJdbc, objectMapper);
         excelService = new ExcelService(appJdbc, engine, tempDir.toString(), messageResolver);
     }
@@ -156,7 +157,7 @@ class ExcelServiceTest {
         assertEquals(2, created.get(0).get("rows"));
 
         assertTrue(engine.appTableExists(tableName));
-        assertEquals(2L, appJdbc.queryForObject("SELECT COUNT(*) FROM \"" + tableName + "\"", Long.class));
+        assertEquals(2L, appJdbc.queryForObject("SELECT COUNT(*) FROM `" + tableName + "`", Long.class));
         // 列类型映射（int→BIGINT、string→VARCHAR、float→DOUBLE、datetime→TIMESTAMP）
         List<com.xiongx9527.askdata.datasource.engine.ColumnSchema> columns =
                 engine.fields(DatasourceType.EXCEL, new DatasourceConf(), tableName);
@@ -164,8 +165,8 @@ class ExcelServiceTest {
         assertTrue(columns.get(0).getFieldType().toUpperCase().contains("BIGINT"));
         assertTrue(columns.get(3).getFieldType().toUpperCase().contains("TIMESTAMP"));
         // 时间列可读回
-        Object stored = appJdbc.queryForObject("SELECT MAX(" + engine.appIdentifier("时间") + ") FROM \""
-                + tableName + "\"", Object.class);
+        Object stored = appJdbc.queryForObject("SELECT MAX(" + engine.appIdentifier("时间") + ") FROM `"
+                + tableName + "`", Object.class);
         assertNotNull(stored);
 
         Files.delete(tempDir.resolve(filePath));
@@ -183,14 +184,14 @@ class ExcelServiceTest {
         assertEquals(1, sheets.size());
         String tableName = Rows.str(sheets.get(0), "tableName");
         assertTrue(tableName.startsWith(engine.appIdentifier("用户_")), tableName);
-        assertEquals(2L, appJdbc.queryForObject("SELECT COUNT(*) FROM \"" + tableName + "\"", Long.class));
+        assertEquals(2L, appJdbc.queryForObject("SELECT COUNT(*) FROM `" + tableName + "`", Long.class));
     }
 
     /**
      * 回归：Excel 导入建表后必须能被真实查询命中（A5 excel 链路核心）。
      *
-     * <p>修复前建表用带引号的小写名，而 getTables 返回的名字经 execSql 走未加引号标识符时被 H2
-     * 折叠为大写，报 {@code Table "EXCEL_XXX" not found}；此处用未加引号的 SQL（LLM 生成形态）
+     * <p>历史回归：建表若用带引号的小写名，而 getTables 返回的名字经 execSql 走未加引号标识符时
+     * 会因大小写折叠而找不到表；此处用未加引号的 SQL（LLM 生成形态）
      * 覆盖 getTables → getFields → previewData → execSql 全链路。</p>
      */
     @Test
@@ -223,7 +224,7 @@ class ExcelServiceTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) executed.get("data");
         assertEquals(2, rows.size());
-        assertEquals("alice", rows.get(0).get("NAME"));
+        assertEquals("alice", rows.get(0).get("name"));
 
         // previewData：按 getFields 返回的字段名拼预览 SQL
         List<String> fieldNames = new ArrayList<>();
@@ -231,7 +232,7 @@ class ExcelServiceTest {
             fieldNames.add(column.getFieldName());
         }
         Map<String, Object> preview = engine.execSql(DatasourceType.EXCEL, conf,
-                DatasourceType.EXCEL.previewSql(fieldNames, tableName, conf, null));
+                engine.previewSql(DatasourceType.EXCEL, conf, fieldNames, tableName, null));
         assertEquals(2, ((List<?>) preview.get("data")).size());
 
         // 结果必须可 JSON 序列化（CLOB 列曾导致 No serializer found for BufferedReader）
@@ -279,12 +280,12 @@ class ExcelServiceTest {
         assertEquals(2, created.size());
         for (Map<String, Object> sheet : created) {
             String tableName = Rows.str(sheet, "tableName");
-            assertEquals(2L, appJdbc.queryForObject("SELECT COUNT(*) FROM \"" + tableName + "\"", Long.class));
+            assertEquals(2L, appJdbc.queryForObject("SELECT COUNT(*) FROM `" + tableName + "`", Long.class));
         }
         // 第二个 sheet 的首行数据（id=10）被写入，未被当成表头丢弃
         String secondTable = Rows.str(created.get(1), "tableName");
         Long secondId = appJdbc.queryForObject(
-                "SELECT MIN(\"" + engine.appIdentifier("id") + "\") FROM \"" + secondTable + "\"", Long.class);
+                "SELECT MIN(`" + engine.appIdentifier("id") + "`) FROM `" + secondTable + "`", Long.class);
         assertEquals(10L, secondId);
     }
 
@@ -312,8 +313,8 @@ class ExcelServiceTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> created = (List<Map<String, Object>>) result.get("sheets");
         String tableName = Rows.str(created.get(0), "tableName");
-        Object last = appJdbc.queryForObject("SELECT MAX(\"" + engine.appIdentifier("amount") + "\") FROM \""
-                + tableName + "\"", Object.class);
+        Object last = appJdbc.queryForObject("SELECT MAX(`" + engine.appIdentifier("amount") + "`) FROM `"
+                + tableName + "`", Object.class);
         assertEquals(150.5, ((Number) last).doubleValue(), 0.0001, "浮点值不得被取整或转文本");
     }
 
@@ -357,7 +358,7 @@ class ExcelServiceTest {
         List<Map<String, Object>> created = (List<Map<String, Object>>) result.get("sheets");
         String tableName = Rows.str(created.get(0), "tableName");
         assertTrue(tableName.startsWith(engine.appIdentifier("excel_Sheet1_")), tableName);
-        assertEquals(2L, appJdbc.queryForObject("SELECT COUNT(*) FROM \"" + tableName + "\"", Long.class));
+        assertEquals(2L, appJdbc.queryForObject("SELECT COUNT(*) FROM `" + tableName + "`", Long.class));
     }
 
     @Test
@@ -440,8 +441,8 @@ class ExcelServiceTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> created = (List<Map<String, Object>>) result.get("sheets");
         String tableName = Rows.str(created.get(0), "tableName");
-        Object ts = appJdbc.queryForObject("SELECT \"" + engine.appIdentifier("ts") + "\" FROM \""
-                + tableName + "\"", Object.class);
+        Object ts = appJdbc.queryForObject("SELECT `" + engine.appIdentifier("ts") + "` FROM `"
+                + tableName + "`", Object.class);
         assertNotNull(ts);
         assertTrue(ts instanceof java.sql.Timestamp || ts instanceof Date, ts.getClass().getName());
     }
@@ -476,19 +477,18 @@ class ExcelServiceTest {
         List<com.xiongx9527.askdata.datasource.engine.ColumnSchema> columns =
                 engine.fields(DatasourceType.EXCEL, new DatasourceConf(), tableName);
         assertEquals(1, columns.size());
-        // 列类型为 VARCHAR 系（H2 下为 CHARACTER VARYING，非 CLOB）
+        // 文本列统一映射为 TEXT（MySQL 的 VARCHAR 有 16383 字符上限）
         String fieldType = columns.get(0).getFieldType().toUpperCase();
-        assertTrue(fieldType.contains("VARCHAR") || fieldType.contains("VARYING"),
+        assertTrue(fieldType.contains("TEXT") || fieldType.contains("CLOB"),
                 columns.get(0).getFieldType());
         String stored = appJdbc.queryForObject(
-                "SELECT \"" + engine.appIdentifier("\u5907\u6ce8") + "\" FROM \"" + tableName + "\"", String.class);
+                "SELECT `" + engine.appIdentifier("\u5907\u6ce8") + "` FROM `" + tableName + "`", String.class);
         assertEquals(longText, stored);
     }
 
     @Test
     void importToDbRollsBackTableOnInsertFailure() throws Exception {
-        JdbcTemplate failingJdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:excel_rollback;MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", "")) {
+        JdbcTemplate failingJdbc = new JdbcTemplate(MysqlTestSupport.createEmptySchema().getDataSource()) {
             @Override
             public int[] batchUpdate(String sql, List<Object[]> batchArgs) {
                 throw new RuntimeException("forced insert failure");
@@ -511,7 +511,8 @@ class ExcelServiceTest {
                 Collections.singletonList(Rows.of("sheetName", "\u8ba2\u5355", "fields", fields))));
 
         Integer count = failingJdbc.queryForObject(
-                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME LIKE 'EXCEL%'", Integer.class);
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES "
+                        + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'excel%'", Integer.class);
         assertEquals(0, count == null ? 0 : count);
     }
 }

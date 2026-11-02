@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.datasource.service;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.support.MetadbMigration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -50,8 +52,8 @@ import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import org.springframework.context.support.StaticMessageSource;
 
 /**
- * 数据源服务全周期 smoke（A5/A12 离线证据，H2 引擎）：
- * V2 种子 → 演示数据源可读 → H2 数据源 add/get/list/check/表字段/勾选/预览/执行/注释/同步/
+ * 数据源服务全周期 smoke（A5/A12 证据，真实 MySQL 引擎）：
+ * V2 种子 → 演示数据源可读 → MySQL 数据源 add/get/list/check/表字段/勾选/预览/执行/注释/同步/
  * 更新/删除 → excel 上传建表全周期 → 表关系 → 推荐问题 → schema 备注导入导出。
  */
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
@@ -61,7 +63,8 @@ class DatasourceServiceSmokeTest {
 
     private static final MessageResolver messageResolver = new MessageResolver(new StaticMessageSource());
 
-    private static final String TARGET_URL = "jdbc:h2:mem:svc_target;MODE=MySQL;DB_CLOSE_DELAY=-1";
+    /** 被查询的目标 MySQL 库（每次 setUp 新建）。 */
+    private JdbcTemplate targetJdbc;
 
     @TempDir
     Path excelDir;
@@ -83,21 +86,13 @@ class DatasourceServiceSmokeTest {
         // 非 Spring 测试：显式注入与 V2 种子一致的应用密钥（A5 起密钥配置化，默认 AskDataSecret001）
         DatasourceCrypto.configure(new CryptoUtil("AskDataSecret001"));
         // 每个测试方法独立内存库（DB_CLOSE_DELAY=-1 下同名库跨方法共享，故加唯一后缀）
-        appJdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:svc_app_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = appJdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
-        // 目标 H2 数据源库
-        try (Connection connection = DriverManager.getConnection(TARGET_URL, "sa", "");
-             Statement statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE IF NOT EXISTS \"orders\" ("
-                    + "\"id\" BIGINT PRIMARY KEY, \"user_id\" BIGINT, \"amount\" DECIMAL(10,2), "
-                    + "\"status\" VARCHAR(20))");
-            statement.execute("COMMENT ON TABLE \"orders\" IS '订单表'");
-            statement.execute("DELETE FROM \"orders\"");
-            statement.execute("INSERT INTO \"orders\" VALUES (1, 100, 99.50, 'PAID'), (2, 101, 12.00, 'NEW')");
-        }
+        appJdbc = MysqlTestSupport.createSchema();
+        // 目标 MySQL 数据源库
+        targetJdbc = MysqlTestSupport.createEmptySchema();
+        targetJdbc.execute("CREATE TABLE orders ("
+                + "id BIGINT PRIMARY KEY, user_id BIGINT, amount DECIMAL(10,2), "
+                + "status VARCHAR(20)) COMMENT='订单表'");
+        targetJdbc.update("INSERT INTO orders VALUES (1, 100, 99.50, 'PAID'), (2, 101, 12.00, 'NEW')");
 
         engine = new JdbcEngine(appJdbc, objectMapper);
         ExcelService excelService = new ExcelService(appJdbc, engine, excelDir.toString(), messageResolver);
@@ -127,15 +122,15 @@ class DatasourceServiceSmokeTest {
     }
 
     @AfterEach
-    void tearDown() throws Exception {
-        try (Connection connection = DriverManager.getConnection(TARGET_URL, "sa", "");
-             Statement statement = connection.createStatement()) {
-            statement.execute("DROP TABLE IF EXISTS \"orders\"");
-        }
+    void tearDown() {
+        MysqlTestSupport.dropSchema(targetJdbc);
     }
 
-    private String frontendConfiguration(String database) {
-        String plain = "{\"host\":\"\",\"port\":0,\"username\":\"sa\",\"password\":\"\",\"database\":\"" + database
+    /** 前端形态的目标 MySQL 连接配置（加密后存 core_datasource.configuration）。 */
+    private String frontendConfiguration(JdbcTemplate jdbc) {
+        String plain = "{\"host\":\"" + MysqlTestSupport.host() + "\",\"port\":" + MysqlTestSupport.port()
+                + ",\"username\":\"" + MysqlTestSupport.user() + "\",\"password\":\""
+                + MysqlTestSupport.password() + "\",\"database\":\"" + MysqlTestSupport.schemaName(jdbc)
                 + "\",\"extraJdbc\":\"\",\"dbSchema\":\"\",\"filename\":\"\",\"sheets\":[],\"mode\":\"\","
                 + "\"timeout\":10,\"lowVersion\":false,\"ssl\":false,\"poolSize\":5,\"engine\":\"hive\"}";
         return CryptoUtil.encryptSqlbot(plain);
@@ -178,35 +173,35 @@ class DatasourceServiceSmokeTest {
     }
 
     // ------------------------------------------------------------------
-    // H2 数据源全周期（A5）
+    // MySQL 数据源全周期（A5）
     // ------------------------------------------------------------------
 
     @Test
-    void h2DatasourceLifecycle() {
-        String configuration = frontendConfiguration(TARGET_URL);
+    void mysqlDatasourceLifecycle() {
+        String configuration = frontendConfiguration(targetJdbc);
         Map<String, Object> created = datasourceService.add(Rows.of(
-                "name", "H2 测试库",
+                "name", "MySQL 测试库",
                 "description", "smoke",
-                "type", "h2",
+                "type", "mysql",
                 "configuration", configuration,
                 "tables", Collections.singletonList(Rows.of("table_name", "orders", "table_comment", "订单表"))));
         long dsId = Rows.lng(created, "id", 0L);
         assertTrue(dsId > 0);
         assertEquals("1/1", created.get("num"));
-        assertEquals("H2", created.get("type_name"));
+        assertEquals("MySQL", created.get("type_name"));
 
         // get：configuration 前端形态可解密
         Map<String, Object> got = datasourceService.get(dsId);
-        assertTrue(CryptoUtil.decryptSqlbot(String.valueOf(got.get("configuration"))).contains(TARGET_URL));
+        assertTrue(CryptoUtil.decryptSqlbot(String.valueOf(got.get("configuration"))).contains(MysqlTestSupport.schemaName(targetJdbc)));
 
         // list / getTablesByConf / check
         assertTrue(datasourceService.list(null).stream()
-                .anyMatch(item -> "H2 测试库".equals(item.get("name"))));
+                .anyMatch(item -> "MySQL 测试库".equals(item.get("name"))));
         List<Map<String, Object>> confTables = datasourceService.getTablesByConf(
-                Rows.of("type", "h2", "configuration", configuration));
+                Rows.of("type", "mysql", "configuration", configuration));
         assertEquals(1, confTables.size());
         assertEquals("orders", confTables.get(0).get("tableName"));
-        assertTrue(datasourceService.check(Rows.of("type", "h2", "configuration", configuration)));
+        assertTrue(datasourceService.check(Rows.of("type", "mysql", "configuration", configuration)));
 
         // 表/字段浏览
         List<Map<String, Object>> tables = datasourceService.tableList(dsId);
@@ -215,7 +210,7 @@ class DatasourceServiceSmokeTest {
         assertEquals("订单表", tables.get(0).get("table_comment"));
         List<Map<String, Object>> fields = datasourceService.fieldList(dsId, tableId, Rows.of("fieldName", ""));
         assertEquals(4, fields.size());
-        assertEquals("amount", fields.get(2).get("field_name"));
+        assertTrue(fields.stream().anyMatch(field -> "amount".equals(field.get("field_name"))), fields.toString());
         // 字段名模糊匹配
         assertEquals(1, datasourceService.fieldList(dsId, tableId, Rows.of("fieldName", "STAT")).size());
 
@@ -225,13 +220,13 @@ class DatasourceServiceSmokeTest {
         assertTrue(String.valueOf(preview.get("sql")).length() > 0);
 
         // 执行 SQL（只读）
-        Map<String, Object> exec = datasourceService.execSql(dsId, Rows.of("sql", "SELECT COUNT(*) AS \"c\" FROM \"orders\""));
+        Map<String, Object> exec = datasourceService.execSql(dsId, Rows.of("sql", "SELECT COUNT(*) AS c FROM orders"));
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> execRows = (List<Map<String, Object>>) exec.get("data");
         assertEquals(2, ((Number) execRows.get(0).get("c")).intValue());
         // 写操作被拒绝
         assertThrows(DatasourceException.class,
-                () -> datasourceService.execSql(dsId, Rows.of("sql", "DELETE FROM \"orders\"")));
+                () -> datasourceService.execSql(dsId, Rows.of("sql", "DELETE FROM orders")));
 
         // 编辑表/字段注释与勾选
         datasourceService.editTable(Rows.of("id", tableId, "ds_id", dsId, "checked", false,
@@ -239,11 +234,23 @@ class DatasourceServiceSmokeTest {
         tables = datasourceService.tableList(dsId);
         assertEquals("订单表(自定义)", tables.get(0).get("custom_comment"));
         assertFalse((Boolean) tables.get(0).get("checked"));
-        long fieldId = Rows.lng(fields.get(0), "id", 0L);
+        List<Map<String, Object>> beforeEdit = fields;
+        Map<String, Object> idField = beforeEdit.stream().filter(field -> "id".equals(field.get("field_name")))
+                .findFirst().orElseThrow(() -> new AssertionError("id 字段缺失: " + beforeEdit));
+        long fieldId = Rows.lng(idField, "id", 0L);
         datasourceService.editField(Rows.of("id", fieldId, "ds_id", dsId, "table_id", tableId, "checked", false,
                 "custom_comment", "主键ID"));
-        fields = datasourceService.fieldList(dsId, tableId, Rows.of("fieldName", ""));
-        assertEquals("主键ID", fields.get(0).get("custom_comment"));
+        fields = datasourceService.fieldList(dsId, tableId, Rows.of("fieldName", "id"));
+        // 模糊匹配按子串命中（MySQL 默认 ci 排序规则），id / user_id 都会返回，按名精确定位
+        Map<String, Object> editedIdField = null;
+        for (Map<String, Object> field : fields) {
+            if ("id".equals(field.get("field_name"))) {
+                editedIdField = field;
+                break;
+            }
+        }
+        assertNotNull(editedIdField, "id 字段缺失: " + fields);
+        assertEquals("主键ID", editedIdField.get("custom_comment"));
 
         // 重新勾选后 syncFields 刷新元数据
         datasourceService.editTable(Rows.of("id", tableId, "ds_id", dsId, "checked", true, "custom_comment", "订单表"));
@@ -255,9 +262,9 @@ class DatasourceServiceSmokeTest {
         assertEquals("1/1", datasourceService.get(dsId).get("num"));
 
         // 更新连接配置（名称变更）
-        datasourceService.update(Rows.of("id", dsId, "name", "H2 测试库(改)", "type", "h2",
+        datasourceService.update(Rows.of("id", dsId, "name", "MySQL 测试库(改)", "type", "mysql",
                 "configuration", configuration));
-        assertEquals("H2 测试库(改)", datasourceService.get(dsId).get("name"));
+        assertEquals("MySQL 测试库(改)", datasourceService.get(dsId).get("name"));
 
         // schema 备注导出/导入
         DatasourceService.ExportFile exported = datasourceService.exportDsSchema(dsId);
@@ -268,7 +275,7 @@ class DatasourceServiceSmokeTest {
         assertTrue(datasourceService.uploadDsSchema(dsId, schemaFile));
 
         // 删除
-        datasourceService.delete(dsId, "H2 测试库(改)");
+        datasourceService.delete(dsId, "MySQL 测试库(改)");
         assertThrows(BadRequestException.class, () -> datasourceService.get(dsId));
         assertThrows(BadRequestException.class, () -> datasourceService.tableList(dsId));
     }
@@ -311,7 +318,7 @@ class DatasourceServiceSmokeTest {
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> createdSheets = (List<Map<String, Object>>) imported.get("sheets");
             String tableName = String.valueOf(createdSheets.get(0).get("tableName"));
-            // 表名取应用库标识符规范化形态（H2 未加引号标识符折叠为大写）
+            // 表名取应用库标识符规范化形态（MySQL 不折叠大小写，原样返回）
             assertTrue(tableName.startsWith(engine.appIdentifier("excel_订单_")), tableName);
 
             String configuration = CryptoUtil.encryptSqlbot("{\"host\":\"\",\"port\":0,\"username\":\"\","
@@ -343,8 +350,9 @@ class DatasourceServiceSmokeTest {
             // 预览与执行（走应用库）
             Map<String, Object> preview = datasourceService.previewData(dsId, Rows.of("table", Rows.of("id", tableId)));
             assertEquals(3, ((List<?>) preview.get("data")).size());
+            // excel 数据落在应用库（MySQL），标识符引用用反引号
             Map<String, Object> exec = datasourceService.execSql(dsId,
-                    Rows.of("sql", "SELECT COUNT(*) AS \"c\" FROM \"" + tableName + "\""));
+                    Rows.of("sql", "SELECT COUNT(*) AS `c` FROM `" + tableName + "`"));
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> execRows = (List<Map<String, Object>>) exec.get("data");
             assertEquals(3, ((Number) execRows.get(0).get("c")).intValue());
@@ -361,9 +369,9 @@ class DatasourceServiceSmokeTest {
 
     @Test
     void tableRelationAndRecommendedProblem() {
-        String configuration = frontendConfiguration(TARGET_URL);
+        String configuration = frontendConfiguration(targetJdbc);
         long dsId = Rows.lng(datasourceService.add(Rows.of(
-                "name", "关系库", "description", "", "type", "h2", "configuration", configuration,
+                "name", "关系库", "description", "", "type", "mysql", "configuration", configuration,
                 "tables", Collections.singletonList(Rows.of("table_name", "orders", "table_comment", "")))), "id", 0L);
 
         // 表关系 save/get
@@ -398,11 +406,11 @@ class DatasourceServiceSmokeTest {
     @Test
     void errorConventions() {
         // 重名
-        String configuration = frontendConfiguration(TARGET_URL);
-        datasourceService.add(Rows.of("name", "重名库", "description", "", "type", "h2",
+        String configuration = frontendConfiguration(targetJdbc);
+        datasourceService.add(Rows.of("name", "重名库", "description", "", "type", "mysql",
                 "configuration", configuration, "tables", new ArrayList<>()));
         assertThrows(DatasourceException.class, () -> datasourceService.add(
-                Rows.of("name", "重名库", "description", "", "type", "h2", "configuration", configuration,
+                Rows.of("name", "重名库", "description", "", "type", "mysql", "configuration", configuration,
                         "tables", new ArrayList<>())));
         // 未知类型
         assertThrows(DatasourceException.class, () -> datasourceService.add(

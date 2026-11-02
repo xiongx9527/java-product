@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.settings;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.common.util.Maps;
 
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
@@ -33,7 +35,7 @@ import static org.mockito.ArgumentMatchers.eq;
  * <p>真实缺陷回归：x-file-storage 上传时把存储名重写成随机名（{@code filename}），
  * 展示名（{@code original_filename}）才是 {@code <原文件名>_<随机后缀>_error.xlsx}；
  * 下载接口只拿得到展示名，因此按 {@code filename} 反查必然落空，必须回退到
- * {@code original_filename}。本测试用真实 H2 {@code file_storage} 行，只 mock 对象存储的字节下载。</p>
+ * {@code original_filename}。本测试用真实 MySQL {@code file_storage} 行，只 mock 对象存储的字节下载。</p>
  */
 class SettingsFileOriginalNameFallbackTest {
 
@@ -58,8 +60,7 @@ class SettingsFileOriginalNameFallbackTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        jdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:file_storage_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
+        jdbc = MysqlTestSupport.createEmptySchema();
         jdbc.execute("CREATE TABLE file_storage (id BIGINT PRIMARY KEY, url VARCHAR(2000) NOT NULL, "
                 + "platform VARCHAR(64), path VARCHAR(1000), filename VARCHAR(512), "
                 + "original_filename VARCHAR(512), content_type VARCHAR(255), size BIGINT, "

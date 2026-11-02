@@ -1,5 +1,13 @@
 package com.xiongx9527.askdata.system;
 
+import org.springframework.test.context.DynamicPropertySource;
+
+import org.springframework.test.context.DynamicPropertyRegistry;
+
+import org.springframework.jdbc.core.JdbcTemplate;
+
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import cn.dev33.satoken.context.mock.SaTokenContextMockUtil;
 import cn.dev33.satoken.stp.StpUtil;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
@@ -35,22 +43,25 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * A23 用户导入兼容验收（@SpringBootTest + H2）：
+ * A23 用户导入兼容验收（@SpringBootTest + 真实 MySQL 临时 schema）：
  * ① 模板表头与示例值本地化（中文枚举）；② 模板下载后直接填写中文枚举即可导入；
  * ③ 返回字段为 SQLBot 的 successCount/errorCount/dataKey；④ 非法行返回行号与原因、合法行照常导入；
  * ⑤ 导入后的状态/来源/角色映射正确；⑥ 5 个 locale 的表头都能识别。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @TestPropertySource(properties = {
-        "spring.datasource.url=jdbc:h2:mem:user_import_localized;MODE=MySQL;DB_CLOSE_DELAY=-1",
-        "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.datasource.username=sa",
-        "spring.datasource.password=",
         "askdata.excel.path=target/user-import-localized-excel",
         "askdata.user.default-password=InitPassw0rd123"
 })
 class UserImportLocalizedTest {
 
+    private static JdbcTemplate mysql;
+
+    @DynamicPropertySource
+    static void mysqlDatasource(DynamicPropertyRegistry registry) {
+        mysql = MysqlTestSupport.createEmptySchema();
+        MysqlTestSupport.bindSpringDatasource(registry, mysql);
+    }
     private static final String XLSX_MEDIA_TYPE =
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 

@@ -1,5 +1,11 @@
 package com.xiongx9527.askdata.embedded;
 
+import org.springframework.test.context.DynamicPropertySource;
+
+import org.springframework.test.context.DynamicPropertyRegistry;
+
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.common.util.Lists;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,7 +18,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import java.util.ArrayList;
@@ -27,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doNothing;
 
 /**
- * GET /system/assistant/ds acceptance test (A3, H2 in-memory).
+ * GET /system/assistant/ds acceptance test (A3, real MySQL temp schema).
  * Aligns SQLBot assistant.py /ds; returns current assistant datasources
  * (id/name/description/type/type_name/num).
  *
@@ -37,14 +42,15 @@ import static org.mockito.Mockito.doNothing;
  * method is invoked directly and the MVC route is asserted registered.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
-@TestPropertySource(properties = {
-        "spring.datasource.url=jdbc:h2:mem:assistant_ds;MODE=MySQL;DB_CLOSE_DELAY=-1",
-        "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.datasource.username=sa",
-        "spring.datasource.password="
-})
 class AssistantDsEndpointTest {
 
+    private static JdbcTemplate mysql;
+
+    @DynamicPropertySource
+    static void mysqlDatasource(DynamicPropertyRegistry registry) {
+        mysql = MysqlTestSupport.createEmptySchema();
+        MysqlTestSupport.bindSpringDatasource(registry, mysql);
+    }
     @Autowired
     private AssistantController assistantController;
 
@@ -138,7 +144,7 @@ class AssistantDsEndpointTest {
         long assistantId = insertAssistant("appC", 1, oid, objectMapper.writeValueAsString(config));
 
         insertDatasource(301L, "primary", "x", "mysql", "MySQL", "3/3", oid);
-        insertDatasource(302L, "replica", "x", "h2", "H2", "1/1", oid);
+        insertDatasource(302L, "replica", "x", "mysql", "MySQL", "1/1", oid);
         insertDatasource(399L, "other", "x", "mysql", "MySQL", "0/0", 9999L);
 
         List<Map<String, Object>> result = assistantController.datasources(assistantId).getData();

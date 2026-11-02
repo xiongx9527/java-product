@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.scheduled;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.support.MetadbMigration;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,11 +30,7 @@ class ScheduledTaskLeaseTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:sched_lease_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = jdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
+        JdbcTemplate jdbc = MysqlTestSupport.createSchema();
         repository = new ScheduledTaskRepository(jdbc, new IdGenerator());
         ScheduledTask task = new ScheduledTask();
         task.setName("lease");

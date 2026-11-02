@@ -52,7 +52,7 @@ class ChatKnowledgeLlmExtractionTest {
 
         ChatModelClient client = Mockito.mock(ChatModelClient.class);
         Mockito.when(client.generate(Mockito.anyString(), Mockito.anyString(), Mockito.anyString(),
-                Mockito.any(), Mockito.any())).thenReturn(llmOutput);
+                Mockito.any(), Mockito.any(), Mockito.anyInt())).thenReturn(llmOutput);
 
         return new ChatKnowledgeService(recall, schema, jdbc, router, client);
     }

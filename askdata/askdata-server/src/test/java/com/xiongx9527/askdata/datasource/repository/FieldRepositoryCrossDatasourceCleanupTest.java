@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.datasource.repository;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.support.MetadbMigration;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,11 +36,7 @@ class FieldRepositoryCrossDatasourceCleanupTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        jdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:field_repo_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = jdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
+        jdbc = MysqlTestSupport.createSchema();
         repository = new FieldRepository(jdbc, new IdGenerator());
         repository.insert(DS_A, TABLE_A1, true, "id", "BIGINT", "", "", 0);
         repository.insert(DS_A, TABLE_A1, true, "amount", "DECIMAL", "金额", "", 1);

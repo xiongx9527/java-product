@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system.parameter;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.support.MetadbMigration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -36,11 +38,7 @@ class LoginParameterRoundTripTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:login_param_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = jdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
+        JdbcTemplate jdbc = MysqlTestSupport.createSchema();
         StaticMessageSource sms = new StaticMessageSource();
         sms.setUseCodeAsDefaultMessage(true);
         CurrentUserService users = org.mockito.Mockito.mock(CurrentUserService.class);

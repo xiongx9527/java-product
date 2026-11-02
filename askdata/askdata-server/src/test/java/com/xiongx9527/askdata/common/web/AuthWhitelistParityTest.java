@@ -29,8 +29,16 @@ class AuthWhitelistParityTest {
     private static final String SQLBOT_ROOT = System.getProperty("sqlbot.root",
             "/Users/xiongxiao/Workspaces/Idea/codes/New/SQLBot/backend");
 
-    /** 参考实现文件；不存在时跳过 parity 校验（不在每台机器上强制克隆 SQLBot 仓库）。 */
+    /** 本机克隆的参考实现；存在时优先于仓库内夹具。 */
     private static final Path SQLBOT_WHITELIST = Paths.get(SQLBOT_ROOT, "common/utils/whitelist.py");
+
+    /**
+     * 仓库内固定的参考实现夹具（{@code src/test/resources/sqlbot-reference/whitelist.py}）。
+     *
+     * <p>让 parity 校验在任何机器上都真实执行，不依赖是否克隆了 SQLBot 仓库；
+     * 夹具内容为 SQLBot 源文件原样拷贝，来源与更新方式见同目录 README。</p>
+     */
+    private static final String BUNDLED_WHITELIST = "sqlbot-reference/whitelist.py";
 
     private final AuthWhitelist whitelist = new AuthWhitelist("/api/v1");
 
@@ -124,16 +132,30 @@ class AuthWhitelistParityTest {
                 "白名单条目应与 SQLBot common/utils/whitelist.py 的 wlist 逐条一致");
     }
 
-    /** 参考源码缺失时跳过（环境依赖，非实现缺陷）。 */
+    /** 参考源码：优先本机克隆，其次仓库内夹具；两者都缺失才跳过（环境依赖，非实现缺陷）。 */
     private static void requireSqlBotSource() {
-        Assumptions.assumeTrue(Files.isRegularFile(SQLBOT_WHITELIST),
+        boolean bundled = AuthWhitelistParityTest.class.getClassLoader().getResource(BUNDLED_WHITELIST) != null;
+        Assumptions.assumeTrue(Files.isRegularFile(SQLBOT_WHITELIST) || bundled,
                 "缺少 SQLBot 参考源码，可用 -Dsqlbot.root=<backend 目录> 指定：" + SQLBOT_WHITELIST);
+    }
+
+    /** 参考实现源码文本（本机克隆优先，否则用仓库内夹具）。 */
+    private static String referenceSource() throws Exception {
+        if (Files.isRegularFile(SQLBOT_WHITELIST)) {
+            return new String(Files.readAllBytes(SQLBOT_WHITELIST), StandardCharsets.UTF_8);
+        }
+        try (java.io.InputStream in =
+                     AuthWhitelistParityTest.class.getClassLoader().getResourceAsStream(BUNDLED_WHITELIST)) {
+            if (in == null) {
+                throw new IllegalStateException("缺少参考实现夹具: " + BUNDLED_WHITELIST);
+            }
+            return new String(readAll(in).getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8);
+        }
     }
 
     /** 从 SQLBot 源码里原样抽出 wlist（不重新誊写，避免抄写漂移）。 */
     private static List<String> readSqlBotWlist() throws Exception {
-        String source = new String(Files.readAllBytes(SQLBOT_WHITELIST),
-                StandardCharsets.UTF_8);
+        String source = referenceSource();
         int start = source.indexOf("wlist = [");
         int end = source.indexOf("]", start);
         String block = source.substring(start + "wlist = [".length(), end);
@@ -158,8 +180,7 @@ class AuthWhitelistParityTest {
      * 避免"把 Python 逻辑重写成 Java 再自证"的循环论证。</p>
      */
     private static List<String> runSqlBotReference(List<String> paths) throws Exception {
-        String source = new String(Files.readAllBytes(SQLBOT_WHITELIST),
-                StandardCharsets.UTF_8);
+        String source = referenceSource();
         int start = source.indexOf("wlist = [");
         int end = source.indexOf("]", start);
         String wlistBlock = source.substring(start, end + 1);

@@ -37,8 +37,12 @@ class LlmNl2SqlLiveTest {
     @Test
     void realLlmGeneratesSqlViaOllamaOpenAiEndpoint() throws Exception {
         String domain = System.getenv("ASKDATA_LLM_DOMAIN");
+        if (domain == null || domain.trim().isEmpty()) {
+            // 未显式指定时探测本机 Ollama，让「本机就有模型服务」的环境默认跑真实链路
+            domain = localOllamaReachable() ? "http://127.0.0.1:11434" : null;
+        }
         assumeTrue(domain != null && !domain.trim().isEmpty(),
-                "未设置 ASKDATA_LLM_DOMAIN，跳过真实 LLM 验证");
+                "未设置 ASKDATA_LLM_DOMAIN，且本机 11434 无可用 Ollama，跳过真实 LLM 验证");
         String model = System.getenv("ASKDATA_LLM_MODEL");
         if (model == null || model.trim().isEmpty()) {
             model = "gpt-oss:120b-cloud";
@@ -89,6 +93,22 @@ class LlmNl2SqlLiveTest {
         String upper = sql.toUpperCase();
         assertTrue(upper.contains("SELECT"), "模型返回应包含 SELECT 语句，实际: " + sql);
         assertTrue(upper.contains("ACCOUNT"), "模型返回应引用 ACCOUNT 表，实际: " + sql);
+    }
+
+    /** 本机 Ollama 是否可用（/api/tags 返回 2xx）。 */
+    private static boolean localOllamaReachable() {
+        try {
+            HttpURLConnection conn = (HttpURLConnection)
+                    new URL("http://127.0.0.1:11434/api/tags").openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(1500);
+            conn.setReadTimeout(1500);
+            int code = conn.getResponseCode();
+            conn.disconnect();
+            return code >= 200 && code < 300;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private static byte[] readAll(java.io.InputStream in) throws Exception {

@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.chat.service;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.common.util.Lists;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -56,12 +58,7 @@ class ChatOwnershipParityTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        appJdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:chat_ownership_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = appJdbc.getDataSource().getConnection()) {
-            // A9 起元数据库由 Flyway 接管（schema.sql 已移除），与运行期迁移保持一致
-            MetadbMigration.migrate(connection);
-        }
+        appJdbc = MysqlTestSupport.createSchema();
         IdGenerator idGenerator = new IdGenerator();
         chatRepository = new ChatRepository(appJdbc, idGenerator, objectMapper);
         RecommendedQuestionRepository recommendedQuestionRepository =

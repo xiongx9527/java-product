@@ -2,8 +2,9 @@ package com.xiongx9527.askdata.parity;
 
 import com.xiongx9527.askdata.common.util.Lists;
 
-import com.xiongx9527.askdata.support.MetadbMigration;
+import com.xiongx9527.askdata.support.MysqlTestSupport;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.xiongx9527.askdata.common.util.Io;
 
@@ -23,11 +24,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * A9：MySQL 方言单测（不依赖真实 MySQL 实例）。
+ * A9：MySQL 方言验证（真实 MySQL 8 实例）。
  *
- * <p>本机无 Docker/MySQL 时，用 H2 的 {@code MODE=MySQL} 执行 MySQL baseline + common 种子，
- * 验证脚本可从空库完整执行；同时静态校验 MySQL 方言差异（utf8mb4/LONGTEXT/无 ANSI 时间字面量），
- * 避免把 H2/PostgreSQL 语法误放进 MySQL baseline。</p>
+ * <p>在临时 schema 上执行 MySQL baseline + common 种子，验证脚本可从空库完整执行；
+ * 同时静态校验 MySQL 方言差异（utf8mb4/LONGTEXT/无 ANSI 时间字面量），
+ * 避免把 PostgreSQL 语法误放进 MySQL baseline。</p>
  */
 class MysqlMetadbDialectTest {
 
@@ -38,18 +39,14 @@ class MysqlMetadbDialectTest {
             Paths.get("src/main/resources/db/migration/common/V2__seed.sql");
 
     @Test
-    void mysqlBaselineRunsFromEmptyDatabaseAndWritesSeed() throws Exception {
-        String url = "jdbc:h2:mem:mysql_dialect_" + System.nanoTime()
-                + ";MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1";
-        try (Connection connection = DriverManager.getConnection(url, "sa", "")) {
-            MetadbMigration.migrate(connection, "mysql");
-            assertEquals(36, tableCount(connection));
-            assertEquals(1, count(connection, "sys_user"));
-            assertEquals(12, count(connection, "sys_arg"));
-            assertEquals(3, count(connection, "system_variable"));
-            assertEquals(19, count(connection, "core_field"));
-            assertEquals(Lists.of("1", "2", "3", "4"), versions(connection));
-        }
+    void mysqlBaselineRunsFromEmptyDatabaseAndWritesSeed() {
+        JdbcTemplate jdbc = MysqlTestSupport.createSchema();
+        assertEquals(37, tableCount(jdbc));
+        assertEquals(1, count(jdbc, "sys_user"));
+        assertEquals(12, count(jdbc, "sys_arg"));
+        assertEquals(3, count(jdbc, "system_variable"));
+        assertEquals(19, count(jdbc, "core_field"));
+        assertEquals(Lists.of("1", "2", "3", "4", "5"), versions(jdbc));
     }
 
     @Test
@@ -67,35 +64,23 @@ class MysqlMetadbDialectTest {
                 "baseline 必须按方言拆分，不能放回 common");
     }
 
-    private int tableCount(Connection connection) throws Exception {
-        try (Statement statement = connection.createStatement();
-             ResultSet result = statement.executeQuery(
-                     "SELECT COUNT(*) FROM information_schema.tables "
-                             + "WHERE table_schema = 'public' AND table_name <> 'flyway_schema_history'")) {
-            result.next();
-            return result.getInt(1);
-        }
+    private int tableCount(JdbcTemplate jdbc) {
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables "
+                        + "WHERE table_schema = DATABASE() AND table_name <> 'flyway_schema_history'",
+                Integer.class);
+        return count == null ? 0 : count;
     }
 
-    private int count(Connection connection, String table) throws Exception {
-        try (Statement statement = connection.createStatement();
-             ResultSet result = statement.executeQuery("SELECT COUNT(*) FROM " + table)) {
-            result.next();
-            return result.getInt(1);
-        }
+    private int count(JdbcTemplate jdbc, String table) {
+        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM " + table, Integer.class);
+        return count == null ? 0 : count;
     }
 
-    private List<String> versions(Connection connection) throws Exception {
-        List<String> versions = new ArrayList<>();
-        try (Statement statement = connection.createStatement();
-             ResultSet result = statement.executeQuery(
-                     "SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL "
-                             + "ORDER BY installed_rank")) {
-            while (result.next()) {
-                versions.add(result.getString(1));
-            }
-        }
-        return versions;
+    private List<String> versions(JdbcTemplate jdbc) {
+        return jdbc.queryForList(
+                "SELECT version FROM flyway_schema_history WHERE success = 1 AND version IS NOT NULL "
+                        + "ORDER BY installed_rank", String.class);
     }
 
     /** 统计正则命中次数（Java 8 无 Matcher.results()）。 */

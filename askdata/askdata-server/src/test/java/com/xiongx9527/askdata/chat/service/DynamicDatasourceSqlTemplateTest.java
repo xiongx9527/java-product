@@ -107,7 +107,7 @@ class DynamicDatasourceSqlTemplateTest {
                 new com.xiongx9527.askdata.common.i18n.MessageResolver(
                         new org.springframework.context.support.StaticMessageSource()));
         Map<String, Object> hostConfig = new LinkedHashMap<>();
-        hostConfig.put("type", "h2");
+        hostConfig.put("type", "mysql");
         hostConfig.put("name", "宿主库");
         DynamicDatasource ds = resolver.resolve(3, hostConfig);
         assertTrue(ds.getTableSqlTemplates().isEmpty());

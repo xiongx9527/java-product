@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.authz;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.common.util.Lists;
 import com.xiongx9527.askdata.common.util.Maps;
 import com.xiongx9527.askdata.common.util.Sets;
@@ -66,15 +68,14 @@ class RowColumnPermissionHardeningTest {
 
     @BeforeEach
     void setUp() {
-        jdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:perm_harden_" + System.nanoTime() + ";DB_CLOSE_DELAY=-1", "sa", ""));
+        jdbc = MysqlTestSupport.createEmptySchema();
         jdbc.execute("CREATE TABLE ds_rules (id BIGINT PRIMARY KEY, enable BOOLEAN, name VARCHAR(128), "
-                + "description VARCHAR(512), permission_list VARCHAR(10000), user_list VARCHAR(10000), "
-                + "white_list_user VARCHAR(10000), create_time BIGINT, oid BIGINT)");
+                + "description VARCHAR(512), permission_list TEXT, user_list TEXT, "
+                + "white_list_user TEXT, create_time BIGINT, oid BIGINT)");
         jdbc.execute("CREATE TABLE ds_permission (id BIGINT PRIMARY KEY, enable BOOLEAN, "
                 + "auth_target_type VARCHAR(128), auth_target_id BIGINT, type VARCHAR(64), ds_id BIGINT, "
-                + "table_id BIGINT, expression_tree VARCHAR(10000), permissions VARCHAR(10000), "
-                + "white_list_user VARCHAR(10000), create_time BIGINT, name VARCHAR(128))");
+                + "table_id BIGINT, expression_tree TEXT, permissions TEXT, "
+                + "white_list_user TEXT, create_time BIGINT, name VARCHAR(128))");
 
         TableRepository tableRepo = mock(TableRepository.class);
         FieldRepository fieldRepo = mock(FieldRepository.class);
@@ -150,11 +151,7 @@ class RowColumnPermissionHardeningTest {
 
     @Test
     void schemaPromptStripsHiddenColumns() throws Exception {
-        JdbcTemplate appJdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:scb_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = appJdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
+        JdbcTemplate appJdbc = MysqlTestSupport.createSchema();
         appJdbc.update("INSERT INTO core_table (id, ds_id, checked, table_name, table_comment) "
                 + "VALUES (9001, 10, TRUE, 'orders', '订单')");
         appJdbc.update("INSERT INTO core_field (id, ds_id, table_id, checked, field_name, field_type) "

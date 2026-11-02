@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.authz;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.common.util.Lists;
 import com.xiongx9527.askdata.common.util.Maps;
 import com.xiongx9527.askdata.common.util.Sets;
@@ -58,7 +60,7 @@ import static org.mockito.Mockito.when;
  *       使非 ws_admin 无法绕过行/列权限。</li>
  * </ul>
  *
- * <p>数据源仓储使用真实 H2（Flyway 同运行时 schema），用户与资源授权用 mock 注入，
+ * <p>数据源仓储使用真实 MySQL 临时 schema（Flyway 同运行时 schema），用户与资源授权用 mock 注入，
  * 以便精确断言授权分支与权限强制链路的接驳。</p>
  */
 class DatasourceEndpointAuthzTest {
@@ -73,17 +75,13 @@ class DatasourceEndpointAuthzTest {
     @BeforeEach
     void setUp() throws Exception {
         DatasourceCrypto.configure(new CryptoUtil("AskDataSecret001"));
-        jdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:authz_endpoint_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = jdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
+        jdbc = MysqlTestSupport.createSchema();
         datasourceRepository = new DatasourceRepository(jdbc, new IdGenerator());
     }
 
     private void seedDatasource(long id, String configuration) {
         jdbc.update("INSERT INTO core_datasource (id, name, type, type_name, configuration, create_time, "
-                + "create_by, status, num, oid) VALUES (?, 'ds', 'h2', 'H2', ?, NOW(), 1, 'Success', '0/0', 1)",
+                + "create_by, status, num, oid) VALUES (?, 'ds', 'mysql', 'MySQL', ?, NOW(), 1, 'Success', '0/0', 1)",
                 id, configuration);
     }
 

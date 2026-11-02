@@ -84,7 +84,7 @@ class McpSqlbotCompatTest {
         Map<String, Object> zeta = Rows.of("id", 2L, "name", "zeta", "configuration", "secret",
                 "embedding", "[]", "table_relation", "{}", "recommended_config", 2, "type", "mysql");
         Map<String, Object> alpha = Rows.of("id", 1L, "name", "alpha", "configuration", "secret",
-                "embedding", "[]", "table_relation", "{}", "recommended_config", 0, "type", "h2");
+                "embedding", "[]", "table_relation", "{}", "recommended_config", 0, "type", "mysql");
         List<Map<String, Object>> list = new ArrayList<>(Arrays.asList(zeta, alpha));
 
         AskdataMcpTools.sanitizeDatasourceList(list);

@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.datasource.excel;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.common.util.Maps;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -52,8 +54,7 @@ class ExcelStorageCrossInstanceTest {
 
     @BeforeEach
     void setUp() {
-        appJdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:excel_cluster_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
+        appJdbc = MysqlTestSupport.createEmptySchema();
         engine = new JdbcEngine(appJdbc, new ObjectMapper());
         storage = Mockito.mock(AskdataFileStorage.class);
         Mockito.when(storage.enabled()).thenReturn(true);

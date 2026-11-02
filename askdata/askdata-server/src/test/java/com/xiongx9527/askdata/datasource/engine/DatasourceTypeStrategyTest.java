@@ -33,14 +33,14 @@ class DatasourceTypeStrategyTest {
     }
 
     @Test
-    void allFifteenTypesRegistered() {
-        // A12：excel + 12 库 + h2/sqlite 扩展
-        assertEquals(15, DatasourceType.values().length);
-        for (String type : Arrays.asList("excel", "mysql", "pg", "h2", "sqlServer", "sqlite", "ck", "doris",
+    void allTypesRegistered() {
+        // A12：excel + 12 库 + sqlite 扩展（H2 已移除）
+        assertEquals(14, DatasourceType.values().length);
+        for (String type : Arrays.asList("excel", "mysql", "pg", "sqlServer", "sqlite", "ck", "doris",
                 "starrocks", "oracle", "dm", "kingbase", "redshift", "es", "hive")) {
             assertNotNull(DatasourceType.fromType(type), type);
         }
-        // 前端下拉 13 类必须全部可解析
+        // 前端下拉全部类型必须可解析
         for (DatasourceType type : DatasourceType.selectable()) {
             assertNotNull(DatasourceType.fromType(type.getType()));
         }
@@ -96,25 +96,19 @@ class DatasourceTypeStrategyTest {
         assertEquals("jdbc:hive2://h.host:10000/db1",
                 url(DatasourceType.HIVE, conf("h.host", 10000, "u", "", "db1", "")));
 
-        DatasourceConf h2File = conf("", 0, "sa", "", "testdb", "");
-        assertEquals("jdbc:h2:file:./data/testdb", url(DatasourceType.H2, h2File));
-        DatasourceConf h2Verbatim = conf("", 0, "sa", "", "jdbc:h2:mem:demo;DB_CLOSE_DELAY=-1", "");
-        assertEquals("jdbc:h2:mem:demo;DB_CLOSE_DELAY=-1", url(DatasourceType.H2, h2Verbatim));
-
         DatasourceConf sqlite = conf("", 0, "", "", "", "");
         sqlite.setFilename("/tmp/demo.db");
         assertEquals("jdbc:sqlite:/tmp/demo.db", url(DatasourceType.SQLITE, sqlite));
     }
 
     /**
-     * A8：Excel 元数据查询使用固定默认 schema（PG public / H2 PUBLIC / SQL Server dbo），
+     * A8：Excel 元数据查询使用固定默认 schema（PG public / SQL Server dbo / MySQL 当前 catalog），
      * 不再向元数据 SQL 绑定空 schema。
      */
     @Test
     void excelMetadataUsesFixedDefaultSchema() {
         JdbcEngine engine = new JdbcEngine(null, new com.fasterxml.jackson.databind.ObjectMapper());
         assertEquals("public", engine.defaultAppSchema(DatasourceType.PG));
-        assertEquals("PUBLIC", engine.defaultAppSchema(DatasourceType.H2));
         assertEquals("dbo", engine.defaultAppSchema(DatasourceType.SQLSERVER));
 
         DatasourceConf pg = new DatasourceConf();
@@ -201,18 +195,16 @@ class DatasourceTypeStrategyTest {
         // 版本不可解析时按新版处理
         assertTrue(DatasourceType.CK.tableSql(conf, "").getSql().contains("name, comment"));
 
-        // schema 列表：pg/h2/sqlServer/oracle/dm 有 SQL，mysql/ck/hive 无（返回空列表）
+        // schema 列表：pg/sqlServer/oracle/dm 有 SQL，mysql/ck/hive 无（返回空列表）
         assertNotNull(DatasourceType.PG.schemaSql());
-        assertNotNull(DatasourceType.H2.schemaSql());
         assertNotNull(DatasourceType.SQLSERVER.schemaSql());
         assertNull(DatasourceType.MYSQL.schemaSql());
         assertNull(DatasourceType.CK.schemaSql());
         assertNull(DatasourceType.HIVE.schemaSql());
         assertNull(DatasourceType.ES.schemaSql());
 
-        // 版本 SQL：mysql/pg/h2/ck/oracle 有，redshift/hive 无
+        // 版本 SQL：mysql/pg/ck/oracle 有，redshift/hive 无
         assertNotNull(DatasourceType.MYSQL.versionSql());
-        assertNotNull(DatasourceType.H2.versionSql());
         assertNull(DatasourceType.REDSHIFT.versionSql());
         assertNull(DatasourceType.HIVE.versionSql());
     }

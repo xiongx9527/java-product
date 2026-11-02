@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.dashboard;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.common.i18n.TestMessageResolver;
@@ -53,11 +55,7 @@ class DashboardWorkspaceVisibilityTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        jdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:dashboard_visibility_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = jdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
+        jdbc = MysqlTestSupport.createSchema();
         jdbc.update("INSERT INTO sys_workspace (id, name, create_time) VALUES (?, ?, ?)", WS_2, "ws-2", 1672531200000L);
         jdbc.update("INSERT INTO sys_user (id, account, name, password, email, oid, status, create_time, language, origin) "
                 + "VALUES (2, 'user2', 'User 2', 'x', 'u2@x.com', 1, 1, 1672531199000, 'zh-CN', 0)");

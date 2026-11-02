@@ -99,7 +99,8 @@ class LdapSsoRealBindE2ETest {
                 () -> client.loginWithPassword(config(), "alice", "wrong-password"),
                 "错误口令必须在真实 LDAP bind 阶段被拒绝");
 
-        assertTrue(ex.getMessage().contains("LDAP bind failed"),
+        // 用户 DN bind 失败走专用消息（与「服务账号 bind 失败」区分），仍能证明不是搜索阶段报错
+        assertTrue(ex.getMessage().contains("invalid credentials"),
                 "失败应来自用户 DN bind，而不是搜索阶段：" + ex.getMessage());
     }
 

@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.chat.service;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.datasource.embedding.TableEmbeddingService;
 import com.xiongx9527.askdata.datasource.repository.DatasourceRepository;
@@ -33,14 +35,13 @@ class AdvancedAppKnowledgeScopeTest {
 
     @BeforeEach
     void setUp() {
-        jdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:knowledge_scope_" + System.nanoTime() + ";DB_CLOSE_DELAY=-1", "sa", ""));
+        jdbc = MysqlTestSupport.createEmptySchema();
         jdbc.execute("CREATE TABLE data_training (id BIGINT PRIMARY KEY, oid BIGINT, datasource BIGINT, "
-                + "create_time BIGINT, question VARCHAR(255), description VARCHAR(10000), "
-                + "embedding VARCHAR(10000), enabled BOOLEAN, advanced_application BIGINT)");
+                + "create_time BIGINT, question VARCHAR(255), description TEXT, "
+                + "embedding TEXT, enabled BOOLEAN, advanced_application BIGINT)");
         jdbc.execute("CREATE TABLE custom_prompt (id BIGINT PRIMARY KEY, oid BIGINT, type VARCHAR(20), "
-                + "create_time BIGINT, name VARCHAR(255), prompt VARCHAR(10000), specific_ds BOOLEAN, "
-                + "datasource_ids VARCHAR(10000), advanced_application BIGINT)");
+                + "create_time BIGINT, name VARCHAR(255), prompt TEXT, specific_ds BOOLEAN, "
+                + "datasource_ids TEXT, advanced_application BIGINT)");
     }
 
     @Test

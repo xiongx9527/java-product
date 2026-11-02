@@ -30,7 +30,6 @@ class DatasourceTypeCheckParamsTest {
     @Test
     void otherDialectsHaveNoIllegalParams() {
         assertTrue(DatasourceType.PG.illegalParams().isEmpty());
-        assertTrue(DatasourceType.H2.illegalParams().isEmpty());
         assertDoesNotThrow(() -> DatasourceType.checkParams("local_infile=1",
                 DatasourceType.PG.illegalParams()));
     }

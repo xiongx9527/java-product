@@ -1,5 +1,11 @@
 package com.xiongx9527.askdata.mcp;
 
+import org.springframework.test.context.DynamicPropertySource;
+
+import org.springframework.test.context.DynamicPropertyRegistry;
+
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
@@ -22,7 +28,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -56,30 +61,31 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 以真实 Spring 上下文验证「url/authorization 必填 → 拉取宿主数据源 → 合成用户建会话/记录 →
  * QUERY_DATA 问数（无图表/图片）→ 审计与 chat_log 落库」，以及 stream 缺省分流。
  *
- * <p>宿主 API 与 OpenAI 兼容模型均为本地 HTTP 桩；目标库为独立 H2。</p>
+ * <p>宿主 API 与 OpenAI 兼容模型均为本地 HTTP 桩；元数据库与目标库为独立 MySQL 临时 schema。</p>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
-@TestPropertySource(properties = {
-        "spring.datasource.url=jdbc:h2:mem:mcp_assistant_flow;MODE=MySQL;DB_CLOSE_DELAY=-1",
-        "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.datasource.username=sa",
-        "spring.datasource.password="
-})
 class McpAssistantFlowTest {
 
-    private static final String TARGET_URL =
-            "jdbc:h2:mem:mcp_assistant_target;MODE=MySQL;DB_CLOSE_DELAY=-1";
+    private static JdbcTemplate mysql;
+
+    @DynamicPropertySource
+    static void mysqlDatasource(DynamicPropertyRegistry registry) {
+        mysql = MysqlTestSupport.createEmptySchema();
+        MysqlTestSupport.bindSpringDatasource(registry, mysql);
+    }
+    /** 被查询的目标 MySQL 库（首个用例创建后复用）。 */
+    private static JdbcTemplate targetJdbc;
 
     private static final String STUB_SQL =
-            "SELECT \"status\", COUNT(*) AS \"cnt\" FROM \"orders\" GROUP BY \"status\" ORDER BY \"cnt\" DESC";
+            "SELECT `status`, COUNT(*) AS `cnt` FROM `orders` GROUP BY `status` ORDER BY `cnt` DESC";
 
     /**
      * A12 起 SQL 生成必须返回结构化 JSON，桩输出同步该契约。
      * 不返回 brief：本用例覆盖「模型未给标题时回退完整问题」的既有语义。
      */
     private static final String STUB_SQL_JSON = "{\"success\":true,\"sql\":\""
-            + STUB_SQL.replace("\"", "\\\"")
+            + STUB_SQL
             + "\",\"chart-type\":\"column\",\"tables\":[\"orders\"]}";
 
     private static final String QUESTION = "统计每个状态的订单数";
@@ -128,9 +134,16 @@ class McpAssistantFlowTest {
         prepareTargetDatabase();
         startLlmStub();
         startHostStub();
+        String stubBase = "http://127.0.0.1:" + llmServer.getAddress().getPort();
         defaultModelId = idGenerator.nextId();
-        aiModelRepository.insert(defaultModelId, "", "http://127.0.0.1:" + llmServer.getAddress().getPort(),
+        aiModelRepository.insert(defaultModelId, "", stubBase,
                 1, 0, "stub-gemma3", 0, "gemma3", true, "[]", 1, System.currentTimeMillis());
+        // 问答入口要求存在可用的在线向量模型且索引已对齐（决策 14/15），否则整条链路被阻断
+        long embeddingModelId = idGenerator.nextId();
+        aiModelRepository.insert(embeddingModelId, "", stubBase, 1, 0, "stub-bge", 1, "bge-m3",
+                false, "[]", 1, System.currentTimeMillis(), true, true, 1, 8);
+        jdbc.update("UPDATE ai_embedding_index_state SET model_id = ?, dimension = 8, status = 'idle' WHERE id = 1",
+                embeddingModelId);
     }
 
     @AfterEach
@@ -237,7 +250,7 @@ class McpAssistantFlowTest {
     }
 
     // ------------------------------------------------------------------
-    // SQLBot MCP HTTP 兼容层 + 真实 H2 元数据/记录落库（A1/A8/A11 端到端）
+    // SQLBot MCP HTTP 兼容层 + 真实 MySQL 元数据/记录落库（A1/A8/A11 端到端）
     // ------------------------------------------------------------------
 
     /** A11：mcp_start 经真实 HTTP 只返回 access_token/chat_id，并落 chat（不建 first_chat 空记录）。 */
@@ -303,7 +316,7 @@ class McpAssistantFlowTest {
         assertFalse(json.has("image_url"), "return_img=false 不应返回图片: " + json);
 
         Map<String, Object> record = jdbc.queryForMap(
-                "SELECT chat_id, sql, data, chart, first_chat, create_by, oid FROM chat_record WHERE id = ?", recordId);
+                "SELECT chat_id, `sql`, data, chart, first_chat, create_by, oid FROM chat_record WHERE id = ?", recordId);
         assertEquals(STUB_SQL, record.get("sql"), record.toString());
         assertNotNull(record.get("data"), "问数数据应落库: " + record);
         assertEquals(Boolean.FALSE, record.get("first_chat"), record.toString());
@@ -589,14 +602,16 @@ class McpAssistantFlowTest {
         return content.substring(from, end);
     }
 
-    /** 注册一个指向测试目标 H2 的数据源（configuration 走与生产一致的落库加密）。 */
+    /** 注册一个指向测试目标 MySQL 的数据源（configuration 走与生产一致的落库加密）。 */
     private long insertTargetDatasource(String name) {
         long dsId = idGenerator.nextId();
-        String plain = "{\"host\":\"\",\"port\":0,\"username\":\"sa\",\"password\":\"\",\"database\":\""
-                + TARGET_URL + "\",\"extraJdbc\":\"\",\"dbSchema\":\"\",\"filename\":\"\",\"sheets\":[],"
+        String plain = "{\"host\":\"" + MysqlTestSupport.host() + "\",\"port\":" + MysqlTestSupport.port()
+                + ",\"username\":\"" + MysqlTestSupport.user() + "\",\"password\":\""
+                + MysqlTestSupport.password() + "\",\"database\":\"" + MysqlTestSupport.schemaName(targetJdbc)
+                + "\",\"extraJdbc\":\"\",\"dbSchema\":\"\",\"filename\":\"\",\"sheets\":[],"
                 + "\"mode\":\"\",\"timeout\":10,\"lowVersion\":false,\"ssl\":false,\"poolSize\":5,"
                 + "\"engine\":\"hive\"}";
-        datasourceRepository.insert(dsId, name, "", "h2", "H2",
+        datasourceRepository.insert(dsId, name, "", "mysql", "MySQL",
                 CryptoUtil.encryptSqlbot(plain), 1L, 1L);
         tableRepository.insert(dsId, true, "orders", "订单表", null);
         return dsId;
@@ -610,26 +625,29 @@ class McpAssistantFlowTest {
         jdbc.update("DELETE FROM sys_logs_resource");
         jdbc.update("DELETE FROM sys_logs");
         jdbc.update("DELETE FROM ai_model");
+        jdbc.update("UPDATE ai_embedding_index_state SET model_id = NULL, dimension = NULL, status = 'idle', "
+                + "total = 0, done = 0, failed = 0, message = NULL WHERE id = 1");
         jdbc.update("DELETE FROM ds_grant");
         jdbc.update("DELETE FROM core_table WHERE ds_id <> 1");
         jdbc.update("DELETE FROM core_datasource WHERE id <> 1");
     }
 
-    private void prepareTargetDatabase() throws Exception {
-        try (Connection connection = DriverManager.getConnection(TARGET_URL, "sa", "");
-             Statement statement = connection.createStatement()) {
-            statement.execute("DROP TABLE IF EXISTS \"orders\"");
-            statement.execute("CREATE TABLE \"orders\" (\"id\" BIGINT PRIMARY KEY,"
-                    + " \"user_id\" BIGINT, \"amount\" DECIMAL(10,2), \"status\" VARCHAR(20))");
-            statement.execute("INSERT INTO \"orders\" VALUES (1, 100, 99.50, 'PAID'),"
-                    + " (2, 101, 12.00, 'PAID'), (3, 102, 30.00, 'NEW')");
+    private void prepareTargetDatabase() {
+        if (targetJdbc == null) {
+            targetJdbc = MysqlTestSupport.createEmptySchema();
         }
+        targetJdbc.execute("DROP TABLE IF EXISTS orders");
+        targetJdbc.execute("CREATE TABLE orders (id BIGINT PRIMARY KEY,"
+                + " user_id BIGINT, amount DECIMAL(10,2), status VARCHAR(20))");
+        targetJdbc.update("INSERT INTO orders VALUES (1, 100, 99.50, 'PAID'),"
+                + " (2, 101, 12.00, 'PAID'), (3, 102, 30.00, 'NEW')");
     }
 
     private void startLlmStub() throws Exception {
         stubCalls.clear();
         llmServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         llmServer.createContext("/v1/chat/completions", this::handleChatCompletions);
+        llmServer.createContext("/v1/embeddings", this::handleEmbeddings);
         llmServer.start();
     }
 
@@ -639,6 +657,23 @@ class McpAssistantFlowTest {
         hostServer.createContext("/datasources", this::handleHostDatasources);
         hostServer.start();
         hostUrl = "http://127.0.0.1:" + hostServer.getAddress().getPort() + "/datasources";
+    }
+
+    private void handleEmbeddings(HttpExchange exchange) {
+        try {
+            readBody(exchange.getRequestBody());
+            byte[] body = ("{\"data\":[{\"embedding\":[0.01,0.02,0.03,0.04,0.05,0.06,0.07,0.08]}]}")
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            try (java.io.OutputStream out = exchange.getResponseBody()) {
+                out.write(body);
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        } finally {
+            exchange.close();
+        }
     }
 
     private void handleChatCompletions(HttpExchange exchange) {
@@ -690,11 +725,13 @@ class McpAssistantFlowTest {
                     "data", Collections.singletonList(Rows.of(
                             "id", 501L,
                             "name", "宿主订单库",
-                            "type", "h2",
+                            "type", "mysql",
                             "configuration", Rows.of(
-                                    "database", TARGET_URL,
-                                    "username", "sa",
-                                    "password", "")))));
+                                    "host", MysqlTestSupport.host(),
+                                    "port", MysqlTestSupport.port(),
+                                    "database", MysqlTestSupport.schemaName(targetJdbc),
+                                    "username", MysqlTestSupport.user(),
+                                    "password", MysqlTestSupport.password())))));
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, body.length);
             try (OutputStream out = exchange.getResponseBody()) {

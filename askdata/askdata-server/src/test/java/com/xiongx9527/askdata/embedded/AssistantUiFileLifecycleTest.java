@@ -1,5 +1,11 @@
 package com.xiongx9527.askdata.embedded;
 
+import org.springframework.test.context.DynamicPropertySource;
+
+import org.springframework.test.context.DynamicPropertyRegistry;
+
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.common.util.Lists;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -13,7 +19,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.LinkedHashMap;
@@ -34,14 +39,15 @@ import static org.mockito.Mockito.doNothing;
  * 上传仅 jpg/png 且 ≤10MB；替换时先删旧文件；本次未下发的图片键清空（置空 + 删文件）。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
-@TestPropertySource(properties = {
-        "spring.datasource.url=jdbc:h2:mem:assistant_ui;MODE=MySQL;DB_CLOSE_DELAY=-1",
-        "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.datasource.username=sa",
-        "spring.datasource.password="
-})
 class AssistantUiFileLifecycleTest {
 
+    private static JdbcTemplate mysql;
+
+    @DynamicPropertySource
+    static void mysqlDatasource(DynamicPropertyRegistry registry) {
+        mysql = MysqlTestSupport.createEmptySchema();
+        MysqlTestSupport.bindSpringDatasource(registry, mysql);
+    }
     @Autowired
     private AssistantService assistantService;
 

@@ -6,14 +6,11 @@ import com.xiongx9527.askdata.common.audit.AuditClientIpResolver;
 import com.xiongx9527.askdata.common.audit.AuditModule;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.common.util.IdGenerator;
+import com.xiongx9527.askdata.support.MysqlTestSupport;
 import com.xiongx9527.askdata.system.repository.UserRepository;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 
 import java.util.Map;
 import java.util.Optional;
@@ -30,7 +27,6 @@ import static org.mockito.Mockito.when;
  */
 class AuditRecorderTest {
 
-    private EmbeddedDatabase db;
     private JdbcTemplate jdbc;
     private UserRepository userRepository;
     private TestableRecorder recorder;
@@ -38,15 +34,14 @@ class AuditRecorderTest {
 
     @BeforeEach
     void setUp() {
-        db = new EmbeddedDatabaseBuilder().setType(EmbeddedDatabaseType.H2).build();
-        jdbc = new JdbcTemplate(db);
-        jdbc.execute("CREATE TABLE sys_logs (id BIGINT, operation_type VARCHAR(255), operation_detail VARCHAR(10000), "
+        jdbc = MysqlTestSupport.createEmptySchema();
+        jdbc.execute("CREATE TABLE sys_logs (id BIGINT, operation_type VARCHAR(255), operation_detail TEXT, "
                 + "user_id BIGINT, user_name VARCHAR(255), operation_status VARCHAR(255), oid BIGINT, ip_address VARCHAR(255), "
-                + "user_agent VARCHAR(500), execution_time BIGINT, error_message VARCHAR(10000), "
-                + "create_time BIGINT, module VARCHAR(255), remark VARCHAR(255), resource_id VARCHAR(10000), "
-                + "resource_name VARCHAR(10000), request_method VARCHAR(255), request_path VARCHAR(255))");
-        jdbc.execute("CREATE TABLE sys_logs_resource (id BIGINT, log_id BIGINT, resource_id VARCHAR(10000), "
-                + "resource_name VARCHAR(10000), module VARCHAR(255))");
+                + "user_agent VARCHAR(500), execution_time BIGINT, error_message TEXT, "
+                + "create_time BIGINT, module VARCHAR(255), remark VARCHAR(255), resource_id TEXT, "
+                + "resource_name TEXT, request_method VARCHAR(255), request_path VARCHAR(255))");
+        jdbc.execute("CREATE TABLE sys_logs_resource (id BIGINT, log_id BIGINT, resource_id TEXT, "
+                + "resource_name TEXT, module VARCHAR(255))");
         jdbc.execute("CREATE TABLE core_dashboard (id BIGINT, name VARCHAR(100))");
         jdbc.execute("CREATE TABLE sys_user (id BIGINT, oid BIGINT, name VARCHAR(255))");
         jdbc.update("INSERT INTO core_dashboard VALUES (5, 'Board5')");
@@ -60,13 +55,6 @@ class AuditRecorderTest {
 
         recorder = new TestableRecorder(jdbc, idGen, userRepository,
                 new AuditClientIpResolver(), new AuditResourceNameResolver(jdbc), 5L);
-    }
-
-    @AfterEach
-    void tearDown() {
-        if (db != null) {
-            db.shutdown();
-        }
     }
 
     @Test

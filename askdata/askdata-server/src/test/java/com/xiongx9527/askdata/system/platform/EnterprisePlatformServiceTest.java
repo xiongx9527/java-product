@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system.platform;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.common.util.Maps;
 
 import com.xiongx9527.askdata.support.MetadbMigration;
@@ -10,7 +12,6 @@ import com.xiongx9527.askdata.system.authentication.AuthenticationRepository;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -54,11 +55,7 @@ class EnterprisePlatformServiceTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        jdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:platform_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = jdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
+        jdbc = MysqlTestSupport.createSchema();
         authenticationRepository = new AuthenticationRepository(jdbc);
         CurrentUserService users = mock(CurrentUserService.class);
         doNothing().when(users).requireAdmin();
@@ -268,7 +265,6 @@ class EnterprisePlatformServiceTest {
     // ---------------- A31：扫码登录换用户 ----------------
 
     @Test
-    @Disabled("JustAuth 的企业微信/飞书换码固定访问官方域名，无法本地打桩；该链路由真实环境联调验证")
     void wecomCodeExchangesToPlatformUser() {
         savePlatform(EnterprisePlatformService.ORIGIN_WECOM,
                 "{\"corpid\":\"ww1\",\"agent_id\":\"1\",\"corpsecret\":\"s\",\"redirect_uri\":\"https://app/cb\","
@@ -288,7 +284,6 @@ class EnterprisePlatformServiceTest {
     }
 
     @Test
-    @Disabled("JustAuth 的企业微信/飞书换码固定访问官方域名，无法本地打桩；该链路由真实环境联调验证")
     void larkCodeExchangesToPlatformUser() {
         savePlatform(EnterprisePlatformService.ORIGIN_LARK,
                 "{\"client_id\":\"cli\",\"client_secret\":\"sec\",\"redirect_uri\":\"https://app/cb\","

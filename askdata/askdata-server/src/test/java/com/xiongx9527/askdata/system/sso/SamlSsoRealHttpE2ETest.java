@@ -1,12 +1,15 @@
 package com.xiongx9527.askdata.system.sso;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xiongx9527.askdata.support.MysqlTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -24,7 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 真实 HTTP 端到端 SSO 测试（SAML2）。
  *
  * 与 AuthenticationSsoLoginTest（service 层、SSO 客户端被 mock）不同，本测试：
- *  - 启动完整 Spring Boot 应用（真实 Bean + 真实 embedded-postgres，不 mock 任何业务服务）；
+ *  - 启动完整 Spring Boot 应用（真实 Bean + 真实 MySQL 临时 schema，不 mock 任何业务服务）；
  *  - 向真实控制器端点 POST /api/v1/system/authentication/sso/5 发真实 HTTP 请求；
  *  - 请求体 SAMLResponse 由 IdpTestCrypto 生成带真实 XML-DSig 签名的断言（真实 RSA 密钥对签名，非 mock）；
  *  - 走真实 Saml2SsoClient.parseResponse + 真实 SamlSignatureVerifier 验签 + 真实属性抽取 +
@@ -36,6 +39,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 class SamlSsoRealHttpE2ETest {
+
+    private static JdbcTemplate mysql;
+
+    @DynamicPropertySource
+    static void mysqlDatasource(DynamicPropertyRegistry registry) {
+        mysql = MysqlTestSupport.createEmptySchema();
+        MysqlTestSupport.bindSpringDatasource(registry, mysql);
+    }
 
     private static final int TYPE_SAML2 = 5;
     private static final long AUTH_ID = 50005L;
@@ -70,7 +81,7 @@ class SamlSsoRealHttpE2ETest {
         }
         jdbc.update(
                 "INSERT INTO sys_authentication (id, name, type, config, enable, valid, create_time) "
-                        + "VALUES (?, ?, ?, ?::json, ?, ?, ?)",
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 AUTH_ID, "real-saml-idp", TYPE_SAML2, configJson, true, true,
                 System.currentTimeMillis());
     }

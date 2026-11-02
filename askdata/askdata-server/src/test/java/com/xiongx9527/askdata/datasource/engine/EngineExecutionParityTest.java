@@ -4,6 +4,7 @@ import com.xiongx9527.askdata.common.util.Lists;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.datasource.DatasourceException;
+import com.xiongx9527.askdata.support.MysqlTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -26,7 +27,7 @@ import static org.mockito.Mockito.when;
  * 验收 A6：对非 MySQL 引擎（oracle/dm/kingbase/redshift/es/hive 等）元数据提取与样本查询执行的覆盖。
  *
  * <p>数据源方言策略（{@link DatasourceType}）已为全部 13 种类型提供 tableSql/fieldSql/previewSql，
- * 本测试验证：① 目标引擎方言 SQL 正确（分页/系统表/标识符约定）；② 真实 JDBC 引擎（H2）经
+ * 本测试验证：① 目标引擎方言 SQL 正确（分页/系统表/标识符约定）；② 真实 JDBC 引擎（MySQL）经
  * {@link JdbcEngine} 完成 表/字段元数据提取 + 样本查询执行；③ 驱动缺失时按 SQLBot 约定返回可读错误。</p>
  */
 class EngineExecutionParityTest {
@@ -91,19 +92,13 @@ class EngineExecutionParityTest {
     }
 
     @Test
-    void h2MetadataExtractionAndSampleQueryExecutes() throws Exception {
-        String url = "jdbc:h2:mem:engineparity;DB_CLOSE_DELAY=-1";
-        try (Connection c = DriverManager.getConnection(url, "", "");
-             Statement st = c.createStatement()) {
-            st.execute("CREATE TABLE PARITY_T (ID INT PRIMARY KEY, NAME VARCHAR(50))");
-            st.execute("INSERT INTO PARITY_T VALUES (1, 'a'), (2, 'b')");
-        }
+    void mysqlMetadataExtractionAndSampleQueryExecutes() throws Exception {
+        JdbcTemplate target = MysqlTestSupport.createEmptySchema();
+        target.execute("CREATE TABLE parity_t (id INT PRIMARY KEY, name VARCHAR(50))");
+        target.update("INSERT INTO parity_t VALUES (1, 'a'), (2, 'b')");
 
         DatasourceConf conf = new DatasourceConf();
-        conf.setDatabase(url);
-        conf.setDbSchema("PUBLIC");
-        conf.setUsername("");
-        conf.setPassword("");
+        MysqlTestSupport.bindTarget(conf, target);
 
         ConnectionPoolManager poolManager = mock(ConnectionPoolManager.class);
         when(poolManager.borrow(anyString(), any(), any())).thenAnswer(inv ->
@@ -111,16 +106,16 @@ class EngineExecutionParityTest {
 
         JdbcEngine engine = new JdbcEngine(mock(JdbcTemplate.class), objectMapper, poolManager);
 
-        List<TableSchema> tables = engine.tables(DatasourceType.H2, conf);
-        assertTrue(tables.stream().anyMatch(t -> "PARITY_T".equals(t.getTableName())), tables.toString());
+        List<TableSchema> tables = engine.tables(DatasourceType.MYSQL, conf);
+        assertTrue(tables.stream().anyMatch(t -> "parity_t".equals(t.getTableName())), tables.toString());
 
-        List<ColumnSchema> columns = engine.fields(DatasourceType.H2, conf, "PARITY_T");
+        List<ColumnSchema> columns = engine.fields(DatasourceType.MYSQL, conf, "parity_t");
         assertEquals(2, columns.size());
-        assertTrue(columns.stream().anyMatch(c -> "ID".equals(c.getFieldName())));
+        assertTrue(columns.stream().anyMatch(c -> "id".equals(c.getFieldName())));
 
-        Map<String, Object> result = engine.execSql(DatasourceType.H2, conf,
-                "SELECT ID, NAME FROM PARITY_T ORDER BY ID");
-        assertTrue(((List<?>) result.get("data")).size() == 2);
+        Map<String, Object> result = engine.execSql(DatasourceType.MYSQL, conf,
+                "SELECT id, name FROM parity_t ORDER BY id");
+        assertEquals(2, ((List<?>) result.get("data")).size());
     }
 
     @Test

@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system.license;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.support.MetadbMigration;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -44,11 +46,7 @@ class LicenseServiceTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        jdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:license_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = jdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
+        jdbc = MysqlTestSupport.createSchema();
         CurrentUserService users = mock(CurrentUserService.class);
         service = new LicenseService(jdbc, objectMapper, users, APP_VERSION, SIGN_KEY, "bypass", 1000000L, true);
     }

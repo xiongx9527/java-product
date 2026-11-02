@@ -1,10 +1,11 @@
 package com.xiongx9527.askdata.datasource.embedding;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.support.MetadbMigration;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.xiongx9527.askdata.ai.EmbeddingService;
-import com.xiongx9527.askdata.ai.LocalEmbeddingModel;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -37,7 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 表级向量召回离线单测（验收 A1，纯 JUnit + H2，不启动 Spring）：
+ * 表级向量召回离线单测（验收 A1，纯 JUnit + 真实 MySQL 临时 schema，不启动 Spring）：
  * <ol>
  *   <li>中文表名排第一；</li>
  *   <li>反引号/方括号/双引号标识符命中（ASCII 边界感知）；</li>
@@ -75,14 +76,12 @@ class TableEmbeddingServiceTest {
 
     private HttpServer stubServer;
 
+    private final java.util.List<String> qdrantUpserts = new java.util.ArrayList<>();
+
     @BeforeEach
     void setUp() throws Exception {
         // 每个测试方法独立内存库（DB_CLOSE_DELAY=-1 下同名库跨方法共享，故加唯一后缀）
-        appJdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:table_embedding_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = appJdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
+        appJdbc = MysqlTestSupport.createSchema();
         tableRepository = new TableRepository(appJdbc, ids);
         fieldRepository = new FieldRepository(appJdbc, ids);
         modelRouter = new ChatModelRouter(new AiModelRepository(appJdbc, ids), objectMapper);
@@ -230,58 +229,20 @@ class TableEmbeddingServiceTest {
         assertNull(service.embed("任意文本"));
         table(601, "orders", "订单表", null);
         table(602, "users", "用户表", null);
-        // 表向量缺失/非法也不抛错，仍按提及排序
-        appJdbc.update("UPDATE core_table SET table_embedding = ? WHERE id = 601", "not-a-json");
+        // 无向量时仍按提及排序，不抛错
         List<Long> ranked = service.rankTables(DS, "users 表有多少条数据");
         assertEquals(602L, ranked.get(0).longValue());
-        // backfill 无模型时不写向量、不抛错（601 的非法串保持原样，602 仍无向量）
         service.backfill(DS);
-        assertEquals("not-a-json", tableRepository.findEmbedding(601));
-        assertNull(tableRepository.findEmbedding(602));
     }
 
     /**
-     * A20：远程 embedding 不可用时回退到与 EmbeddingService 相同的本地模型路径，
-     * 而不是直接退化为词法；本地也不可用时才词法降级。
+     * D7：本地 ONNX 模型已移除，远程不可用时直接返回 null，不得以本地模型掩盖配置未生效。
      */
     @Test
-    void remoteFailureFallsBackToLocalEmbeddingBeforeLexical() {
-        LocalEmbeddingModel local = new LocalEmbeddingModel("/nonexistent-model-path") {
-            @Override
-            public double[] embed(String text) {
-                return new double[] {1D, 0D};
-            }
-
-            @Override
-            public boolean available() {
-                return true;
-            }
-        };
-        service.setEmbeddingService(new EmbeddingService(local, modelRouter, modelClient, appJdbc, objectMapper));
-        // 远程端点不可达：必须回退本地模型而不是直接返回 null
+    void remoteFailureDoesNotFallBackToLocalEmbedding() {
         new AiModelRepository(appJdbc, ids).insert(ids.nextId(), "", "http://127.0.0.1:1", 1, 0,
                 "stub-bge-m3", 1, "bge-m3", false, "[]", 1, System.currentTimeMillis());
-        double[] vector = service.embed("订单金额");
-        assertNotNull(vector, "远程失败后应回退本地 embedding");
-        assertEquals(2, vector.length);
-        assertEquals(1D, vector[0], 0.0001);
-    }
-
-    @Test
-    void localEmbeddingUnavailableDegradesToLexical() {
-        LocalEmbeddingModel unavailable = new LocalEmbeddingModel("/nonexistent-model-path") {
-            @Override
-            public double[] embed(String text) {
-                return null;
-            }
-
-            @Override
-            public boolean available() {
-                return false;
-            }
-        };
-        service.setEmbeddingService(new EmbeddingService(unavailable, modelRouter, modelClient, appJdbc, objectMapper));
-        assertNull(service.embed("订单金额"));
+        assertNull(service.embed("订单金额"), "远程失败后不应回退本地 embedding");
         table(621, "orders", "订单表", null);
         table(622, "users", "用户表", null);
         // 仍能按提及排序（词法降级，不抛错）
@@ -324,6 +285,8 @@ class TableEmbeddingServiceTest {
     @Test
     void vectorPathRanksSemanticMatchAndBackfillWritesEmbedding() throws Exception {
         startEmbeddingStub();
+        service.setVectorStore(new com.xiongx9527.askdata.ai.vector.QdrantVectorStore(
+                "http://127.0.0.1:" + stubServer.getAddress().getPort(), "", "askdata", objectMapper));
         new AiModelRepository(appJdbc, ids).insert(ids.nextId(), "",
                 "http://127.0.0.1:" + stubServer.getAddress().getPort(), 1, 0,
                 "stub-bge-m3", 1, "bge-m3", false, "[]", 1, System.currentTimeMillis());
@@ -334,19 +297,18 @@ class TableEmbeddingServiceTest {
         table(803, "t_user", "用户表", null);
         field(813, 803, "city", "varchar", "用户城市", 0);
 
-        // backfill 异步写回表向量（轮询等待守护线程完成，向量召回的前提）
+        // backfill 异步写入在线向量库（轮询等待守护线程完成，向量召回的前提）
         service.backfill(DS);
         for (int i = 0; i < 100; i++) {
-            if (tableRepository.findEmbedding(801) != null && tableRepository.findEmbedding(802) != null
-                    && tableRepository.findEmbedding(803) != null) {
+            if (qdrantUpserts.size() >= 3) {
                 break;
             }
             Thread.sleep(50);
         }
-        String embedding = tableRepository.findEmbedding(801);
-        assertNotNull(embedding, "backfill 应写回 table_embedding");
-        JsonNode node = objectMapper.readTree(embedding);
-        assertTrue(node.isArray(), embedding);
+        assertEquals(3, qdrantUpserts.size(), "backfill 应把三张表的向量写入在线库");
+        JsonNode point = upsertedPoint(801);
+        JsonNode node = point.get("vector");
+        assertTrue(node.isArray(), point.toString());
         assertEquals(KEYWORDS.length, node.size());
         assertEquals(1D, node.get(3).asDouble(), "库存");
         assertEquals(1D, node.get(4).asDouble(), "盘点");
@@ -391,8 +353,52 @@ class TableEmbeddingServiceTest {
     private void startEmbeddingStub() throws Exception {
         stubServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         stubServer.createContext("/v1/embeddings", this::handleEmbeddings);
+        stubServer.createContext("/collections", this::handleQdrant);
         stubServer.setExecutor(null);
         stubServer.start();
+    }
+
+    /** 记录写入请求并返回固定检索命中的 Qdrant 协议桩（不实现存储，只验证协议与调用）。 */
+    private void handleQdrant(HttpExchange exchange) {
+        try {
+            String path = exchange.getRequestURI().getPath();
+            String method = exchange.getRequestMethod();
+            byte[] request = readAll(exchange.getRequestBody());
+            String body = new String(request, StandardCharsets.UTF_8);
+            int code = 200;
+            String response = "{\"result\":true}";
+            if ("GET".equals(method) && path.startsWith("/collections/")) {
+                code = 404;
+                response = "{\"status\":{\"error\":\"Not found\"}}";
+            } else if (path.endsWith("/points/search")) {
+                response = "{\"result\":[{\"id\":801,\"score\":0.95}]}";
+            } else if (path.endsWith("/points")) {
+                qdrantUpserts.add(body);
+            }
+            byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(code, bytes.length);
+            try (OutputStream output = exchange.getResponseBody()) {
+                output.write(bytes);
+            }
+        } catch (Exception e) {
+            // 桩异常由调用方降级处理
+        } finally {
+            exchange.close();
+        }
+    }
+
+    /** 从已记录的 upsert 请求体中取出指定 id 的 point。 */
+    private JsonNode upsertedPoint(long id) throws Exception {
+        for (String body : qdrantUpserts) {
+            JsonNode points = objectMapper.readTree(body).get("points");
+            for (JsonNode point : points) {
+                if (point.get("id").asLong() == id) {
+                    return point;
+                }
+            }
+        }
+        throw new IllegalStateException("未写入 id=" + id);
     }
 
     private void handleEmbeddings(HttpExchange exchange) {

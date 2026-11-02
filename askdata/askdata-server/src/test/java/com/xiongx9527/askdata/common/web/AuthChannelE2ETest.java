@@ -1,5 +1,11 @@
 package com.xiongx9527.askdata.common.web;
 
+import org.springframework.test.context.DynamicPropertySource;
+
+import org.springframework.test.context.DynamicPropertyRegistry;
+
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
 import com.xiongx9527.askdata.system.auth.JwtCodec;
 import org.junit.jupiter.api.DisplayName;
@@ -38,11 +44,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * </ol>
  */
 @SpringBootTest(properties = {
-        "spring.datasource.url=jdbc:h2:mem:askdata-auth-test;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE"
 })
 @AutoConfigureMockMvc
 class AuthChannelE2ETest {
 
+    private static JdbcTemplate mysql;
+
+    @DynamicPropertySource
+    static void mysqlDatasource(DynamicPropertyRegistry registry) {
+        mysql = MysqlTestSupport.createEmptySchema();
+        MysqlTestSupport.bindSpringDatasource(registry, mysql);
+    }
     @Autowired
     private MockMvc mockMvc;
 

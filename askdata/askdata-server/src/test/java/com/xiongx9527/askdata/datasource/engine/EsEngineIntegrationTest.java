@@ -48,8 +48,12 @@ class EsEngineIntegrationTest {
     @BeforeAll
     static void resolveConfig() {
         host = envOrProp("ASKDATA_ES_HOST", "askdata.es.host", null);
+        if (host == null || host.trim().isEmpty()) {
+            // 未显式指定时探测本机默认端口，让「本机就有 ES」的环境默认跑真实联调
+            host = localClusterReachable() ? "127.0.0.1" : null;
+        }
         Assumptions.assumeTrue(host != null && !host.trim().isEmpty(),
-                "ASKDATA_ES_HOST / askdata.es.host 未设置，跳过真实 ES 联调测试");
+                "ASKDATA_ES_HOST / askdata.es.host 未设置，且本机 9200 无可匿名访问的 ES，跳过真实 ES 联调测试");
         String portStr = envOrProp("ASKDATA_ES_PORT", "askdata.es.port", "9200");
         try {
             port = Integer.parseInt(portStr.trim());
@@ -58,6 +62,22 @@ class EsEngineIntegrationTest {
         }
         username = envOrProp("ASKDATA_ES_USER", "askdata.es.user", null);
         password = envOrProp("ASKDATA_ES_PASS", "askdata.es.pass", null);
+    }
+
+    /** 本机 9200 是否有可匿名访问的 ES（401 需要鉴权，视为不可用，避免无凭据时误判失败）。 */
+    private static boolean localClusterReachable() {
+        try {
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection)
+                    new java.net.URL("http://127.0.0.1:9200/").openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(1500);
+            conn.setReadTimeout(1500);
+            int code = conn.getResponseCode();
+            conn.disconnect();
+            return code >= 200 && code < 300;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private static String envOrProp(String env, String prop, String def) {

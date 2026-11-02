@@ -1,5 +1,13 @@
 package com.xiongx9527.askdata.system;
 
+import org.springframework.test.context.DynamicPropertySource;
+
+import org.springframework.test.context.DynamicPropertyRegistry;
+
+import org.springframework.jdbc.core.JdbcTemplate;
+
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import cn.dev33.satoken.context.mock.SaTokenContextMockUtil;
 import cn.dev33.satoken.stp.StpUtil;
 import com.xiongx9527.askdata.common.util.ExcelUtils;
@@ -45,22 +53,25 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 用户 Excel 批量导入验收（A2，@SpringBootTest + H2 内存库，对齐 DatasourceServiceSmokeTest/ChatContextLoadTest 写法）：
+ * 用户 Excel 批量导入验收（A2，@SpringBootTest + 真实 MySQL 临时 schema，对齐 DatasourceServiceSmokeTest/ChatContextLoadTest 写法）：
  * ① 模板非空且含正确表头；② 合法 Excel 导入后用户存在且可登录；
  * ③ 含错误行导入拿到 fileId 并下载到含失败行的记录；④ fileId 不存在抛 BadRequest；
  * ⑤ 三端点（template/batchImport/errorRecord）不再抛 not supported。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @TestPropertySource(properties = {
-        "spring.datasource.url=jdbc:h2:mem:user_batch_import;MODE=MySQL;DB_CLOSE_DELAY=-1",
-        "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.datasource.username=sa",
-        "spring.datasource.password=",
         "askdata.excel.path=target/user-import-test-excel",
         "askdata.user.default-password=InitPassw0rd123"
 })
 class UserBatchImportTest {
 
+    private static JdbcTemplate mysql;
+
+    @DynamicPropertySource
+    static void mysqlDatasource(DynamicPropertyRegistry registry) {
+        mysql = MysqlTestSupport.createEmptySchema();
+        MysqlTestSupport.bindSpringDatasource(registry, mysql);
+    }
     private static final String XLSX_MEDIA_TYPE =
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 

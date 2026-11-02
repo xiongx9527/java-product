@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.chart.server;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.common.util.Lists;
 import com.xiongx9527.askdata.common.util.Maps;
 
@@ -38,11 +40,7 @@ class ChartImageClusterTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        jdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:chart_token_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = jdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
+        jdbc = MysqlTestSupport.createSchema();
         repository = new ChartTokenRepository(jdbc);
     }
 

@@ -73,16 +73,16 @@ class ChatProtocolTest {
 
     @Test
     void validateSqlRejectsWritesAndUnauthorizedTables() {
-        assertNull(ChatQuestionService.validateSqlSafety("SELECT id FROM orders", "h2"));
-        assertNull(ChatQuestionService.validateSqlSafety("WITH t AS (SELECT 1) SELECT * FROM t", "h2"));
-        assertNotNull(ChatQuestionService.validateSqlSafety("DELETE FROM orders", "h2"));
-        assertNotNull(ChatQuestionService.validateSqlSafety("UPDATE orders SET a = 1", "h2"));
-        assertNotNull(ChatQuestionService.validateSqlSafety("DROP TABLE orders", "h2"));
-        assertNotNull(ChatQuestionService.validateSqlSafety("INSERT INTO orders VALUES (1)", "h2"));
+        assertNull(ChatQuestionService.validateSqlSafety("SELECT id FROM orders", "mysql"));
+        assertNull(ChatQuestionService.validateSqlSafety("WITH t AS (SELECT 1) SELECT * FROM t", "mysql"));
+        assertNotNull(ChatQuestionService.validateSqlSafety("DELETE FROM orders", "mysql"));
+        assertNotNull(ChatQuestionService.validateSqlSafety("UPDATE orders SET a = 1", "mysql"));
+        assertNotNull(ChatQuestionService.validateSqlSafety("DROP TABLE orders", "mysql"));
+        assertNotNull(ChatQuestionService.validateSqlSafety("INSERT INTO orders VALUES (1)", "mysql"));
         assertNotNull(ChatQuestionService.validateSqlSafety("SELECT * INTO OUTFILE '/tmp/a'", "mysql"));
         assertNotNull(ChatQuestionService.validateSqlSafety("SELECT version()", "mysql"));
         assertNotNull(ChatQuestionService.validateSqlSafety("SELECT load_file('/etc/passwd')", "mysql"));
-        assertNotNull(ChatQuestionService.validateSqlSafety("", "h2"));
+        assertNotNull(ChatQuestionService.validateSqlSafety("", "mysql"));
 
         // 表名白名单（防幻觉到未勾选的表）
         List<String> allowed = Arrays.asList("orders", "users");

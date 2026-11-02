@@ -1,169 +1,171 @@
 package com.xiongx9527.askdata.ai.vector;
 
-import com.xiongx9527.askdata.common.util.Lists;
-
-import com.xiongx9527.askdata.support.MetadbMigration;
-
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpServer;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.ai.EmbeddingService;
-import com.xiongx9527.askdata.ai.LocalEmbeddingModel;
 import com.xiongx9527.askdata.chat.service.ChatModelClient;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter;
 import com.xiongx9527.askdata.common.util.IdGenerator;
+import com.xiongx9527.askdata.common.util.Lists;
 import com.xiongx9527.askdata.common.util.Rows;
+import com.xiongx9527.askdata.support.EmbeddingModelTestSupport;
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+import com.xiongx9527.askdata.support.QdrantTestSupport;
 import com.xiongx9527.askdata.system.repository.AiModelRepository;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
-import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@link EmbeddingService} 与可插拔 {@link VectorStore} 的路由测试（纯 JUnit + H2 + 本地 HTTP 桩）：
+ * 向量写入与召回端到端（<b>真实 MySQL + 真实 Qdrant + 真实 bge-m3</b>，无 mock / 无 HTTP 桩）：
+ *
  * <ol>
- *   <li>写入委托给当前后端，集合名 = {prefix}-{object-type}；在线库启用时镜像 DB 向量列；</li>
- *   <li>召回委托给当前后端，命中 id 映射回候选行、按阈值过滤、降序、截断 topCount；</li>
- *   <li>无可用 embedding 模型时召回返回空（调用方据此降级为词法），不抛错；</li>
+ *   <li>写入委托给在线后端，集合名 = {prefix}-{object-type}，DB 向量列不再镜像；</li>
+ *   <li>召回命中真实 ANN 结果，映射回候选行并按阈值 / topCount 截断；</li>
+ *   <li>无可用向量模型时召回返回空（调用方降级为词法），不抛错；</li>
  *   <li>非白名单表 / 空向量被拒，不触达后端。</li>
  * </ol>
  */
 class EmbeddingServiceVectorStoreRoutingTest {
 
-    private JdbcTemplate appJdbc;
+    private static QdrantVectorStore store;
+
+    private static JdbcTemplate jdbc;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private final IdGenerator ids = new IdGenerator();
-
-    private ChatModelRouter modelRouter;
-
-    private ChatModelClient modelClient;
-
     private EmbeddingService embeddingService;
 
-    private RecordingVectorStore recording;
-
-    private HttpServer stubServer;
-
-    @BeforeEach
-    void setUp() throws Exception {
-        appJdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:vector_routing_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (java.sql.Connection connection = appJdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
-        java.nio.file.Path modelDir = Files.createTempDirectory("no-model");
-        modelRouter = new ChatModelRouter(new AiModelRepository(appJdbc, ids), objectMapper);
-        modelClient = new ChatModelClient(objectMapper);
-        embeddingService = new EmbeddingService(
-                new LocalEmbeddingModel(modelDir.toString(), 8), modelRouter, modelClient, appJdbc, objectMapper);
-        recording = new RecordingVectorStore();
-        embeddingService.setVectorStore(recording);
+    @BeforeAll
+    static void connect() {
+        QdrantTestSupport.requireAvailable();
+        MysqlTestSupport.requireAvailable();
+        EmbeddingModelTestSupport.requireAvailable();
+        jdbc = MysqlTestSupport.createSchema();
+        EmbeddingModelTestSupport.registerModel(jdbc);
+        store = QdrantTestSupport.store(QdrantTestSupport.uniquePrefix());
     }
 
-    @AfterEach
-    void tearDown() {
-        if (stubServer != null) {
-            stubServer.stop(0);
-            stubServer = null;
+    @AfterAll
+    static void cleanup() {
+        if (store != null) {
+            QdrantTestSupport.dropAll(store, "terminology", "core_table");
         }
+        MysqlTestSupport.dropSchema(jdbc);
+    }
+
+    @BeforeEach
+    void setUp() {
+        store.dropCollection(store.collectionFor("terminology"));
+        embeddingService = new EmbeddingService(
+                new ChatModelRouter(new AiModelRepository(jdbc, new IdGenerator()), objectMapper),
+                new ChatModelClient(objectMapper), objectMapper);
+        embeddingService.setVectorStore(store);
     }
 
     @Test
-    void writeEmbeddingUpsertsToBackendWithCollectionName() {
-        insertTerminology(1L, "订单");
-        double[] vector = {0.25D, 0.5D};
+    void writeEmbeddingUpsertsToRealBackendWithCollectionName() {
+        double[] vector = {0.25D, 0.5D, 0.75D};
         assertTrue(embeddingService.writeEmbedding("terminology", 1L, vector));
-        assertEquals(1, recording.upserts.size());
-        assertEquals("askdata-terminology", recording.lastUpsertCollection);
-        assertEquals(1L, recording.lastUpsertId);
-        assertArrayEquals(vector, recording.lastUpsertVector);
-        // 在线库启用时同步镜像 DB 向量列（保持启动回填幂等）
-        assertNotNull(appJdbc.queryForObject("SELECT embedding FROM terminology WHERE id = 1", String.class));
+
+        List<VectorStore.IdScore> hits = store.query(store.collectionFor("terminology"), vector, 5);
+        assertEquals(1, hits.size(), "向量应写入 {prefix}-terminology 集合");
+        assertEquals(1L, hits.get(0).id());
+        // 在线库是唯一存储：DB 向量列不再镜像写入
+        assertNull(jdbc.queryForObject("SELECT embedding FROM terminology WHERE id = 1", String.class));
     }
 
     @Test
     void writeEmbeddingRejectsNullVectorAndUnknownTable() {
-        insertTerminology(1L, "订单");
+        // 先建空集合，才能用「集合内无点」证明非法入参没触达后端（集合不存在时 Qdrant 查询返回 404）
+        store.ensureCollection(store.collectionFor("terminology"), 2);
+
         assertFalse(embeddingService.writeEmbedding("terminology", 1L, null));
-        assertFalse(embeddingService.writeEmbedding("sys_user", 1L, new double[] {1D}));
-        assertTrue(recording.upserts.isEmpty(), "非法入参不得触达后端");
+        assertFalse(embeddingService.writeEmbedding("sys_user", 1L, new double[] {1D, 0D}));
+
+        assertTrue(store.query(store.collectionFor("terminology"), new double[] {1D, 0D}, 5).isEmpty(),
+                "非法入参不得触达后端");
     }
 
     @Test
-    void recallByVectorMapsBackendHitsToCandidateRows() throws Exception {
-        startEmbeddingStub();
+    void deleteEmbeddingRemovesPointFromRealBackend() {
+        double[] vector = {0.1D, 0.2D, 0.3D};
+        assertTrue(embeddingService.writeEmbedding("terminology", 42L, vector));
+        assertEquals(1, store.query(store.collectionFor("terminology"), vector, 5).size());
+
+        embeddingService.deleteEmbedding("terminology", 42L);
+
+        assertTrue(store.query(store.collectionFor("terminology"), vector, 5).isEmpty(),
+                "业务行删除后必须同步清理 point，避免孤儿点");
+    }
+
+    @Test
+    void recallByVectorRanksRealEmbeddingHits() {
+        insertTerminology(1L, "订单表：记录订单编号与金额");
+        insertTerminology(2L, "用户表：记录用户昵称与手机号");
+        insertTerminology(3L, "商品表：记录商品名称与价格");
+
         List<Map<String, Object>> candidates = new ArrayList<>();
-        candidates.add(row(1L, "订单"));
-        candidates.add(row(2L, "用户"));
-        candidates.add(row(3L, "商品"));
-        recording.queryResult = Lists.of(
-                new VectorStore.IdScore(3L, 0.9D),
-                new VectorStore.IdScore(1L, 0.6D),
-                new VectorStore.IdScore(2L, 0.2D));
+        for (long id = 1L; id <= 3L; id++) {
+            double[] vector = embeddingService.embed(word(id));
+            assertNotNull(vector, "真实 bge-m3 应返回向量");
+            assertTrue(embeddingService.writeEmbedding("terminology", id, vector));
+            candidates.add(row(id, word(id)));
+        }
 
-        List<Map<String, Object>> hits =
-                embeddingService.recallByVector("terminology", candidates, "查一下订单", 0.4D, 2);
+        List<Map<String, Object>> hits = embeddingService.recallByVector(
+                "terminology", candidates, word(1L), 0D, 2);
 
-        assertEquals("askdata-terminology", recording.lastQueryCollection);
-        assertEquals(Lists.of(1L, 2L, 3L), recording.lastQueryCandidateIds);
         assertEquals(2, hits.size(), "topCount 截断生效");
-        assertEquals(3L, Rows.lng(hits.get(0), "id", 0L));
-        assertEquals(1L, Rows.lng(hits.get(1), "id", 0L));
-        assertEquals(0.9D, ((Number) hits.get(0).get("similarity")).doubleValue(), 1e-9);
-        assertEquals(0.6D, ((Number) hits.get(1).get("similarity")).doubleValue(), 1e-9);
-        assertEquals("商品", hits.get(0).get("word"), "候选行字段应保留");
-    }
-
-    @Test
-    void recallByVectorKeepsAllWhenThresholdIsZero() throws Exception {
-        startEmbeddingStub();
-        List<Map<String, Object>> candidates = Lists.of(row(1L, "a"), row(2L, "b"));
-        recording.queryResult = Lists.of(new VectorStore.IdScore(2L, 0.1D), new VectorStore.IdScore(1L, 0.05D));
-        List<Map<String, Object>> hits = embeddingService.recallByVector("terminology", candidates, "x", 0D, 10);
-        assertEquals(2, hits.size(), "阈值为 0 时全部保留");
-        assertEquals(2L, Rows.lng(hits.get(0), "id", 0L));
+        assertEquals(1L, Rows.lng(hits.get(0), "id", 0L), "与查询文本完全一致的行应排第一");
+        assertTrue(((Number) hits.get(0).get("similarity")).doubleValue() > 0.99D, "同文本余弦应接近 1");
+        assertEquals(word(1L), hits.get(0).get("word"), "候选行字段应保留");
     }
 
     @Test
     void recallByVectorReturnsEmptyWithoutEmbeddingModel() {
-        List<Map<String, Object>> candidates = Lists.of(row(1L, "a"));
-        recording.queryResult = Lists.of(new VectorStore.IdScore(1L, 0.9D));
-        assertTrue(embeddingService.recallByVector("terminology", candidates, "查询", 0D, 5).isEmpty(),
-                "无可用 embedding 模型时应返回空（调用方降级为词法）");
+        JdbcTemplate emptySchema = MysqlTestSupport.createSchema();
+        try {
+            EmbeddingService noModel = new EmbeddingService(
+                    new ChatModelRouter(new AiModelRepository(emptySchema, new IdGenerator()), objectMapper),
+                    new ChatModelClient(objectMapper), objectMapper);
+            noModel.setVectorStore(store);
+            assertTrue(noModel.recallByVector("terminology", Lists.of(row(1L, "订单")), "查询", 0D, 5).isEmpty(),
+                    "无可用 embedding 模型时应返回空（调用方降级为词法）");
+        } finally {
+            MysqlTestSupport.dropSchema(emptySchema);
+        }
     }
 
     @Test
-    void vectorScoresReturnsIdToScoreMap() throws Exception {
-        startEmbeddingStub();
-        recording.queryResult = Lists.of(new VectorStore.IdScore(5L, 0.7D), new VectorStore.IdScore(6L, 0.3D));
-        Map<Long, Double> scores = embeddingService.vectorScores("terminology", "查询", Lists.of(5L, 6L, 7L));
-        assertEquals(2, scores.size());
-        assertEquals(0.7D, scores.get(5L), 1e-9);
-        assertEquals(0.3D, scores.get(6L), 1e-9);
-        assertNull(scores.get(7L));
-    }
+    void vectorScoresReturnsRealSimilarityByCandidateId() {
+        insertTerminology(5L, "库存表：记录仓库与库存数量");
+        insertTerminology(6L, "供应商表：记录供应商名称与联系方式");
 
-    @Test
-    void vectorScoresEmptyWithoutEmbeddingModel() {
-        assertTrue(embeddingService.vectorScores("terminology", "查询", Lists.of(1L)).isEmpty());
+        double[] five = embeddingService.embed(word(5L));
+        double[] six = embeddingService.embed(word(6L));
+        assertNotNull(five);
+        assertNotNull(six);
+        assertTrue(embeddingService.writeEmbedding("terminology", 5L, five));
+        assertTrue(embeddingService.writeEmbedding("terminology", 6L, six));
+
+        Map<Long, Double> scores = embeddingService.vectorScores("terminology", word(5L), Lists.of(5L, 6L, 7L));
+
+        assertNotNull(scores.get(5L), "同文本应命中");
+        assertTrue(scores.get(5L) > 0.99D, "同文本相似度应接近 1，实际 " + scores.get(5L));
+        assertNull(scores.get(7L), "未写入向量的候选不应有分数");
     }
 
     // ------------------------------------------------------------------
@@ -177,108 +179,24 @@ class EmbeddingServiceVectorStoreRoutingTest {
         return row;
     }
 
+    private static String word(long id) {
+        if (id == 1L) {
+            return "订单表：记录订单编号与金额";
+        }
+        if (id == 2L) {
+            return "用户表：记录用户昵称与手机号";
+        }
+        if (id == 3L) {
+            return "商品表：记录商品名称与价格";
+        }
+        if (id == 5L) {
+            return "库存表：记录仓库与库存数量";
+        }
+        return "供应商表：记录供应商名称与联系方式";
+    }
+
     private void insertTerminology(long id, String word) {
-        appJdbc.update("INSERT INTO terminology (id, oid, pid, create_time, word, description, embedding, enabled) "
+        jdbc.update("INSERT INTO terminology (id, oid, pid, create_time, word, description, embedding, enabled) "
                 + "VALUES (?, 1, NULL, ?, ?, '', NULL, TRUE)", id, System.currentTimeMillis(), word);
-    }
-
-    /** 本地 HTTP 桩：OpenAI 兼容 /v1/embeddings，返回固定 2 维向量（只需 embed() 非空）。 */
-    private void startEmbeddingStub() throws Exception {
-        stubServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        stubServer.createContext("/v1/embeddings", this::handleEmbeddings);
-        stubServer.setExecutor(null);
-        stubServer.start();
-        new AiModelRepository(appJdbc, ids).insert(ids.nextId(), "",
-                "http://127.0.0.1:" + stubServer.getAddress().getPort(), 1, 0,
-                "stub-bge-m3", 1, "bge-m3", false, "[]", 1, System.currentTimeMillis());
-    }
-
-    private void handleEmbeddings(HttpExchange exchange) {
-        try {
-            byte[] request = readAll(exchange.getRequestBody());
-            JsonNode inputs = objectMapper.readTree(request).get("input");
-            StringBuilder data = new StringBuilder("[");
-            for (int i = 0; i < inputs.size(); i++) {
-                if (i > 0) {
-                    data.append(",");
-                }
-                data.append("{\"embedding\":[1.0,0.0]}");
-            }
-            data.append("]");
-            byte[] body = ("{\"data\":" + data + "}").getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, body.length);
-            try (OutputStream output = exchange.getResponseBody()) {
-                output.write(body);
-            }
-        } catch (Exception e) {
-            // 桩异常不影响断言主体（向量调用方会降级）
-        } finally {
-            exchange.close();
-        }
-    }
-
-    private static byte[] readAll(InputStream input) throws Exception {
-        ByteArrayOutputStream output = new ByteArrayOutputStream();
-        byte[] buffer = new byte[4096];
-        int read;
-        while ((read = input.read(buffer)) >= 0) {
-            output.write(buffer, 0, read);
-        }
-        return output.toByteArray();
-    }
-
-    /** 记录型 VectorStore：捕获调用参数并返回预设查询结果（在线后端语义）。 */
-    private static final class RecordingVectorStore implements VectorStore {
-
-        private final List<String> upserts = new ArrayList<>();
-        private String lastUpsertCollection;
-        private long lastUpsertId;
-        private double[] lastUpsertVector;
-        private String lastQueryCollection;
-        private List<Long> lastQueryCandidateIds;
-        private int lastQueryTopK;
-        private List<IdScore> queryResult = new ArrayList<>();
-
-        @Override
-        public String collectionPrefix() {
-            return "askdata";
-        }
-
-        @Override
-        public boolean isOnline() {
-            return true;
-        }
-
-        @Override
-        public boolean health() {
-            return true;
-        }
-
-        @Override
-        public void ensureCollection(String collection, int dimension) {
-            // 测试替身：无需真实集合
-        }
-
-        @Override
-        public void upsert(String collection, long id, double[] vector) {
-            lastUpsertCollection = collection;
-            lastUpsertId = id;
-            lastUpsertVector = vector;
-            upserts.add(collection + "#" + id + "#" + Arrays.toString(vector));
-        }
-
-        @Override
-        public void delete(String collection, long id) {
-            // 测试替身：无需真实删除
-        }
-
-        @Override
-        public List<IdScore> query(String collection, double[] vector, int topK, List<Long> candidateIds) {
-            lastQueryCollection = collection;
-            lastQueryCandidateIds = candidateIds;
-            lastQueryTopK = topK;
-            return queryResult;
-        }
     }
 }

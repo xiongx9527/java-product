@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.terminology;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.common.util.Lists;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -45,12 +47,8 @@ class TerminologyWorkspaceScopeTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        jdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:terminology_scope_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = jdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
-        jdbc.update("INSERT INTO sys_workspace (id, name, create_time) VALUES (2, 'ws-2', 1672531200000L)");
+        jdbc = MysqlTestSupport.createSchema();
+        jdbc.update("INSERT INTO sys_workspace (id, name, create_time) VALUES (2, 'ws-2', 1672531200000)");
         jdbc.update("INSERT INTO core_datasource (id, name, type, oid) VALUES (?, ?, 'mysql', 2)", FOREIGN_DS, "外部空间数据源");
 
         CurrentUserService currentUserService = Mockito.mock(CurrentUserService.class);

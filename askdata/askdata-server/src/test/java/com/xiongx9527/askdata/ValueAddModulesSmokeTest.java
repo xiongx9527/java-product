@@ -1,5 +1,13 @@
 package com.xiongx9527.askdata;
 
+import org.springframework.test.context.DynamicPropertySource;
+
+import org.springframework.test.context.DynamicPropertyRegistry;
+
+import org.springframework.jdbc.core.JdbcTemplate;
+
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,13 +42,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 经真实 HTTP + Sa-Token 登录态跑通管理面 CRUD/启停/导入导出/密钥重置。
  */
 @SpringBootTest(properties = {
-        "spring.datasource.url=jdbc:h2:mem:askdata-value-add-test;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE",
         // 新建用户的口令来源（生产由部署配置注入）；用于验证普通用户越权返回 403
         "askdata.user.default-password=SQLBot@123456"
 })
 @AutoConfigureMockMvc
 class ValueAddModulesSmokeTest {
 
+    private static JdbcTemplate mysql;
+
+    @DynamicPropertySource
+    static void mysqlDatasource(DynamicPropertyRegistry registry) {
+        mysql = MysqlTestSupport.createEmptySchema();
+        MysqlTestSupport.bindSpringDatasource(registry, mysql);
+    }
     @Autowired
     private MockMvc mockMvc;
 

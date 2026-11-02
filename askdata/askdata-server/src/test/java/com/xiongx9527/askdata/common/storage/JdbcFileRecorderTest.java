@@ -1,14 +1,11 @@
 package com.xiongx9527.askdata.common.storage;
 
 import com.xiongx9527.askdata.common.util.IdGenerator;
+import com.xiongx9527.askdata.support.MysqlTestSupport;
 import org.dromara.x.file.storage.core.FileInfo;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -24,14 +21,12 @@ import static org.mockito.Mockito.when;
  */
 class JdbcFileRecorderTest {
 
-    private EmbeddedDatabase db;
     private JdbcFileRecorder recorder;
     private long idSeq = 100;
 
     @BeforeEach
     void setUp() {
-        db = new EmbeddedDatabaseBuilder().setType(EmbeddedDatabaseType.H2).build();
-        JdbcTemplate jdbc = new JdbcTemplate(db);
+        JdbcTemplate jdbc = MysqlTestSupport.createEmptySchema();
         jdbc.execute("CREATE TABLE file_storage (id BIGINT PRIMARY KEY, url VARCHAR(2000), platform VARCHAR(64), "
                 + "path VARCHAR(1000), filename VARCHAR(512), original_filename VARCHAR(512), "
                 + "content_type VARCHAR(255), size BIGINT, create_time BIGINT)");
@@ -39,13 +34,6 @@ class JdbcFileRecorderTest {
         IdGenerator idGen = mock(IdGenerator.class);
         when(idGen.nextId()).thenAnswer(inv -> idSeq++);
         recorder = new JdbcFileRecorder(new FileStorageRecordRepository(jdbc, idGen));
-    }
-
-    @AfterEach
-    void tearDown() {
-        if (db != null) {
-            db.shutdown();
-        }
     }
 
     private FileInfo sample() {

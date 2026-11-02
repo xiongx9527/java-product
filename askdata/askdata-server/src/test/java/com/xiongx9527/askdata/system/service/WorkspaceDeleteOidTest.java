@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system.service;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.support.MetadbMigration;
@@ -35,11 +37,7 @@ class WorkspaceDeleteOidTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        jdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:workspace_delete_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = jdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
+        jdbc = MysqlTestSupport.createSchema();
         jdbc.update("INSERT INTO sys_workspace (id, name, create_time) VALUES (?, ?, ?)", DELETED_WS, "aa-ws", 1672531200000L);
         jdbc.update("INSERT INTO sys_workspace (id, name, create_time) VALUES (?, ?, ?)", REMAINING_WS, "bb-ws", 1672531200000L);
         insertUser(2L, "only_deleted");

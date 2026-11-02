@@ -1,5 +1,11 @@
 package com.xiongx9527.askdata.system;
 
+import org.springframework.test.context.DynamicPropertySource;
+
+import org.springframework.test.context.DynamicPropertyRegistry;
+
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.common.util.Lists;
 import com.xiongx9527.askdata.common.util.Io;
 import com.xiongx9527.askdata.common.util.Maps;
@@ -54,10 +60,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @TestPropertySource(properties = {
-        "spring.datasource.url=jdbc:h2:mem:system_details;MODE=MySQL;DB_CLOSE_DELAY=-1",
-        "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.datasource.username=sa",
-        "spring.datasource.password=",
         "askdata.excel.path=target/system-details-excel",
         "askdata.user.default-password=InitPassw0rd123",
         // 覆盖默认 8 天：验证 sa-token.timeout 由配置驱动
@@ -65,6 +67,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 })
 class SystemDetailsTest {
 
+    private static JdbcTemplate mysql;
+
+    @DynamicPropertySource
+    static void mysqlDatasource(DynamicPropertyRegistry registry) {
+        mysql = MysqlTestSupport.createEmptySchema();
+        MysqlTestSupport.bindSpringDatasource(registry, mysql);
+    }
     private static final long EIGHT_DAYS_SECONDS = 8L * 24 * 3600;
 
     @Autowired

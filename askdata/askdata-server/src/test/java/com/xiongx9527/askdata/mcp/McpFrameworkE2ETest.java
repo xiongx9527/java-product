@@ -1,5 +1,13 @@
 package com.xiongx9527.askdata.mcp;
 
+import org.springframework.test.context.DynamicPropertySource;
+
+import org.springframework.test.context.DynamicPropertyRegistry;
+
+import org.springframework.jdbc.core.JdbcTemplate;
+
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterAll;
@@ -35,10 +43,6 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource(properties = {
-        "spring.datasource.url=jdbc:h2:mem:mcp_e2e;MODE=MySQL;DB_CLOSE_DELAY=-1",
-        "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.datasource.username=sa",
-        "spring.datasource.password=",
         "fw-plus.ai.mcp.enabled=true",
         "fw-plus.ai.mcp.transport=http-sse",
         "fw-plus.ai.mcp.endpoint=/mcp",
@@ -46,6 +50,13 @@ import static org.junit.jupiter.api.Assertions.fail;
 })
 class McpFrameworkE2ETest {
 
+    private static JdbcTemplate mysql;
+
+    @DynamicPropertySource
+    static void mysqlDatasource(DynamicPropertyRegistry registry) {
+        mysql = MysqlTestSupport.createEmptySchema();
+        MysqlTestSupport.bindSpringDatasource(registry, mysql);
+    }
     @LocalServerPort
     private int port;
 

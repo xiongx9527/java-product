@@ -1,5 +1,13 @@
 package com.xiongx9527.askdata.chat;
 
+import org.springframework.test.context.DynamicPropertySource;
+
+import org.springframework.test.context.DynamicPropertyRegistry;
+
+import org.springframework.jdbc.core.JdbcTemplate;
+
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.chat.controller.ChatController;
 import com.xiongx9527.askdata.chat.repository.ChatRepository;
 import com.xiongx9527.askdata.chat.repository.RecommendedQuestionRepository;
@@ -10,7 +18,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import java.util.ArrayList;
@@ -25,18 +32,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 验证 chat 模块全部 Bean 可注入、且 {@code /chat/**} 端点在真实 MVC 路由表中注册
  * （避免与其它模块的控制器出现 {@code Ambiguous mapping} 导致应用启动失败）。
  *
- * <p>元数据库指向进程内 H2（Flyway 从空库执行 db/migration 下的 baseline 与种子），
- * 故本测试不落任何文件。</p>
+ * <p>元数据库指向真实 MySQL 临时 schema（应用自身的 Flyway 负责迁移），
+ * 连接不可达时整类跳过。</p>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
-@TestPropertySource(properties = {
-        "spring.datasource.url=jdbc:h2:mem:chat_ctx;MODE=MySQL;DB_CLOSE_DELAY=-1",
-        "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.datasource.username=sa",
-        "spring.datasource.password="
-})
 class ChatContextLoadTest {
 
+    private static JdbcTemplate mysql;
+
+    @DynamicPropertySource
+    static void mysqlDatasource(DynamicPropertyRegistry registry) {
+        mysql = MysqlTestSupport.createEmptySchema();
+        MysqlTestSupport.bindSpringDatasource(registry, mysql);
+    }
     @Autowired
     private ChatController chatController;
 

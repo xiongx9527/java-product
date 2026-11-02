@@ -1,8 +1,9 @@
 package com.xiongx9527.askdata.common.debounce;
 
 import com.xiongx9527.askdata.config.CacheProperties;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
@@ -34,13 +35,26 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 只有一次被执行」。Redis 后端走 Lua 原子占位，窗口越是卡在过期边界越能暴露竞态，
  * 因此这里同时覆盖「窗口内拦截」与「窗口过期后恢复」。</p>
  *
- * <p>默认跳过：需要显式提供 {@code -Daskdata.test.redis.port=<port>}（集群 e2e 的 Redis，
- * 默认编排发布在 13379），避免没有 Redis 的环境误报失败。</p>
+ * <p>连接参数：{@code -Daskdata.test.redis.port=<port>}（或 {@code ASKDATA_TEST_REDIS_PORT}，
+ * 缺省 6379）、{@code askdata.test.redis.host}（缺省 127.0.0.1）、
+ * {@code askdata.test.redis.password}（或 {@code ASKDATA_TEST_REDIS_PASSWORD}）。
+ * Redis 不可达时整类跳过并给出配置方式——这是真实服务依赖，不是实现缺陷。</p>
  */
-@EnabledIfSystemProperty(named = "askdata.test.redis.port", matches = "\\d+")
 class DebounceRedisCrossInstanceTest {
 
     private static final int ATTEMPTS = 16;
+
+    @BeforeAll
+    static void requireRedis() {
+        LettuceConnectionFactory probe = connectionFactory();
+        try {
+            probe.getConnection().ping();
+        } catch (Exception e) {
+            Assumptions.assumeTrue(false, "Redis 不可达（" + host() + ":" + port() + "）：" + e.getMessage());
+        } finally {
+            probe.destroy();
+        }
+    }
 
     @Test
     void concurrentCallsOnTwoInstancesAllowExactlyOnce() throws Exception {
@@ -150,12 +164,40 @@ class DebounceRedisCrossInstanceTest {
 
     /** 每个实例各自一条连接（互不共享进程内状态），并预热连接避免把建连耗时算进防抖窗口。 */
     private static LettuceConnectionFactory connectionFactory() {
-        int port = Integer.getInteger("askdata.test.redis.port");
-        String host = System.getProperty("askdata.test.redis.host", "127.0.0.1");
-        LettuceConnectionFactory factory = new LettuceConnectionFactory(host, port);
+        LettuceConnectionFactory factory = new LettuceConnectionFactory(host(), port());
+        String password = config("askdata.test.redis.password", "ASKDATA_TEST_REDIS_PASSWORD");
+        if (password != null && !password.isEmpty()) {
+            factory.setPassword(password);
+        }
         factory.afterPropertiesSet();
         factory.getConnection().close();
         return factory;
+    }
+
+    private static String host() {
+        String host = config("askdata.test.redis.host", "ASKDATA_TEST_REDIS_HOST");
+        return host == null || host.isEmpty() ? "127.0.0.1" : host;
+    }
+
+    private static int port() {
+        String port = config("askdata.test.redis.port", "ASKDATA_TEST_REDIS_PORT");
+        if (port == null || port.isEmpty()) {
+            return 6379;
+        }
+        try {
+            return Integer.parseInt(port.trim());
+        } catch (NumberFormatException e) {
+            return 6379;
+        }
+    }
+
+    /** 系统属性优先，其次环境变量（都不设返回 null）。 */
+    private static String config(String prop, String env) {
+        String value = System.getProperty(prop);
+        if (value == null || value.trim().isEmpty()) {
+            value = System.getenv(env);
+        }
+        return value == null || value.trim().isEmpty() ? null : value.trim();
     }
 
     /** 集群形态：缓存声明为 redis，并注入同一个 Redis 的 StringRedisTemplate。 */

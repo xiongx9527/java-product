@@ -1,14 +1,10 @@
 package com.xiongx9527.askdata.system.audit;
 
 import com.xiongx9527.askdata.common.audit.AuditModule;
-import org.junit.jupiter.api.AfterEach;
+import com.xiongx9527.askdata.support.MysqlTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
-
-import javax.sql.DataSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -18,14 +14,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  */
 class AuditResourceNameResolverTest {
 
-    private DataSource ds;
     private JdbcTemplate jdbc;
     private AuditResourceNameResolver resolver;
 
     @BeforeEach
     void setUp() {
-        ds = new EmbeddedDatabaseBuilder().setType(EmbeddedDatabaseType.H2).build();
-        jdbc = new JdbcTemplate(ds);
+        jdbc = MysqlTestSupport.createEmptySchema();
         jdbc.execute("CREATE TABLE core_dashboard (id BIGINT, name VARCHAR(100))");
         jdbc.execute("CREATE TABLE terminology (id BIGINT, word VARCHAR(100))");
         jdbc.execute("CREATE TABLE chat (id BIGINT, brief VARCHAR(100))");
@@ -33,16 +27,6 @@ class AuditResourceNameResolverTest {
         jdbc.update("INSERT INTO terminology VALUES (9, 'term-x')");
         jdbc.update("INSERT INTO chat VALUES (7, '月度销售分析')");
         resolver = new AuditResourceNameResolver(jdbc);
-    }
-
-    @AfterEach
-    void tearDown() {
-        if (ds != null) {
-            try {
-                ((org.springframework.jdbc.datasource.embedded.EmbeddedDatabase) ds).shutdown();
-            } catch (Exception ignored) {
-            }
-        }
     }
 
     @Test

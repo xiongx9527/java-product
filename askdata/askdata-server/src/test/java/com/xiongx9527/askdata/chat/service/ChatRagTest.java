@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.chat.service;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.support.MetadbMigration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -53,11 +55,7 @@ class ChatRagTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        appJdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:chat_rag_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = appJdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
+        appJdbc = MysqlTestSupport.createSchema();
         IdGenerator idGenerator = new IdGenerator();
         datasourceRepository = new DatasourceRepository(appJdbc, idGenerator);
         TableRepository tableRepository = new TableRepository(appJdbc, idGenerator);
@@ -132,7 +130,7 @@ class ChatRagTest {
     void trainingTablePresentIsUsed() {
         appJdbc.execute("CREATE TABLE IF NOT EXISTS data_training ("
                 + "id BIGINT PRIMARY KEY, oid BIGINT, datasource BIGINT, create_time BIGINT, "
-                + "question VARCHAR(255), description VARCHAR(10000), embedding VARCHAR(10000), "
+                + "question VARCHAR(255), description TEXT, embedding TEXT, "
                 + "enabled BOOLEAN NOT NULL DEFAULT TRUE, advanced_application BIGINT)");
         appJdbc.update("INSERT INTO data_training (id, oid, datasource, create_time, question, description, "
                         + "enabled) VALUES (?, ?, 1, 1, ?, ?, TRUE)",
@@ -255,7 +253,7 @@ class ChatRagTest {
                 "{\"host\":\"\",\"port\":0,\"username\":\"sa\",\"password\":\"\",\"database\":\"" + database
                         + "\",\"extraJdbc\":\"\",\"dbSchema\":\"\",\"filename\":\"\",\"sheets\":[],\"mode\":\"\","
                         + "\"timeout\":10,\"lowVersion\":false,\"ssl\":false,\"poolSize\":5,\"engine\":\"hive\"}");
-        datasourceRepository.insert(id, name, "", "h2", "H2", configuration, 1L, 1L);
+        datasourceRepository.insert(id, name, "", "mysql", "MySQL", configuration, 1L, 1L);
         return id;
     }
 }

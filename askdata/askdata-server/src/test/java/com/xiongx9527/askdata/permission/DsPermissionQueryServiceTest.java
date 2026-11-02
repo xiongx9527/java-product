@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.permission;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.common.util.Lists;
 import com.xiongx9527.askdata.common.util.Maps;
 
@@ -26,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * A9：数据权限商业深度测试（真实 H2 ds_rules/ds_permission + 仓储查询）。
+ * A9：数据权限商业深度测试（真实 MySQL ds_rules/ds_permission + 仓储查询）。
  *
  * <p>覆盖：多条规则 AND 组合行过滤、多条列规则取并集（可见列交集）、
  * 规则组/条目白名单豁免、非命中用户与跨工作空间规则不生效。</p>
@@ -43,15 +45,14 @@ class DsPermissionQueryServiceTest {
 
     @BeforeEach
     void setUp() {
-        jdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:perm_depth_" + System.nanoTime() + ";DB_CLOSE_DELAY=-1", "sa", ""));
+        jdbc = MysqlTestSupport.createEmptySchema();
         jdbc.execute("CREATE TABLE ds_rules (id BIGINT PRIMARY KEY, enable BOOLEAN, name VARCHAR(128), "
-                + "description VARCHAR(512), permission_list VARCHAR(10000), user_list VARCHAR(10000), "
-                + "white_list_user VARCHAR(10000), create_time BIGINT, oid BIGINT)");
+                + "description VARCHAR(512), permission_list TEXT, user_list TEXT, "
+                + "white_list_user TEXT, create_time BIGINT, oid BIGINT)");
         jdbc.execute("CREATE TABLE ds_permission (id BIGINT PRIMARY KEY, enable BOOLEAN, "
                 + "auth_target_type VARCHAR(128), auth_target_id BIGINT, type VARCHAR(64), ds_id BIGINT, "
-                + "table_id BIGINT, expression_tree VARCHAR(10000), permissions VARCHAR(10000), "
-                + "white_list_user VARCHAR(10000), create_time BIGINT, name VARCHAR(128))");
+                + "table_id BIGINT, expression_tree TEXT, permissions TEXT, "
+                + "white_list_user TEXT, create_time BIGINT, name VARCHAR(128))");
 
         TableRepository tableRepo = Mockito.mock(TableRepository.class);
         FieldRepository fieldRepo = Mockito.mock(FieldRepository.class);

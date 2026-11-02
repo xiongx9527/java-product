@@ -1,5 +1,11 @@
 package com.xiongx9527.askdata.system;
 
+import org.springframework.test.context.DynamicPropertySource;
+
+import org.springframework.test.context.DynamicPropertyRegistry;
+
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.common.util.Io;
 import com.xiongx9527.askdata.common.util.Lists;
 
@@ -47,14 +53,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @TestPropertySource(properties = {
-        "spring.datasource.url=jdbc:h2:mem:remaining_fidelity;MODE=MySQL;DB_CLOSE_DELAY=-1",
-        "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.datasource.username=sa",
-        "spring.datasource.password=",
         "askdata.user.default-password=Default@Passw0rd"
 })
 class RemainingFidelityTest {
 
+    private static JdbcTemplate mysql;
+
+    @DynamicPropertySource
+    static void mysqlDatasource(DynamicPropertyRegistry registry) {
+        mysql = MysqlTestSupport.createEmptySchema();
+        MysqlTestSupport.bindSpringDatasource(registry, mysql);
+    }
     @Autowired
     private LoginController loginController;
 
@@ -281,7 +290,7 @@ class RemainingFidelityTest {
     void hostnameSourceTableOnlyDefinedOnce() throws Exception {
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
                 "CREATE TABLE(?: IF NOT EXISTS)? sys_logs_resource");
-        for (String vendor : Lists.of("h2", "postgresql", "mysql")) {
+        for (String vendor : Lists.of("postgresql", "mysql")) {
             String schema = Io.readAllUtf8(java.nio.file.Files.newInputStream(java.nio.file.Paths.get(
                     "src/main/resources/db/migration/" + vendor + "/V1__baseline.sql")));
             long count = countMatches(pattern, schema);

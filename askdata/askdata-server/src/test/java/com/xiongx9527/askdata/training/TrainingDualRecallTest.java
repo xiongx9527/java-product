@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.training;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.common.util.Lists;
 
 import com.xiongx9527.askdata.ai.EmbeddingService;
@@ -27,14 +29,12 @@ class TrainingDualRecallTest {
 
     @BeforeEach
     void setUp() {
-        jdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:training_dual_" + System.nanoTime() + ";DB_CLOSE_DELAY=-1", "sa", ""));
+        jdbc = MysqlTestSupport.createEmptySchema();
         jdbc.execute("CREATE TABLE data_training (id BIGINT PRIMARY KEY, oid BIGINT, datasource BIGINT, "
-                + "create_time BIGINT, question VARCHAR(255), description VARCHAR(10000), "
-                + "embedding VARCHAR(10000), enabled BOOLEAN, advanced_application BIGINT)");
+                + "create_time BIGINT, question VARCHAR(255), description TEXT, "
+                + "embedding TEXT, enabled BOOLEAN, advanced_application BIGINT)");
         // 向量不可用：只验证关键词这一路（向量路由由既有用例覆盖）
         EmbeddingService embedding = Mockito.mock(EmbeddingService.class);
-        Mockito.when(embedding.candidateRequiresEmbeddingColumn()).thenReturn(false);
         Mockito.when(embedding.recallByVector(Mockito.anyString(), Mockito.anyList(), Mockito.anyString(),
                 Mockito.anyDouble(), Mockito.anyInt())).thenReturn(Lists.of());
         service = new TrainingRecallService(embedding, jdbc);

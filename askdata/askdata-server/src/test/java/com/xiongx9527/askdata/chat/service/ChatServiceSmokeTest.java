@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.chat.service;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.support.MetadbMigration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,7 +46,7 @@ import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import org.springframework.context.support.StaticMessageSource;
 
 /**
- * 会话与记录 CRUD smoke（A6 离线证据，H2）：start/list/get/with_data/rename/delete、
+ * 会话与记录 CRUD smoke（A6 离线证据，真实 MySQL 临时 schema）：start/list/get/with_data/rename/delete、
  * 记录 data/predict_data/log/usage、最近问题、Excel 导出、归属校验。
  */
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
@@ -71,11 +73,7 @@ class ChatServiceSmokeTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        appJdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:chat_crud_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = appJdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
+        appJdbc = MysqlTestSupport.createSchema();
         IdGenerator idGenerator = new IdGenerator();
         JdbcEngine engine = new JdbcEngine(appJdbc, objectMapper);
         DatasourceRepository datasourceRepository = new DatasourceRepository(appJdbc, idGenerator);

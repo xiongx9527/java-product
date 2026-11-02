@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.chat.service;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.support.MetadbMigration;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -7,7 +9,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.xiongx9527.askdata.ai.EmbeddingService;
-import com.xiongx9527.askdata.ai.LocalEmbeddingModel;
 import com.xiongx9527.askdata.chart.server.ChartImageService;
 import com.xiongx9527.askdata.chat.repository.ChatRepository;
 import com.xiongx9527.askdata.chat.repository.RecommendedQuestionRepository;
@@ -74,14 +75,12 @@ class ChatKnowledgeChainTest {
 
     private static final MessageResolver messageResolver = new MessageResolver(new StaticMessageSource());
 
-    private static final String TARGET_URL = "jdbc:h2:mem:chat_knowledge_target;MODE=MySQL;DB_CLOSE_DELAY=-1";
-
     private static final String STUB_SQL =
-            "SELECT \"status\", COUNT(*) AS \"cnt\" FROM \"orders\" GROUP BY \"status\" ORDER BY \"cnt\" DESC";
+            "SELECT `status`, COUNT(*) AS `cnt` FROM `orders` GROUP BY `status` ORDER BY `cnt` DESC";
 
     /** A12 起 SQL 生成必须返回结构化 JSON，桩输出同步该契约。 */
     private static final String STUB_SQL_JSON = "{\"success\":true,\"sql\":\""
-            + STUB_SQL.replace("\"", "\\\"") + "\",\"brief\":\"各状态订单数\","
+            + STUB_SQL + "\",\"brief\":\"各状态订单数\","
             + "\"chart-type\":\"column\",\"tables\":[\"orders\"]}";
 
     private static final String STUB_CHART = "{\"type\":\"column\",\"title\":\"各状态订单数\","
@@ -93,6 +92,9 @@ class ChatKnowledgeChainTest {
     Path excelDir;
 
     private JdbcTemplate appJdbc;
+
+    /** 被查询的目标 MySQL 库（每次 setUp 新建，替代过去的 H2 内存库）。 */
+    private JdbcTemplate targetJdbc;
 
     private ObjectMapper objectMapper = new ObjectMapper();
 
@@ -116,19 +118,12 @@ class ChatKnowledgeChainTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        appJdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:chat_knowledge_chain_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = appJdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
-        try (Connection connection = DriverManager.getConnection(TARGET_URL, "sa", "");
-             Statement statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE IF NOT EXISTS \"orders\" (\"id\" BIGINT PRIMARY KEY,"
-                    + " \"user_id\" BIGINT, \"amount\" DECIMAL(10,2), \"status\" VARCHAR(20))");
-            statement.execute("DELETE FROM \"orders\"");
-            statement.execute("INSERT INTO \"orders\" VALUES (1, 100, 99.50, 'PAID'),"
-                    + " (2, 101, 12.00, 'PAID'), (3, 102, 30.00, 'NEW')");
-        }
+        appJdbc = MysqlTestSupport.createSchema();
+        targetJdbc = MysqlTestSupport.createEmptySchema();
+        targetJdbc.execute("CREATE TABLE orders (id BIGINT PRIMARY KEY,"
+                + " user_id BIGINT, amount DECIMAL(10,2), status VARCHAR(20))");
+        targetJdbc.update("INSERT INTO orders VALUES (1, 100, 99.50, 'PAID'),"
+                + " (2, 101, 12.00, 'PAID'), (3, 102, 30.00, 'NEW')");
 
         JdbcEngine engine = new JdbcEngine(appJdbc, objectMapper);
         IdGenerator idGenerator = new IdGenerator();
@@ -150,8 +145,8 @@ class ChatKnowledgeChainTest {
                 new TableEmbeddingService(tableRepository, fieldRepository, modelRouter, modelClient, appJdbc,
                         objectMapper));
         dsId = Rows.lng(datasourceService.add(Rows.of(
-                "name", "知识链路目标库", "description", "", "type", DatasourceType.H2.getType(),
-                "configuration", h2Configuration(),
+                "name", "知识链路目标库", "description", "", "type", DatasourceType.MYSQL.getType(),
+                "configuration", mysqlConfiguration(targetJdbc),
                 "tables", Arrays.asList(
                         Rows.of("table_name", "orders", "table_comment", "订单表")))), "id", 0L);
 
@@ -169,7 +164,7 @@ class ChatKnowledgeChainTest {
 
         // 无 embedding：本地模型目录为空、无 model_type=1 模型（词法降级路径）
         EmbeddingService embeddingService = new EmbeddingService(
-                new LocalEmbeddingModel(excelDir.toString(), 128), modelRouter, modelClient, appJdbc, objectMapper);
+                modelRouter, modelClient, objectMapper);
         assertFalse(embeddingService.available(), "测试环境不应配置 embedding 模型");
 
         stubRequests.clear();
@@ -413,9 +408,11 @@ class ChatKnowledgeChainTest {
         return new String(buffer.toByteArray(), StandardCharsets.UTF_8);
     }
 
-    private String h2Configuration() {
-        String plain = "{\"host\":\"\",\"port\":0,\"username\":\"sa\",\"password\":\"\",\"database\":\""
-                + TARGET_URL + "\",\"extraJdbc\":\"\",\"dbSchema\":\"\",\"filename\":\"\",\"sheets\":[],"
+    private String mysqlConfiguration(JdbcTemplate jdbc) {
+        String plain = "{\"host\":\"" + MysqlTestSupport.host() + "\",\"port\":" + MysqlTestSupport.port()
+                + ",\"username\":\"" + MysqlTestSupport.user() + "\",\"password\":\""
+                + MysqlTestSupport.password() + "\",\"database\":\"" + MysqlTestSupport.schemaName(jdbc)
+                + "\",\"extraJdbc\":\"\",\"dbSchema\":\"\",\"filename\":\"\",\"sheets\":[],"
                 + "\"mode\":\"\",\"timeout\":10,\"lowVersion\":false,\"ssl\":false,\"poolSize\":5,"
                 + "\"engine\":\"hive\"}";
         return com.xiongx9527.askdata.system.auth.CryptoUtil.encryptSqlbot(plain);

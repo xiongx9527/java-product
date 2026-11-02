@@ -1,9 +1,10 @@
 package com.xiongx9527.askdata.chat.service;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.support.MetadbMigration;
 
 import com.xiongx9527.askdata.ai.EmbeddingService;
-import com.xiongx9527.askdata.ai.LocalEmbeddingModel;
 import com.xiongx9527.askdata.chat.service.ChatKnowledgeService.KnowledgeContext;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.util.Rows;
@@ -61,11 +62,7 @@ class ChatKnowledgeServiceTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        appJdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:chat_knowledge_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = appJdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
+        appJdbc = MysqlTestSupport.createSchema();
         terminologyRepository = new TerminologyRepository(appJdbc, objectMapper, ids);
         DatasourceRepository datasourceRepository = new DatasourceRepository(appJdbc, ids);
         TableRepository tableRepository = new TableRepository(appJdbc, ids);
@@ -79,7 +76,7 @@ class ChatKnowledgeServiceTest {
         // 本地 embedding 模型目录为空 → 不可用；ai_model 无 model_type=1 → 无远程 embedding：
         // 整条测试运行在「无向量」环境，验证词法降级路径。
         EmbeddingService embeddingService = new EmbeddingService(
-                new LocalEmbeddingModel(modelDir.toString(), 128), modelRouter, modelClient, appJdbc, objectMapper);
+                modelRouter, modelClient, objectMapper);
         assertFalse(embeddingService.available(), "测试环境不应有可用向量模型");
         chatKnowledgeService = new ChatKnowledgeService(
                 new TerminologyRecallService(embeddingService, appJdbc), schemaContextBuilder, appJdbc,

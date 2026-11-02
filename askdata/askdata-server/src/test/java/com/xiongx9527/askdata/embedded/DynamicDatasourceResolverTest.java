@@ -54,12 +54,12 @@ class DynamicDatasourceResolverTest {
     @Test
     void resolvesJsonStringConfiguration() {
         Map<String, Object> host = new LinkedHashMap<>();
-        host.put("type", "h2");
-        host.put("configuration", "{\"database\":\"jdbc:h2:mem:x\",\"username\":\"sa\"}");
+        host.put("type", "pg");
+        host.put("configuration", "{\"database\":\"demo\",\"username\":\"pg\"}");
         DynamicDatasource ds = resolver.resolve(3, host);
-        assertEquals(DatasourceType.H2, ds.getType());
-        assertEquals("jdbc:h2:mem:x", ds.getConf().getDatabase());
-        assertEquals("sa", ds.getConf().getUsername());
+        assertEquals(DatasourceType.PG, ds.getType());
+        assertEquals("demo", ds.getConf().getDatabase());
+        assertEquals("pg", ds.getConf().getUsername());
     }
 
     @Test

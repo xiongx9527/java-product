@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.chat.service;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.common.util.Maps;
 
 import com.xiongx9527.askdata.support.MetadbMigration;
@@ -9,7 +11,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.xiongx9527.askdata.ai.EmbeddingService;
-import com.xiongx9527.askdata.ai.LocalEmbeddingModel;
 import com.xiongx9527.askdata.chat.repository.ChatRepository;
 import com.xiongx9527.askdata.chat.repository.RecommendedQuestionRepository;
 import com.xiongx9527.askdata.chat.service.ChatChartBuilder;
@@ -83,13 +84,11 @@ class ChatPipelineTest {
 
     private static final MessageResolver messageResolver = new MessageResolver(new StaticMessageSource());
 
-    private static final String TARGET_URL = "jdbc:h2:mem:chat_target;MODE=MySQL;DB_CLOSE_DELAY=-1";
-
-    /** 桩模型返回的 SQL（H2 目标库 orders 表）。 */
+    /** 桩模型返回的 SQL（MySQL 目标库 orders 表；反引号避免被当成字符串字面量）。 */
     private static final String STUB_SQL =
-            "SELECT \"status\", COUNT(*) AS \"cnt\" FROM \"orders\" GROUP BY \"status\" ORDER BY \"cnt\" DESC";
+            "SELECT `status`, COUNT(*) AS `cnt` FROM `orders` GROUP BY `status` ORDER BY `cnt` DESC";
 
-    private static final String STUB_SQL_JSON = "{\"success\": true, \"sql\": \"SELECT \\\"status\\\", COUNT(*) AS \\\"cnt\\\" FROM \\\"orders\\\" GROUP BY \\\"status\\\" ORDER BY \\\"cnt\\\" DESC\", \"brief\": \"每个状态的订单数\", \"chart-type\": \"column\", \"tables\": [\"orders\"]}";
+    private static final String STUB_SQL_JSON = "{\"success\": true, \"sql\": \"SELECT `status`, COUNT(*) AS `cnt` FROM `orders` GROUP BY `status` ORDER BY `cnt` DESC\", \"brief\": \"每个状态的订单数\", \"chart-type\": \"column\", \"tables\": [\"orders\"]}";
 
     private static final String STUB_CHART = "{\"type\":\"column\",\"title\":\"各状态订单数\","
             + "\"columns\":[{\"name\":\"status\",\"value\":\"status\"},{\"name\":\"cnt\",\"value\":\"cnt\"}],"
@@ -100,6 +99,9 @@ class ChatPipelineTest {
     Path excelDir;
 
     private JdbcTemplate appJdbc;
+
+    /** 被查询的目标 MySQL 库（每次 setUp 新建，替代过去的 H2 内存库）。 */
+    private JdbcTemplate targetJdbc;
 
     private ObjectMapper objectMapper = new ObjectMapper();
 
@@ -139,23 +141,15 @@ class ChatPipelineTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        appJdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:chat_app_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = appJdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
-        try (Connection connection = DriverManager.getConnection(TARGET_URL, "sa", "");
-             Statement statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE IF NOT EXISTS \"orders\" (\"id\" BIGINT PRIMARY KEY,"
-                    + " \"user_id\" BIGINT, \"amount\" DECIMAL(10,2), \"status\" VARCHAR(20))");
-            statement.execute("CREATE TABLE IF NOT EXISTS \"users\" (\"id\" BIGINT PRIMARY KEY,"
-                    + " \"name\" VARCHAR(50), \"city\" VARCHAR(50))");
-            statement.execute("DELETE FROM \"orders\"");
-            statement.execute("DELETE FROM \"users\"");
-            statement.execute("INSERT INTO \"orders\" VALUES (1, 100, 99.50, 'PAID'),"
-                    + " (2, 101, 12.00, 'PAID'), (3, 102, 30.00, 'NEW')");
-            statement.execute("INSERT INTO \"users\" VALUES (100, '张三', '北京'), (101, '李四', '上海')");
-        }
+        appJdbc = MysqlTestSupport.createSchema();
+        targetJdbc = MysqlTestSupport.createEmptySchema();
+        targetJdbc.execute("CREATE TABLE orders (id BIGINT PRIMARY KEY,"
+                + " user_id BIGINT, amount DECIMAL(10,2), status VARCHAR(20))");
+        targetJdbc.execute("CREATE TABLE users (id BIGINT PRIMARY KEY,"
+                + " name VARCHAR(50), city VARCHAR(50))");
+        targetJdbc.update("INSERT INTO orders VALUES (1, 100, 99.50, 'PAID'),"
+                + " (2, 101, 12.00, 'PAID'), (3, 102, 30.00, 'NEW')");
+        targetJdbc.update("INSERT INTO users VALUES (100, '张三', '北京'), (101, '李四', '上海')");
 
         JdbcEngine engine = new JdbcEngine(appJdbc, objectMapper);
         idGenerator = new IdGenerator();
@@ -178,8 +172,8 @@ class ChatPipelineTest {
                 new TableEmbeddingService(tableRepository, fieldRepository, modelRouter, modelClient, appJdbc,
                         objectMapper));
         dsId = Rows.lng(datasourceService.add(Rows.of(
-                "name", "chat 目标库", "description", "", "type", DatasourceType.H2.getType(),
-                "configuration", h2Configuration(),
+                "name", "chat 目标库", "description", "", "type", DatasourceType.MYSQL.getType(),
+                "configuration", mysqlConfiguration(targetJdbc),
                 "tables", Arrays.asList(
                         Rows.of("table_name", "orders", "table_comment", "订单表"),
                         Rows.of("table_name", "users", "table_comment", "用户表")))), "id", 0L);
@@ -208,8 +202,8 @@ class ChatPipelineTest {
                 datasourceService, currentUserService, objectMapper, dsGrantService,
                 messageResolver);
         chatKnowledgeService = new ChatKnowledgeService(
-                new TerminologyRecallService(new EmbeddingService(new LocalEmbeddingModel(excelDir.toString(), 128),
-                        modelRouter, modelClient, appJdbc, objectMapper), appJdbc),
+                new TerminologyRecallService(new EmbeddingService(
+                        modelRouter, modelClient, objectMapper), appJdbc),
                 schemaContextBuilder, appJdbc, Mockito.mock(ChatModelRouter.class), modelClient);
         chatQuestionService = new ChatQuestionService(chatRepository, recommendedQuestionRepository,
                 datasourceRepository, datasourceService, currentUserService, schemaContextBuilder, modelClient,
@@ -395,6 +389,9 @@ class ChatPipelineTest {
         new AiModelRepository(appJdbc, idGenerator).insert(customModelId, "",
                 "http://127.0.0.1:" + stubPort, 1, 0, "自定义模型", 0, "custom-gemma", false,
                 "[]", 1, System.currentTimeMillis());
+        // 非默认模型必须在当前工作空间内授权才可选用
+        appJdbc.update("INSERT INTO ai_model_workspace_mapping (id, ai_model_id, workspace_id) VALUES (?, ?, ?)",
+                idGenerator.nextId(), customModelId, 1L);
         long chatId = Rows.lng(chatService.start(Rows.of("datasource", dsId)), "id", 0L);
 
         Map<String, Object> result = chatQuestionService.ask(Rows.of("question", "每个状态的订单数",
@@ -420,16 +417,15 @@ class ChatPipelineTest {
     }
 
     @Test
-    void unknownCustomModelFailsWithoutUsingDefaultModel() throws Exception {
+    void unknownCustomModelFallsBackToDefaultModel() throws Exception {
         long chatId = Rows.lng(chatService.start(Rows.of("datasource", dsId)), "id", 0L);
 
         Map<String, Object> result = chatQuestionService.ask(Rows.of("question", "每个状态的订单数",
                 "chat_id", chatId, "custom_model", 999999999L));
 
-        assertEquals(Boolean.FALSE, result.get("success"), result.toString());
-        assertTrue(String.valueOf(result.get("message")).contains("custom.model.unavailable"),
-                result.toString());
-        assertFalse(stubCalls.contains("sql"), "模型不可用时不应回退默认模型生成 SQL: " + stubCalls);
+        // 对齐 SQLBot：指定模型不可用时静默回退默认模型，而不是直接失败
+        assertEquals(Boolean.TRUE, result.get("success"), result.toString());
+        assertTrue(stubCalls.contains("sql"), "回退默认模型后应正常生成 SQL: " + stubCalls);
     }
 
     @Test
@@ -497,8 +493,8 @@ class ChatPipelineTest {
     @Test
     @SuppressWarnings("unchecked")
     void boundDatasourceWinsAndUnboundChatUsesRequestedDatasource() throws Exception {
-        String altUrl = createTargetDatabase("chat_alt_ds", 1);
-        long altDsId = addDatasource("chat 备用库", altUrl);
+        JdbcTemplate altJdbc = createTargetDatabase("chat_alt_ds", 1);
+        long altDsId = addDatasource("chat 备用库", altJdbc);
 
         // 已绑定 D1：请求 D2 仍走 D1，且不改写 chat/record datasource
         long boundChatId = Rows.lng(chatService.start(Rows.of("datasource", dsId)), "id", 0L);
@@ -593,7 +589,8 @@ class ChatPipelineTest {
         assertFalse(stubCalls.contains("sql"), "授权拒绝后不得生成 SQL: " + stubCalls);
 
         Map<String, Object> deniedRecord = appJdbc.queryForMap(
-                "SELECT error, sql, first_chat FROM chat_record WHERE chat_id = ? ORDER BY id DESC LIMIT 1",
+                // MySQL 8 把 SQL 列为保留字，标识符必须加反引号
+                "SELECT error, `sql`, first_chat FROM chat_record WHERE chat_id = ? ORDER BY id DESC LIMIT 1",
                 boundChatId);
         assertEquals(Boolean.FALSE, deniedRecord.get("first_chat"), deniedRecord.toString());
         assertTrue(Rows.str(deniedRecord, "error").contains(expected), deniedRecord.toString());
@@ -605,7 +602,7 @@ class ChatPipelineTest {
         assertTrue(String.valueOf(result.get("message")).contains(expected), result.toString());
         assertNotNull(result.get("record_id"), "已创建记录时非流式错误应带 record_id: " + result);
         assertFalse(stubCalls.contains("sql"), "授权拒绝后不得生成 SQL: " + stubCalls);
-        assertNull(appJdbc.queryForObject("SELECT sql FROM chat_record WHERE id = ?", String.class,
+        assertNull(appJdbc.queryForObject("SELECT `sql` FROM chat_record WHERE id = ?", String.class,
                 ((Number) result.get("record_id")).longValue()),
                 "授权拒绝后非流式 SQL 不应落库");
     }
@@ -1011,32 +1008,34 @@ class ChatPipelineTest {
     // A8 动态数据源：请求内下发、不落库，但与静态路径行为一致
     // ------------------------------------------------------------------
 
-    private String dynamicUrl;
+    private JdbcTemplate dynamicJdbc;
 
-    private String createDynamicDatabase() throws Exception {
-        String url = "jdbc:h2:mem:chat_dynamic_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1";
-        try (Connection connection = DriverManager.getConnection(url, "sa", "");
-             Statement statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE \"orders\" (\"id\" BIGINT PRIMARY KEY, \"user_id\" BIGINT,"
-                    + " \"amount\" DECIMAL(10,2), \"status\" VARCHAR(20))");
-            statement.execute("INSERT INTO \"orders\" VALUES (1, 100, 9.90, 'PAID'), (2, 101, 5.00, 'NEW')");
-        }
-        return url;
+    private JdbcTemplate createDynamicDatabase() {
+        JdbcTemplate jdbc = MysqlTestSupport.createEmptySchema();
+        jdbc.execute("CREATE TABLE orders (id BIGINT PRIMARY KEY, user_id BIGINT,"
+                + " amount DECIMAL(10,2), status VARCHAR(20))");
+        jdbc.update("INSERT INTO orders VALUES (1, 100, 9.90, 'PAID'), (2, 101, 5.00, 'NEW')");
+        return jdbc;
     }
 
     private com.xiongx9527.askdata.embedded.DynamicDatasource dynamicDatasource() {
         com.xiongx9527.askdata.datasource.engine.DatasourceConf conf =
                 new com.xiongx9527.askdata.datasource.engine.DatasourceConf();
-        conf.setDatabase(dynamicUrl);
-        conf.setUsername("sa");
-        conf.setPassword("");
-        return new com.xiongx9527.askdata.embedded.DynamicDatasource(DatasourceType.H2, conf, "宿主动态库");
+        MysqlTestSupport.bindTarget(conf, dynamicJdbc);
+        return new com.xiongx9527.askdata.embedded.DynamicDatasource(DatasourceType.MYSQL, conf, "宿主动态库");
+    }
+
+    /** 请求体里下发的动态数据源配置（与静态数据源同构）。 */
+    private Map<String, Object> dynamicConfiguration() {
+        return Rows.of("host", MysqlTestSupport.host(), "port", MysqlTestSupport.port(),
+                "database", MysqlTestSupport.schemaName(dynamicJdbc),
+                "username", MysqlTestSupport.user(), "password", MysqlTestSupport.password());
     }
 
     @Test
     @SuppressWarnings("unchecked")
     void dynamicDatasourceQuestionRunsSamePipelineWithoutPersistingDatasource() throws Exception {
-        dynamicUrl = createDynamicDatabase();
+        dynamicJdbc = createDynamicDatabase();
         long assistantId = assistantRepository.insert("高级应用", 1, "example.com", "", "{}",
                 "app-a8", "secret-a8", 1L, false, null, System.currentTimeMillis());
         long datasourceCountBefore = appJdbc.queryForObject("SELECT COUNT(*) FROM core_datasource", Long.class);
@@ -1044,8 +1043,8 @@ class ChatPipelineTest {
         long chatId = Rows.lng(chatService.start(new java.util.HashMap<String, Object>()), "id", 0L);
         Map<String, Object> body = Rows.of("question", "每个状态的订单数", "chat_id", chatId,
                 "assistant_id", assistantId);
-        body.put("dynamic_datasource", Rows.of("type", "h2", "name", "宿主动态库",
-                "configuration", Rows.of("database", dynamicUrl, "username", "sa", "password", "")));
+        body.put("dynamic_datasource", Rows.of("type", "mysql", "name", "宿主动态库",
+                "configuration", dynamicConfiguration()));
 
         MockHttpServletResponse response = new MockHttpServletResponse();
         chatQuestionService.streamQuestion(body, response);
@@ -1079,23 +1078,23 @@ class ChatPipelineTest {
 
     @Test
     void dynamicDatasourceRejectsUnknownTablesLikeStaticPath() throws Exception {
-        dynamicUrl = createDynamicDatabase();
+        dynamicJdbc = createDynamicDatabase();
         com.xiongx9527.askdata.embedded.DynamicDatasource dynamic = dynamicDatasource();
 
         String unknown = chatQuestionService.validateSql(
-                "SELECT * FROM \"orders\" JOIN \"ghost\" ON 1 = 1", "h2", null, dynamic);
+                "SELECT * FROM `orders` JOIN `ghost` ON 1 = 1", "mysql", null, dynamic);
         assertNotNull(unknown, "动态数据源必须拦截未存在的表");
         assertTrue(unknown.contains("ghost"), unknown);
-        assertNull(chatQuestionService.validateSql("SELECT * FROM \"orders\"", "h2", null, dynamic));
+        assertNull(chatQuestionService.validateSql("SELECT * FROM `orders`", "mysql", null, dynamic));
     }
 
     @Test
     void dynamicDatasourceRequiresPersistedAdvancedApplication() throws Exception {
-        dynamicUrl = createDynamicDatabase();
+        dynamicJdbc = createDynamicDatabase();
         long chatId = Rows.lng(chatService.start(new java.util.HashMap<String, Object>()), "id", 0L);
         Map<String, Object> body = Rows.of("question", "每个状态的订单数", "chat_id", chatId);
-        body.put("dynamic_datasource", Rows.of("type", "h2", "name", "宿主动态库",
-                "configuration", Rows.of("database", dynamicUrl, "username", "sa", "password", "")));
+        body.put("dynamic_datasource", Rows.of("type", "mysql", "name", "宿主动态库",
+                "configuration", dynamicConfiguration()));
         // 缺少 assistant_id：不允许仅凭请求体自报类型使用动态数据源
         MockHttpServletResponse missingAssistant = new MockHttpServletResponse();
         chatQuestionService.streamQuestion(body, missingAssistant);
@@ -1233,38 +1232,33 @@ class ChatPipelineTest {
         return new String(buffer.toByteArray(), StandardCharsets.UTF_8);
     }
 
-    private String h2Configuration() {
-        return h2Configuration(TARGET_URL);
-    }
-
-    private String h2Configuration(String url) {
-        String plain = "{\"host\":\"\",\"port\":0,\"username\":\"sa\",\"password\":\"\",\"database\":\""
-                + url + "\",\"extraJdbc\":\"\",\"dbSchema\":\"\",\"filename\":\"\",\"sheets\":[],"
+    /** 目标 MySQL 库的连接配置（加密后存 core_datasource.configuration）。 */
+    private String mysqlConfiguration(JdbcTemplate jdbc) {
+        String plain = "{\"host\":\"" + MysqlTestSupport.host() + "\",\"port\":" + MysqlTestSupport.port()
+                + ",\"username\":\"" + MysqlTestSupport.user() + "\",\"password\":\""
+                + MysqlTestSupport.password() + "\",\"database\":\"" + MysqlTestSupport.schemaName(jdbc)
+                + "\",\"extraJdbc\":\"\",\"dbSchema\":\"\",\"filename\":\"\",\"sheets\":[],"
                 + "\"mode\":\"\",\"timeout\":10,\"lowVersion\":false,\"ssl\":false,\"poolSize\":5,"
                 + "\"engine\":\"hive\"}";
         return com.xiongx9527.askdata.system.auth.CryptoUtil.encryptSqlbot(plain);
     }
 
-    /** 新建一个带 orders 表的独立 H2 目标库（用于 A5 datasource_id 优先级验证）。 */
-    private String createTargetDatabase(String name, int paidRows) throws Exception {
-        String url = "jdbc:h2:mem:" + name + "_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1";
-        try (Connection connection = DriverManager.getConnection(url, "sa", "");
-             Statement statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE \"orders\" (\"id\" BIGINT PRIMARY KEY,"
-                    + " \"user_id\" BIGINT, \"amount\" DECIMAL(10,2), \"status\" VARCHAR(20))");
-            for (int i = 1; i <= paidRows; i++) {
-                statement.execute("INSERT INTO \"orders\" VALUES (" + i + ", " + (100 + i)
-                        + ", 10.00, 'PAID')");
-            }
+    /** 新建一个带 orders 表的独立 MySQL 目标库（用于 A5 datasource_id 优先级验证）。 */
+    private JdbcTemplate createTargetDatabase(String name, int paidRows) {
+        JdbcTemplate jdbc = MysqlTestSupport.createEmptySchema();
+        jdbc.execute("CREATE TABLE orders (id BIGINT PRIMARY KEY,"
+                + " user_id BIGINT, amount DECIMAL(10,2), status VARCHAR(20))");
+        for (int i = 1; i <= paidRows; i++) {
+            jdbc.update("INSERT INTO orders VALUES (" + i + ", " + (100 + i) + ", 10.00, 'PAID')");
         }
-        return url;
+        return jdbc;
     }
 
     /** 注册静态数据源（与 setUp 的 chat 目标库同构）。 */
-    private long addDatasource(String name, String url) {
+    private long addDatasource(String name, JdbcTemplate jdbc) {
         return Rows.lng(datasourceService.add(Rows.of(
-                "name", name, "description", "", "type", DatasourceType.H2.getType(),
-                "configuration", h2Configuration(url),
+                "name", name, "description", "", "type", DatasourceType.MYSQL.getType(),
+                "configuration", mysqlConfiguration(jdbc),
                 "tables", Arrays.asList(
                         Rows.of("table_name", "orders", "table_comment", "订单表")))), "id", 0L);
     }

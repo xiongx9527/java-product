@@ -76,9 +76,9 @@ class ClusterReadinessCheckerTest {
     }
 
     @Test
-    void h2MemoryAndLocalStorageAreFailures() {
-        // A1：单实例默认配置（H2 + 空密钥 + memory + local）必须逐项报不满足
-        MockEnvironment env = env("jdbc:h2:file:./data/askdata;MODE=MySQL", "", "db");
+    void missingMetadataDatabaseAndLocalStorageAreFailures() {
+        // A1：单实例默认配置（未配元数据库 + 空密钥 + memory + local）必须逐项报不满足
+        MockEnvironment env = env("", "", "db");
         ClusterReadinessReport report = checker(env, "local", false, memoryCache()).check();
 
         assertTrue(report.hasFailure());
@@ -151,7 +151,7 @@ class ClusterReadinessCheckerTest {
     @Test
     void failFastRejectsStartup() {
         // A1：fail-fast=true 时拒绝启动，错误信息指向第一处不满足项
-        MockEnvironment env = env("jdbc:h2:file:./data/askdata", "", "db");
+        MockEnvironment env = env("", "", "db");
         ClusterReadinessChecker checker = checker(env, "local", false, memoryCache());
         setFailFast(checker, true);
 
@@ -163,7 +163,7 @@ class ClusterReadinessCheckerTest {
     @Test
     void disabledClusterSkipsChecks() {
         // A14：不开启集群模式时不产生任何告警/异常（单实例零回归）
-        MockEnvironment env = env("jdbc:h2:file:./data/askdata", "", "db");
+        MockEnvironment env = env("jdbc:mysql://db:3306/askdata", "", "db");
         ClusterReadinessChecker checker = checker(env, "local", false, memoryCache());
         setEnabled(checker, false);
 

@@ -17,6 +17,7 @@ import com.xiongx9527.askdata.common.web.Result;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
 import com.xiongx9527.askdata.system.controller.LoginController;
+import com.xiongx9527.askdata.support.MysqlTestSupport;
 import com.xiongx9527.askdata.system.repository.AiModelRepository;
 import com.xiongx9527.askdata.system.web.TokenVO;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
@@ -53,7 +54,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * A9：PostgreSQL 空库迁移、种子、登录与一次问数（embedded-postgres 真库）。
  *
- * <p>元数据库使用进程内临时 PostgreSQL（不依赖本机 Docker/psql）；问数目标库为独立 H2，
+ * <p>元数据库使用进程内临时 PostgreSQL（不依赖本机 Docker/psql）；问数目标库为独立 MySQL，
  * 模型由本地 OpenAI 兼容桩提供，验证迁移后的 Spring 上下文可用、Flyway 种子管理员可登录，
  * 且聊天链路能完成一次 SQL 生成/执行。</p>
  */
@@ -61,15 +62,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @ActiveProfiles("postgresql")
 class PostgresMetadbMigrationTest {
 
-    private static final String TARGET_URL =
-            "jdbc:h2:mem:pg_metadb_target;MODE=MySQL;DB_CLOSE_DELAY=-1";
+    /** 被查询的目标 MySQL 库（首个用例创建后复用）。 */
+    private static JdbcTemplate targetJdbc;
 
     private static final String STUB_SQL =
-            "SELECT \"status\", COUNT(*) AS \"cnt\" FROM \"orders\" GROUP BY \"status\" ORDER BY \"cnt\" DESC";
+            "SELECT `status`, COUNT(*) AS `cnt` FROM `orders` GROUP BY `status` ORDER BY `cnt` DESC";
 
     /** A12 起 SQL 生成必须返回结构化 JSON，桩输出同步该契约。 */
     private static final String STUB_SQL_JSON = "{\"success\":true,\"sql\":\""
-            + STUB_SQL.replace("\"", "\\\"") + "\",\"brief\":\"各状态订单数\","
+            + STUB_SQL + "\",\"brief\":\"各状态订单数\","
             + "\"chart-type\":\"column\",\"tables\":[\"orders\"]}";
 
     private static final String STUB_CHART = "{\"type\":\"column\",\"title\":\"各状态订单数\","
@@ -132,11 +133,18 @@ class PostgresMetadbMigrationTest {
     void setUp() throws Exception {
         llmServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         llmServer.createContext("/v1/chat/completions", this::handleChatCompletions);
+        llmServer.createContext("/v1/embeddings", this::handleEmbeddings);
         llmServer.setExecutor(null);
         llmServer.start();
-        aiModelRepository.insert(idGenerator.nextId(), "",
-                "http://127.0.0.1:" + llmServer.getAddress().getPort(),
+        String stubBase = "http://127.0.0.1:" + llmServer.getAddress().getPort();
+        aiModelRepository.insert(idGenerator.nextId(), "", stubBase,
                 1, 0, "parity-stub", 0, "gemma3", true, "[]", 1, System.currentTimeMillis());
+        // 问答入口要求存在可用在线向量模型且索引已对齐（决策 14/15）
+        long embeddingModelId = idGenerator.nextId();
+        aiModelRepository.insert(embeddingModelId, "", stubBase, 1, 0, "parity-bge", 1, "bge-m3",
+                false, "[]", 1, System.currentTimeMillis(), true, true, 1, 8);
+        jdbc.update("UPDATE ai_embedding_index_state SET model_id = ?, dimension = 8, status = 'idle' WHERE id = 1",
+                embeddingModelId);
         prepareTargetDatabase();
     }
 
@@ -157,12 +165,12 @@ class PostgresMetadbMigrationTest {
                 "SELECT COUNT(*) FROM information_schema.tables "
                         + "WHERE table_schema = 'public' AND table_type = 'BASE TABLE' "
                         + "AND table_name <> 'flyway_schema_history'", Integer.class);
-        assertEquals(36, tables, "PostgreSQL 空库应迁移出 36 张元数据表");
+        assertEquals(37, tables, "PostgreSQL 空库应迁移出 37 张元数据表");
         assertEquals(1, count("sys_user"));
         assertEquals(12, count("sys_arg"));
         assertEquals(3, count("system_variable"));
         assertEquals(19, count("core_field"));
-        assertEquals(Arrays.asList("1", "2", "3", "4"), jdbc.queryForList(
+        assertEquals(Arrays.asList("1", "2", "3", "4", "5"), jdbc.queryForList(
                 "SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL "
                         + "ORDER BY installed_rank", String.class));
 
@@ -178,8 +186,8 @@ class PostgresMetadbMigrationTest {
         context.setCurrentUser(Rows.of("id", 1L, "account", "admin", "oid", 1L));
         AuthContext.set(context);
         long dsId = Rows.lng(datasourceService.add(Rows.of(
-                "name", "pg parity target", "description", "", "type", "h2",
-                "configuration", h2Configuration(),
+                "name", "pg parity target", "description", "", "type", "mysql",
+                "configuration", mysqlConfiguration(),
                 "tables", Lists.of(Rows.of("table_name", "orders", "table_comment", "订单表")))), "id", 0L);
         long chatId = Rows.lng(chatService.start(Rows.of("datasource", dsId)), "id", 0L);
 
@@ -198,22 +206,40 @@ class PostgresMetadbMigrationTest {
         return value == null ? 0 : value;
     }
 
-    private void prepareTargetDatabase() throws Exception {
-        try (Connection connection = DriverManager.getConnection(TARGET_URL, "sa", "");
-             Statement statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE IF NOT EXISTS \"orders\" (\"id\" BIGINT PRIMARY KEY,"
-                    + " \"user_id\" BIGINT, \"amount\" DECIMAL(10,2), \"status\" VARCHAR(20))");
-            statement.execute("DELETE FROM \"orders\"");
-            statement.execute("INSERT INTO \"orders\" VALUES (1, 100, 99.50, 'PAID'),"
-                    + " (2, 101, 12.00, 'PAID'), (3, 102, 30.00, 'NEW')");
+    private void prepareTargetDatabase() {
+        if (targetJdbc == null) {
+            targetJdbc = MysqlTestSupport.createEmptySchema();
+            targetJdbc.execute("CREATE TABLE orders (id BIGINT PRIMARY KEY,"
+                    + " user_id BIGINT, amount DECIMAL(10,2), status VARCHAR(20))");
         }
+        targetJdbc.update("DELETE FROM orders");
+        targetJdbc.update("INSERT INTO orders VALUES (1, 100, 99.50, 'PAID'),"
+                + " (2, 101, 12.00, 'PAID'), (3, 102, 30.00, 'NEW')");
     }
 
-    private String h2Configuration() {
-        return "{\"host\":\"\",\"port\":0,\"username\":\"sa\",\"password\":\"\",\"database\":\""
-                + TARGET_URL + "\",\"extraJdbc\":\"\",\"dbSchema\":\"\",\"filename\":\"\",\"sheets\":[],"
+    private String mysqlConfiguration() {
+        return "{\"host\":\"" + MysqlTestSupport.host() + "\",\"port\":" + MysqlTestSupport.port()
+                + ",\"username\":\"" + MysqlTestSupport.user() + "\",\"password\":\""
+                + MysqlTestSupport.password() + "\",\"database\":\"" + MysqlTestSupport.schemaName(targetJdbc)
+                + "\",\"extraJdbc\":\"\",\"dbSchema\":\"\",\"filename\":\"\",\"sheets\":[],"
                 + "\"mode\":\"\",\"timeout\":10,\"lowVersion\":false,\"ssl\":false,\"poolSize\":5,"
                 + "\"engine\":\"hive\"}";
+    }
+
+    private void handleEmbeddings(HttpExchange exchange) {
+        try {
+            byte[] body = ("{\"data\":[{\"embedding\":[0.01,0.02,0.03,0.04,0.05,0.06,0.07,0.08]}]}")
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            try (java.io.OutputStream out = exchange.getResponseBody()) {
+                out.write(body);
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        } finally {
+            exchange.close();
+        }
     }
 
     private void handleChatCompletions(HttpExchange exchange) {

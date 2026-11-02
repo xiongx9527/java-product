@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.scheduled;
 
+import com.xiongx9527.askdata.support.MysqlTestSupport;
+
 import com.xiongx9527.askdata.support.MetadbMigration;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -55,22 +57,23 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * A10：定时问数任务端到端集成测试（H2 应用库 + H2 目标库 + 本地模型/推送桩）。
+ * A10：定时问数任务端到端集成测试（真实 MySQL 应用库与目标库 + 本地模型/推送桩）。
  *
  * <p>真实跑通「保存任务 → 立即执行（复用 NL2SQL+执行）→ 导出 CSV → 落运行历史」，
  * 以及启停、失败记录、重试与 webhook 推送。</p>
  */
 class ScheduledTaskIntegrationTest {
 
-    private static final String TARGET_URL = "jdbc:h2:mem:sched_target;MODE=MySQL;DB_CLOSE_DELAY=-1";
-
     private static final String STUB_SQL =
-            "SELECT \"status\", COUNT(*) AS \"cnt\" FROM \"orders\" GROUP BY \"status\" ORDER BY \"cnt\" DESC";
+            "SELECT `status`, COUNT(*) AS `cnt` FROM `orders` GROUP BY `status` ORDER BY `cnt` DESC";
 
     @TempDir
     Path exportDir;
 
     private JdbcTemplate appJdbc;
+
+    /** 被查询的目标 MySQL 库（每次 setUp 新建）。 */
+    private JdbcTemplate targetJdbc;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -86,19 +89,12 @@ class ScheduledTaskIntegrationTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        appJdbc = new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:h2:mem:sched_app_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
-        try (Connection connection = appJdbc.getDataSource().getConnection()) {
-            MetadbMigration.migrate(connection);
-        }
-        try (Connection connection = DriverManager.getConnection(TARGET_URL, "sa", "");
-             Statement statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE IF NOT EXISTS \"orders\" (\"id\" BIGINT PRIMARY KEY,"
-                    + " \"user_id\" BIGINT, \"amount\" DECIMAL(10,2), \"status\" VARCHAR(20))");
-            statement.execute("DELETE FROM \"orders\"");
-            statement.execute("INSERT INTO \"orders\" VALUES (1, 100, 99.50, 'PAID'),"
-                    + " (2, 101, 12.00, 'PAID'), (3, 102, 30.00, 'NEW')");
-        }
+        appJdbc = MysqlTestSupport.createSchema();
+        targetJdbc = MysqlTestSupport.createEmptySchema();
+        targetJdbc.execute("CREATE TABLE orders (id BIGINT PRIMARY KEY,"
+                + " user_id BIGINT, amount DECIMAL(10,2), status VARCHAR(20))");
+        targetJdbc.update("INSERT INTO orders VALUES (1, 100, 99.50, 'PAID'),"
+                + " (2, 101, 12.00, 'PAID'), (3, 102, 30.00, 'NEW')");
 
         JdbcEngine engine = new JdbcEngine(appJdbc, objectMapper);
         IdGenerator idGenerator = new IdGenerator();
@@ -121,12 +117,14 @@ class ScheduledTaskIntegrationTest {
                 new TableEmbeddingService(tableRepository, fieldRepository, modelRouter, modelClient, appJdbc,
                         objectMapper));
 
-        String plain = "{\"host\":\"\",\"port\":0,\"username\":\"sa\",\"password\":\"\",\"database\":\""
-                + TARGET_URL + "\",\"extraJdbc\":\"\",\"dbSchema\":\"\",\"filename\":\"\",\"sheets\":[],"
+        String plain = "{\"host\":\"" + MysqlTestSupport.host() + "\",\"port\":" + MysqlTestSupport.port()
+                + ",\"username\":\"" + MysqlTestSupport.user() + "\",\"password\":\""
+                + MysqlTestSupport.password() + "\",\"database\":\"" + MysqlTestSupport.schemaName(targetJdbc)
+                + "\",\"extraJdbc\":\"\",\"dbSchema\":\"\",\"filename\":\"\",\"sheets\":[],"
                 + "\"mode\":\"\",\"timeout\":10,\"lowVersion\":false,\"ssl\":false,\"poolSize\":5,"
                 + "\"engine\":\"hive\"}";
         dsId = Rows.lng(datasourceService.add(Rows.of(
-                "name", "sched target", "description", "", "type", DatasourceType.H2.getType(),
+                "name", "sched target", "description", "", "type", DatasourceType.MYSQL.getType(),
                 "configuration", com.xiongx9527.askdata.system.auth.CryptoUtil.encryptSqlbot(plain),
                 "tables", Collections.singletonList(
                         Rows.of("table_name", "orders", "table_comment", "订单表")))), "id", 0L);
@@ -282,7 +280,7 @@ class ScheduledTaskIntegrationTest {
 
     private List<String> chunksFor(String prompt) {
         if (prompt.contains("BROKEN")) {
-            return Arrays.asList("```sql\n", "DELETE FROM \"orders\"", "\n```");
+            return Arrays.asList("```sql\n", "DELETE FROM orders", "\n```");
         }
         return Arrays.asList("```sql\n", STUB_SQL, "\n```");
     }
