@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { BASE, authHeaders, login } from './helpers';
+import { BASE, authHeaders, login, mysqlConf } from './helpers';
 
 test.describe('接口层（登录后带 token 调用）', () => {
   test('登录健康检查可用', async ({ request }) => {
@@ -30,31 +30,15 @@ test.describe('接口层（登录后带 token 调用）', () => {
     expect([401, 403]).toContain(response.status());
   });
 
-  test('数据源增删闭环（H2 指向应用库）', async ({ page, request }) => {
+  test('数据源增删闭环（MySQL 指向应用库）', async ({ page, request }) => {
     const token = await login(page);
     const headers = authHeaders(token);
-    const name = 'e2e-h2-' + Date.now();
-    const configuration = JSON.stringify({
-      host: '',
-      port: 0,
-      username: 'sa',
-      password: '',
-      database: 'jdbc:h2:file:./data/e2e;MODE=MySQL',
-      extraJdbc: '',
-      dbSchema: '',
-      filename: '',
-      sheets: [],
-      mode: '',
-      timeout: 10,
-      lowVersion: false,
-      ssl: false,
-      poolSize: 5,
-      engine: 'hive',
-    });
+    const name = 'e2e-mysql-' + Date.now();
+    const configuration = mysqlConf();
 
     const created = await request.post(BASE + '/api/v1/datasource/add', {
       headers,
-      data: { name, description: 'e2e', type: 'h2', configuration, tables: [] },
+      data: { name, description: 'e2e', type: 'mysql', configuration, tables: [] },
     });
     expect(created.status()).toBe(200);
     const createdBody = await created.json();

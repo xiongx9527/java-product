@@ -4,7 +4,7 @@
 
 ## 前置
 
-1. 启动后端（默认 8000，H2 文件库）：
+1. 启动后端（默认 8000，元数据库使用 MySQL 8.0+/MariaDB 或 PostgreSQL 10+；H2 文件库已移除）：
    \`\`\`bash
    cd askdata/askdata-server
    mvn spring-boot:run
@@ -23,7 +23,7 @@ npm test                       # 全部
 npx playwright test tests/login.spec.ts
 \`\`\`
 
-默认账号 \`admin / SQLBot@123456\`（H2 初始化种子）。测试会自行创建并清理数据源与定时任务。
+默认账号 \`admin / SQLBot@123456\`（数据库初始化种子）。测试会自行创建并清理数据源与定时任务。
 
 ## 覆盖范围
 
@@ -33,9 +33,37 @@ npx playwright test tests/login.spec.ts
 | \`tests/routes.spec.ts\` | 15 个主路由逐页渲染 + 无未捕获 JS 异常 |
 | \`tests/api.spec.ts\` | 健康检查、用户信息、数据源/会话列表、未授权拦截、数据源增删闭环 |
 | \`tests/scheduled.spec.ts\` | 定时任务创建 → 立即执行 → 运行历史 → 停用 → 删除 |
+| `tests/aimodel.spec.ts` | AI 模型配置：新增/编辑/搜索/删除闭环、默认模型保护；stub provider 驱动验证远程拉取（source=remote/preset/none）、连通校验（401→不可用/200→可用）、向量校验命中 `/v1/embeddings`、上游格式 Anthropic 命中 `/v1/messages`、五语言切换 |
 | \`tests/chat-real.spec.ts\` | 真实问数闭环：选真实库 → 提问 → SSE 帧（sql/sql-data/chart/imageUrl）→ 落库数据 → 图表渲染与图片下载 |
 
 > 说明：\`/#/set/assistant\` 在 \`web/src/router/index.ts\` 中被注释，未纳入路由冒烟。
+
+### AI 模型配置用例与 stub provider
+
+`tests/aimodel.spec.ts` 中「AI 模型配置（stub provider）」描述下的用例，使用 `e2e/stub-provider.mjs` 在测试进程内启动一个本地 HTTP 服务（监听 127.0.0.1 随机端口），不依赖任何真实 API Key：
+
+- `startStub()` 返回 `{ url, port, setMode(m), resetHits(), hits(), close() }`；
+- `setMode('ok' | 'unauthorized' | 'notfound' | 'empty')` 控制上游行为；
+- 业务路径（仅 `/v1/*`）会被记录，可通过 `hits()` 断言前端实际命中的上游端点。
+
+覆盖点（与控制器契约 `POST /system/aimodel/models`、`POST /system/aimodel/status` 对齐）：
+
+| 场景 | stub 模式 | 断言 |
+| --- | --- | --- |
+| 远程拉取成功 | ok | 基础模型选择出现「远程」标签，唯一模型自动选中 |
+| 上游 404 回退 | notfound（内置供应商） | 出现「预设」标签 |
+| 自定义供应商不可达 | notfound（自定义） | 无兜底，展示错误提示 |
+| 连通校验失败 | unauthorized | 卡片标记「不可用」，默认模型按钮置灰 |
+| 连通校验成功 | ok | 卡片标记「可用」 |
+| 向量模型校验 | ok | 命中 `/v1/embeddings` |
+| 上游格式 Anthropic | ok | 命中 `/v1/messages` 而非 `/v1/chat/completions` |
+| 五语言切换 | - | 自定义供应商名称随 locale 变化（自定义 / Custom / …） |
+
+运行：
+
+~~~bash
+npx playwright test tests/aimodel.spec.ts
+~~~
 
 ### chat-real 的前置
 
@@ -70,7 +98,7 @@ chat-real.spec.ts 与 run-real-e2e.mjs 都依赖真实对话大模型与真实�
 - Playwright：CI 默认只跑不依赖真实模型的用例；真实问数用例用环境变量门控，
   例如 E2E_REAL=1 npx playwright test tests/chat-real.spec.ts，CI 不设置 E2E_REAL 即跳过。
 - run-real-e2e.mjs：仅在具备真实模型/数据源的 Runner 上手动或定时执行，不进入 mvn test 或默认 CI。
-- 其余用例（login/routes/api/scheduled）仅依赖 H2 文件库，可在 CI 默认执行。
+- 其余用例（login/routes/api/scheduled/aimodel）依赖本地元数据库（MySQL/PostgreSQL），不依赖真实对话大模型，可在 CI 默认执行（aimodel 的 stub 用例另需后端在线）。
 
 模型输出具有不确定性：真实问数断言只校验结构/契约（SSE 帧类型、数据非空、图表配置含 multi-quota 等），
 不校验固定文本。

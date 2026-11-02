@@ -1,21 +1,16 @@
 import { test, expect } from '@playwright/test';
-import { BASE, authHeaders, login } from './helpers';
+import { BASE, authHeaders, login, mysqlConf } from './helpers';
 
 test.describe('定时任务（A10）端到端', () => {
   test('创建 → 立即执行 → 历史 → 停用 → 删除', async ({ page, request }) => {
     const token = await login(page);
     const headers = authHeaders(token);
 
-    // 先建一个 H2 数据源（指向应用库）
+    // 先建一个 MySQL 数据源（指向应用库）
     const dsName = 'e2e-sched-' + Date.now();
-    const configuration = JSON.stringify({
-      host: '', port: 0, username: 'sa', password: '',
-      database: 'jdbc:h2:file:./data/e2e;MODE=MySQL',
-      extraJdbc: '', dbSchema: '', filename: '', sheets: [], mode: '',
-      timeout: 10, lowVersion: false, ssl: false, poolSize: 5, engine: 'hive',
-    });
+    const configuration = mysqlConf();
     const dsCreated = await request.post(BASE + '/api/v1/datasource/add', {
-      headers, data: { name: dsName, description: 'e2e', type: 'h2', configuration, tables: [] },
+      headers, data: { name: dsName, description: 'e2e', type: 'mysql', configuration, tables: [] },
     });
     expect(dsCreated.status()).toBe(200);
     const dsBody = await dsCreated.json();

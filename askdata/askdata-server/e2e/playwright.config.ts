@@ -12,7 +12,7 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:8000',
     headless: true,
     channel: 'chrome',
-    launchOptions: { args: ['--no-proxy-server'] },
+    launchOptions: { args: ['--no-proxy-server', '--disable-dev-shm-usage', '--disable-gpu'] },
     screenshot: 'only-on-failure',
     trace: 'off',
     viewport: { width: 1440, height: 900 },
