@@ -498,7 +498,7 @@
     "model_name": "模型名稱",
     "custom_model_name": "自訂的模型名稱",
     "enter_to_add": "清單中未列出的模型，直接輸入模型名稱，Enter 即可新增",
-    "api_domain_name": "API 網域",
+    "api_domain_name": "Base URL（API 網域）",
     "advanced_settings": "進階設定",
     "model_parameters": "模型參數",
     "add": "新增",
@@ -1010,7 +1010,9 @@
     "status_enabled": "已啟用",
     "status_disabled": "未啟用",
     "default_switch_tip": "切換預設向量模型需要重新向量化，並影響所有工作空間",
-    "embedding_missing": "未設定可用的線上向量模型"
+    "embedding_missing": "未設定可用的線上向量模型",
+    "test_connection": "測試連線",
+    "test_success": "連線成功"
   },
   "modelType": {
     "embedding": "向量模型",

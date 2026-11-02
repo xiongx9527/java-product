@@ -18,9 +18,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
-        "askdata.debounce.enabled=true",
+        "fw.plus.debounce.enabled=true",
         "askdata.cache.type=memory",
-        "askdata.debounce.window-ms=5000"
+        "fw.plus.debounce.window-ms=5000",
+        "fw.plus.debounce.cache-name=askdata:debounce"
 })
 @AutoConfigureMockMvc
 class DebounceIntegrationTest {

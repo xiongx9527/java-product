@@ -3,8 +3,7 @@ package com.xiongx9527.askdata.config;
 import com.xiongx9527.askdata.common.util.Maps;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
-import com.xiongx9527.askdata.common.cache.CacheNames;
-import com.xiongx9527.askdata.common.debounce.DebounceProperties;
+import com.xiongx9527.fw.plus.common.debounce.DebounceProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -81,7 +80,7 @@ public class CacheConfig {
                 .expireAfterWrite(Duration.ofSeconds(Math.max(1L, properties.getTtlSeconds())))
                 .maximumSize(Math.max(1L, properties.getMaxSize())));
         // 防抖缓存的 TTL 取防抖窗口（与其它缓存的默认 TTL 不同）
-        manager.registerCustomCache(CacheNames.REQUEST_DEBOUNCE, Caffeine.newBuilder()
+        manager.registerCustomCache(debounceProperties.getCacheName(), Caffeine.newBuilder()
                 .expireAfterWrite(Duration.ofMillis(debounceWindowMs()))
                 .maximumSize(Math.max(1L, properties.getMaxSize()))
                 .build());
@@ -115,7 +114,7 @@ public class CacheConfig {
         return RedisCacheManager.builder(factory)
                 .cacheDefaults(config)
                 // 防抖缓存的 TTL 取防抖窗口（与其它缓存的默认 TTL 不同）
-                .withInitialCacheConfigurations(Maps.of(CacheNames.REQUEST_DEBOUNCE, debounceConfig))
+                .withInitialCacheConfigurations(Maps.of(debounceProperties.getCacheName(), debounceConfig))
                 .transactionAware()
                 .build();
     }

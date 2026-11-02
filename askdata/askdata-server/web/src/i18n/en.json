@@ -498,7 +498,7 @@
     "model_name": "Model name",
     "custom_model_name": "Custom model name",
     "enter_to_add": "For models not listed in the list, just enter the model name and press Enter to add",
-    "api_domain_name": "API domain name",
+    "api_domain_name": "Base URL",
     "advanced_settings": "Advanced settings",
     "model_parameters": "Model parameters",
     "add": "Add",
@@ -1010,7 +1010,9 @@
     "status_enabled": "Enabled",
     "status_disabled": "Disabled",
     "default_switch_tip": "Switching the default embedding model requires re-vectorizing all workspaces",
-    "embedding_missing": "No online embedding model is configured"
+    "embedding_missing": "No online embedding model is configured",
+    "test_connection": "Test connection",
+    "test_success": "Connection succeeded"
   },
   "modelType": {
     "embedding": "Embedding model",

@@ -158,18 +158,22 @@ askdata:
 
 ## 接口防抖
 
-同一「调用方 + 接口」在窗口内只放行一次，重复请求直接返回 429（带 `Retry-After`）：
+在控制器方法上标注 `@Debounce`，同一「接口 + 调用方（+ 可选参数/SpEL）」在窗口内只放行一次，重复请求返回 429（带 `Retry-After`）：
 
 ```yaml
-askdata:
-  debounce:
-    enabled: ${ASKDATA_DEBOUNCE_ENABLED:false}   # 缺省关闭
-    window-ms: ${ASKDATA_DEBOUNCE_WINDOW_MS:1000}  # 防抖窗口
-    paths: ${ASKDATA_DEBOUNCE_PATHS:}              # Ant 风格路径；为空表示全部
+fw:
+  plus:
+    debounce:
+      enabled: ${ASKDATA_DEBOUNCE_ENABLED:false}      # 缺省关闭
+      window-ms: ${ASKDATA_DEBOUNCE_WINDOW_MS:1000}   # 默认防抖窗口
+      cache-name: "askdata:debounce"                  # 占位缓存区域名
+      redis-key-prefix: "askdata:debounce:slot:"      # Redis 键前缀
 ```
 
-- 调用方识别：优先取鉴权头（`X-SQLBOT-TOKEN` / `X-SQLBOT-ASK-TOKEN` / `X-SQLBOT-ASSISTANT-TOKEN`）的摘要，无则用来源 IP。
-- 后端复用缓存层：`memory` 为单实例防抖，`redis` 为多实例全局防抖。
+- 维度由注解决定：`@Debounce(user = true, args = {...}, spel = {...}, windowMs = ...)`；`windowMs > 0` 时覆盖全局窗口。
+- 调用方由 `config/DebounceConfig.java` 的 `DebounceUserResolver` 提供（`CurrentUserService.uid()`，覆盖 Sa-Token 主通道与 API Key / 嵌入助手支线）；取不到时回退 `anon`。
+- 后端跟随缓存层：`askdata.cache.type=memory` 为单实例 Cache 占位，`redis` 为多实例 Lua 原子占位。
+- 防抖内核在框架 `fw-plus-boot-autoconfigure`（注解 / 配置 / SPI 在 `fw-plus-common`），产品只保留接线。
 
 ## 缓存（后端可配置）
 

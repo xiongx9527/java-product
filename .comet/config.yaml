@@ -54,3 +54,5 @@ classic:
   # Classic 阶段通过后是否自动进入下一阶段。
   # 可选值：true | false
   auto_transition: true
+  # Classic 构建/验收检查超时（毫秒）；默认 300000，1120 用例全量测试需要更长。
+  check_timeout_ms: 1800000

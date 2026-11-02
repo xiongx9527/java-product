@@ -1,6 +1,7 @@
 package com.xiongx9527.askdata.common.debounce;
 
 import com.xiongx9527.askdata.common.web.Result;
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;

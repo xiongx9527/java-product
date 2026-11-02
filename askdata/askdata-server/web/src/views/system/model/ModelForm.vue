@@ -1,6 +1,5 @@
 <script lang="ts" setup>
 import { ref, reactive, onMounted, nextTick, computed } from 'vue'
-import arrow_down from '@/assets/svg/arrow-down.svg'
 import dashboard_info from '@/assets/svg/dashboard-info.svg'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import icon_delete from '@/assets/svg/icon_delete.svg'
@@ -51,8 +50,58 @@ const modelRef = ref()
 const paramsFormRef = ref()
 const advancedSetting = ref([] as ParamsFormData[])
 const paramsFormDrawer = ref(false)
-const configExpand = ref(true)
 let tempConfigMap = new Map<string, Array<any>>()
+
+// 12.12 表单内「测试连接」：对当前填写的接入参数做连通校验（保存前即可验证）
+const testing = ref(false)
+const testConnection = async () => {
+  if (!modelForm.api_domain) {
+    ElMessage.warning(t('datasource.please_enter') + t('model.api_domain_name'))
+    return
+  }
+  testing.value = true
+  try {
+    const response: any = await modelApi.check({
+      api_domain: modelForm.api_domain,
+      api_key: modelForm.api_key,
+      full_url: modelForm.full_url,
+      upstream_format: modelForm.upstream_format,
+      supplier: modelForm.supplier,
+      model_type: modelForm.model_type,
+      base_model: modelForm.base_model,
+    })
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let checkMsg = ''
+    let timeout = false
+    const timer = setTimeout(() => {
+      timeout = true
+    }, 9000)
+    while (true) {
+      if (timeout) break
+      const { done, value } = await reader.read()
+      if (done) break
+      const lines = decoder.decode(value).trim().split('\n')
+      for (const line of lines) {
+        if (!line) continue
+        const data = JSON.parse(line)
+        if (data.error) checkMsg += data.error
+        else if (data.content) console.debug(data.content)
+      }
+    }
+    clearTimeout(timer)
+    if (checkMsg) {
+      ElMessage.error(checkMsg)
+      return
+    }
+    ElMessage.success(t('modelCfg.test_success'))
+    modelForm.valid = 1
+  } catch (e: any) {
+    ElMessage.error(String(e?.message || e))
+  } finally {
+    testing.value = false
+  }
+}
 
 const modelSelected = computed(() => {
   return !!modelForm.base_model
@@ -443,6 +492,12 @@ defineExpose({
               show-password
             />
           </el-form-item>
+          <!-- 测试连接：保存前即可验证接入参数连通性 -->
+          <div v-if="modelForm.supplier" class="base-model-actions test-action">
+            <el-button size="small" :loading="testing" @click="testConnection">
+              {{ t('modelCfg.test_connection') }}
+            </el-button>
+          </div>
           <!-- 模型类型：新建默认 LLM；编辑态只读；按上游格式置灰向量 -->
           <el-form-item prop="type" :label="t('model.model_type')">
             <el-select
@@ -463,7 +518,6 @@ defineExpose({
           <el-form-item class="custom-require" prop="base_model">
             <template #label
               ><span class="custom-require_danger">{{ t('model.basic_model') }}</span>
-              <span class="enter">{{ t('model.enter_to_add') }}</span>
             </template>
             <el-select
               v-model="modelForm['base_model']"
@@ -489,6 +543,7 @@ defineExpose({
               >
                 {{ t('model.pull_models') }}
               </el-button>
+              <span class="enter">{{ t('model.enter_to_add') }}</span>
               <el-tag v-if="pullSource === 'remote'" size="small" type="success">
                 {{ t('modelCfg.source_remote') }}
               </el-tag>
@@ -518,19 +573,11 @@ defineExpose({
             />
           </el-form-item>
         </el-form>
-        <!-- 高级配置：单一折叠区（12.6）--> 
-        <div
-          v-if="modelSelected"
-          class="advance-setting"
-          :class="configExpand && 'expand'"
-          @click="configExpand = !configExpand"
-        >
+        <!-- 高级配置：常驻展示，不再折叠（12.6）-->
+        <div v-if="modelSelected" class="advance-setting">
           {{ t('model.advanced_settings') }}
-          <el-icon size="16">
-            <arrow_down></arrow_down>
-          </el-icon>
         </div>
-        <div v-if="modelSelected && configExpand" class="advanced-body">
+        <div v-if="modelSelected" class="advanced-body">
           <!-- 上游格式 -->
           <el-form-item :label="t('modelCfg.format')">
             <el-select v-model="modelForm.upstream_format" style="width: 100%" @change="onUpstreamFormatChange">
@@ -702,17 +749,12 @@ defineExpose({
         font-weight: 500;
         font-size: 14px;
         line-height: 22px;
-        cursor: pointer;
+        margin-top: 8px;
+      }
 
-        .ed-icon {
-          margin-left: 8px;
-        }
-
-        &.expand {
-          .ed-icon {
-            transform: rotate(180deg);
-          }
-        }
+      .test-action {
+        margin-top: -8px;
+        margin-bottom: 16px;
       }
 
       .advanced-body {

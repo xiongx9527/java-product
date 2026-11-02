@@ -515,6 +515,7 @@ const submit = (item: any) => {
             :is-default="ele['default_model']"
             :valid="ele['valid']"
             :enable="ele['enable']"
+            :model-type-raw="ele['model_type']"
             @edit="handleEditModel(ele)"
             @del="deleteHandler"
             @default="handleDefault(ele)"

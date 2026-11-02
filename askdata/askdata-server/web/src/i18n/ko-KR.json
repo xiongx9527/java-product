@@ -498,7 +498,7 @@
     "model_name": "모델 이름",
     "custom_model_name": "사용자 정의 모델 이름",
     "enter_to_add": "목록에 없는 모델은 모델 이름을 직접 입력한 후 Enter 키를 눌러 추가할 수 있습니다",
-    "api_domain_name": "API 도메인명",
+    "api_domain_name": "Base URL",
     "advanced_settings": "고급 설정",
     "model_parameters": "모델 매개변수",
     "add": "추가",
@@ -1010,7 +1010,9 @@
     "status_enabled": "활성화됨",
     "status_disabled": "비활성화됨",
     "default_switch_tip": "기본 임베딩 모델을 전환하면 모든 작업 공간을 다시 벡터화해야 합니다",
-    "embedding_missing": "사용 가능한 온라인 임베딩 모델이 없습니다"
+    "embedding_missing": "사용 가능한 온라인 임베딩 모델이 없습니다",
+    "test_connection": "연결 테스트",
+    "test_success": "연결 성공"
   },
   "modelType": {
     "embedding": "임베딩 모델",

@@ -18,6 +18,7 @@ const props = withDefaults(
     num?: number
     valid?: boolean
     enable?: boolean
+    modelTypeRaw?: number
   }>(),
   {
     name: '-',
@@ -29,8 +30,11 @@ const props = withDefaults(
     num: 0,
     valid: false,
     enable: false,
+    modelTypeRaw: 0,
   }
 )
+// 13.7 仅大语言模型（model_type=0）可授权工作空间；向量模型不允许授权
+const isLLM = computed(() => props.modelTypeRaw === 0)
 const errorMsg = ref('')
 const current_supplier = computed(() => {
   if (!props.supplier) {
@@ -193,7 +197,7 @@ defineExpose({ showErrorMask })
         placement="bottom-start"
       >
         <div class="content">
-          <div class="item" @click.stop="handleAuthorizedSpace">
+          <div v-if="isLLM" class="item" @click.stop="handleAuthorizedSpace">
             <el-icon size="16">
               <icon_moments_categories_outlined></icon_moments_categories_outlined>
             </el-icon>

@@ -1,6 +1,7 @@
 package com.xiongx9527.askdata.common.debounce;
 
 import com.xiongx9527.askdata.scheduled.ScheduledTaskController;
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;

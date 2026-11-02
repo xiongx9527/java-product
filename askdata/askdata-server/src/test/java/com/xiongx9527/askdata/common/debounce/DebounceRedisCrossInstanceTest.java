@@ -1,6 +1,10 @@
 package com.xiongx9527.askdata.common.debounce;
 
-import com.xiongx9527.askdata.config.CacheProperties;
+import com.xiongx9527.fw.plus.boot.autoconfigure.debounce.RedisDebounceSlot;
+import com.xiongx9527.fw.plus.boot.autoconfigure.debounce.RequestDebouncer;
+import com.xiongx9527.fw.plus.common.debounce.DebounceBackendResolver;
+import com.xiongx9527.fw.plus.common.debounce.DebounceProperties;
+import com.xiongx9527.fw.plus.common.debounce.DebounceSlot;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -208,10 +212,11 @@ class DebounceRedisCrossInstanceTest {
         StringRedisTemplate template = new StringRedisTemplate(factory);
         template.afterPropertiesSet();
         StaticListableBeanFactory beans = new StaticListableBeanFactory();
-        beans.addBean("stringRedisTemplate", template);
-        ObjectProvider<StringRedisTemplate> provider = beans.getBeanProvider(StringRedisTemplate.class);
-        CacheProperties cacheProperties = new CacheProperties();
-        cacheProperties.setType(CacheProperties.TYPE_REDIS);
-        return new RequestDebouncer(cacheManager, properties, cacheProperties, provider);
+        beans.addBean("redisDebounceSlot", new RedisDebounceSlot(template));
+        beans.addBean("debounceBackendResolver", (DebounceBackendResolver) () -> true);
+        ObjectProvider<DebounceSlot> slotProvider = beans.getBeanProvider(DebounceSlot.class);
+        ObjectProvider<DebounceBackendResolver> resolverProvider =
+                beans.getBeanProvider(DebounceBackendResolver.class);
+        return new RequestDebouncer(cacheManager, properties, slotProvider, resolverProvider);
     }
 }
