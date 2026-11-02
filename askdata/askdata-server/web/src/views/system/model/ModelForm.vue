@@ -473,7 +473,7 @@ defineExpose({
             />
           </el-form-item>
           <!-- Base URL（API 域名） -->
-          <el-form-item v-if="modelForm.supplier" prop="api_domain" :label="t('model.api_domain_name')">
+          <el-form-item prop="api_domain" :label="t('model.api_domain_name')">
             <el-input
               v-model="modelForm.api_domain"
               clearable
