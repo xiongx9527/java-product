@@ -1,7 +1,10 @@
 # 元数据库与 Flyway 迁移（A9）
 
 askdata 的元数据库（登录、会话、数据源、权限等系统表）由 Flyway 版本化迁移统一管理。
-H2、PostgreSQL、MySQL 均可从**空库**启动：Flyway 先执行当前方言 baseline，再写入 common 种子。
+**主库只支持 MySQL（含 MariaDB 等衍生版本）与 PostgreSQL**：启动迁移前由
+`MetadataDatabaseGuard` 读取真实数据库产品与版本，MySQL < 8.0、MariaDB < 10.2、
+PostgreSQL < 10、H2 以及其它产品直接拒绝启动并给出明确提示（Flyway 社区版对 MySQL 5.7
+只报 Teams 版文案）。H2 已完全移除：既不是元数据库，也不再是数据源类型。
 运行期不再执行 `schema.sql`（文件已删除，`spring.sql.init.mode=never`）。
 
 ## 迁移脚本布局
@@ -10,8 +13,6 @@ H2、PostgreSQL、MySQL 均可从**空库**启动：Flyway 先执行当前方言
 askdata/askdata-server/src/main/resources/db/migration/
 ├── common/
 │   └── V2__seed.sql            # 方言无关种子：管理员、工作空间、系统参数、演示数据源/表/字段
-├── h2/
-│   └── V1__baseline.sql        # H2 完整建表（35 张表）
 ├── postgresql/
 │   └── V1__baseline.sql        # PostgreSQL 完整建表（TEXT / INTEGER / identity）
 └── mysql/
@@ -32,28 +33,17 @@ spring:
       mode: never
 ```
 
-`{vendor}` 由 Flyway 按 JDBC URL 解析为 `h2` / `postgresql` / `mysql`，因此切换库不需要改 SQL 路径。
+`{vendor}` 由 Flyway 按 JDBC URL 解析为 `postgresql` / `mysql`；两者都是受支持的部署选项。
 
-### 空库与旧 H2 库
+### 空库与旧库
 
 - **空库**：没有 `flyway_schema_history` 且没有业务表 → 执行 `V1__baseline.sql` 后再执行
   `V2__seed.sql`，迁移版本到达 v2。
-- **schema.sql 时代的旧 H2 库**：已有业务表但没有 Flyway 历史 → `baseline-on-migrate` 以
+- **schema.sql 时代的旧库**：已有业务表但没有 Flyway 历史 → `baseline-on-migrate` 以
   **v2** 为基线，只创建 `flyway_schema_history` 并标记 V1/V2 已应用，不会重复建表或重复插入种子。
 - 新环境不要手工建表，只需提供空数据库/空 schema。
 
 ## 切换元数据库
-
-### H2（默认）
-
-```yaml
-spring:
-  datasource:
-    url: jdbc:h2:file:./data/askdata;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE
-    driver-class-name: org.h2.Driver
-    username: sa
-    password: ""
-```
 
 ### PostgreSQL
 
@@ -112,26 +102,27 @@ java -jar askdata-server.jar
 ## 测试与验收
 
 ```bash
-# H2：现有 Spring/非 Spring 测试统一通过 MetadbMigration 执行 Flyway
-mvn -pl askdata/askdata-server -Dmaven.test.skip=false -Dtest=ChatContextLoadTest test
+# MySQL：真实 MySQL 8（每个测试类一个临时 schema，MysqlTestSupport 建库+迁移+删除）
+ASKDATA_IT_MYSQL_URL=jdbc:mysql://127.0.0.1:3307 \
+ASKDATA_IT_MYSQL_USER=root ASKDATA_IT_MYSQL_PASSWORD='***' \
+mvn -pl askdata/askdata-server -Dtest=MysqlMetadbDialectTest test
 
 # PostgreSQL：embedded-postgres 真库（无需 Docker / 本机 psql）
-mvn -pl askdata/askdata-server -Dmaven.test.skip=false -Dtest=PostgresMetadbMigrationTest test
-
-# MySQL：H2 MODE=MySQL 方言单测（无真实 MySQL 实例）
-mvn -pl askdata/askdata-server -Dmaven.test.skip=false -Dtest=MysqlMetadbDialectTest test
+mvn -pl askdata/askdata-server -Dtest=PostgresMetadbMigrationTest test
 ```
 
 - `PostgresMetadbMigrationTest`：空 PostgreSQL → Flyway 建表/种子 → 种子管理员登录 →
   一次问数（SQL 生成/执行/表格数据）。
-- `MysqlMetadbDialectTest`：在 H2 `MODE=MySQL` 上完整执行 MySQL baseline + common 种子，
+- `MysqlMetadbDialectTest`：在真实 MySQL 8 的临时 schema 上完整执行 MySQL baseline + common 种子，
   并静态校验 `utf8mb4` / `LONGTEXT` / 不复用 PostgreSQL identity 等方言差异。
 - `MetadbMigration`（测试支持类）：把历史测试的 `schema.sql` 执行替换为同一套 Flyway 迁移，
-  确保测试与运行时使用完全相同的脚本。
+  确保测试与运行时使用完全相同的脚本；方言必须显式传入（不存在默认方言）。
+- `MysqlTestSupport`：真实 MySQL 测试基建（`createSchema()` / `createEmptySchema()` /
+  `bindSpringDatasource()`），不可达时整类 assume-skip 并在报告里给出配置方式。
 
 ## WORKER_NODE
 
 框架 UID 生成器通过 `WORKER_NODE` 表分配 worker id。框架自带的
 `DisposableWorkerIdAssigner` 用 `setObject(Date)` 写时间列，PostgreSQL JDBC 无法推断类型；
 项目提供 `PortableWorkerIdAssigner` 显式绑定 `String`/`Timestamp`，三种元数据库均可启动。
-表结构保持 `launch_date VARCHAR(64)`、`created/modified TIMESTAMP`，兼容历史 H2 库。
+表结构保持 `launch_date VARCHAR(64)`、`created/modified TIMESTAMP`，兼容历史库。

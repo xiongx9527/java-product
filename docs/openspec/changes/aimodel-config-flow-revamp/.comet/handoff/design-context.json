@@ -1,0 +1,17 @@
+{
+  "change": "aimodel-config-flow-revamp",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "task_hash_policy": "task-content-v1",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "bad4986e8d15b6566d115fe4d29212cbaad0b9707b47f8cedc03cfd14ddc9f8b",
+  "files": [
+    { "path": "docs/openspec/changes/aimodel-config-flow-revamp/proposal.md", "sha256": "5f10e79681d84cd4a91f680133872337bcdc4c77ca2ab30425921f16c92d3eb0" },
+    { "path": "docs/openspec/changes/aimodel-config-flow-revamp/design.md", "sha256": "408f684a895ab127129073f8006b8caa75106c0b2279284227c2373be380d4ed" },
+    { "path": "docs/openspec/changes/aimodel-config-flow-revamp/tasks.md", "sha256": "ac38135fd4d036b434d00c80ba8f54525643e65ec26dce37cd20003b5b0044c0" },
+    { "path": "docs/openspec/changes/aimodel-config-flow-revamp/.openspec.yaml", "sha256": "108f7b3dae33488206672f31b510275110c0194c93062eb1970e19ca60c08722" },
+    { "path": "docs/openspec/changes/aimodel-config-flow-revamp/specs/ai-model-configuration/spec.md", "sha256": "3d73bcf49882e7fc3b19da1fd16979458263a07b5fde9b30e9b53964a21ba72b" },
+    { "path": "docs/openspec/changes/aimodel-config-flow-revamp/specs/ai-model-connectivity/spec.md", "sha256": "f5e91505693f323c7476f51626614498d1e0c7405f2b7720380d17c6733b76a9" }
+  ]
+}

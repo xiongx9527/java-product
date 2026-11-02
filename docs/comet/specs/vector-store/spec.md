@@ -1,88 +1,117 @@
-# Vector Store 能力规格（askdata-runtime-configurable）
+# Vector Store 能力规格（askdata 在线向量库）
 
 ## 概述
 
-askdata 通过统一的 VectorStore 抽象管理术语、SQL 示例、表、数据源四类对象的向量存储与相似度召回。向量由现有 embedding 模型（远程 / 本地 ONNX）产出；VectorStore 仅负责持久化与最近邻检索。在线向量库启用时作为唯一存储后端，替代现有 DB embedding JSON 列加应用内余弦；未启用时回落既有路径。
+askdata 通过统一的 VectorStore 抽象管理术语、SQL 示例、表、数据源四类对象的向量持久化与最近邻召回。
+向量由在线 embedding 模型（`ai_model.model_type=1` 且 `enable=1`、`valid=1`）产出；VectorStore 只负责
+持久化与检索，不关心向量如何生成。
+
+**在线向量库是唯一存储**：向量不落 DB 的 `embedding` / `table_embedding` JSON 列，也不存在「在线库不可达
+就退回应用内余弦」的回落路径。同一份向量只能有一个真相，否则切换维度或迁移集合时会静默漏召回。
 
 ## 配置
 
-- askdata.vector-store.type：none（默认）| qdrant | milvus
-- askdata.vector-store.qdrant.url：Qdrant REST 基址，如 http://qdrant:6333（仅用于健康检查）
-- askdata.vector-store.qdrant.api-key：可选
-- askdata.vector-store.qdrant.grpc-port：gRPC 端口，缺省 6334（与 REST 相互独立；向量读写走此端口）
-- askdata.vector-store.milvus.host / port：Milvus gRPC 地址（缺省 19530）；token / database / health-url / metric-type / index-type / consistency-level 可选
-- askdata.vector-store.collection-prefix：集合名前缀，缺省 askdata
-- 保留 askdata.embedding.model-path 与 askdata.embedding.backfill-enabled
+- `askdata.vector-store.type`：后端类型，缺省 `qdrant`（当前唯一实现）。
+- `askdata.vector-store.collection-prefix`：集合名前缀，缺省 `askdata`；集合名 = `{prefix}-{object-type}`。
+- `askdata.vector-store.qdrant.url`：Qdrant REST 基址，如 `http://qdrant:6333`；必填。
+- `askdata.vector-store.qdrant.api-key`：可选，Qdrant 开启鉴权时必填。
+- `askdata.embedding.backfill-enabled`：启动期回填开关，缺省开启。
+- 已移除：`askdata.vector-store.qdrant.grpc-port`、`askdata.vector-store.milvus.*` 等其它后端配置，
+  以及 `askdata.embedding.model-path`（本地 ONNX 模型已删除）。
 
 ## 抽象契约（VectorStore）
 
-- ensureCollection(name, dimension)：集合不存在则创建（cosine 距离，维度与向量一致）。
-- upsert(collection, id, vector, payload)：写入 / 更新单条向量与载荷。
-- query(collection, vector, topK, filter)：返回按相似度降序的命中（id + score）。
-- delete(collection, id)：删除单条。
-- health()：连通性探测；不可用时返回 false。
+- `collectionPrefix()` / `collectionFor(objectType)`：集合名前缀与命名。
+- `ensureCollection(collection, dimension)`：集合不存在则创建（cosine 距离）；已存在但维度不同则**抛错**，
+  不删除集合。写入路径绝不隐式删数据。
+- `dropCollection(collection)`：删除集合（不存在视为成功）。**只允许显式重建调用**。
+- `upsert(collection, id, vector)`：写入 / 更新单条向量，id 即 point id，重复写入覆盖。
+- `query(collection, vector, topK, candidateIds)`：按相似度降序返回 id + score；`candidateIds` 非空时服务端过滤。
+- `delete(collection, id)`：删除单条。
+- `health()`：连通性探测，不可用返回 false。
 
 ## 行为
 
-- 当 type 不等于 none 且 health 通过：EmbeddingService.writeEmbedding / recallByVector 委托给在线 VectorStore；DB embedding 列不再参与召回。
-- 当 type 等于 none 或在线库不可达：回落 DbVectorStore（DB JSON 列 + 应用内余弦），保持现有行为；不抛异常。
-- 无可用 embedding 模型：向量为 null，召回回落词法（现有行为）。
-- 集合命名：{collection-prefix}-{object-type}；object-type 属于 terminology、data_training、core_table、core_datasource；payload 仅存 id 与必要过滤字段。
+- 写入：`EmbeddingService.writeEmbedding` 只调用在线 VectorStore；不写 DB 向量列。
+- 召回：`recallByVector` / `vectorScores` 只查在线库；候选行不再以 `embedding IS NOT NULL` 过滤。
+- 失败：在线库不可达时写入返回 false、召回返回空表，调用方降级为词法召回并记日志；**不抛到主链路，
+  也不写本地**。
+- 维度不一致：`ensureCollection` 抛错，`writeEmbedding` 返回 false 并记 warn；既有集合与向量保持不动。
+  `EmbeddingService` 会记住「该集合 + 该维度」已知损坏并短路后续写入（回填上千行不刷屏），
+  只有显式重建才清除该状态。
+- 显式重建：`EmbeddingIndexService.rebuild` 先调用 `EmbeddingService.resetCollections` 删除四类集合
+  （全量重算，旧 point 一律作废），再逐工作空间回填；维度切换后无需人工删集合。
+- 无可用 embedding 模型：`embed` 返回 null，问答入口按统一错误阻断（见模型配置规格）。
+- 模型解析缓存：`ChatModelRouter.embeddingModel()` 结果缓存 60s；缓存键含 `AiModelRepository` 的写版本号，
+  任何经仓储的模型写操作（增删改、设默认、连通校验回写）都会让版本自增、缓存立即失配，保证「保存即生效」。
+- 未配置 `qdrant.url`：装配占位实现，应用可启动，但任何向量读写抛「未配置在线向量存储」异常。
+- 配置预留后端（milvus / weaviate / pgvector / elasticsearch / redis）或 `none`/`db`：启动期显式失败并给出提示，
+  不静默降级。
 
 ## 启动回填
 
-- EmbeddingBackfillRunner：当 embedding 模型可用且 backfill-enabled 开启，把四类对象的向量 upsert 到当前后端（受 SingleWorkerGuard 控制，集群单次执行）。
-- type 等于 none：按 DB 向量列为空筛选待回填记录（写库后自然收敛）。
-- type 不等于 none：DB 向量列不再写入，无法据此判断是否已回填，故全量选取；upsert 以记录 id 为 point id，重复写入即覆盖，保证幂等。
+- `EmbeddingBackfillRunner` 在 embedding 模型可用且 `backfill-enabled` 开启时，对四类对象按范围全量重算，
+  受 `SingleWorkerGuard` 控制（集群内单次执行）。
+- 无法用 DB 列判断「是否已回填」，因此不做空值筛选；upsert 以记录 id 为 point id，重复写入即覆盖，保证幂等。
+- 重建任务按工作空间逐个执行，单空间失败只记录原因并继续下一个空间。
 
 ## 场景
 
-### 场景：Qdrant 启用下的写入与 ANN 召回
-Acceptance: A1
-给定 type=qdrant 且 Qdrant 可用，写入术语、表、数据源、SQL 示例向量后，问数与术语召回走 Qdrant ANN 查询而非应用内余弦。
+### 场景：写入与 ANN 召回
+给定 `type=qdrant` 且 Qdrant 可用，写入术语、表、数据源、SQL 示例向量后，问数与术语召回走 Qdrant ANN 查询。
 
-### 场景：无在线库时回落
-Acceptance: A2
-type=none 或 Qdrant 不可达时，自动回落 DB JSON 列加应用内余弦，主链路不报错。
+### 场景：在线库不可达
+给定 Qdrant 不可达，写入返回 false、召回返回空表，调用方降级为词法召回，日志可见原因，DB 不新增向量。
 
-### 场景：无 embedding 模型回落词法
-Acceptance: A3
-无可用 embedding 模型时仍回落词法召回（现有行为保持不变）。
+### 场景：未配置 url
+给定 `qdrant.url` 为空，应用可启动；任何向量读写抛「未配置在线向量存储」，不写本地。
+
+### 场景：维度误配
+给定集合已按 768 维建立，写入 1024 维向量：写入返回 false 并记 error/warn，集合与既有向量保持不变；
+执行向量索引重建后集合按 1024 维重建并全量回填。
+
+### 场景：配置预留后端
+给定 `type=milvus`（或其它未实现取值），启动期抛错并提示「尚未实现；当前仅支持 qdrant」。
 
 ### 场景：启动期回填
-Acceptance: A4
-启动回填把向量 upsert 到当前后端；无可用 embedding 模型时跳过；启动日志标明所用后端与集合前缀。
-
-### 场景：在线库故障不阻断主链路
-Acceptance: A5
-Qdrant 连接失败或集合缺失时，EmbeddingService 仅记日志并回落，问数主链路可用。
+给定 embedding 模型可用，启动回填把四类对象向量全量 upsert；无可用模型时跳过并记日志。
 
 ### 场景：新增后端只需实现抽象
-Acceptance: A6
-新增向量库后端（如 Weaviate / Milvus）只需实现 VectorStore 并在 VectorStoreAutoConfiguration 注册，不改动 EmbeddingService 与召回调用点。
+新增在线后端只需实现 VectorStore 并在 VectorStoreAutoConfiguration 加一个分支，不改动 EmbeddingService
+与各召回调用点。
 
-## 后端扩展点（A6 落点，2026-10-24 补充）
+## 后端扩展点
 
-VectorStore 抽象面向 langchain4j 的 EmbeddingStore<TextSegment> 设计，所有 langchain4j 官方向量存储后端都可按同一模式接入。共用逻辑已抽到 AbstractLangchain4jVectorStore（upsert / query / delete / 命中 id 解析 / 候选 row_id 过滤），子类只需提供：
+| 后端 | 状态 | 说明 |
+| --- | --- | --- |
+| Qdrant | 已实现 | REST（`PUT /collections/{c}`、`DELETE /collections/{c}`、`PUT /collections/{c}/points`、`POST /collections/{c}/points/delete`、`POST /collections/{c}/points/search`）；HTTP 客户端为 Spring `RestTemplate`（超时、错误流、JSON 编解码由框架处理），不依赖 langchain4j |
+| Milvus / Weaviate / pgvector / Elasticsearch / Redis | 预留 | 配置后启动失败并提示尚未实现；实现时按同一 VectorStore 契约接入 |
 
-- createStore(collection, dimension)：构造底层存储（各后端客户端不同）；
-- health()：连通性探测（各后端端口/协议不同）；
-- 可选 ensureCollection：需要显式建集合的后端（Qdrant）覆写，其余依赖首次写入自动创建。
+接入步骤：实现 `VectorStore`（ensureCollection / dropCollection / upsert / delete / query / health）→ 在
+`VectorStoreAutoConfiguration.vectorStore()` 增加一个 `type` 分支 → 补协议级测试。
+EmbeddingService 与四类对象的召回调用点无需改动。
 
-| 后端 | 状态 | langchain4j 模块 | 接入注意 |
-| --- | --- | --- | --- |
-| Qdrant | 已实现 | langchain4j-qdrant | REST 6333 / gRPC 6334 分离；point id 接受数值串 |
-| Milvus | 已实现 | langchain4j-milvus | 有 builder()；集合首次写入自动创建（VarChar id + JSON metadata）；id 字段为 VarChar，数值串可用 |
-| Weaviate | 已实现 | langchain4j-weaviate | 有 builder()；ensureCollection 显式建类（vectorizer=none，声明 text/row_id）；id 强制 UUID（由记录 id 派生），row_id 存 metadata；search 忽略服务端 filter，由基类客户端兜底候选过滤；类名须大写开头故 collectionFor 做了清洗 |
-| pgvector | 已实现 | langchain4j-pgvector | JDBC + Postgres 向量扩展；每张集合表首次写入自动建表（createTable=true）；id 强制 UUID，row_id 存 JSON 列；服务端 filter 经 metadata handler 生效；注意需 Postgres 已装 vector 扩展 |
-| Elasticsearch | 已实现 | langchain4j-elasticsearch | 有 builder()；store 不自动建索引且 dimension 参数已废弃，故 ensureCollection/首次 upsert 用 REST 显式建索引（vector 映射为 dense_vector+cosine，metadata.row_id 建 text+keyword 子字段以命中元数据过滤器）；索引名须小写故 collectionFor 做了清洗；写入默认 refresh=WaitFor 保证写后即查 |
-| Redis | 已实现 | langchain4j-community-redis | 社区版 artifact（langchain4j-redis 在 1.22.x 无对应版本）；用 Jedis，索引由 store 构造时 FT.CREATE 自动创建（前缀须以 : 结尾）；row_id 声明为 TAG（JSON 路径 $.row_id，别名 row_id）以支持服务端过滤；需 Redis Stack（RediSearch + RedisJSON），社区版 Redis 不支持向量检索 |
-| OpenSearch | 预留 | 对应模块 | 需先建索引与 mapping |
-| Chroma / Pinecone / Oracle / Azure AI Search | 预留 | 对应模块 | 云托管为主 |
+## 验证（真实环境，不用桩）
 
-接入步骤（以新后端为例）：新增依赖 → 新增 Langchain4jXxxVectorStore extends AbstractLangchain4jVectorStore（仅客户端构造与建集合不同）→ 在 VectorStoreAutoConfiguration.onlineStores() 登记一行。EmbeddingService 与四类对象的召回调用点无需任何改动。
+| 用例 | 依赖 | 覆盖 |
+| --- | --- | --- |
+| `QdrantVectorStoreTest` | 真实 Qdrant | 建集合幂等、写入、`has_id` 过滤、删除、维度拒绝、删集合重建 |
+| `EmbeddingDimensionChangeTest` | 真实 Qdrant + 真实 MySQL | 维度不一致拒写且保数据、重建后可换维度、非法入参不触达后端 |
+| `EmbeddingServiceVectorStoreRoutingTest` | 真实 Qdrant + 真实 MySQL + 真实 bge-m3 | 写入落正确集合、真实 ANN 召回与排序、无模型降级、`vectorScores` |
 
-注：redis 已改用社区版 artifact langchain4j-community-redis（1.22.0-beta32 在本地仓库可用）；neo4j / infinispan / cassandra / couchbase / vearch 本地仓库缺 1.22.0 版本，离线构建暂不可用。
+依赖不可达时整类 assume-skip（不伪造结果），运行前设置：
+
+```bash
+export ASKDATA_QDRANT_URL=http://127.0.0.1:6333
+export ASKDATA_QDRANT_API_KEY=...
+export ASKDATA_IT_MYSQL_URL=jdbc:mysql://127.0.0.1:3307
+export ASKDATA_IT_MYSQL_USER=root
+export ASKDATA_IT_MYSQL_PASSWORD=...
+export ASKDATA_IT_EMBEDDING_URL=http://127.0.0.1:9528
+export ASKDATA_IT_EMBEDDING_MODEL=bge-m3
+```
+
+MySQL 用例每次运行创建独立 schema（`askdata_it_*`）并在结束时删除，不污染既有库。
 
 ## 验收
 
