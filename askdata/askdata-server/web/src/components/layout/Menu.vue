@@ -42,7 +42,23 @@ const routerList = computed(() => {
     const [sysRouter] = formatRoute(
       router.getRoutes().filter((route: any) => route?.name === 'system')
     )
-    return sysRouter.children
+    const g = (globalThis as any).LicenseGenerator
+    let s: any = {}
+    if (g) { s = g.getLicense() }
+    const ent = s.enterprise === true
+    const filterEnterprise = (nodes: any): any[] => {
+      if (!nodes) return []
+      return nodes
+        .filter((n: any) => {
+          const eo = n.meta && n.meta.enterpriseOnly
+          return !(eo === true && ent !== true)
+        })
+        .map((n: any) => {
+          const c = n.children ? filterEnterprise(n.children) : undefined
+          return c ? { ...n, children: c } : { ...n }
+        })
+    }
+    return filterEnterprise(sysRouter.children || [])
   }
   const list = router.getRoutes().filter((route) => {
     return (

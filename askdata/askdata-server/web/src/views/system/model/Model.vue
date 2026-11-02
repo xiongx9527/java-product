@@ -73,7 +73,7 @@ const defaultModelListWithSearch = computed(() => {
     )
   }
   return tempModelList.map((item: any) => {
-    item['supplier_item'] = get_supplier(item.supplier)
+    item['supplier_item'] = get_supplier(item.supplier) || {}
     return item
   })
 })
@@ -465,7 +465,7 @@ const submit = (item: any) => {
                 :class="ele.default_model && 'isActive'"
                 @click="handleDefaultModelChange(ele)"
               >
-                <img :src="ele.supplier_item.icon" width="24px" height="24px" />
+                <img :src="ele.supplier_item?.icon" width="24px" height="24px" />
                 <div class="model-name ellipsis" v-html="formatKeywords(ele.name)"></div>
                 <el-icon size="16" class="done">
                   <icon_done_outlined></icon_done_outlined>

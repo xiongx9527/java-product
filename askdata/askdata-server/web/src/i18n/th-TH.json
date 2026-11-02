@@ -1005,6 +1005,7 @@
     "rebuild_done": "สร้างใหม่เสร็จสิ้น",
     "rebuild_failed": "สร้างใหม่ล้มเหลว",
     "retry": "ลองอีกครั้ง",
+    "status": "สถานะ",
     "status_available": "ใช้งานได้",
     "status_unavailable": "ใช้งานไม่ได้",
     "status_enabled": "เปิดใช้งานแล้ว",

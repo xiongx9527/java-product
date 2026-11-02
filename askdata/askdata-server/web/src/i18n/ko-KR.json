@@ -1005,6 +1005,7 @@
     "rebuild_done": "재구성 완료",
     "rebuild_failed": "재구성 실패",
     "retry": "재시도",
+    "status": "상태",
     "status_available": "사용 가능",
     "status_unavailable": "사용 불가",
     "status_enabled": "활성화됨",

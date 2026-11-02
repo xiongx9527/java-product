@@ -1005,6 +1005,7 @@
     "rebuild_done": "Rebuild finished",
     "rebuild_failed": "Rebuild failed",
     "retry": "Retry",
+    "status": "Status",
     "status_available": "Available",
     "status_unavailable": "Unavailable",
     "status_enabled": "Enabled",

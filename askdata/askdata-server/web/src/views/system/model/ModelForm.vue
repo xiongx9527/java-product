@@ -483,21 +483,22 @@ defineExpose({
             />
           </el-form-item>
           <!-- API Key -->
+          <!-- API Key + 测试连接：保存前即可验证接入参数连通性（12.13 测试按钮与密钥同行，不悬浮） -->
           <el-form-item v-if="modelForm.supplier" prop="api_key" label="API Key">
-            <el-input
-              v-model="modelForm.api_key"
-              clearable
-              :placeholder="$t('datasource.please_enter') + $t('common.empty') + 'API Key'"
-              type="password"
-              show-password
-            />
+            <div class="api-key-row">
+              <el-input
+                v-model="modelForm.api_key"
+                class="api-key-input"
+                clearable
+                :placeholder="$t('datasource.please_enter') + $t('common.empty') + 'API Key'"
+                type="password"
+                show-password
+              />
+              <el-button size="small" :loading="testing" @click="testConnection">
+                {{ t('modelCfg.test_connection') }}
+              </el-button>
+            </div>
           </el-form-item>
-          <!-- 测试连接：保存前即可验证接入参数连通性 -->
-          <div v-if="modelForm.supplier" class="base-model-actions test-action">
-            <el-button size="small" :loading="testing" @click="testConnection">
-              {{ t('modelCfg.test_connection') }}
-            </el-button>
-          </div>
           <!-- 模型类型：新建默认 LLM；编辑态只读；按上游格式置灰向量 -->
           <el-form-item prop="type" :label="t('model.model_type')">
             <el-select
@@ -516,26 +517,27 @@ defineExpose({
           </el-form-item>
           <!-- 基础模型：支持远程拉取，标注来源 -->
           <el-form-item class="custom-require" prop="base_model">
-            <template #label
-              ><span class="custom-require_danger">{{ t('model.basic_model') }}</span>
+            <template #label>
+              <span class="custom-require_danger">{{ t('model.basic_model') }}</span>
+              <span class="enter-label-hint">{{ t('model.enter_to_add') }}</span>
             </template>
-            <el-select
-              v-model="modelForm['base_model']"
-              style="width: 100%"
-              filterable
-              allow-create
-              default-first-option
-              :reserve-keyword="false"
-              @change="baseModelChange"
-            >
-              <el-option
-                v-for="item in mergedBaseModels"
-                :key="item.name"
-                :label="item.name"
-                :value="item.name"
-              />
-            </el-select>
-            <div class="base-model-actions">
+            <div class="base-model-row">
+              <el-select
+                v-model="modelForm['base_model']"
+                class="base-model-select"
+                filterable
+                allow-create
+                default-first-option
+                :reserve-keyword="false"
+                @change="baseModelChange"
+              >
+                <el-option
+                  v-for="item in mergedBaseModels"
+                  :key="item.name"
+                  :label="item.name"
+                  :value="item.name"
+                />
+              </el-select>
               <el-button
                 size="small"
                 :loading="pulling"
@@ -543,7 +545,8 @@ defineExpose({
               >
                 {{ t('model.pull_models') }}
               </el-button>
-              <span class="enter">{{ t('model.enter_to_add') }}</span>
+            </div>
+            <div class="base-model-actions">
               <el-tag v-if="pullSource === 'remote'" size="small" type="success">
                 {{ t('modelCfg.source_remote') }}
               </el-tag>
@@ -578,6 +581,7 @@ defineExpose({
           {{ t('model.advanced_settings') }}
         </div>
         <div v-if="modelSelected" class="advanced-body">
+          <el-form label-position="top">
           <!-- 上游格式 -->
           <el-form-item :label="t('modelCfg.format')">
             <el-select v-model="modelForm.upstream_format" style="width: 100%" @change="onUpstreamFormatChange">
@@ -597,6 +601,7 @@ defineExpose({
           <el-form-item v-if="modelForm.model_type === 1" :label="t('modelCfg.dimension')">
             <el-input v-model="modelForm.dimension" type="number" :placeholder="t('model.dimension_tip')" />
           </el-form-item>
+          </el-form>
           <!-- 模型参数 -->
           <div class="model-params">
             {{ t('model.model_parameters') }}
@@ -732,6 +737,20 @@ defineExpose({
         margin-left: 2px;
       }
 
+      .base-model-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        .base-model-select {
+          flex: 1;
+        }
+      }
+      .enter-label-hint {
+        margin-left: 8px;
+        font-weight: 400;
+        font-size: 12px;
+        color: #8f959e;
+      }
       .base-model-actions {
         display: flex;
         align-items: center;
@@ -752,9 +771,14 @@ defineExpose({
         margin-top: 8px;
       }
 
-      .test-action {
-        margin-top: -8px;
-        margin-bottom: 16px;
+      .api-key-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        .api-key-input {
+          flex: 1;
+        }
       }
 
       .advanced-body {

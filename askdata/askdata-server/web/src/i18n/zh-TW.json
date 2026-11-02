@@ -1005,6 +1005,7 @@
     "rebuild_done": "重建完成",
     "rebuild_failed": "重建失敗",
     "retry": "重試",
+    "status": "狀態",
     "status_available": "可用",
     "status_unavailable": "不可用",
     "status_enabled": "已啟用",
