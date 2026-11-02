@@ -453,7 +453,6 @@ defineExpose({
           style="width: 100%"
           @submit.prevent
         >
-          <!-- 12.1 字段顺序：模型名称 → Base URL → API Key → 模型类型 → 基础模型 → 是否生效 → 高级配置 -->
           <!-- 12.2 名称字段不参与任何联动 -->
           <el-form-item class="custom-require flex-inline" prop="name">
             <template #label
@@ -472,7 +471,6 @@ defineExpose({
               "
             />
           </el-form-item>
-          <!-- Base URL（API 域名） -->
           <el-form-item prop="api_domain" :label="t('model.api_domain_name')">
             <el-input
               v-model="modelForm.api_domain"
@@ -481,6 +479,13 @@ defineExpose({
                 $t('datasource.please_enter') + $t('common.empty') + $t('model.api_domain_name')
               "
             />
+          </el-form-item>
+          <!-- full url -->
+          <el-form-item :label="t('modelCfg.full_url')">
+            <div class="full-url-row">
+              <el-switch v-model="modelForm.full_url" />
+              <span class="full-url-tip">{{ t('modelCfg.full_url_tip') }}</span>
+            </div>
           </el-form-item>
           <!-- API Key -->
           <!-- API Key + 测试连接：保存前即可验证接入参数连通性（12.13 测试按钮与密钥同行，不悬浮） -->
@@ -590,11 +595,6 @@ defineExpose({
               <el-option label="Responses" :value="3" />
               <el-option label="Azure OpenAI" :value="4" />
             </el-select>
-          </el-form-item>
-          <!-- 完整 URL -->
-          <el-form-item :label="t('modelCfg.full_url')">
-            <el-switch v-model="modelForm.full_url" />
-            <span class="full-url-tip">{{ t('modelCfg.full_url_tip') }}</span>
           </el-form-item>
           <!-- 向量维度（仅向量模型） -->
           <el-form-item v-if="modelForm.model_type === 1" :label="t('modelCfg.dimension')">
