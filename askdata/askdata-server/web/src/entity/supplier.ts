@@ -9,7 +9,7 @@ import icon_kimi_colorful from '@/assets/model/icon_kimi_colorful.png'
 import icon_txhy_colorful from '@/assets/model/icon_txhy_colorful.png'
 import icon_hsyq_colorful from '@/assets/model/icon_hsyq_colorful.png'
 // import icon_vllm_colorful from '@/assets/model/icon_vllm_colorful.png'
-import icon_common_openai from '@/assets/model/icon_common_openai.png'
+import icon_custom_plug from '@/assets/model/icon_custom_plug.svg'
 import icon_minimax_colorful from '@/assets/model/icon_minimax_colorful.png'
 // import icon_azure_openAI_colorful from '@/assets/model/icon_Azure_OpenAI_colorful.png'
 
@@ -338,32 +338,17 @@ export const supplierList: Array<{
     },
   }, */
   {
+    // 自定义提供商：无默认地址、无静态模型预设，全部由用户填写或从上游拉取
     id: 15,
-    name: '通用OpenAI',
-    i18nKey: 'supplier.generic_openai',
-    icon: icon_common_openai,
+    name: '自定义',
+    i18nKey: 'supplier.custom',
+    icon: icon_custom_plug,
     is_private: true,
     model_config: {
       0: {
-        api_domain: 'http://127.0.0.1:8000/v1',
+        api_domain: '',
         common_args: [{ key: 'temperature', val: 0.6, type: 'number', range: '[0, 1]' }],
-        model_options: [
-          { name: 'gpt-4.1' },
-          { name: 'gpt-4.1-mini' },
-          { name: 'gpt-4.1-nano' },
-          { name: 'gpt-4o' },
-          { name: 'gpt-4o-mini' },
-          { name: 'chatgpt-4o' },
-          { name: 'o4-mini' },
-          { name: 'o4-mini-deep-research' },
-          { name: 'o3' },
-          { name: 'o3-pro' },
-          { name: 'o3-mini' },
-          { name: 'o3-deep-research' },
-          { name: 'o1' },
-          { name: 'o1-pro' },
-          { name: 'o1-mini' },
-        ],
+        model_options: [],
       },
     },
   },
@@ -371,7 +356,8 @@ export const supplierList: Array<{
 
 export const base_model_options = (supplier_id: number, model_type?: number) => {
   const supplier = get_supplier(supplier_id)
-  return supplier?.model_config[model_type || 0].model_options
+  // 自定义提供商没有静态预设：返回空数组，调用方需容忍空值（前端展示为「手动输入」）
+  return supplier?.model_config[model_type || 0]?.model_options || []
 }
 
 export const get_supplier = (supplier_id: number) => {

@@ -491,7 +491,7 @@
     "system_default_model_de": "系统默认模型",
     "relevant_results_found": "没有找到相关结果",
     "add_model": "添加模型",
-    "select_supplier": "选择供应商",
+    "select_supplier": "选择提供商",
     "the_basic_model": "请给基础模型设置一个名称",
     "the_basic_model_de": "请选择基础模型",
     "length_max_error": "{msg}长度不能超过{max}个字符",
@@ -515,7 +515,13 @@
     "check_failed": "模型无效【{msg}】",
     "default_miss": "尚未配置默认大语言大模型，因此无法开启问数，请联系管理员配置。",
     "default_miss_admin": "尚未配置默认大语言大模型，因此无法开启问数。",
-    "to_config": "去配置"
+    "to_config": "去配置",
+    "pull_models": "拉取模型",
+    "api_domain_http": "请输入以 http(s):// 开头的地址",
+    "dimension_tip": "连通校验成功后将自动填充，也可手动指定",
+    "vector_default_confirm": "将「{msg}」设为向量默认模型后需重新向量化，影响所有工作空间，是否继续？",
+    "default_unavailable": "当前没有「已启用且已通过校验」的默认对话模型，请先完成连通校验并启用",
+    "default_unavailable_admin": "管理员：当前存在模型但未配置可用的默认对话模型，请先完成连通校验并启用"
   },
   "user": {
     "workspace": "工作空间",
@@ -977,9 +983,37 @@
     "tencent_cloud": "腾讯云",
     "volcano_engine": "火山引擎",
     "minimax": "MiniMax",
-    "generic_openai": "通用OpenAI"
+    "generic_openai": "通用OpenAI",
+    "custom": "自定义"
+  },
+  "modelCfg": {
+    "format": "上游格式",
+    "format_auto": "自动识别",
+    "full_url": "完整 URL",
+    "full_url_tip": "填写的是完整端点地址，系统不再追加路径",
+    "enabled": "是否生效",
+    "need_valid": "需先通过连通校验",
+    "source_remote": "远程",
+    "source_preset": "预设",
+    "fetch_failed": "拉取失败，可手动输入模型名",
+    "manual_input": "手动输入模型名",
+    "dimension": "向量维度",
+    "type_locked": "编辑时不可修改模型类型",
+    "rebuild_title": "向量索引待重建",
+    "rebuild_action": "一键重新向量",
+    "rebuild_running": "正在重建",
+    "rebuild_done": "重建完成",
+    "rebuild_failed": "重建失败",
+    "retry": "重试",
+    "status_available": "可用",
+    "status_unavailable": "不可用",
+    "status_enabled": "已启用",
+    "status_disabled": "未启用",
+    "default_switch_tip": "切换默认向量模型需要重新向量化，并影响所有工作空间",
+    "embedding_missing": "未配置可用的在线向量模型"
   },
   "modelType": {
+    "embedding": "向量模型",
     "llm": "大语言模型"
   },
   "audit": {

@@ -16,6 +16,8 @@ const props = withDefaults(
     isDefault?: boolean
     supplier?: number
     num?: number
+    valid?: boolean
+    enable?: boolean
   }>(),
   {
     name: '-',
@@ -25,6 +27,8 @@ const props = withDefaults(
     isDefault: false,
     supplier: 0,
     num: 0,
+    valid: false,
+    enable: false,
   }
 )
 const errorMsg = ref('')
@@ -115,11 +119,37 @@ defineExpose({ showErrorMask })
         </el-tooltip>
       </span>
     </div>
+    <!-- 13.1 可用/不可用 + 已启用/未启用 双状态 -->
+    <div class="type-value">
+      <span class="type">{{ $t('modelCfg.status') }}</span>
+      <span class="value">
+        <el-tag :type="valid ? 'success' : 'danger'" size="small">
+          {{ valid ? $t('modelCfg.status_available') : $t('modelCfg.status_unavailable') }}
+        </el-tag>
+        <el-tag :type="enable ? 'success' : 'info'" size="small" style="margin-left: 6px">
+          {{ enable ? $t('modelCfg.status_enabled') : $t('modelCfg.status_disabled') }}
+        </el-tag>
+      </span>
+    </div>
     <div class="methods">
       <el-tooltip
         v-if="isDefault"
         effect="dark"
         :content="$t('common.the_default_model')"
+        placement="top"
+      >
+        <el-button secondary disabled>
+          <el-icon style="margin-right: 4px" size="16">
+            <icon_admin_outlined></icon_admin_outlined>
+          </el-icon>
+          {{ $t('common.as_default_model') }}
+        </el-button>
+      </el-tooltip>
+
+      <el-tooltip
+        v-else-if="!valid || !enable"
+        effect="dark"
+        :content="$t('modelCfg.need_valid')"
         placement="top"
       >
         <el-button secondary disabled>
@@ -169,7 +199,20 @@ defineExpose({ showErrorMask })
             </el-icon>
             {{ $t('authorized_space.authorized_space') }}
           </div>
-          <div class="item" @click.stop="handleDel">
+          <el-tooltip
+            v-if="isDefault"
+            effect="dark"
+            :content="$t('model.del_default_tip', { msg: name })"
+            placement="top"
+          >
+            <div class="item disabled" @click.stop>
+              <el-icon size="16">
+                <delIcon></delIcon>
+              </el-icon>
+              {{ $t('dashboard.delete') }}
+            </div>
+          </el-tooltip>
+          <div v-else class="item" @click.stop="handleDel">
             <el-icon size="16">
               <delIcon></delIcon>
             </el-icon>
@@ -342,6 +385,13 @@ defineExpose({ showErrorMask })
         color: #646a73;
       }
 
+      &.disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        &:hover::after {
+          display: none;
+        }
+      }
       &:hover {
         &::after {
           display: block;

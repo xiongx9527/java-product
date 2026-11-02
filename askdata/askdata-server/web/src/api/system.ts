@@ -31,4 +31,9 @@ export const modelApi = {
     request.post(`/system/platform/org/${id}`, { lazy, pid }),
   userSync: (data: any) => request.post(`/system/platform/user/sync`, data),
   list_by_ws: () => request.get(`/system/aimodel/list/by_ws`),
+  // 上游模型列表（服务端代理，返回 {source, models[], error?}）
+  models: (data: any) => request.post('/system/aimodel/models', data),
+  // 向量索引状态与一键重建
+  embeddingStatus: () => request.get('/system/aimodel/embedding/status'),
+  rebuildEmbedding: () => request.post('/system/aimodel/embedding/rebuild'),
 }

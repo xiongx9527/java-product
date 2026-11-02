@@ -9,6 +9,7 @@ import ParamsForm from './ParamsForm.vue'
 import { modelTypeOptions } from '@/entity/CommonEntity.ts'
 import { base_model_options, get_supplier } from '@/entity/supplier'
 import { useI18n } from 'vue-i18n'
+import { modelApi } from '@/api/system'
 
 withDefaults(
   defineProps<{
@@ -39,6 +40,11 @@ const modelForm = reactive({
   api_domain: '',
   config_list: [],
   protocol: 1,
+  upstream_format: 0, // 0=AUTO(即 Chat Completions)
+  full_url: false,
+  enable: 0, // 1 生效 / 0 停用
+  valid: 0, // 后端连通校验回写，前端只读
+  dimension: null as number | null, // 向量维度
 })
 const isCreate = ref(false)
 const modelRef = ref()
@@ -51,18 +57,83 @@ let tempConfigMap = new Map<string, Array<any>>()
 const modelSelected = computed(() => {
   return !!modelForm.base_model
 })
+// 12.8 仅在通过连通校验（valid=1）时可操作「是否生效」
+const canEnable = computed(() => modelForm.valid === 1)
 const currentSupplier = computed(() => {
   if (!modelForm.supplier) {
     return null
   }
   return get_supplier(modelForm.supplier)
 })
+
+// 12.5 选择具体上游格式后，向量类型不可用（向量不使用上游格式）
+const typeOptions = computed(() =>
+  modelTypeOptions.map((o) => ({
+    ...o,
+    disabled: o.value === 1 && modelForm.upstream_format !== 0,
+  }))
+)
+
 const modelList = computed(() => {
   if (!modelForm.supplier) {
     return []
   }
   return base_model_options(modelForm.supplier, modelForm.model_type)
 })
+
+// 12.7 远程拉取的模型清单（source=remote 时优先于供应商静态清单）
+const pulling = ref(false)
+const pullState = ref<'idle' | 'loading' | 'success' | 'failed'>('idle')
+const pullSource = ref<'remote' | 'preset' | 'none' | ''>('')
+const pullError = ref('')
+const remoteModels = ref<Array<{ id: string; name: string }>>([])
+const pullSeq = ref(0)
+
+const mergedBaseModels = computed<any[]>(() => {
+  if (pullSource.value === 'remote' && remoteModels.value.length) {
+    return remoteModels.value
+  }
+  return modelList.value
+})
+
+const pullModels = async () => {
+  if (!modelForm.api_domain) {
+    ElMessage.warning(t('datasource.please_enter') + t('model.api_domain_name'))
+    return
+  }
+  pulling.value = true
+  const seq = ++pullSeq.value
+  try {
+    const res: any = await modelApi.models({
+      api_domain: modelForm.api_domain,
+      api_key: modelForm.api_key,
+      full_url: modelForm.full_url,
+      upstream_format: modelForm.upstream_format,
+      supplier: modelForm.supplier,
+    })
+    // 用请求序号丢弃过期响应（12.7）
+    if (seq !== pullSeq.value) return
+    pullSource.value = res.source || ''
+    pullError.value = res.error || ''
+    remoteModels.value = (res.models || []).map((m: any) => ({ id: m.id, name: m.name }))
+    if (res.source === 'remote' && remoteModels.value.length) {
+      pullState.value = 'success'
+      // 唯一结果自动选中（12.7）
+      if (remoteModels.value.length === 1 && !modelForm.base_model) {
+        modelForm.base_model = remoteModels.value[0].name
+      }
+    } else {
+      pullState.value = 'failed'
+    }
+  } catch (e: any) {
+    if (seq !== pullSeq.value) return
+    pullState.value = 'failed'
+    pullError.value = String(e?.message || e)
+  } finally {
+    if (seq === pullSeq.value) pulling.value = false
+  }
+}
+
 const handleParamsEdite = (ele?: any) => {
   isCreate.value = false
   paramsFormDrawer.value = true
@@ -81,6 +152,8 @@ const handleParamsCreate = () => {
 
 const handleParamsDel = (item: any) => {
   advancedSetting.value = advancedSetting.value.filter((ele) => ele.id !== item.id)
+  // 12.11 删除参数后回写缓存，切换模型再切回仍为删除后的状态
+  tempConfigMap.set(`${modelForm.supplier}-${modelForm.base_model}`, [...advancedSetting.value])
 }
 const currentPage = ref(1)
 const advancedSettingPagination = computed(() => {
@@ -91,21 +164,25 @@ const handleCurrentChange = (val: any) => {
   currentPage.value = val
 }
 
+const urlValidator = (_rule: any, value: any, callback: any) => {
+  if (!value) {
+    return callback(new Error(t('datasource.please_enter') + t('model.api_domain_name')))
+  }
+  if (!/^https?:\/\//i.test(value)) {
+    return callback(new Error(t('model.api_domain_http')))
+  }
+  callback()
+}
+
 const rules = computed(() => ({
   model_type: [
     {
       required: true,
-      message: 'type',
+      message: t('model.model_type'),
       trigger: 'change',
     },
   ],
-  api_domain: [
-    {
-      required: true,
-      message: t('datasource.please_enter') + t('common.empty') + t('model.api_domain_name'),
-      trigger: 'blur',
-    },
-  ],
+  api_domain: [{ validator: urlValidator, trigger: 'blur', required: true }],
   base_model: [{ required: true, message: t('model.the_basic_model_de'), trigger: 'change' }],
   name: [
     { required: true, message: t('model.the_basic_model'), trigger: 'blur' },
@@ -117,8 +194,7 @@ const rules = computed(() => ({
   ],
   api_key: [
     {
-      // 供应商不在内置列表里（supplier=0，例如自定义 / 本机 Ollama）时不强制填 Key，
-      // 否则这类模型的编辑页永远保存不了。
+      // 供应商不在内置列表里（supplier=0，例如自定义 / 本机 Ollama）时不强制填 Key
       required: !!currentSupplier.value && !currentSupplier.value.is_private,
       message: t('datasource.please_enter') + t('common.empty') + 'API Key',
       trigger: 'blur',
@@ -181,14 +257,46 @@ const supplierChang = (supplier: any) => {
   modelForm.base_model = ''
   modelForm.protocol = supplier.type === 'vllm' ? 2 : 1
   advancedSetting.value = []
+  // 切换供应商后清空远程拉取结果
+  remoteModels.value = []
+  pullSource.value = ''
+  pullState.value = 'idle'
 }
 let curId = +new Date()
 const initForm = (item?: any) => {
   modelForm.id = ''
   modelRef.value.clearValidate()
   tempConfigMap = new Map<string, Array<any>>()
+  // 重置远程拉取状态
+  remoteModels.value = []
+  pullSource.value = ''
+  pullState.value = 'idle'
+  pullError.value = ''
+  Object.assign(modelForm, {
+    id: '',
+    supplier: 0,
+    name: '',
+    model_type: 0,
+    base_model: '',
+    api_key: '',
+    api_domain: '',
+    config_list: [],
+    protocol: 1,
+    upstream_format: 0,
+    full_url: false,
+    enable: 0,
+    valid: 0,
+    dimension: null,
+  })
   if (item) {
-    Object.assign(modelForm, { ...item })
+    Object.assign(modelForm, {
+      ...item,
+      upstream_format: item.upstream_format ?? 0,
+      full_url: item.full_url ?? false,
+      enable: item.enable ?? 0,
+      valid: item.valid ?? 0,
+      dimension: item.dimension ?? null,
+    })
     if (item?.config_list?.length) {
       advancedSetting.value = item.config_list
       advancedSetting.value.forEach((ele: any) => {
@@ -215,7 +323,7 @@ const baseModelChange = (val: string) => {
   if (!val || !modelForm.supplier) {
     return
   }
-  const current_model = modelList.value?.find((model: any) => model.name == val)
+  const current_model = mergedBaseModels.value?.find((model: any) => model.name == val)
   if (current_model) {
     modelForm.api_domain = current_model.api_domain || getSupplierDomain() || ''
   }
@@ -240,7 +348,7 @@ const getModelDefaultArgs = () => {
   }
   const model_config = currentSupplier.value?.model_config[modelForm.model_type || 0]
   const common_args = model_config?.common_args || []
-  const current_model = modelList.value?.find((model: any) => model.name == modelForm.base_model)
+  const current_model = mergedBaseModels.value?.find((model: any) => model.name == modelForm.base_model)
 
   if (current_model?.args?.length) {
     const modelArgs = current_model.args
@@ -253,6 +361,13 @@ const getModelDefaultArgs = () => {
   return argMap
 }
 const emits = defineEmits(['submit'])
+
+const onUpstreamFormatChange = () => {
+  // 12.5 选了具体格式后向量不可用；若当前是向量则回退到 LLM
+  if (modelForm.upstream_format !== 0 && modelForm.model_type === 1) {
+    modelForm.model_type = 0
+  }
+}
 
 const submitModel = () => {
   modelRef.value.validate((res: any) => {
@@ -289,6 +404,8 @@ defineExpose({
           style="width: 100%"
           @submit.prevent
         >
+          <!-- 12.1 字段顺序：模型名称 → Base URL → API Key → 模型类型 → 基础模型 → 是否生效 → 高级配置 -->
+          <!-- 12.2 名称字段不参与任何联动 -->
           <el-form-item class="custom-require flex-inline" prop="name">
             <template #label
               ><span class="custom-require_danger">{{ t('model.model_name') }}</span>
@@ -306,16 +423,43 @@ defineExpose({
               "
             />
           </el-form-item>
+          <!-- Base URL（API 域名） -->
+          <el-form-item v-if="modelForm.supplier" prop="api_domain" :label="t('model.api_domain_name')">
+            <el-input
+              v-model="modelForm.api_domain"
+              clearable
+              :placeholder="
+                $t('datasource.please_enter') + $t('common.empty') + $t('model.api_domain_name')
+              "
+            />
+          </el-form-item>
+          <!-- API Key -->
+          <el-form-item v-if="modelForm.supplier" prop="api_key" label="API Key">
+            <el-input
+              v-model="modelForm.api_key"
+              clearable
+              :placeholder="$t('datasource.please_enter') + $t('common.empty') + 'API Key'"
+              type="password"
+              show-password
+            />
+          </el-form-item>
+          <!-- 模型类型：新建默认 LLM；编辑态只读；按上游格式置灰向量 -->
           <el-form-item prop="type" :label="t('model.model_type')">
-            <el-select v-model="modelForm.model_type" style="width: 100%" disabled>
+            <el-select
+              v-model="modelForm.model_type"
+              style="width: 100%"
+              :disabled="editModel"
+            >
               <el-option
-                v-for="item in modelTypeOptions"
+                v-for="item in typeOptions"
                 :key="item.value"
                 :label="item.i18nKey ? $t(item.i18nKey) : item.label"
                 :value="item.value"
+                :disabled="item.disabled"
               />
             </el-select>
           </el-form-item>
+          <!-- 基础模型：支持远程拉取，标注来源 -->
           <el-form-item class="custom-require" prop="base_model">
             <template #label
               ><span class="custom-require_danger">{{ t('model.basic_model') }}</span>
@@ -331,32 +475,50 @@ defineExpose({
               @change="baseModelChange"
             >
               <el-option
-                v-for="item in modelList"
+                v-for="item in mergedBaseModels"
                 :key="item.name"
                 :label="item.name"
                 :value="item.name"
               />
             </el-select>
+            <div class="base-model-actions">
+              <el-button
+                size="small"
+                :loading="pulling"
+                @click="pullModels"
+              >
+                {{ t('model.pull_models') }}
+              </el-button>
+              <el-tag v-if="pullSource === 'remote'" size="small" type="success">
+                {{ t('modelCfg.source_remote') }}
+              </el-tag>
+              <el-tag v-else-if="pullSource === 'preset'" size="small" type="info">
+                {{ t('modelCfg.source_preset') }}
+              </el-tag>
+              <span v-if="pullError" class="pull-error">{{ pullError }}</span>
+            </div>
           </el-form-item>
-          <el-form-item v-if="modelSelected" prop="api_domain" :label="t('model.api_domain_name')">
-            <el-input
-              v-model="modelForm.api_domain"
-              clearable
-              :placeholder="
-                $t('datasource.please_enter') + $t('common.empty') + $t('model.api_domain_name')
-              "
-            />
-          </el-form-item>
-          <el-form-item v-if="modelSelected" prop="api_key" label="API Key">
-            <el-input
-              v-model="modelForm.api_key"
-              clearable
-              :placeholder="$t('datasource.please_enter') + $t('common.empty') + 'API Key'"
-              type="password"
-              show-password
+          <!-- 是否生效：仅在 valid=1 时可操作 -->
+          <el-form-item :label="t('modelCfg.enabled')">
+            <el-tooltip
+              v-if="!canEnable"
+              effect="dark"
+              :content="t('modelCfg.need_valid')"
+              placement="right"
+            >
+              <span>
+                <el-switch v-model="modelForm.enable" :disabled="!canEnable" :active-value="1" :inactive-value="0" />
+              </span>
+            </el-tooltip>
+            <el-switch
+              v-else
+              v-model="modelForm.enable"
+              :active-value="1"
+              :inactive-value="0"
             />
           </el-form-item>
         </el-form>
+        <!-- 高级配置：单一折叠区（12.6）--> 
         <div
           v-if="modelSelected"
           class="advance-setting"
@@ -368,56 +530,77 @@ defineExpose({
             <arrow_down></arrow_down>
           </el-icon>
         </div>
-        <div v-if="modelSelected && configExpand" class="model-params">
-          {{ t('model.model_parameters') }}
-          <span class="btn" @click="handleParamsCreate">
-            <el-icon size="16">
-              <icon_add_outlined></icon_add_outlined>
-            </el-icon>
-            {{ t('model.add') }}
-          </span>
-        </div>
-
-        <div
-          v-if="modelSelected && configExpand"
-          class="params-table"
-          :class="!advancedSettingPagination.length && 'bottom-border'"
-        >
-          <el-table :data="advancedSettingPagination" style="width: 100%">
-            <el-table-column prop="key" :label="t('model.parameters')" width="280" />
-            <el-table-column prop="name" :label="t('model.display_name')" width="280" />
-            <el-table-column prop="val" show-overflow-tooltip :label="t('model.parameter_value')" />
-            <el-table-column
-              fixed="right"
-              width="80"
-              class-name="operation-column_text"
-              :label="$t('ds.actions')"
-            >
-              <template #default="scope">
-                <el-button text type="primary" @click="handleParamsEdite(scope.row)">
-                  <el-icon size="16">
-                    <icon_edit_outlined></icon_edit_outlined>
-                  </el-icon>
-                </el-button>
-                <el-button text type="primary" @click="handleParamsDel(scope.row)">
-                  <el-icon size="16">
-                    <icon_delete></icon_delete>
-                  </el-icon>
-                </el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
-        <div
-          v-if="modelSelected && advancedSetting.length > 5 && configExpand"
-          class="params-table_pagination"
-        >
-          <el-pagination
-            :default-page-size="5"
-            layout="prev, pager, next"
-            :total="advancedSetting.length"
-            @current-change="handleCurrentChange"
-          />
+        <div v-if="modelSelected && configExpand" class="advanced-body">
+          <!-- 上游格式 -->
+          <el-form-item :label="t('modelCfg.format')">
+            <el-select v-model="modelForm.upstream_format" style="width: 100%" @change="onUpstreamFormatChange">
+              <el-option :label="t('modelCfg.format_auto')" :value="0" />
+              <el-option label="Chat Completions" :value="1" />
+              <el-option label="Anthropic Messages" :value="2" />
+              <el-option label="Responses" :value="3" />
+              <el-option label="Azure OpenAI" :value="4" />
+            </el-select>
+          </el-form-item>
+          <!-- 完整 URL -->
+          <el-form-item :label="t('modelCfg.full_url')">
+            <el-switch v-model="modelForm.full_url" />
+            <span class="full-url-tip">{{ t('modelCfg.full_url_tip') }}</span>
+          </el-form-item>
+          <!-- 向量维度（仅向量模型） -->
+          <el-form-item v-if="modelForm.model_type === 1" :label="t('modelCfg.dimension')">
+            <el-input v-model="modelForm.dimension" type="number" :placeholder="t('model.dimension_tip')" />
+          </el-form-item>
+          <!-- 模型参数 -->
+          <div class="model-params">
+            {{ t('model.model_parameters') }}
+            <span v-if="advancedSetting.length" class="param-count">({{ advancedSetting.length }})</span>
+            <span class="btn" @click="handleParamsCreate">
+              <el-icon size="16">
+                <icon_add_outlined></icon_add_outlined>
+              </el-icon>
+              {{ t('model.add') }}
+            </span>
+          </div>
+          <div
+            class="params-table"
+            :class="!advancedSettingPagination.length && 'bottom-border'"
+          >
+            <el-table :data="advancedSettingPagination" style="width: 100%">
+              <el-table-column prop="key" :label="t('model.parameters')" width="280" />
+              <el-table-column prop="name" :label="t('model.display_name')" width="280" />
+              <el-table-column prop="val" show-overflow-tooltip :label="t('model.parameter_value')" />
+              <el-table-column
+                fixed="right"
+                width="80"
+                class-name="operation-column_text"
+                :label="$t('ds.actions')"
+              >
+                <template #default="scope">
+                  <el-button text type="primary" @click="handleParamsEdite(scope.row)">
+                    <el-icon size="16">
+                      <icon_edit_outlined></icon_edit_outlined>
+                    </el-icon>
+                  </el-button>
+                  <el-button text type="primary" @click="handleParamsDel(scope.row)">
+                    <el-icon size="16">
+                      <icon_delete></icon_delete>
+                    </el-icon>
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+          <div
+            v-if="advancedSetting.length > 5"
+            class="params-table_pagination"
+          >
+            <el-pagination
+              :default-page-size="5"
+              layout="prev, pager, next"
+              :total="advancedSetting.length"
+              @current-change="handleCurrentChange"
+            />
+          </div>
         </div>
       </div>
     </el-scrollbar>
@@ -502,6 +685,17 @@ defineExpose({
         margin-left: 2px;
       }
 
+      .base-model-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+        .pull-error {
+          color: var(--ed-color-danger);
+          font-size: 12px;
+        }
+      }
+
       .advance-setting {
         display: flex;
         align-items: center;
@@ -518,6 +712,21 @@ defineExpose({
           .ed-icon {
             transform: rotate(180deg);
           }
+        }
+      }
+
+      .advanced-body {
+        .ed-form-item {
+          margin-bottom: 16px;
+        }
+        .full-url-tip {
+          margin-left: 8px;
+          color: #8f959e;
+          font-size: 12px;
+        }
+        .param-count {
+          margin-left: 4px;
+          color: #8f959e;
         }
       }
 

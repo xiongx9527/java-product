@@ -501,7 +501,18 @@ export const chatApi = {
   recentQuestions: (datasource_id?: number): Promise<any> => {
     return request.get(`/chat/recent_questions/${datasource_id}`)
   },
-  checkLLMModel: () => request.get('/system/aimodel/default', { requestOptions: { silent: true } }),
+  checkLLMModel: async () => {
+    const res: any = await request.get('/system/aimodel/default/status', {
+      requestOptions: { silent: true },
+    })
+    if (res && res.available) {
+      return res
+    }
+    // 抛出带 configured 标记的错误，供调用方区分「未配置」与「已配置但不可用」
+    const err: any = new Error(res?.configured ? 'model_unavailable' : 'model_not_configured')
+    err.configured = !!(res && res.configured)
+    throw err
+  },
   export2Excel: (record_id: number | undefined, chat_id: any) =>
     request.get(`/chat/record/${record_id}/excel/export/${chat_id}`, {
       responseType: 'blob',

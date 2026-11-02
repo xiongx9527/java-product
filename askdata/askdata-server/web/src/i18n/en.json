@@ -515,7 +515,13 @@
     "check_failed": "Model is invalid [{msg}]",
     "default_miss": "The default llm has not been configured yet, so the q&a feature cannot be enabled, Please contact the administrator to configure it.",
     "default_miss_admin": "The default llm has not been configured yet, so the q&a feature cannot be enabled.",
-    "to_config": "Go to configuration"
+    "to_config": "Go to configuration",
+    "pull_models": "Fetch models",
+    "api_domain_http": "Enter a URL starting with http(s)://",
+    "dimension_tip": "Auto-filled after a successful connectivity check, or set manually",
+    "vector_default_confirm": "Setting 「{msg}」 as the default embedding model requires re-vectorization and affects all workspaces. Continue?",
+    "default_unavailable": "No enabled and validated default chat model is available. Run a connectivity check and enable one.",
+    "default_unavailable_admin": "Admin: models exist but none is a usable default chat model. Run a connectivity check and enable one."
   },
   "user": {
     "workspace": "Workspace",
@@ -977,9 +983,37 @@
     "tencent_cloud": "Tencent Cloud",
     "volcano_engine": "Volcano Engine",
     "minimax": "MiniMax",
-    "generic_openai": "Generic OpenAI"
+    "generic_openai": "Generic OpenAI",
+    "custom": "Custom"
+  },
+  "modelCfg": {
+    "format": "Upstream format",
+    "format_auto": "Auto detect",
+    "full_url": "Full URL",
+    "full_url_tip": "The value is a complete endpoint; no path will be appended",
+    "enabled": "Active",
+    "need_valid": "Pass the connectivity check first",
+    "source_remote": "Remote",
+    "source_preset": "Preset",
+    "fetch_failed": "Fetch failed, you can type the model name",
+    "manual_input": "Type a model name",
+    "dimension": "Dimension",
+    "type_locked": "Model type cannot be changed while editing",
+    "rebuild_title": "Vector index needs rebuilding",
+    "rebuild_action": "Rebuild vectors",
+    "rebuild_running": "Rebuilding",
+    "rebuild_done": "Rebuild finished",
+    "rebuild_failed": "Rebuild failed",
+    "retry": "Retry",
+    "status_available": "Available",
+    "status_unavailable": "Unavailable",
+    "status_enabled": "Enabled",
+    "status_disabled": "Disabled",
+    "default_switch_tip": "Switching the default embedding model requires re-vectorizing all workspaces",
+    "embedding_missing": "No online embedding model is configured"
   },
   "modelType": {
+    "embedding": "Embedding model",
     "llm": "Large Language Model"
   },
   "audit": {

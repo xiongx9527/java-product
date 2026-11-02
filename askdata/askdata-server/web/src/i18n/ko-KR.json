@@ -515,7 +515,13 @@
     "check_failed": "모델이 유효하지 않습니다【{msg}】",
     "default_miss": "기본 대형 언어 모델이 설정되지 않아 데이터 조회를 시작할 수 없습니다. 관리자에게 설정을 요청하십시오.",
     "default_miss_admin": "기본 대형 언어 모델이 설정되지 않아 데이터 조회를 시작할 수 없습니다.",
-    "to_config": "설정하러 가기"
+    "to_config": "설정하러 가기",
+    "pull_models": "모델 가져오기",
+    "api_domain_http": "http(s):// 로 시작하는 주소를 입력하세요",
+    "dimension_tip": "연결 확인 성공 시 자동 입력되며, 수동 지정도 가능합니다",
+    "vector_default_confirm": "「{msg}」을(를) 기본 임베딩 모델로 설정하면 모든 작업 공간에 영향을 주는 재벡터화가 필요합니다. 계속할까요?",
+    "default_unavailable": "사용 가능한 기본 대화 모델(활성화+검증 완료)이 없습니다. 연결 확인을 수행하고 활성화하세요.",
+    "default_unavailable_admin": "관리자: 모델은 있으나 사용 가능한 기본 대화 모델이 없습니다. 연결 확인을 수행하고 활성화하세요."
   },
   "user": {
     "workspace": "작업 공간",
@@ -977,9 +983,37 @@
     "tencent_cloud": "텐센트 클라우드",
     "volcano_engine": "볼케이노 엔진",
     "minimax": "MiniMax",
-    "generic_openai": "범용 OpenAI"
+    "generic_openai": "범용 OpenAI",
+    "custom": "사용자 지정"
+  },
+  "modelCfg": {
+    "format": "업스트림 형식",
+    "format_auto": "자동 감지",
+    "full_url": "전체 URL",
+    "full_url_tip": "전체 엔드포인트 주소이므로 경로를 추가하지 않습니다",
+    "enabled": "사용 여부",
+    "need_valid": "먼저 연결 확인을 통과해야 합니다",
+    "source_remote": "원격",
+    "source_preset": "프리셋",
+    "fetch_failed": "가져오기 실패, 모델 이름을 직접 입력할 수 있습니다",
+    "manual_input": "모델 이름 직접 입력",
+    "dimension": "벡터 차원",
+    "type_locked": "편집 중에는 모델 유형을 변경할 수 없습니다",
+    "rebuild_title": "벡터 인덱스를 재구성해야 합니다",
+    "rebuild_action": "벡터 재구성",
+    "rebuild_running": "재구성 중",
+    "rebuild_done": "재구성 완료",
+    "rebuild_failed": "재구성 실패",
+    "retry": "재시도",
+    "status_available": "사용 가능",
+    "status_unavailable": "사용 불가",
+    "status_enabled": "활성화됨",
+    "status_disabled": "비활성화됨",
+    "default_switch_tip": "기본 임베딩 모델을 전환하면 모든 작업 공간을 다시 벡터화해야 합니다",
+    "embedding_missing": "사용 가능한 온라인 임베딩 모델이 없습니다"
   },
   "modelType": {
+    "embedding": "임베딩 모델",
     "llm": "대형 언어 모델"
   },
   "audit": {

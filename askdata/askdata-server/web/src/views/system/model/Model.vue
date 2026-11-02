@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, computed, shallowRef, reactive, nextTick } from 'vue'
+import { ref, computed, shallowRef, reactive, nextTick, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus-secondary'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
@@ -27,6 +27,8 @@ interface Model {
   id?: string
   default_model: boolean
   supplier: number
+  valid?: boolean
+  enable?: boolean
 }
 
 const { t } = useI18n()
@@ -128,14 +130,15 @@ const duplicateName = async (item: any) => {
     ...item,
   }
   if (!item.id) {
-    modelApi.add(param).then(() => {
+    modelApi.add(param).then((res) => {
       beforeClose()
       search()
       ElMessage({
         type: 'success',
         message: t('workspace.add_successfully'),
       })
-      modelCheckHandler(item)
+      // 连通校验需携带新建模型 id 才能回写 valid（新建时 item 无 id）
+      modelCheckHandler(res || item)
     })
     return
   }
@@ -155,7 +158,17 @@ const handleDefaultModelChange = (item: any) => {
   if (current_default_node?.id === item.id) {
     return
   }
-  ElMessageBox.confirm(t('model.system_default_model', { msg: item.name }), {
+  // 13.3 仅对 valid=1 && enable=1 的模型可设默认
+  if (!item.valid || !item.enable) {
+    ElMessage.warning(t('modelCfg.need_valid'))
+    return
+  }
+  // 13.4 切换向量默认模型需提示「需重新向量化且影响所有工作空间」
+  const isVector = Number(item.model_type) === 1
+  const msg = isVector
+    ? t('model.vector_default_confirm', { msg: item.name })
+    : t('model.system_default_model', { msg: item.name })
+  ElMessageBox.confirm(msg, {
     confirmButtonType: 'primary',
     tip: t('model.operate_with_caution'),
     confirmButtonText: t('datasource.confirm'),
@@ -202,7 +215,17 @@ const handleEditModel = (row: any) => {
 
 const handleDefault = (row: any) => {
   if (row.default_model) return
-  ElMessageBox.confirm(t('model.system_default_model', { msg: row.name }), {
+  // 13.3 仅对 valid=1 && enable=1 的模型可设默认
+  if (!row.valid || !row.enable) {
+    ElMessage.warning(t('modelCfg.need_valid'))
+    return
+  }
+  // 13.4 切换向量默认模型需提示「需重新向量化且影响所有工作空间」
+  const isVector = Number(row.model_type) === 1
+  const msg = isVector
+    ? t('model.vector_default_confirm', { msg: row.name })
+    : t('model.system_default_model', { msg: row.name })
+  ElMessageBox.confirm(msg, {
     confirmButtonType: 'primary',
     tip: t('model.operate_with_caution'),
     confirmButtonText: t('datasource.confirm'),
@@ -306,7 +329,61 @@ const search = () => {
       searchLoading.value = false
     })
 }
+
+// 13.5/13.6 向量索引待重建提示与一键重建
+const embeddingState = ref<any>({})
+const embeddingRebuilding = ref(false)
+let embeddingTimer: any = null
+
+const loadEmbeddingStatus = () => {
+  modelApi
+    .embeddingStatus()
+    .then((res: any) => {
+      embeddingState.value = res || {}
+      if (embeddingState.value.running) {
+        if (!embeddingTimer) embeddingTimer = setInterval(loadEmbeddingStatus, 2000)
+      } else if (embeddingTimer) {
+        clearInterval(embeddingTimer)
+        embeddingTimer = null
+      }
+    })
+    .catch(() => {})
+}
+
+const startRebuild = () => {
+  embeddingRebuilding.value = true
+  modelApi
+    .rebuildEmbedding()
+    .then((res: any) => {
+      if (res && res.started === false) {
+        ElMessage.warning(t('modelCfg.fetch_failed'))
+        return
+      }
+      ElMessage.success(t('modelCfg.rebuild_running'))
+      if (!embeddingTimer) embeddingTimer = setInterval(loadEmbeddingStatus, 2000)
+    })
+    .catch(() => {})
+    .finally(() => {
+      embeddingRebuilding.value = false
+    })
+}
+
+const embeddingProgress = computed(() => {
+  const total = embeddingState.value.total || 0
+  const done = embeddingState.value.done || 0
+  return total > 0 ? Math.round((done / total) * 100) : 0
+})
+
 search()
+loadEmbeddingStatus()
+
+onUnmounted(() => {
+  if (embeddingTimer) {
+    clearInterval(embeddingTimer)
+    embeddingTimer = null
+  }
+})
+
 
 const submit = (item: any) => {
   duplicateName(item)
@@ -315,6 +392,33 @@ const submit = (item: any) => {
 
 <template>
   <div class="model-config no-padding">
+    <!-- 13.5/13.6 向量索引待重建提示条 + 一键重建 + 进度 -->
+    <div v-if="embeddingState.pending" class="embedding-banner">
+      <div class="banner-row">
+        <span class="banner-title">{{ t('modelCfg.rebuild_title') }}</span>
+        <span v-if="embeddingState.running" class="banner-status">
+          {{ embeddingState.done }}/{{ embeddingState.total }}
+          <span v-if="embeddingState.current_scope"> · {{ embeddingState.current_scope }}</span>
+        </span>
+        <span v-else-if="embeddingState.failed > 0" class="banner-status failed">
+          {{ t('modelCfg.rebuild_failed') }}
+        </span>
+        <el-button size="small" type="primary" :loading="embeddingRebuilding" @click="startRebuild">
+          {{ t('modelCfg.rebuild_action') }}
+        </el-button>
+      </div>
+      <el-progress
+        v-if="embeddingState.running"
+        :percentage="embeddingProgress"
+        :stroke-width="6"
+        class="banner-progress"
+      />
+      <div v-else-if="embeddingState.failed > 0" class="banner-retry">
+        <el-button size="small" link type="primary" :loading="embeddingRebuilding" @click="startRebuild">
+          {{ t('modelCfg.retry') }}
+        </el-button>
+      </div>
+    </div>
     <div class="model-methods">
       <span class="title">{{ t('model.ai_model_configuration') }}</span>
       <div class="button-input">
@@ -409,6 +513,8 @@ const submit = (item: any) => {
             :model-type="getModelTypeName(ele['model_type'])"
             :base-model="ele['base_model']"
             :is-default="ele['default_model']"
+            :valid="ele['valid']"
+            :enable="ele['enable']"
             @edit="handleEditModel(ele)"
             @del="deleteHandler"
             @default="handleDefault(ele)"
@@ -616,6 +722,35 @@ const submit = (item: any) => {
   padding: 24px;
   .tip {
     margin-top: 24px;
+  }
+}
+.embedding-banner {
+  margin: 16px 16px 0 16px;
+  padding: 12px 16px;
+  border: 1px solid #f5d99a;
+  background: #fff8ec;
+  border-radius: 8px;
+  .banner-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .banner-title {
+    font-weight: 600;
+    font-size: 14px;
+  }
+  .banner-status {
+    color: #8f959e;
+    font-size: 13px;
+    &.failed {
+      color: var(--ed-color-danger);
+    }
+  }
+  .banner-progress {
+    margin-top: 8px;
+  }
+  .banner-retry {
+    margin-top: 4px;
   }
 }
 </style>

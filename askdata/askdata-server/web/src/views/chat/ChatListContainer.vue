@@ -124,10 +124,11 @@ const createNewChat = async () => {
     await chatApi.checkLLMModel()
   } catch (error: any) {
     console.error(error)
-    let errorMsg = t('model.default_miss')
+    const configured = error?.configured
+    let errorMsg = configured ? t('model.default_unavailable') : t('model.default_miss')
     let confirm_text = t('datasource.got_it')
     if (userStore.isAdmin) {
-      errorMsg = t('model.default_miss_admin')
+      errorMsg = configured ? t('model.default_unavailable_admin') : t('model.default_miss_admin')
       confirm_text = t('model.to_config')
     }
     ElMessageBox.confirm(t('qa.ask_failed'), {

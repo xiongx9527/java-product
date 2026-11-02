@@ -86,7 +86,7 @@ const rule = reactive<FormRules>({
   ],
 })
 
-const edit = (item) => {
+const edit = (item: any) => {
   id.value = item && item.id != null ? Number(item.id) : null
   dialogVisible.value = true
   if (id.value == null) {

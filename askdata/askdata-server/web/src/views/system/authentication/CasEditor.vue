@@ -94,7 +94,7 @@ const rule = reactive<FormRules>({
   mapping: [{ required: false, validator: validateMapping, trigger: 'blur' }],
 })
 
-const edit = (item) => {
+const edit = (item: any) => {
   id.value = item && item.id != null ? Number(item.id) : null
   dialogVisible.value = true
   if (id.value == null) {
@@ -110,7 +110,7 @@ const edit = (item) => {
       id.value = res.id
       const data = JSON.parse(res.config)
       for (const key in data) {
-        state.form[key] = data[key] as any
+        (state.form as Record<string, any>)[key] = data[key] as any
       }
       if (!state.form.casCallbackDomain) {
         state.form.casCallbackDomain = getSQLBotAddr()

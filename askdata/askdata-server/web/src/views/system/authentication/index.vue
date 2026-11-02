@@ -66,7 +66,7 @@ import { ElMessage } from 'element-plus-secondary'
 const { t } = useI18n()
 const loading = ref(false)
 interface CardInfo {
-  id: string
+  id: string | null
   name: string
   valid: boolean
   enable: boolean
@@ -142,7 +142,7 @@ const editInfo = (item: CardInfo) => {
 const typeByName = { cas: 1, oidc: 2, ldap: 3, oauth2: 4, saml2: 5 }
 const validate = (item: any) => {
   loading.value = true
-  const type = typeByName[item?.name] ?? 0
+  const type = (typeByName as Record<string, number>)[item?.name] ?? 0
   request
     .patch('/system/authentication/status', { type, name: item?.name, config: '' })
     .then((res) => {
