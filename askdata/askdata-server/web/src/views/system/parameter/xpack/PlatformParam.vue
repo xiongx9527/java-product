@@ -162,7 +162,7 @@ const queryCategoryStatus = () => {
 onMounted(async () => {
   // eslint-disable-next-line no-undef
   const obj = LicenseGenerator.getLicense()
-  if (obj?.status !== 'valid') {
+  if (obj && (obj.status === 'invalid' || obj.status === 'expired')) {
     // A29：许可证无效时给出明确提示，不再静默隐藏整个企业参数区
     xpackValid.value = false
     licenseInvalidTips.value = t('about.license_invalid_tips')

@@ -128,7 +128,7 @@ class I18nMessageConvergenceTest {
     @Test
     void notLoginMessageFollowsAcceptLanguage() {
         ApiExceptionHandler handler = new ApiExceptionHandler(TestMessageResolver.create(),
-                new com.xiongx9527.askdata.common.debounce.DebounceProperties());
+                new com.xiongx9527.fw.plus.common.debounce.DebounceProperties());
         NotLoginException e = new NotLoginException("token invalid", "login", "-1");
 
         LocaleContextHolder.setLocale(Locale.SIMPLIFIED_CHINESE);

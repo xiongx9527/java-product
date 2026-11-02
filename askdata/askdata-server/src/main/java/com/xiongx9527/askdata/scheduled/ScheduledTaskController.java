@@ -1,6 +1,6 @@
 package com.xiongx9527.askdata.scheduled;
 
-import com.xiongx9527.askdata.common.debounce.Debounce;
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import com.xiongx9527.askdata.common.web.Result;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;

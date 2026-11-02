@@ -199,10 +199,20 @@ const routerList = computed(() => {
 })
 
 const sysRouterList = computed(() => {
+  const g = (globalThis as any).LicenseGenerator
+  let s: any = {}
+  if (g) { s = g.getLicense() }
+  const ent = s.enterprise === true
   const result = router
     .getRoutes()
     .filter((route) => route.path.includes('/system') && !route.redirect)
-  return result
+  return result.filter((r) => {
+    const m = r.meta
+    let eo = false
+    if (m) { eo = m.enterpriseOnly === true }
+    if (eo === true && ent !== true) { return false }
+    return true
+  })
 })
 
 const showSubmenu = computed(() => {

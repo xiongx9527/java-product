@@ -2,7 +2,7 @@ package com.xiongx9527.askdata.mcp;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.chat.service.ChatQuestionService;
-import com.xiongx9527.askdata.common.debounce.DebounceProperties;
+import com.xiongx9527.fw.plus.common.debounce.DebounceProperties;
 import com.xiongx9527.askdata.common.i18n.TestMessageResolver;
 import com.xiongx9527.askdata.common.web.ApiExceptionHandler;
 import com.xiongx9527.askdata.common.web.BadRequestException;

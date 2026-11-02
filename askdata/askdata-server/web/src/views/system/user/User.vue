@@ -1334,12 +1334,15 @@ const syncTips = computed(() =>
 onMounted(() => {
   // eslint-disable-next-line no-undef
   const obj = LicenseGenerator.getLicense()
-  if (obj?.status === 'valid') {
+  if (obj && obj.status === 'valid') {
     showSyncBtn.value = true
     loadData()
-  } else {
+  } else if (obj && (obj.status === 'invalid' || obj.status === 'expired')) {
     platformType.value = []
     licenseInvalid.value = true
+  } else {
+    platformType.value = []
+    licenseInvalid.value = false
   }
 
   workspaceList().then((res) => {

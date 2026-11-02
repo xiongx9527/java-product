@@ -485,7 +485,7 @@ onMounted(async () => {
   }
   // eslint-disable-next-line no-undef
   const obj = LicenseGenerator.getLicense()
-  if (obj?.status !== 'valid') {
+  if (obj && (obj.status === 'invalid' || obj.status === 'expired')) {
     // A29：许可证无效时明确提示，不再静默不展示任何企业登录入口
     licenseInvalidTips.value = t('about.license_invalid_tips')
     updateLoading(false, 100)

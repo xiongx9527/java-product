@@ -23,7 +23,7 @@ askdata 把「依赖部署形态」的部分收敛为配置开关：单机无外
 - askdata.cache.sa-token-store：memory（默认）/ redis；留空跟随 askdata.cache.type
 - askdata.lock.type：db（默认，元数据库表行独占锁）/ redis（SET NX PX）
 - askdata.lock.debounce-seconds：防抖窗口（默认 300），0 表示不防抖
-- askdata.debounce.enabled / window-ms / paths：接口防抖开关、窗口与生效路径（Ant 风格）
+- fw.plus.debounce.enabled / window-ms / cache-name / redis-key-prefix：接口防抖开关、默认窗口、占位缓存区域名与 Redis 键前缀（生效接口由 `@Debounce` 注解声明）
 - askdata.openapi.title / version / description：文档元数据；version 留空取构建版本
 - spring.data.redis.*：Redis 连接（仅启用 Redis 时生效）
 - sa-token.token-name：token 头名（文档与鉴权共用同一来源）

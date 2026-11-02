@@ -18,7 +18,7 @@ const props = withDefaults(
     num?: number
     valid?: boolean
     enable?: boolean
-    modelTypeRaw?: number
+    modelTypeRaw?: number | string
   }>(),
   {
     name: '-',
@@ -34,7 +34,7 @@ const props = withDefaults(
   }
 )
 // 13.7 仅大语言模型（model_type=0）可授权工作空间；向量模型不允许授权
-const isLLM = computed(() => props.modelTypeRaw === 0)
+const isLLM = computed(() => Number(props.modelTypeRaw) === 0)
 const errorMsg = ref('')
 const current_supplier = computed(() => {
   if (!props.supplier) {

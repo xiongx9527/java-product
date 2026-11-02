@@ -1,6 +1,6 @@
 package com.xiongx9527.askdata.mcp;
 
-import com.xiongx9527.askdata.common.debounce.DebounceProperties;
+import com.xiongx9527.fw.plus.common.debounce.DebounceProperties;
 import com.xiongx9527.askdata.common.i18n.TestMessageResolver;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.util.Rows;
