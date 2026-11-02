@@ -2,6 +2,8 @@
 comet_change: aimodel-config-flow-revamp
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-11-02-aimodel-config-flow-revamp
+status: final
 ---
 
 # Design

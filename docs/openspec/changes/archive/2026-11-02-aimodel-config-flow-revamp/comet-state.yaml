@@ -1,0 +1,3821 @@
+# comet-execution: managed-run
+change_id: 3dc1ec5b-ff61-4a9a-bc39-8adb04af98c1
+workflow: full
+language: zh-CN
+phase: archive
+context_compression: off
+build_mode: autonomous
+build_pause: null
+subagent_dispatch: null
+tdd_mode: direct
+review_mode: standard
+isolation: current
+verify_mode: null
+auto_transition: true
+base_ref: 2643c922f07fbbe1366f211ded6d1fea398b0462
+design_doc: docs/openspec/changes/archive/2026-11-02-aimodel-config-flow-revamp/design.md
+plan: docs/superpowers/plans/2026-11-01-aimodel-config-flow-revamp.md
+verify_result: pass
+verify_failures: 0
+verification_report: docs/superpowers/reports/aimodel-config-flow-revamp.md
+branch_status: pending
+created_at: 2026-11-01
+verified_at: 2026-11-02
+archive_confirmation: confirmed
+archived: true
+bound_branch: dev
+direct_override: false
+handoff_context: docs/openspec/changes/archive/2026-11-02-aimodel-config-flow-revamp/.comet/handoff/design-context.json
+handoff_hash: 9b9145afdc0707944b132d134c29a30ac04bda3bf8412c11c618be02b0b78197
+classic_profile: null
+classic_migration: null
+run_checkpoint:
+  schema: comet.workflow-run-checkpoint.v2
+  hash: 73ed3fcab643f851091ad03d5f0d30278f94a710d90497974656f285160bae68
+  run:
+    protocolVersion: 1
+    schemaVersion: 1
+    runId: aimodel-config-flow-revamp
+    revision: 1
+    workflow:
+      id: comet-classic-full
+      version: "1"
+      hash: 22f3d34c5ee18da3a0c2d11271ad799bd0ae40e37607cbf90baec05a5e003ee7
+    definitionHashes:
+      '["comet-classic-full","1"]': 22f3d34c5ee18da3a0c2d11271ad799bd0ae40e37607cbf90baec05a5e003ee7
+    initialStateHash: 7953d2b478c20fc0fb582ca0e90bf4b788a09691531550abddb8e9fe498c29ec
+    input:
+      change: aimodel-config-flow-revamp
+      changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+      workspaceBaseline:
+        ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+    state:
+      archiveConfirmation: confirmed
+      archived: true
+      autoTransition: true
+      baseRef: 2643c922f07fbbe1366f211ded6d1fea398b0462
+      boundBranch: dev
+      branchStatus: pending
+      buildMode: autonomous
+      buildPause: null
+      checkEpoch: 7
+      classicMigration: null
+      classicProfile: null
+      contextCompression: off
+      createdAt: 2026-11-01
+      designDoc: docs/openspec/changes/archive/2026-11-02-aimodel-config-flow-revamp/design.md
+      directOverride: false
+      handoffContext: docs/openspec/changes/archive/2026-11-02-aimodel-config-flow-revamp/.comet/handoff/design-context.json
+      handoffHash: 9b9145afdc0707944b132d134c29a30ac04bda3bf8412c11c618be02b0b78197
+      isolation: current
+      language: zh-CN
+      phase: archive
+      plan: docs/superpowers/plans/2026-11-01-aimodel-config-flow-revamp.md
+      reviewMode: standard
+      subagentDispatch: null
+      tddMode: direct
+      verificationReport: docs/superpowers/reports/aimodel-config-flow-revamp.md
+      verifiedAt: 2026-11-02
+      verifyFailures: 0
+      verifyMode: null
+      verifyResult: pass
+      workflow: full
+    status: running
+    sequence: 35
+    actions:
+      - attempt: 1
+        claim:
+          executorId: comet-classic-guard
+          token: portable-e0c01becc5624853385de15ab95dce566f8b2d914d466ad2837b7c201964012f
+        executionOrigin:
+          workflow:
+            hash: ee198afdb53add0c23f98202aae8cdbe4079b9f4ebf7a62ed4ab8411ed591db5
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-config-flow-revamp:1
+        input:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: d2d91de28dfc7b01ede7ec18abb67bae0d6178d427c61132399fdac5be1528ed
+        outcome:
+          actionId: aimodel-config-flow-revamp:1
+          attempt: 1
+          claimToken: portable-e0c01becc5624853385de15ab95dce566f8b2d914d466ad2837b7c201964012f
+          inputHash: d2d91de28dfc7b01ede7ec18abb67bae0d6178d427c61132399fdac5be1528ed
+          outcomeId: 163e6ebc-7f41-4f3e-b0d1-9e4071d6f6db
+          output:
+            event: open-complete
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: 629c09d55f5cdb5e81e865f3383d0afffbf6ca7e714064159babdd11a6e5ab70
+            outcomeId: 163e6ebc-7f41-4f3e-b0d1-9e4071d6f6db
+        reconciliations: []
+        ref: comet-open
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: succeeded
+        stepId: full.open
+        type: invoke_skill
+      - attempt: 1
+        claim:
+          executorId: comet-classic-open-revalidate
+          token: portable-bb07e5edcec3c7a6ecbb931438183618dfdbf5f32a18dbc019fd1e02f163752f
+        executionOrigin:
+          workflow:
+            hash: ee198afdb53add0c23f98202aae8cdbe4079b9f4ebf7a62ed4ab8411ed591db5
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-config-flow-revamp:4
+        input:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: a376978582e033142e0d047745a4b980cf8b283f32ce434eb415232750f93bdc
+        outcome:
+          actionId: aimodel-config-flow-revamp:4
+          attempt: 1
+          claimToken: portable-bb07e5edcec3c7a6ecbb931438183618dfdbf5f32a18dbc019fd1e02f163752f
+          inputHash: a376978582e033142e0d047745a4b980cf8b283f32ce434eb415232750f93bdc
+          outcomeId: aimodel-config-flow-revamp:4:1:executor-result
+          output:
+            contentHash: 62e10da7be46916dfa2e6054acb5342eb79add4dd5c654171a21afb37631d7bf
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: a594495ed08cb08c7c96b0a48a77951f86e421325a64521ce09d81e1a03bb7c1
+            outcomeId: aimodel-config-flow-revamp:4:1:executor-result
+        reconciliations: []
+        ref: classic-open-revalidate
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: succeeded
+        stepId: full.open.revalidate
+        type: call_tool
+      - attempt: 1
+        claim:
+          executorId: comet-classic-state
+          token: portable-36196c2a23537cd5c19e851426bd72197d054b1d9362e11d4bdbfda5bb4d4ceb
+        executionOrigin:
+          workflow:
+            hash: ee198afdb53add0c23f98202aae8cdbe4079b9f4ebf7a62ed4ab8411ed591db5
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-config-flow-revamp:5
+        input:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: ebf567fbafbe644e7ffe415dc4c81cf5567cb7be0f635ab7593ca0fb8cd6d6de
+        outcome:
+          actionId: aimodel-config-flow-revamp:5
+          attempt: 1
+          claimToken: portable-36196c2a23537cd5c19e851426bd72197d054b1d9362e11d4bdbfda5bb4d4ceb
+          inputHash: ebf567fbafbe644e7ffe415dc4c81cf5567cb7be0f635ab7593ca0fb8cd6d6de
+          outcomeId: e4755264-c01c-47f9-8cf1-1e6e5c6dca97
+          output:
+            handoffContext: docs/openspec/changes/aimodel-config-flow-revamp/.comet/handoff/design-context.json
+            handoffHash: bad4986e8d15b6566d115fe4d29212cbaad0b9707b47f8cedc03cfd14ddc9f8b
+            proposal: 技术方案：沿用 change 内 design.md 作为唯一 Design Doc，覆盖 15 项决策与端到端验证。\n1)
+              数据层：ai_model 新增 enable / valid / upstream_format / dimension 四列，新增
+              ai_embedding_index_state 单行状态表；三套方言迁移脚本，存量回填
+              enable=1、valid=1、upstream_format=1，并把 H2 向量列改为 CLOB、MySQL 改
+              MEDIUMTEXT，消除维度上限。\n2) 仓储与路由：AiModelRepository
+              只保留带类型参数的查询（findDefault/clearDefaults/countByType/listByWorkspace），编译期强制调用方声明类型；ChatModelRouter
+              仅暴露 chatModel()/embeddingModel()，按 model_type+enable+valid
+              过滤，无默认时回退该类型首个可用模型。\n3) 报文格式：新增 UpstreamFormatResolver 统一判定与 URL
+              规范化（自动识别 Azure/Anthropic，Responses 手选）；ChatModelClient.generate()
+              增加格式参数，按 Chat Completions / Anthropic Messages / Responses / Azure
+              四分支构造请求与解析流式事件，Chat Completions 现有路径不改结构。\n4) 接口：连通校验按类型分支（LLM 对话
+              / 向量 embeddings）并回写 valid；新增 POST /system/aimodel/models 代理上游
+              /models（失败降级 preset/none）；新增 embedding status 与 rebuild
+              两个管理接口，重建全空间、强制重算、复用单 worker 守卫。\n5) 向量：移除本地
+              ONNX（LocalEmbeddingModel、BertWordPieceTokenizer、onnxruntime
+              依赖、model-path
+              配置），无可用在线向量模型时网页会话/MCP/定时任务统一阻断；维度作为一等属性，启用、设默认、问答入口三处硬校验。\n6)
+              前端：ModelForm 持有拉取与测试状态机（请求序号丢弃过期响应），字段顺序改为 模型名称→Base URL→API
+              Key→模型类型→基础模型→是否生效→高级配置；模型类型新建可选、编辑只读；默认模型按类型唯一且不可停用/删除；模型页常驻「向量索引待重建」提示与一键重建。\n7)
+              对等基线：以 SQLBot 为硬性基线，reference-parity.md 登记 B1–B14 / R1–R6 / F1–F13
+              共 33 条与 7 项有意偏离（D1–D7）。\n\n关键取舍：新增独立列而非复用
+              protocol/config；类型维度在仓储层收口而非各调用点过滤；格式判定收敛为单一解析器；报文适配放在
+              ChatModelClient 内部；重建必须全空间且强制重算。\n\n风险：default_model
+              语义变更影响面大（迁移不回算，走回退逻辑）；新列回填错误会导致全站无模型（DEFAULT 1 +
+              断言可用模型数不减少）；ChatModelClient
+              触及问数主链路（只加分支，回归问数/图表/权限/定时任务）；Anthropic 与 Responses 无真实网关（stub
+              单测并写入交付说明）；维度变化导致召回异常（切换前确认 + 重建幂等）。\n\nSpec
+              Patch：无。本阶段只做文档一致性修正——reference-parity.md 第 4 节实际为 7
+              项偏离（D1–D7），proposal/design/spec/tasks 的「6 项（D1–D6）」统一更正为 7
+              项（D1–D7），不改变任何行为或验收范围。\n验证策略：后端单测 + 进程内 stub provider；前端复用
+              askdata-server/e2e，Playwright 覆盖 10
+              类用例（含字段顺序、拉取降级、校验失败可保存、向量端点分支、格式切换、默认模型保护、五语言）。
+            requirementsEvidence:
+              contentHash: df66f44213af4fd76fe46803fbfbff36feca8a044d37a8ab0fb3de26ac811f77
+              ref: docs/openspec/changes/aimodel-config-flow-revamp
+            sourceEvidence:
+              contentHash: 62ddf39badff58584f74181d6cd6d3217f5523f1bd78b9933f6b1681698e8ec2
+              ref: docs/openspec/changes/aimodel-config-flow-revamp
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: 2e770bf7a76ab47ec02f757992bd897c16a66119ba516ddb8010fd44bf3a8a76
+            outcomeId: e4755264-c01c-47f9-8cf1-1e6e5c6dca97
+        reconciliations: []
+        ref: comet-design
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: succeeded
+        stepId: full.design.handoff
+        type: invoke_skill
+      - attempt: 1
+        claim:
+          executorId: comet-classic-state
+          token: portable-a425666f14f1b9bdaa6e59c1041db06259d07dbb391c06d22286227e3fded834
+        executionOrigin:
+          workflow:
+            hash: ee198afdb53add0c23f98202aae8cdbe4079b9f4ebf7a62ed4ab8411ed591db5
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-config-flow-revamp:7
+        input:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: df662378910e0460ad1521989da56f0e50ff1103ecddbea3b4ec0950b3b6f335
+        outcome:
+          actionId: aimodel-config-flow-revamp:7
+          attempt: 1
+          claimToken: portable-a425666f14f1b9bdaa6e59c1041db06259d07dbb391c06d22286227e3fded834
+          inputHash: df662378910e0460ad1521989da56f0e50ff1103ecddbea3b4ec0950b3b6f335
+          outcomeId: ad034a0a-7bb3-495e-b481-dd154324cf46
+          output:
+            designDoc: docs/openspec/changes/aimodel-config-flow-revamp/design.md
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: 3079d9a65c6c25da07314b33568ca341e5e63e517dc20aa8bc8366e14e89d47b
+            outcomeId: ad034a0a-7bb3-495e-b481-dd154324cf46
+        reconciliations: []
+        ref: comet-design
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: succeeded
+        stepId: full.design.document
+        type: invoke_skill
+      - attempt: 1
+        claim:
+          executorId: comet-classic-state
+          token: portable-a0f94a11e6cae9eb302ed2e35a450238d4da17bf869498461c48cfac1b682d46
+        executionOrigin:
+          workflow:
+            hash: ee198afdb53add0c23f98202aae8cdbe4079b9f4ebf7a62ed4ab8411ed591db5
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-config-flow-revamp:9
+        input:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: 49362322c04535d067f46204d4feeee1bd626523fcb9553d15edb7bbddffd6ff
+        outcome:
+          actionId: aimodel-config-flow-revamp:9
+          attempt: 1
+          claimToken: portable-a0f94a11e6cae9eb302ed2e35a450238d4da17bf869498461c48cfac1b682d46
+          inputHash: 49362322c04535d067f46204d4feeee1bd626523fcb9553d15edb7bbddffd6ff
+          outcomeId: a406c7f3-ee27-454c-a6ec-f26300efe2ef
+          output:
+            boundBranch: dev
+            buildMode: autonomous
+            directOverride: false
+            isolation: current
+            reviewMode: standard
+            subagentDispatch: null
+            tddMode: direct
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: 699e50b6584abb791013386b415485f9a76add7a592e7093c870347bd9eabe1d
+            outcomeId: a406c7f3-ee27-454c-a6ec-f26300efe2ef
+        reconciliations: []
+        ref: comet-build
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: succeeded
+        stepId: full.build.configure
+        type: invoke_skill
+      - attempt: 1
+        claim:
+          executorId: comet-classic-state
+          token: portable-1375e0d0fd2ccfedd1b97f261d547f4b60be806109abf33ddeaf37b745f70c14
+        executionOrigin:
+          workflow:
+            hash: ee198afdb53add0c23f98202aae8cdbe4079b9f4ebf7a62ed4ab8411ed591db5
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-config-flow-revamp:11
+        input:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: f96bb7788139514169462515b3bc1e09154f9ff7d8d7a01dd0464061dee8c1a8
+        outcome:
+          actionId: aimodel-config-flow-revamp:11
+          attempt: 1
+          claimToken: portable-1375e0d0fd2ccfedd1b97f261d547f4b60be806109abf33ddeaf37b745f70c14
+          inputHash: f96bb7788139514169462515b3bc1e09154f9ff7d8d7a01dd0464061dee8c1a8
+          outcomeId: d8cbb1fe-d084-43af-a42a-cd35c61f6dc0
+          output:
+            designEvidence:
+              contentHash: 408f684a895ab127129073f8006b8caa75106c0b2279284227c2373be380d4ed
+              ref: docs/openspec/changes/aimodel-config-flow-revamp/design.md
+            plan: docs/superpowers/plans/2026-11-01-aimodel-config-flow-revamp.md
+            planEvidence:
+              contentHash: d89fd940dd33b2ef8fb5a33bf5a195e00e7cf9fb3f17706dd27d6981724ec8b7
+              ref: docs/superpowers/plans/2026-11-01-aimodel-config-flow-revamp.md
+            taskRevision: ac38135fd4d036b434d00c80ba8f54525643e65ec26dce37cd20003b5b0044c0
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: 7ad93c963c3d53a2c6af31c8c20eeb3cbc1dcce4631106c27cc9fb057fed7f0c
+            outcomeId: d8cbb1fe-d084-43af-a42a-cd35c61f6dc0
+        reconciliations: []
+        ref: comet-build
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: succeeded
+        stepId: full.build.plan
+        type: invoke_skill
+      - attempt: 1
+        id: aimodel-config-flow-revamp:13
+        input:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: a4ea0fbcb4354cc790faff55af4450db6f232d3820a5c2499bd96145869ee958
+        protocolVersion: 1
+        reason: 命令 revise-design 已取代待执行 Action
+        receipts: []
+        reconciliations: []
+        ref: comet-build
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: cancelled
+        stepId: full.build.execute
+        type: invoke_skill
+      - attempt: 1
+        claim:
+          executorId: comet-classic-state
+          token: portable-721c9fcc87b52b9e041507f62ba6c89404c129409d735e92afcd634118f49b47
+        executionOrigin:
+          workflow:
+            hash: 22f3d34c5ee18da3a0c2d11271ad799bd0ae40e37607cbf90baec05a5e003ee7
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-config-flow-revamp:14
+        input:
+          activation:
+            expectedRevision: 19
+            fromPhase: build
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: d1dce9d07ca60e222028b99a743123f31752aed31593bfdd785567ea15fbb3f7
+        outcome:
+          actionId: aimodel-config-flow-revamp:14
+          attempt: 1
+          claimToken: portable-721c9fcc87b52b9e041507f62ba6c89404c129409d735e92afcd634118f49b47
+          inputHash: d1dce9d07ca60e222028b99a743123f31752aed31593bfdd785567ea15fbb3f7
+          outcomeId: 9921a679-c1f5-49cd-80f8-41a4268ef5d3
+          output:
+            handoffContext: docs/openspec/changes/aimodel-config-flow-revamp/.comet/handoff/design-context.json
+            handoffHash: 9b9145afdc0707944b132d134c29a30ac04bda3bf8412c11c618be02b0b78197
+            proposal: AI 模型配置流重构：ai_model 增加 enable/valid/upstream_format/dimension 字段（V5
+              迁移，覆盖 mysql/postgresql，移除 h2）；支持 CHAT/ANTHROPIC/RESPONSES/AZURE
+              四种上游格式解析与分流；默认模型按类型隔离与启停保护；向量索引全空间重建（ai_embedding_index_state）；移除
+              H2
+              本地嵌入链路（LocalEmbeddingModel/BertWordPieceTokenizer/DbVectorStore/onnxruntime），元数据仅用
+              MySQL 8.0+/PG 10+，测试切真实 MySQL/Qdrant/TEI/Redis 并在依赖不可达时 assume
+              跳过；前端模型配置 UI 适配状态与多语言。设计较初版（rev 19）无范围扩张，仅因实现落地后补充细节，故 reconcile 至
+              rev 20。
+            requirementsEvidence:
+              contentHash: 37891a9d8323a5721af64fe4f0dcb6725aad2f938bd48b88f977db9dbb4dd25b
+              ref: docs/openspec/changes/aimodel-config-flow-revamp
+            sourceEvidence:
+              contentHash: d22a5e62e41cd40aa7c29d82c41eb70a4f48dba64e1b1ceda3eed67f74ed3071
+              ref: docs/openspec/changes/aimodel-config-flow-revamp
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: 3bb3abe99156ebe87218075b375e2d9522b71b7fcbcc323b9022690287695de2
+            outcomeId: 9921a679-c1f5-49cd-80f8-41a4268ef5d3
+        reconciliations: []
+        ref: comet-design
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: succeeded
+        stepId: full.design.handoff
+        type: invoke_skill
+      - attempt: 1
+        claim:
+          executorId: comet-classic-state
+          token: portable-3e402185adcb06b859060dd1968e0ae798aa37c1837589e2c02654febc9a6755
+        executionOrigin:
+          workflow:
+            hash: 22f3d34c5ee18da3a0c2d11271ad799bd0ae40e37607cbf90baec05a5e003ee7
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-config-flow-revamp:16
+        input:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: 7f4708924950ef54321e0acc62ca323ffbe7840c77f96172e413892ec2e272f1
+        outcome:
+          actionId: aimodel-config-flow-revamp:16
+          attempt: 1
+          claimToken: portable-3e402185adcb06b859060dd1968e0ae798aa37c1837589e2c02654febc9a6755
+          inputHash: 7f4708924950ef54321e0acc62ca323ffbe7840c77f96172e413892ec2e272f1
+          outcomeId: 8d1e4db2-756a-4850-a430-d54dca63d443
+          output:
+            designDoc: docs/openspec/changes/aimodel-config-flow-revamp/design.md
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: 91d5f321dabc8fddbd2650d5f2cb165e61d3aef505de0c1edefd7934b8f833d9
+            outcomeId: 8d1e4db2-756a-4850-a430-d54dca63d443
+        reconciliations: []
+        ref: comet-design
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: succeeded
+        stepId: full.design.document
+        type: invoke_skill
+      - attempt: 1
+        claim:
+          executorId: comet-classic-state
+          token: portable-42956f5ae1e73d28a86b17d4d39802c79b101db06f9143ebe465078dfd8ae930
+        executionOrigin:
+          workflow:
+            hash: 22f3d34c5ee18da3a0c2d11271ad799bd0ae40e37607cbf90baec05a5e003ee7
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-config-flow-revamp:18
+        input:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: 493918da2a7daa68fb8f2e82c20385c694e4283e2dee0a41751ffb360241a80b
+        outcome:
+          actionId: aimodel-config-flow-revamp:18
+          attempt: 1
+          claimToken: portable-42956f5ae1e73d28a86b17d4d39802c79b101db06f9143ebe465078dfd8ae930
+          inputHash: 493918da2a7daa68fb8f2e82c20385c694e4283e2dee0a41751ffb360241a80b
+          outcomeId: 1d1477db-518d-4004-a6b3-b5aca5295ec5
+          output:
+            designEvidence:
+              contentHash: 6a5af9229a14a9df62038f905ff27d97f455bc67a765324409a840487f4f7bd7
+              ref: docs/openspec/changes/aimodel-config-flow-revamp/design.md
+            plan: docs/superpowers/plans/2026-11-01-aimodel-config-flow-revamp.md
+            planEvidence:
+              contentHash: 517a0b714fe4388cd926efbd1fc93111ebf68f57fe44c6d957cc4285840c3e87
+              ref: docs/superpowers/plans/2026-11-01-aimodel-config-flow-revamp.md
+            taskRevision: 5c635dd1281d59cdf0f6c8228acaab4a456d3fbcc1938c74d2bc20326a00a590
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: d0ace82d0196a2016d7980faf3ddd81e35d8de19f9775a5b4e379fd7fd0eff75
+            outcomeId: 1d1477db-518d-4004-a6b3-b5aca5295ec5
+        reconciliations: []
+        ref: comet-build
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: succeeded
+        stepId: full.build.plan
+        type: invoke_skill
+      - attempt: 1
+        claim:
+          executorId: comet-classic-state
+          sessionId: classic-builder/aimodel-config-flow-revamp:20/1
+          token: portable-b3c932ef0cdeb90dd08b1e38f0c56007004d07195f84960f44c29caa5cce0687
+        executionOrigin:
+          workflow:
+            hash: 22f3d34c5ee18da3a0c2d11271ad799bd0ae40e37607cbf90baec05a5e003ee7
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-config-flow-revamp:20
+        input:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: 6fd1e6a6272dc4096bdda97c611fe65d929820c845818ee52d02dd6c295e0880
+        outcome:
+          actionId: aimodel-config-flow-revamp:20
+          attempt: 1
+          claimToken: portable-b3c932ef0cdeb90dd08b1e38f0c56007004d07195f84960f44c29caa5cce0687
+          inputHash: 6fd1e6a6272dc4096bdda97c611fe65d929820c845818ee52d02dd6c295e0880
+          outcomeId: edb9b21b-bee1-46c0-a656-7d9d822ae20e
+          output:
+            event: build-complete
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: fac0d4772dc0581e6f9d5b1ca12a7bc39c6f96a30dc1770b4816724f7f82a8e6
+            outcomeId: edb9b21b-bee1-46c0-a656-7d9d822ae20e
+        reconciliations: []
+        ref: comet-build
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: succeeded
+        stepId: full.build.execute
+        type: invoke_skill
+      - attempt: 1
+        claim:
+          executorId: comet-classic-check
+          token: portable-01f9ae6c5409c68ada4c5c5e69464b891d72db29202e71089dee720be1b318ca
+        executionOrigin:
+          workflow:
+            hash: 22f3d34c5ee18da3a0c2d11271ad799bd0ae40e37607cbf90baec05a5e003ee7
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-config-flow-revamp:21
+        input:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: 173c102a02f63cd547509f75024af0d14d8387f661e5d805c37b146d70d7aeca
+        outcome:
+          actionId: aimodel-config-flow-revamp:21
+          attempt: 1
+          claimToken: portable-01f9ae6c5409c68ada4c5c5e69464b891d72db29202e71089dee720be1b318ca
+          inputHash: 173c102a02f63cd547509f75024af0d14d8387f661e5d805c37b146d70d7aeca
+          outcomeId: c109868a-3b23-4c84-93be-8894e50837ea
+          output:
+            argv:
+              - mvn
+              - -o
+              - -pl
+              - askdata/askdata-server
+              - test
+            changedDuringExecution: []
+            checkEpoch: 3
+            contentHash: 2b4af87a045590410427654b65f9190d453624da7d0315e9382ef770748c5c2c
+            cwd: .
+            environment: f6698f2c8d836b3bdd4fa7e96ef9190ac1486d1c5cd9a496efcc885a13aee2f3
+            exitCode: 1
+            inputAfter: cdcd8b3cb4677f3855cd8a392644bd63a058efa624009358560cf14f51fc4fdb
+            inputBefore: cdcd8b3cb4677f3855cd8a392644bd63a058efa624009358560cf14f51fc4fdb
+            manifestHash: 5f557a8a933fe26719ad651e5632d4db3fde348f11410cfa5c958bf2a78a4b41
+            manifestRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/17480f1e-8b33-4eca-9341-26722718971e.manifest
+            receiptRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/1b4f141f-427b-48b9-947e-bcbc15889cca.log
+            reusable: false
+            reused: false
+            scope: build
+            tier: full
+            timeoutMs: 3600000
+          status: failed
+        protocolVersion: 1
+        receipts:
+          - hash: c4c1c2e9ebbaeee9bb59d73ac900aa3f9d2fbb504bc79235ce40d6b55b8e0951
+            outcomeId: c109868a-3b23-4c84-93be-8894e50837ea
+        reconciliations: []
+        ref: classic-check
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: failed
+        stepId: full.build.check
+        type: call_tool
+      - attempt: 1
+        claim:
+          executorId: comet-classic-state
+          sessionId: classic-builder/aimodel-config-flow-revamp:22/1
+          token: portable-28a5de1a5a67d23f5f393319ad233016fdbd8ed02eba33ddc239d15b795e1ac4
+        executionOrigin:
+          workflow:
+            hash: 22f3d34c5ee18da3a0c2d11271ad799bd0ae40e37607cbf90baec05a5e003ee7
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-config-flow-revamp:22
+        input:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: 1e7941bf47bf849ece09934013130924ee49bffa241403623784e77a1d364e02
+        outcome:
+          actionId: aimodel-config-flow-revamp:22
+          attempt: 1
+          claimToken: portable-28a5de1a5a67d23f5f393319ad233016fdbd8ed02eba33ddc239d15b795e1ac4
+          inputHash: 1e7941bf47bf849ece09934013130924ee49bffa241403623784e77a1d364e02
+          outcomeId: f188ccb6-15ec-4008-ae2f-26fcda8a7ab0
+          output:
+            event: build-complete
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: 5575b586462e81c4b6ea109807034fc27d5aae97f4d543bdc3067d8e80b188bf
+            outcomeId: f188ccb6-15ec-4008-ae2f-26fcda8a7ab0
+        reconciliations: []
+        ref: comet-build
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: succeeded
+        stepId: full.build.execute
+        type: invoke_skill
+      - attempt: 1
+        claim:
+          executorId: comet-classic-check
+          token: portable-1d58ed0a3224488d582208d6d0bb973251927e0ef86fae190efb3512cbaec6fb
+        executionOrigin:
+          workflow:
+            hash: 22f3d34c5ee18da3a0c2d11271ad799bd0ae40e37607cbf90baec05a5e003ee7
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-config-flow-revamp:23
+        input:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: 1e7941bf47bf849ece09934013130924ee49bffa241403623784e77a1d364e02
+        outcome:
+          actionId: aimodel-config-flow-revamp:23
+          attempt: 1
+          claimToken: portable-1d58ed0a3224488d582208d6d0bb973251927e0ef86fae190efb3512cbaec6fb
+          inputHash: 1e7941bf47bf849ece09934013130924ee49bffa241403623784e77a1d364e02
+          outcomeId: 893db982-59e0-42a8-9ebc-a434c44a6223
+          output:
+            argv:
+              - mvn
+              - -pl
+              - askdata/askdata-server
+              - test
+            changedDuringExecution: []
+            checkEpoch: 3
+            contentHash: c73528afd13b6d6649f52ff92af6c97bc31f3812f39f4b0ae0b7bb8b1141ae27
+            cwd: .
+            environment: e31e64b2ba6535af83499311a1e8cf2ec828478f3905a9c6484aef190eea4a70
+            exitCode: 124
+            inputAfter: cdcd8b3cb4677f3855cd8a392644bd63a058efa624009358560cf14f51fc4fdb
+            inputBefore: cdcd8b3cb4677f3855cd8a392644bd63a058efa624009358560cf14f51fc4fdb
+            manifestHash: 5f557a8a933fe26719ad651e5632d4db3fde348f11410cfa5c958bf2a78a4b41
+            manifestRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/4eb90927-3a7b-47be-a769-0475b6481ff6.manifest
+            receiptRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/56eb778e-93b8-4c42-99bf-c5c12e9081e7.log
+            reusable: false
+            reused: false
+            scope: build
+            tier: full
+            timeoutMs: 300000
+          status: failed
+        protocolVersion: 1
+        receipts:
+          - hash: ef8b23336d86afd1a5455767182f89f1695524f64906af14911b24cec606fd5f
+            outcomeId: 893db982-59e0-42a8-9ebc-a434c44a6223
+        reconciliations: []
+        ref: classic-check
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: failed
+        stepId: full.build.check
+        type: call_tool
+      - attempt: 1
+        claim:
+          executorId: comet-classic-state
+          sessionId: classic-builder/aimodel-config-flow-revamp:24/1
+          token: portable-7f10a3024aac3eaed9a3a7e210e0319ed5f4b38415157a4cba724c015a1b317a
+        executionOrigin:
+          workflow:
+            hash: 22f3d34c5ee18da3a0c2d11271ad799bd0ae40e37607cbf90baec05a5e003ee7
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-config-flow-revamp:24
+        input:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: a19d1394d9e42e373cbbd5799e9de8ea1f32550fb73aec71402d2a53d7f4908f
+        outcome:
+          actionId: aimodel-config-flow-revamp:24
+          attempt: 1
+          claimToken: portable-7f10a3024aac3eaed9a3a7e210e0319ed5f4b38415157a4cba724c015a1b317a
+          inputHash: a19d1394d9e42e373cbbd5799e9de8ea1f32550fb73aec71402d2a53d7f4908f
+          outcomeId: eae17cb6-9115-4431-9fd7-aeb649ff06b5
+          output:
+            event: build-complete
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: 160d8f81cb6a403300682409c01aebe3ab3ab8b6415303f9438a4a8f736be1c9
+            outcomeId: eae17cb6-9115-4431-9fd7-aeb649ff06b5
+        reconciliations: []
+        ref: comet-build
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: succeeded
+        stepId: full.build.execute
+        type: invoke_skill
+      - attempt: 1
+        claim:
+          executorId: comet-classic-check
+          token: portable-66db12b7edf85ec23369820d9fc050f64a871a452d90a2f02e3d1a91cacfe7eb
+        executionOrigin:
+          workflow:
+            hash: 22f3d34c5ee18da3a0c2d11271ad799bd0ae40e37607cbf90baec05a5e003ee7
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-config-flow-revamp:25
+        input:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: a19d1394d9e42e373cbbd5799e9de8ea1f32550fb73aec71402d2a53d7f4908f
+        outcome:
+          actionId: aimodel-config-flow-revamp:25
+          attempt: 1
+          claimToken: portable-66db12b7edf85ec23369820d9fc050f64a871a452d90a2f02e3d1a91cacfe7eb
+          inputHash: a19d1394d9e42e373cbbd5799e9de8ea1f32550fb73aec71402d2a53d7f4908f
+          outcomeId: 0f6e147a-8283-4e05-82c3-7f7084a10825
+          output:
+            argv:
+              - mvn
+              - -pl
+              - askdata/askdata-server
+              - test
+            changedDuringExecution: []
+            checkEpoch: 3
+            contentHash: 4c3798b80615b734dcb3f640eb3a4bca7a5aacffc0b57842e3334ae34d038d9b
+            cwd: .
+            environment: e31e64b2ba6535af83499311a1e8cf2ec828478f3905a9c6484aef190eea4a70
+            exitCode: 0
+            inputAfter: 7f1f50624bf338661bdcef3f39b1ab26645bee386ba333b3e47ef5cec23cdaf5
+            inputBefore: 7f1f50624bf338661bdcef3f39b1ab26645bee386ba333b3e47ef5cec23cdaf5
+            manifestHash: 6c113b811487e3880396f63bcc59c1a7d655779e6a112d40f55cfff210213262
+            manifestRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/7b20b1a6-c0ab-4a3c-9eeb-bdee22df1e13.manifest
+            receiptRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/4ef735d3-6395-481e-982c-99314d0b71ef.log
+            reusable: false
+            reused: false
+            scope: build
+            tier: full
+            timeoutMs: 1800000
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: 17ff951ddeebd3a27d5e33cb7e1533b2df8b162ba84646eaaa90e086081e4e94
+            outcomeId: 0f6e147a-8283-4e05-82c3-7f7084a10825
+        reconciliations: []
+        ref: classic-check
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: succeeded
+        stepId: full.build.check
+        type: call_tool
+      - attempt: 1
+        claim:
+          executorId: comet-classic-guard
+          token: portable-5837f8842a98a9a98ee27d577a4b46fb9b1bab0599b166f1a0995a62329c956f
+        executionOrigin:
+          workflow:
+            hash: 22f3d34c5ee18da3a0c2d11271ad799bd0ae40e37607cbf90baec05a5e003ee7
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-config-flow-revamp:27
+        input:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: e53e584e331e049d3fe24de475d3deb602bf67c809ed2aa43b541697c3d8adf8
+        outcome:
+          actionId: aimodel-config-flow-revamp:27
+          attempt: 1
+          claimToken: portable-5837f8842a98a9a98ee27d577a4b46fb9b1bab0599b166f1a0995a62329c956f
+          inputHash: e53e584e331e049d3fe24de475d3deb602bf67c809ed2aa43b541697c3d8adf8
+          outcomeId: 415dd413-1da9-475d-8fe5-a22732d425f1
+          output:
+            event: verification-ready
+            verificationReport: docs/superpowers/reports/aimodel-config-flow-revamp.md
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: 849a4247d0555f4487dfac51769493a57378f36ff38717c028c8aef17dae3922
+            outcomeId: 415dd413-1da9-475d-8fe5-a22732d425f1
+        reconciliations: []
+        ref: comet-verify
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: succeeded
+        stepId: full.verify.run
+        type: invoke_skill
+      - attempt: 1
+        claim:
+          executorId: comet-classic-check
+          token: portable-8b26e2832ed5a754b578f1d5c13938a60cbd7fb70a00435f49e36c0b624eb384
+        executionOrigin:
+          workflow:
+            hash: 22f3d34c5ee18da3a0c2d11271ad799bd0ae40e37607cbf90baec05a5e003ee7
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-config-flow-revamp:29
+        input:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: 5313eb4a301a44eb138dd3f0fa7fb11a69afc1672f7845c533d0c77fa29289a2
+        outcome:
+          actionId: aimodel-config-flow-revamp:29
+          attempt: 1
+          claimToken: portable-8b26e2832ed5a754b578f1d5c13938a60cbd7fb70a00435f49e36c0b624eb384
+          inputHash: 5313eb4a301a44eb138dd3f0fa7fb11a69afc1672f7845c533d0c77fa29289a2
+          outcomeId: 50bcb1d1-2a79-4a3c-8111-d1a3a7a1d051
+          output:
+            argv:
+              - mvn
+              - -pl
+              - askdata/askdata-server
+              - test
+            changedDuringExecution: []
+            checkEpoch: 4
+            contentHash: 18fb1fd4d76aac5eb5ed7e3aa30a93795f959387f1313ee24a3be441ca4849fe
+            cwd: .
+            deliveryInputs: {}
+            environment: e31e64b2ba6535af83499311a1e8cf2ec828478f3905a9c6484aef190eea4a70
+            exitCode: 0
+            inputAfter: 48625b1ed070d769d21f33b75dd902030e5cae68cf3c449001e5e1fce980f1ca
+            inputBefore: 48625b1ed070d769d21f33b75dd902030e5cae68cf3c449001e5e1fce980f1ca
+            manifestHash: 9f0116696d347efd52782f9e48fe7a5adad45795f6a20f48a64d9e0a3168b269
+            manifestRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/f31f4432-069e-4f19-a206-04b8aa849755.manifest
+            receiptRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/5bf7cfdd-41cc-4f37-86fb-22f85bce4ce3.log
+            reusable: false
+            reused: false
+            scope: verify
+            tier: full
+            timeoutMs: 1800000
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: 0473cb8a2107e135df10df6efc49a87b245af4a62f35a8cb3ca73842cecda114
+            outcomeId: 50bcb1d1-2a79-4a3c-8111-d1a3a7a1d051
+        reconciliations: []
+        ref: classic-check
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: succeeded
+        stepId: full.verify.check
+        type: call_tool
+      - attempt: 1
+        claim:
+          executorId: comet-classic-state
+          token: portable-a2dd6e8db3be604009610d7e0b591b1e1bdfb4c4d179310038637bba5111b6b2
+        executionOrigin:
+          workflow:
+            hash: 22f3d34c5ee18da3a0c2d11271ad799bd0ae40e37607cbf90baec05a5e003ee7
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-config-flow-revamp:31
+        input:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: 3e3b62c45d48ce18053b90b263bcf5d86fd907f82714ed55193695a80064d699
+        outcome:
+          actionId: aimodel-config-flow-revamp:31
+          attempt: 1
+          claimToken: portable-a2dd6e8db3be604009610d7e0b591b1e1bdfb4c4d179310038637bba5111b6b2
+          inputHash: 3e3b62c45d48ce18053b90b263bcf5d86fd907f82714ed55193695a80064d699
+          outcomeId: 77593acc-eac5-476e-831c-3c6e2eb55198
+          output:
+            summary: 模型配置流重构（aimodel-config-flow-revamp）归档：ai_model 增加
+              enable/valid/upstream_format/dimension 字段（V5 迁移，覆盖
+              mysql/postgresql，移除 h2）；支持 CHAT/ANTHROPIC/RESPONSES/AZURE
+              四种上游格式解析与分流；默认模型按类型隔离与启停保护；向量索引全空间重建；移除 H2 本地嵌入链路，元数据仅用 MySQL
+              8.0+/PG 10+；测试切真实 MySQL/Qdrant/TEI/Redis 并在依赖不可达时 assume 跳过；前端模型配置
+              UI 适配。110/110 任务完成，Verify 真实环境 1120 后端用例 0 失败 5 跳过、24 e2e
+              通过。归档影响当前 dev 分支，交付目标 local（归档并提交）。
+            targetBranch: dev
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: 779be4bbd083bf1290b5443bbc6772404fe9ffca05fdfcd48f402f0c441be5ec
+            outcomeId: 77593acc-eac5-476e-831c-3c6e2eb55198
+        reconciliations: []
+        ref: comet-archive
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: succeeded
+        stepId: full.archive.prepare
+        type: invoke_skill
+      - attempt: 1
+        claim:
+          executorId: comet-classic-archive-preflight
+          token: portable-bb4942abbb8fc7d5060518038b9d7b765938e10b025fad922eb0b2791c514440
+        executionOrigin:
+          workflow:
+            hash: 22f3d34c5ee18da3a0c2d11271ad799bd0ae40e37607cbf90baec05a5e003ee7
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-config-flow-revamp:33
+        input:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: 359404918dd4ca3a4360ad3c673fe80d108b08341852cdd69965229222349730
+        outcome:
+          actionId: aimodel-config-flow-revamp:33
+          attempt: 1
+          claimToken: portable-bb4942abbb8fc7d5060518038b9d7b765938e10b025fad922eb0b2791c514440
+          inputHash: 359404918dd4ca3a4360ad3c673fe80d108b08341852cdd69965229222349730
+          outcomeId: 94ad978d-9fba-42f0-a584-04a351a98048
+          output:
+            baseCommit: 898d60b48faa50e897dfb3d0f56771f1288c815a
+            deliveryAction: local
+            targetBranch: dev
+            verifiedBranch: dev
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: 9cf7423ad6ca14308483929f4319d0ad5ea80662f35e8540e5490911c74b0eb6
+            outcomeId: 94ad978d-9fba-42f0-a584-04a351a98048
+        reconciliations: []
+        ref: classic-archive-preflight
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: succeeded
+        stepId: full.archive.preflight
+        type: call_tool
+      - attempt: 1
+        claim:
+          executorId: comet-classic-archive
+          token: portable-f51901067f02726f86d0e73791911f0347d7dea4015df0566099100e14908033
+        executionOrigin:
+          workflow:
+            hash: 22f3d34c5ee18da3a0c2d11271ad799bd0ae40e37607cbf90baec05a5e003ee7
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-config-flow-revamp:34
+        input:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: 4056c2629838007c182fcd61f0e423836e16f3d2fc7390bc8038e5b9c250f6fe
+        outcome:
+          actionId: aimodel-config-flow-revamp:34
+          artifacts:
+            - sha256: 5060ea98eaac8989939aed917321a3933e6ecd09e63e2d170c470f3544c7db4b
+              uri: docs/openspec/changes/archive/2026-11-02-aimodel-config-flow-revamp/.comet/archive-manifest.json
+          attempt: 1
+          claimToken: portable-f51901067f02726f86d0e73791911f0347d7dea4015df0566099100e14908033
+          inputHash: 4056c2629838007c182fcd61f0e423836e16f3d2fc7390bc8038e5b9c250f6fe
+          outcomeId: b3282e83-1759-4354-8637-bf61a373e271
+          output:
+            archiveDirectory: docs/openspec/changes/archive/2026-11-02-aimodel-config-flow-revamp
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: 417a3896f8e9c73352b7a9df29014290670d4eb95e539f820f83b058626415d0
+            outcomeId: b3282e83-1759-4354-8637-bf61a373e271
+        reconciliations: []
+        ref: classic-archive
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: succeeded
+        stepId: full.archive.execute
+        type: call_tool
+      - attempt: 1
+        id: aimodel-config-flow-revamp:35
+        input:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs: {}
+        inputHash: 1d2063fbd7a40341d3887122c87dab5460aea4958505163e017c09c7198565ba
+        protocolVersion: 1
+        receipts: []
+        reconciliations: []
+        ref: comet-archive
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-config-flow-revamp
+        status: pending
+        stepId: full.archive.deliver
+        type: invoke_skill
+    commands:
+      - id: 6f909b406f60381f3a9ca623b23fb82e1b295bb327c17a2c4c998aa5f4b6a27a
+        name: revise-design
+        inputHash: ed99e8b6701dcdfa2c40efa491ca6d0bbfa20eb28942fae559abfefdd83169a1
+        actionId: aimodel-config-flow-revamp:14
+    actionContexts:
+      aimodel-config-flow-revamp:1:
+        results: {}
+        sequence: 1
+      aimodel-config-flow-revamp:11:
+        results: {}
+        sequence: 11
+      aimodel-config-flow-revamp:13:
+        results: {}
+        sequence: 13
+      aimodel-config-flow-revamp:14:
+        results: {}
+        sequence: 14
+      aimodel-config-flow-revamp:16:
+        results: {}
+        sequence: 16
+      aimodel-config-flow-revamp:18:
+        results: {}
+        sequence: 18
+      aimodel-config-flow-revamp:20:
+        results: {}
+        sequence: 20
+      aimodel-config-flow-revamp:21:
+        results: {}
+        sequence: 21
+      aimodel-config-flow-revamp:22:
+        results: {}
+        sequence: 22
+      aimodel-config-flow-revamp:23:
+        results: {}
+        sequence: 23
+      aimodel-config-flow-revamp:24:
+        results: {}
+        sequence: 24
+      aimodel-config-flow-revamp:25:
+        results: {}
+        sequence: 25
+      aimodel-config-flow-revamp:27:
+        results: {}
+        sequence: 27
+      aimodel-config-flow-revamp:29:
+        results: {}
+        sequence: 29
+      aimodel-config-flow-revamp:31:
+        results: {}
+        sequence: 31
+      aimodel-config-flow-revamp:33:
+        results: {}
+        sequence: 33
+      aimodel-config-flow-revamp:34:
+        results: {}
+        sequence: 34
+      aimodel-config-flow-revamp:35:
+        results: {}
+        sequence: 35
+      aimodel-config-flow-revamp:4:
+        results: {}
+        sequence: 4
+      aimodel-config-flow-revamp:5:
+        results: {}
+        sequence: 5
+      aimodel-config-flow-revamp:7:
+        results: {}
+        sequence: 7
+      aimodel-config-flow-revamp:9:
+        results: {}
+        sequence: 9
+    waits:
+      - id: aimodel-config-flow-revamp:3
+        stepId: full.open.confirm
+        sequence: 3
+        status: resolved
+        proposal:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs:
+            full.open:
+              event: open-complete
+            full.open.evidence:
+              contentHash: 62e10da7be46916dfa2e6054acb5342eb79add4dd5c654171a21afb37631d7bf
+              ref: docs/openspec/changes/aimodel-config-flow-revamp
+        proposalHash: 254bbf49d26f300fc44f137658287ad79312105de677c177f61b9d578a5982f0
+        choices:
+          - approved
+          - rejected
+        results: {}
+        decision:
+          id: classic-open-62e10da7be46916dfa2e6054acb5342eb79add4dd5c654171a21afb37631d7bf
+          choice: approved
+          proposalHash: 254bbf49d26f300fc44f137658287ad79312105de677c177f61b9d578a5982f0
+      - id: aimodel-config-flow-revamp:6
+        stepId: full.design.confirm
+        sequence: 6
+        status: resolved
+        proposal:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs:
+            full.design.handoff:
+              handoffContext: docs/openspec/changes/aimodel-config-flow-revamp/.comet/handoff/design-context.json
+              handoffHash: bad4986e8d15b6566d115fe4d29212cbaad0b9707b47f8cedc03cfd14ddc9f8b
+              proposal: 技术方案：沿用 change 内 design.md 作为唯一 Design Doc，覆盖 15 项决策与端到端验证。\n1)
+                数据层：ai_model 新增 enable / valid / upstream_format / dimension
+                四列，新增 ai_embedding_index_state 单行状态表；三套方言迁移脚本，存量回填
+                enable=1、valid=1、upstream_format=1，并把 H2 向量列改为 CLOB、MySQL 改
+                MEDIUMTEXT，消除维度上限。\n2) 仓储与路由：AiModelRepository
+                只保留带类型参数的查询（findDefault/clearDefaults/countByType/listByWorkspace），编译期强制调用方声明类型；ChatModelRouter
+                仅暴露 chatModel()/embeddingModel()，按 model_type+enable+valid
+                过滤，无默认时回退该类型首个可用模型。\n3) 报文格式：新增 UpstreamFormatResolver 统一判定与 URL
+                规范化（自动识别 Azure/Anthropic，Responses
+                手选）；ChatModelClient.generate() 增加格式参数，按 Chat Completions /
+                Anthropic Messages / Responses / Azure 四分支构造请求与解析流式事件，Chat
+                Completions 现有路径不改结构。\n4) 接口：连通校验按类型分支（LLM 对话 / 向量
+                embeddings）并回写 valid；新增 POST /system/aimodel/models 代理上游
+                /models（失败降级 preset/none）；新增 embedding status 与 rebuild
+                两个管理接口，重建全空间、强制重算、复用单 worker 守卫。\n5) 向量：移除本地
+                ONNX（LocalEmbeddingModel、BertWordPieceTokenizer、onnxruntime
+                依赖、model-path
+                配置），无可用在线向量模型时网页会话/MCP/定时任务统一阻断；维度作为一等属性，启用、设默认、问答入口三处硬校验。\n6)
+                前端：ModelForm 持有拉取与测试状态机（请求序号丢弃过期响应），字段顺序改为 模型名称→Base URL→API
+                Key→模型类型→基础模型→是否生效→高级配置；模型类型新建可选、编辑只读；默认模型按类型唯一且不可停用/删除；模型页常驻「向量索引待重建」提示与一键重建。\n7)
+                对等基线：以 SQLBot 为硬性基线，reference-parity.md 登记 B1–B14 / R1–R6 /
+                F1–F13 共 33 条与 7 项有意偏离（D1–D7）。\n\n关键取舍：新增独立列而非复用
+                protocol/config；类型维度在仓储层收口而非各调用点过滤；格式判定收敛为单一解析器；报文适配放在
+                ChatModelClient 内部；重建必须全空间且强制重算。\n\n风险：default_model
+                语义变更影响面大（迁移不回算，走回退逻辑）；新列回填错误会导致全站无模型（DEFAULT 1 +
+                断言可用模型数不减少）；ChatModelClient
+                触及问数主链路（只加分支，回归问数/图表/权限/定时任务）；Anthropic 与 Responses 无真实网关（stub
+                单测并写入交付说明）；维度变化导致召回异常（切换前确认 + 重建幂等）。\n\nSpec
+                Patch：无。本阶段只做文档一致性修正——reference-parity.md 第 4 节实际为 7
+                项偏离（D1–D7），proposal/design/spec/tasks 的「6 项（D1–D6）」统一更正为 7
+                项（D1–D7），不改变任何行为或验收范围。\n验证策略：后端单测 + 进程内 stub provider；前端复用
+                askdata-server/e2e，Playwright 覆盖 10
+                类用例（含字段顺序、拉取降级、校验失败可保存、向量端点分支、格式切换、默认模型保护、五语言）。
+              requirementsEvidence:
+                contentHash: df66f44213af4fd76fe46803fbfbff36feca8a044d37a8ab0fb3de26ac811f77
+                ref: docs/openspec/changes/aimodel-config-flow-revamp
+              sourceEvidence:
+                contentHash: 62ddf39badff58584f74181d6cd6d3217f5523f1bd78b9933f6b1681698e8ec2
+                ref: docs/openspec/changes/aimodel-config-flow-revamp
+        proposalHash: b0f223464b4a566d3e9007bd7d0951ec47af1e7a23d6b50102c17c688fe84b8b
+        choices:
+          - approved
+          - rejected
+        results: {}
+        decision:
+          id: classic-design-b0f223464b4a566d3e9007bd7d0951ec47af1e7a23d6b50102c17c688fe84b8b-approved
+          choice: approved
+          proposalHash: b0f223464b4a566d3e9007bd7d0951ec47af1e7a23d6b50102c17c688fe84b8b
+      - id: aimodel-config-flow-revamp:10
+        stepId: full.build.confirm
+        sequence: 10
+        status: resolved
+        proposal:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs:
+            full.build.configure:
+              boundBranch: dev
+              buildMode: autonomous
+              directOverride: false
+              isolation: current
+              reviewMode: standard
+              subagentDispatch: null
+              tddMode: direct
+        proposalHash: c4febc3e1b055871dacff7c0c4019194e2406d155b45538cc7adbc5390296233
+        choices:
+          - approved
+          - rejected
+        results: {}
+        decision:
+          id: 749c3b27-3b94-4871-9eaa-927af615b49b
+          choice: approved
+          proposalHash: c4febc3e1b055871dacff7c0c4019194e2406d155b45538cc7adbc5390296233
+      - id: aimodel-config-flow-revamp:15
+        stepId: full.design.confirm
+        sequence: 15
+        status: resolved
+        proposal:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs:
+            full.design.handoff:
+              handoffContext: docs/openspec/changes/aimodel-config-flow-revamp/.comet/handoff/design-context.json
+              handoffHash: 9b9145afdc0707944b132d134c29a30ac04bda3bf8412c11c618be02b0b78197
+              proposal: AI 模型配置流重构：ai_model 增加 enable/valid/upstream_format/dimension 字段（V5
+                迁移，覆盖 mysql/postgresql，移除 h2）；支持 CHAT/ANTHROPIC/RESPONSES/AZURE
+                四种上游格式解析与分流；默认模型按类型隔离与启停保护；向量索引全空间重建（ai_embedding_index_state）；移除
+                H2
+                本地嵌入链路（LocalEmbeddingModel/BertWordPieceTokenizer/DbVectorStore/onnxruntime），元数据仅用
+                MySQL 8.0+/PG 10+，测试切真实 MySQL/Qdrant/TEI/Redis 并在依赖不可达时 assume
+                跳过；前端模型配置 UI 适配状态与多语言。设计较初版（rev 19）无范围扩张，仅因实现落地后补充细节，故 reconcile
+                至 rev 20。
+              requirementsEvidence:
+                contentHash: 37891a9d8323a5721af64fe4f0dcb6725aad2f938bd48b88f977db9dbb4dd25b
+                ref: docs/openspec/changes/aimodel-config-flow-revamp
+              sourceEvidence:
+                contentHash: d22a5e62e41cd40aa7c29d82c41eb70a4f48dba64e1b1ceda3eed67f74ed3071
+                ref: docs/openspec/changes/aimodel-config-flow-revamp
+        proposalHash: 1c5a80319f713a06fe4a8d1041f7f0f854bc671c9bee0568f9ff5fc838c42878
+        choices:
+          - approved
+          - rejected
+        results: {}
+        decision:
+          id: classic-design-1c5a80319f713a06fe4a8d1041f7f0f854bc671c9bee0568f9ff5fc838c42878-approved
+          choice: approved
+          proposalHash: 1c5a80319f713a06fe4a8d1041f7f0f854bc671c9bee0568f9ff5fc838c42878
+      - id: aimodel-config-flow-revamp:32
+        stepId: full.archive.confirm
+        sequence: 32
+        status: resolved
+        proposal:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs:
+            full.archive.prepare:
+              summary: 模型配置流重构（aimodel-config-flow-revamp）归档：ai_model 增加
+                enable/valid/upstream_format/dimension 字段（V5 迁移，覆盖
+                mysql/postgresql，移除 h2）；支持 CHAT/ANTHROPIC/RESPONSES/AZURE
+                四种上游格式解析与分流；默认模型按类型隔离与启停保护；向量索引全空间重建；移除 H2 本地嵌入链路，元数据仅用 MySQL
+                8.0+/PG 10+；测试切真实 MySQL/Qdrant/TEI/Redis 并在依赖不可达时 assume
+                跳过；前端模型配置 UI 适配。110/110 任务完成，Verify 真实环境 1120 后端用例 0 失败 5 跳过、24
+                e2e 通过。归档影响当前 dev 分支，交付目标 local（归档并提交）。
+              targetBranch: dev
+        proposalHash: 15a7cf2b00a06fa64f6cafa7f3fca1548d1edcf7859a219c045f2148b6fbe7d8
+        choices:
+          - local
+          - push
+          - pr
+          - reverify
+          - later
+        results: {}
+        decision:
+          id: classic-archive-15a7cf2b00a06fa64f6cafa7f3fca1548d1edcf7859a219c045f2148b6fbe7d8-local
+          choice: local
+          proposalHash: 15a7cf2b00a06fa64f6cafa7f3fca1548d1edcf7859a219c045f2148b6fbe7d8
+    evidenceWaits:
+      - id: aimodel-config-flow-revamp:2
+        stepId: full.open.evidence
+        sequence: 2
+        kind: classic-open-artifacts
+        status: resolved
+        results: {}
+        receipt:
+          ref: docs/openspec/changes/aimodel-config-flow-revamp
+          contentHash: 62e10da7be46916dfa2e6054acb5342eb79add4dd5c654171a21afb37631d7bf
+          submissionId: c3ed1e13-df8d-46ad-a86f-acdcd1720343
+      - id: aimodel-config-flow-revamp:8
+        stepId: full.design.evidence
+        sequence: 8
+        kind: classic-design-document
+        status: resolved
+        results: {}
+        receipt:
+          ref: docs/openspec/changes/aimodel-config-flow-revamp/design.md
+          contentHash: 408f684a895ab127129073f8006b8caa75106c0b2279284227c2373be380d4ed
+          submissionId: 71df3a0c-2dae-42ff-b9b3-0bc14fad3725
+      - id: aimodel-config-flow-revamp:12
+        stepId: full.build.plan.evidence
+        sequence: 12
+        kind: classic-build-plan
+        status: resolved
+        results: {}
+        receipt:
+          ref: docs/superpowers/plans/2026-11-01-aimodel-config-flow-revamp.md
+          contentHash: d89fd940dd33b2ef8fb5a33bf5a195e00e7cf9fb3f17706dd27d6981724ec8b7
+          submissionId: 14a1c8f4-d370-412f-8c01-83e22d42c8f0
+      - id: aimodel-config-flow-revamp:17
+        stepId: full.design.evidence
+        sequence: 17
+        kind: classic-design-document
+        status: resolved
+        results: {}
+        receipt:
+          ref: docs/openspec/changes/aimodel-config-flow-revamp/design.md
+          contentHash: 6a5af9229a14a9df62038f905ff27d97f455bc67a765324409a840487f4f7bd7
+          submissionId: f10a070a-7a31-4f50-9c1c-c4721bc80a08
+      - id: aimodel-config-flow-revamp:19
+        stepId: full.build.plan.evidence
+        sequence: 19
+        kind: classic-build-plan
+        status: resolved
+        results: {}
+        receipt:
+          ref: docs/superpowers/plans/2026-11-01-aimodel-config-flow-revamp.md
+          contentHash: 517a0b714fe4388cd926efbd1fc93111ebf68f57fe44c6d957cc4285840c3e87
+          submissionId: 7b77732e-cdd4-4025-9145-ce841d2e1f46
+      - id: aimodel-config-flow-revamp:26
+        stepId: full.build.check.evidence
+        sequence: 26
+        kind: classic-build-check
+        status: resolved
+        results: {}
+        receipt:
+          ref: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/4ef735d3-6395-481e-982c-99314d0b71ef.log
+          contentHash: 4c3798b80615b734dcb3f640eb3a4bca7a5aacffc0b57842e3334ae34d038d9b
+          submissionId: 9b1d72c1-d1c6-407f-ac04-133be7cf41d9
+      - id: aimodel-config-flow-revamp:28
+        stepId: full.verify.report.evidence
+        sequence: 28
+        kind: classic-verification-report
+        status: resolved
+        results: {}
+        receipt:
+          ref: docs/superpowers/reports/aimodel-config-flow-revamp.md
+          contentHash: ca06186f466fa809fa835e0e424fa269dcc066d968031d71090ed4e93788049a
+          submissionId: 0c80b7bc-78b0-4c98-925a-f469d7c321ed
+      - id: aimodel-config-flow-revamp:30
+        stepId: full.verify.check.evidence
+        sequence: 30
+        kind: classic-verify-check
+        status: resolved
+        results: {}
+        receipt:
+          ref: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/5bf7cfdd-41cc-4f37-86fb-22f85bce4ce3.log
+          contentHash: 18fb1fd4d76aac5eb5ed7e3aa30a93795f959387f1313ee24a3be441ca4849fe
+          submissionId: dc8c0c30-646c-4442-a996-30ed730d1088
+    ready: []
+    joins: {}
+    outputs: {}
+    children: []
+    lineage: []
+  sourceRevision: 55
+  sourceHash: 25878ccee50c5df69d176409de121473a3646badd968e345f0bb4da8d9d655d2
+  pool:
+    version: 3
+    values:
+      - event: open-complete
+      - choice: approved
+        proposal:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs:
+            full.open:
+              event: open-complete
+            full.open.evidence:
+              contentHash: 62e10da7be46916dfa2e6054acb5342eb79add4dd5c654171a21afb37631d7bf
+              ref: docs/openspec/changes/aimodel-config-flow-revamp
+      - contentHash: 62e10da7be46916dfa2e6054acb5342eb79add4dd5c654171a21afb37631d7bf
+        ref: docs/openspec/changes/aimodel-config-flow-revamp
+      - contentHash: 62e10da7be46916dfa2e6054acb5342eb79add4dd5c654171a21afb37631d7bf
+      - choice: approved
+        proposal:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs:
+            full.design.handoff:
+              handoffContext: docs/openspec/changes/aimodel-config-flow-revamp/.comet/handoff/design-context.json
+              handoffHash: bad4986e8d15b6566d115fe4d29212cbaad0b9707b47f8cedc03cfd14ddc9f8b
+              proposal: 技术方案：沿用 change 内 design.md 作为唯一 Design Doc，覆盖 15 项决策与端到端验证。\n1)
+                数据层：ai_model 新增 enable / valid / upstream_format / dimension
+                四列，新增 ai_embedding_index_state 单行状态表；三套方言迁移脚本，存量回填
+                enable=1、valid=1、upstream_format=1，并把 H2 向量列改为 CLOB、MySQL 改
+                MEDIUMTEXT，消除维度上限。\n2) 仓储与路由：AiModelRepository
+                只保留带类型参数的查询（findDefault/clearDefaults/countByType/listByWorkspace），编译期强制调用方声明类型；ChatModelRouter
+                仅暴露 chatModel()/embeddingModel()，按 model_type+enable+valid
+                过滤，无默认时回退该类型首个可用模型。\n3) 报文格式：新增 UpstreamFormatResolver 统一判定与 URL
+                规范化（自动识别 Azure/Anthropic，Responses
+                手选）；ChatModelClient.generate() 增加格式参数，按 Chat Completions /
+                Anthropic Messages / Responses / Azure 四分支构造请求与解析流式事件，Chat
+                Completions 现有路径不改结构。\n4) 接口：连通校验按类型分支（LLM 对话 / 向量
+                embeddings）并回写 valid；新增 POST /system/aimodel/models 代理上游
+                /models（失败降级 preset/none）；新增 embedding status 与 rebuild
+                两个管理接口，重建全空间、强制重算、复用单 worker 守卫。\n5) 向量：移除本地
+                ONNX（LocalEmbeddingModel、BertWordPieceTokenizer、onnxruntime
+                依赖、model-path
+                配置），无可用在线向量模型时网页会话/MCP/定时任务统一阻断；维度作为一等属性，启用、设默认、问答入口三处硬校验。\n6)
+                前端：ModelForm 持有拉取与测试状态机（请求序号丢弃过期响应），字段顺序改为 模型名称→Base URL→API
+                Key→模型类型→基础模型→是否生效→高级配置；模型类型新建可选、编辑只读；默认模型按类型唯一且不可停用/删除；模型页常驻「向量索引待重建」提示与一键重建。\n7)
+                对等基线：以 SQLBot 为硬性基线，reference-parity.md 登记 B1–B14 / R1–R6 /
+                F1–F13 共 33 条与 7 项有意偏离（D1–D7）。\n\n关键取舍：新增独立列而非复用
+                protocol/config；类型维度在仓储层收口而非各调用点过滤；格式判定收敛为单一解析器；报文适配放在
+                ChatModelClient 内部；重建必须全空间且强制重算。\n\n风险：default_model
+                语义变更影响面大（迁移不回算，走回退逻辑）；新列回填错误会导致全站无模型（DEFAULT 1 +
+                断言可用模型数不减少）；ChatModelClient
+                触及问数主链路（只加分支，回归问数/图表/权限/定时任务）；Anthropic 与 Responses 无真实网关（stub
+                单测并写入交付说明）；维度变化导致召回异常（切换前确认 + 重建幂等）。\n\nSpec
+                Patch：无。本阶段只做文档一致性修正——reference-parity.md 第 4 节实际为 7
+                项偏离（D1–D7），proposal/design/spec/tasks 的「6 项（D1–D6）」统一更正为 7
+                项（D1–D7），不改变任何行为或验收范围。\n验证策略：后端单测 + 进程内 stub provider；前端复用
+                askdata-server/e2e，Playwright 覆盖 10
+                类用例（含字段顺序、拉取降级、校验失败可保存、向量端点分支、格式切换、默认模型保护、五语言）。
+              requirementsEvidence:
+                contentHash: df66f44213af4fd76fe46803fbfbff36feca8a044d37a8ab0fb3de26ac811f77
+                ref: docs/openspec/changes/aimodel-config-flow-revamp
+              sourceEvidence:
+                contentHash: 62ddf39badff58584f74181d6cd6d3217f5523f1bd78b9933f6b1681698e8ec2
+                ref: docs/openspec/changes/aimodel-config-flow-revamp
+      - handoffContext: docs/openspec/changes/aimodel-config-flow-revamp/.comet/handoff/design-context.json
+        handoffHash: bad4986e8d15b6566d115fe4d29212cbaad0b9707b47f8cedc03cfd14ddc9f8b
+        proposal: 技术方案：沿用 change 内 design.md 作为唯一 Design Doc，覆盖 15 项决策与端到端验证。\n1)
+          数据层：ai_model 新增 enable / valid / upstream_format / dimension 四列，新增
+          ai_embedding_index_state 单行状态表；三套方言迁移脚本，存量回填
+          enable=1、valid=1、upstream_format=1，并把 H2 向量列改为 CLOB、MySQL 改
+          MEDIUMTEXT，消除维度上限。\n2) 仓储与路由：AiModelRepository
+          只保留带类型参数的查询（findDefault/clearDefaults/countByType/listByWorkspace），编译期强制调用方声明类型；ChatModelRouter
+          仅暴露 chatModel()/embeddingModel()，按 model_type+enable+valid
+          过滤，无默认时回退该类型首个可用模型。\n3) 报文格式：新增 UpstreamFormatResolver 统一判定与 URL
+          规范化（自动识别 Azure/Anthropic，Responses 手选）；ChatModelClient.generate()
+          增加格式参数，按 Chat Completions / Anthropic Messages / Responses / Azure
+          四分支构造请求与解析流式事件，Chat Completions 现有路径不改结构。\n4) 接口：连通校验按类型分支（LLM 对话 / 向量
+          embeddings）并回写 valid；新增 POST /system/aimodel/models 代理上游 /models（失败降级
+          preset/none）；新增 embedding status 与 rebuild 两个管理接口，重建全空间、强制重算、复用单
+          worker 守卫。\n5) 向量：移除本地
+          ONNX（LocalEmbeddingModel、BertWordPieceTokenizer、onnxruntime
+          依赖、model-path
+          配置），无可用在线向量模型时网页会话/MCP/定时任务统一阻断；维度作为一等属性，启用、设默认、问答入口三处硬校验。\n6)
+          前端：ModelForm 持有拉取与测试状态机（请求序号丢弃过期响应），字段顺序改为 模型名称→Base URL→API
+          Key→模型类型→基础模型→是否生效→高级配置；模型类型新建可选、编辑只读；默认模型按类型唯一且不可停用/删除；模型页常驻「向量索引待重建」提示与一键重建。\n7)
+          对等基线：以 SQLBot 为硬性基线，reference-parity.md 登记 B1–B14 / R1–R6 / F1–F13 共
+          33 条与 7 项有意偏离（D1–D7）。\n\n关键取舍：新增独立列而非复用
+          protocol/config；类型维度在仓储层收口而非各调用点过滤；格式判定收敛为单一解析器；报文适配放在 ChatModelClient
+          内部；重建必须全空间且强制重算。\n\n风险：default_model
+          语义变更影响面大（迁移不回算，走回退逻辑）；新列回填错误会导致全站无模型（DEFAULT 1 +
+          断言可用模型数不减少）；ChatModelClient 触及问数主链路（只加分支，回归问数/图表/权限/定时任务）；Anthropic 与
+          Responses 无真实网关（stub 单测并写入交付说明）；维度变化导致召回异常（切换前确认 + 重建幂等）。\n\nSpec
+          Patch：无。本阶段只做文档一致性修正——reference-parity.md 第 4 节实际为 7
+          项偏离（D1–D7），proposal/design/spec/tasks 的「6 项（D1–D6）」统一更正为 7
+          项（D1–D7），不改变任何行为或验收范围。\n验证策略：后端单测 + 进程内 stub provider；前端复用
+          askdata-server/e2e，Playwright 覆盖 10
+          类用例（含字段顺序、拉取降级、校验失败可保存、向量端点分支、格式切换、默认模型保护、五语言）。
+        requirementsEvidence:
+          contentHash: df66f44213af4fd76fe46803fbfbff36feca8a044d37a8ab0fb3de26ac811f77
+          ref: docs/openspec/changes/aimodel-config-flow-revamp
+        sourceEvidence:
+          contentHash: 62ddf39badff58584f74181d6cd6d3217f5523f1bd78b9933f6b1681698e8ec2
+          ref: docs/openspec/changes/aimodel-config-flow-revamp
+      - designDoc: docs/openspec/changes/aimodel-config-flow-revamp/design.md
+      - contentHash: 408f684a895ab127129073f8006b8caa75106c0b2279284227c2373be380d4ed
+        ref: docs/openspec/changes/aimodel-config-flow-revamp/design.md
+      - boundBranch: dev
+        buildMode: autonomous
+        directOverride: false
+        isolation: current
+        reviewMode: standard
+        subagentDispatch: null
+        tddMode: direct
+      - choice: approved
+        proposal:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs:
+            full.build.configure:
+              boundBranch: dev
+              buildMode: autonomous
+              directOverride: false
+              isolation: current
+              reviewMode: standard
+              subagentDispatch: null
+              tddMode: direct
+      - designEvidence:
+          contentHash: 408f684a895ab127129073f8006b8caa75106c0b2279284227c2373be380d4ed
+          ref: docs/openspec/changes/aimodel-config-flow-revamp/design.md
+        plan: docs/superpowers/plans/2026-11-01-aimodel-config-flow-revamp.md
+        planEvidence:
+          contentHash: d89fd940dd33b2ef8fb5a33bf5a195e00e7cf9fb3f17706dd27d6981724ec8b7
+          ref: docs/superpowers/plans/2026-11-01-aimodel-config-flow-revamp.md
+        taskRevision: ac38135fd4d036b434d00c80ba8f54525643e65ec26dce37cd20003b5b0044c0
+      - contentHash: d89fd940dd33b2ef8fb5a33bf5a195e00e7cf9fb3f17706dd27d6981724ec8b7
+        ref: docs/superpowers/plans/2026-11-01-aimodel-config-flow-revamp.md
+      - choice: approved
+        proposal:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs:
+            full.design.handoff:
+              handoffContext: docs/openspec/changes/aimodel-config-flow-revamp/.comet/handoff/design-context.json
+              handoffHash: 9b9145afdc0707944b132d134c29a30ac04bda3bf8412c11c618be02b0b78197
+              proposal: AI 模型配置流重构：ai_model 增加 enable/valid/upstream_format/dimension 字段（V5
+                迁移，覆盖 mysql/postgresql，移除 h2）；支持 CHAT/ANTHROPIC/RESPONSES/AZURE
+                四种上游格式解析与分流；默认模型按类型隔离与启停保护；向量索引全空间重建（ai_embedding_index_state）；移除
+                H2
+                本地嵌入链路（LocalEmbeddingModel/BertWordPieceTokenizer/DbVectorStore/onnxruntime），元数据仅用
+                MySQL 8.0+/PG 10+，测试切真实 MySQL/Qdrant/TEI/Redis 并在依赖不可达时 assume
+                跳过；前端模型配置 UI 适配状态与多语言。设计较初版（rev 19）无范围扩张，仅因实现落地后补充细节，故 reconcile
+                至 rev 20。
+              requirementsEvidence:
+                contentHash: 37891a9d8323a5721af64fe4f0dcb6725aad2f938bd48b88f977db9dbb4dd25b
+                ref: docs/openspec/changes/aimodel-config-flow-revamp
+              sourceEvidence:
+                contentHash: d22a5e62e41cd40aa7c29d82c41eb70a4f48dba64e1b1ceda3eed67f74ed3071
+                ref: docs/openspec/changes/aimodel-config-flow-revamp
+      - handoffContext: docs/openspec/changes/aimodel-config-flow-revamp/.comet/handoff/design-context.json
+        handoffHash: 9b9145afdc0707944b132d134c29a30ac04bda3bf8412c11c618be02b0b78197
+        proposal: AI 模型配置流重构：ai_model 增加 enable/valid/upstream_format/dimension 字段（V5
+          迁移，覆盖 mysql/postgresql，移除 h2）；支持 CHAT/ANTHROPIC/RESPONSES/AZURE
+          四种上游格式解析与分流；默认模型按类型隔离与启停保护；向量索引全空间重建（ai_embedding_index_state）；移除 H2
+          本地嵌入链路（LocalEmbeddingModel/BertWordPieceTokenizer/DbVectorStore/onnxruntime），元数据仅用
+          MySQL 8.0+/PG 10+，测试切真实 MySQL/Qdrant/TEI/Redis 并在依赖不可达时 assume
+          跳过；前端模型配置 UI 适配状态与多语言。设计较初版（rev 19）无范围扩张，仅因实现落地后补充细节，故 reconcile 至 rev
+          20。
+        requirementsEvidence:
+          contentHash: 37891a9d8323a5721af64fe4f0dcb6725aad2f938bd48b88f977db9dbb4dd25b
+          ref: docs/openspec/changes/aimodel-config-flow-revamp
+        sourceEvidence:
+          contentHash: d22a5e62e41cd40aa7c29d82c41eb70a4f48dba64e1b1ceda3eed67f74ed3071
+          ref: docs/openspec/changes/aimodel-config-flow-revamp
+      - contentHash: 6a5af9229a14a9df62038f905ff27d97f455bc67a765324409a840487f4f7bd7
+        ref: docs/openspec/changes/aimodel-config-flow-revamp/design.md
+      - designEvidence:
+          contentHash: 6a5af9229a14a9df62038f905ff27d97f455bc67a765324409a840487f4f7bd7
+          ref: docs/openspec/changes/aimodel-config-flow-revamp/design.md
+        plan: docs/superpowers/plans/2026-11-01-aimodel-config-flow-revamp.md
+        planEvidence:
+          contentHash: 517a0b714fe4388cd926efbd1fc93111ebf68f57fe44c6d957cc4285840c3e87
+          ref: docs/superpowers/plans/2026-11-01-aimodel-config-flow-revamp.md
+        taskRevision: 5c635dd1281d59cdf0f6c8228acaab4a456d3fbcc1938c74d2bc20326a00a590
+      - contentHash: 517a0b714fe4388cd926efbd1fc93111ebf68f57fe44c6d957cc4285840c3e87
+        ref: docs/superpowers/plans/2026-11-01-aimodel-config-flow-revamp.md
+      - event: build-complete
+      - argv:
+          - mvn
+          - -o
+          - -pl
+          - askdata/askdata-server
+          - test
+        changedDuringExecution: []
+        checkEpoch: 3
+        contentHash: 2b4af87a045590410427654b65f9190d453624da7d0315e9382ef770748c5c2c
+        cwd: .
+        environment: f6698f2c8d836b3bdd4fa7e96ef9190ac1486d1c5cd9a496efcc885a13aee2f3
+        exitCode: 1
+        inputAfter: cdcd8b3cb4677f3855cd8a392644bd63a058efa624009358560cf14f51fc4fdb
+        inputBefore: cdcd8b3cb4677f3855cd8a392644bd63a058efa624009358560cf14f51fc4fdb
+        manifestHash: 5f557a8a933fe26719ad651e5632d4db3fde348f11410cfa5c958bf2a78a4b41
+        manifestRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/17480f1e-8b33-4eca-9341-26722718971e.manifest
+        receiptRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/1b4f141f-427b-48b9-947e-bcbc15889cca.log
+        reusable: false
+        reused: false
+        scope: build
+        tier: full
+        timeoutMs: 3600000
+      - argv:
+          - mvn
+          - -pl
+          - askdata/askdata-server
+          - test
+        changedDuringExecution: []
+        checkEpoch: 3
+        contentHash: c73528afd13b6d6649f52ff92af6c97bc31f3812f39f4b0ae0b7bb8b1141ae27
+        cwd: .
+        environment: e31e64b2ba6535af83499311a1e8cf2ec828478f3905a9c6484aef190eea4a70
+        exitCode: 124
+        inputAfter: cdcd8b3cb4677f3855cd8a392644bd63a058efa624009358560cf14f51fc4fdb
+        inputBefore: cdcd8b3cb4677f3855cd8a392644bd63a058efa624009358560cf14f51fc4fdb
+        manifestHash: 5f557a8a933fe26719ad651e5632d4db3fde348f11410cfa5c958bf2a78a4b41
+        manifestRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/4eb90927-3a7b-47be-a769-0475b6481ff6.manifest
+        receiptRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/56eb778e-93b8-4c42-99bf-c5c12e9081e7.log
+        reusable: false
+        reused: false
+        scope: build
+        tier: full
+        timeoutMs: 300000
+      - argv:
+          - mvn
+          - -pl
+          - askdata/askdata-server
+          - test
+        changedDuringExecution: []
+        checkEpoch: 3
+        contentHash: 4c3798b80615b734dcb3f640eb3a4bca7a5aacffc0b57842e3334ae34d038d9b
+        cwd: .
+        environment: e31e64b2ba6535af83499311a1e8cf2ec828478f3905a9c6484aef190eea4a70
+        exitCode: 0
+        inputAfter: 7f1f50624bf338661bdcef3f39b1ab26645bee386ba333b3e47ef5cec23cdaf5
+        inputBefore: 7f1f50624bf338661bdcef3f39b1ab26645bee386ba333b3e47ef5cec23cdaf5
+        manifestHash: 6c113b811487e3880396f63bcc59c1a7d655779e6a112d40f55cfff210213262
+        manifestRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/7b20b1a6-c0ab-4a3c-9eeb-bdee22df1e13.manifest
+        receiptRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/4ef735d3-6395-481e-982c-99314d0b71ef.log
+        reusable: false
+        reused: false
+        scope: build
+        tier: full
+        timeoutMs: 1800000
+      - contentHash: 4c3798b80615b734dcb3f640eb3a4bca7a5aacffc0b57842e3334ae34d038d9b
+        ref: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/4ef735d3-6395-481e-982c-99314d0b71ef.log
+      - contentHash: ca06186f466fa809fa835e0e424fa269dcc066d968031d71090ed4e93788049a
+        ref: docs/superpowers/reports/aimodel-config-flow-revamp.md
+      - event: verification-ready
+        verificationReport: docs/superpowers/reports/aimodel-config-flow-revamp.md
+      - argv:
+          - mvn
+          - -pl
+          - askdata/askdata-server
+          - test
+        changedDuringExecution: []
+        checkEpoch: 4
+        contentHash: 18fb1fd4d76aac5eb5ed7e3aa30a93795f959387f1313ee24a3be441ca4849fe
+        cwd: .
+        deliveryInputs: {}
+        environment: e31e64b2ba6535af83499311a1e8cf2ec828478f3905a9c6484aef190eea4a70
+        exitCode: 0
+        inputAfter: 48625b1ed070d769d21f33b75dd902030e5cae68cf3c449001e5e1fce980f1ca
+        inputBefore: 48625b1ed070d769d21f33b75dd902030e5cae68cf3c449001e5e1fce980f1ca
+        manifestHash: 9f0116696d347efd52782f9e48fe7a5adad45795f6a20f48a64d9e0a3168b269
+        manifestRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/f31f4432-069e-4f19-a206-04b8aa849755.manifest
+        receiptRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/5bf7cfdd-41cc-4f37-86fb-22f85bce4ce3.log
+        reusable: false
+        reused: false
+        scope: verify
+        tier: full
+        timeoutMs: 1800000
+      - contentHash: 18fb1fd4d76aac5eb5ed7e3aa30a93795f959387f1313ee24a3be441ca4849fe
+        ref: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/5bf7cfdd-41cc-4f37-86fb-22f85bce4ce3.log
+      - choice: local
+        proposal:
+          input:
+            change: aimodel-config-flow-revamp
+            changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+            workspaceBaseline:
+              ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+          outputs:
+            full.archive.prepare:
+              summary: 模型配置流重构（aimodel-config-flow-revamp）归档：ai_model 增加
+                enable/valid/upstream_format/dimension 字段（V5 迁移，覆盖
+                mysql/postgresql，移除 h2）；支持 CHAT/ANTHROPIC/RESPONSES/AZURE
+                四种上游格式解析与分流；默认模型按类型隔离与启停保护；向量索引全空间重建；移除 H2 本地嵌入链路，元数据仅用 MySQL
+                8.0+/PG 10+；测试切真实 MySQL/Qdrant/TEI/Redis 并在依赖不可达时 assume
+                跳过；前端模型配置 UI 适配。110/110 任务完成，Verify 真实环境 1120 后端用例 0 失败 5 跳过、24
+                e2e 通过。归档影响当前 dev 分支，交付目标 local（归档并提交）。
+              targetBranch: dev
+      - summary: 模型配置流重构（aimodel-config-flow-revamp）归档：ai_model 增加
+          enable/valid/upstream_format/dimension 字段（V5 迁移，覆盖 mysql/postgresql，移除
+          h2）；支持 CHAT/ANTHROPIC/RESPONSES/AZURE
+          四种上游格式解析与分流；默认模型按类型隔离与启停保护；向量索引全空间重建；移除 H2 本地嵌入链路，元数据仅用 MySQL 8.0+/PG
+          10+；测试切真实 MySQL/Qdrant/TEI/Redis 并在依赖不可达时 assume 跳过；前端模型配置 UI
+          适配。110/110 任务完成，Verify 真实环境 1120 后端用例 0 失败 5 跳过、24 e2e 通过。归档影响当前 dev
+          分支，交付目标 local（归档并提交）。
+        targetBranch: dev
+      - baseCommit: 898d60b48faa50e897dfb3d0f56771f1288c815a
+        deliveryAction: local
+        targetBranch: dev
+        verifiedBranch: dev
+      - archiveDirectory: docs/openspec/changes/archive/2026-11-02-aimodel-config-flow-revamp
+      - sequence: 9
+        value:
+          boundBranch: dev
+          buildMode: autonomous
+          directOverride: false
+          isolation: current
+          reviewMode: standard
+          subagentDispatch: null
+          tddMode: direct
+      - sequence: 10
+        value:
+          choice: approved
+          proposal:
+            input:
+              change: aimodel-config-flow-revamp
+              changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+              workspaceBaseline:
+                ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+            outputs:
+              full.build.configure:
+                boundBranch: dev
+                buildMode: autonomous
+                directOverride: false
+                isolation: current
+                reviewMode: standard
+                subagentDispatch: null
+                tddMode: direct
+      - sequence: 6
+        value:
+          choice: approved
+          proposal:
+            input:
+              change: aimodel-config-flow-revamp
+              changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+              workspaceBaseline:
+                ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+            outputs:
+              full.design.handoff:
+                handoffContext: docs/openspec/changes/aimodel-config-flow-revamp/.comet/handoff/design-context.json
+                handoffHash: bad4986e8d15b6566d115fe4d29212cbaad0b9707b47f8cedc03cfd14ddc9f8b
+                proposal: 技术方案：沿用 change 内 design.md 作为唯一 Design Doc，覆盖 15 项决策与端到端验证。\n1)
+                  数据层：ai_model 新增 enable / valid / upstream_format / dimension
+                  四列，新增 ai_embedding_index_state 单行状态表；三套方言迁移脚本，存量回填
+                  enable=1、valid=1、upstream_format=1，并把 H2 向量列改为 CLOB、MySQL 改
+                  MEDIUMTEXT，消除维度上限。\n2) 仓储与路由：AiModelRepository
+                  只保留带类型参数的查询（findDefault/clearDefaults/countByType/listByWorkspace），编译期强制调用方声明类型；ChatModelRouter
+                  仅暴露 chatModel()/embeddingModel()，按 model_type+enable+valid
+                  过滤，无默认时回退该类型首个可用模型。\n3) 报文格式：新增 UpstreamFormatResolver 统一判定与
+                  URL 规范化（自动识别 Azure/Anthropic，Responses
+                  手选）；ChatModelClient.generate() 增加格式参数，按 Chat Completions /
+                  Anthropic Messages / Responses / Azure 四分支构造请求与解析流式事件，Chat
+                  Completions 现有路径不改结构。\n4) 接口：连通校验按类型分支（LLM 对话 / 向量
+                  embeddings）并回写 valid；新增 POST /system/aimodel/models 代理上游
+                  /models（失败降级 preset/none）；新增 embedding status 与 rebuild
+                  两个管理接口，重建全空间、强制重算、复用单 worker 守卫。\n5) 向量：移除本地
+                  ONNX（LocalEmbeddingModel、BertWordPieceTokenizer、onnxruntime
+                  依赖、model-path
+                  配置），无可用在线向量模型时网页会话/MCP/定时任务统一阻断；维度作为一等属性，启用、设默认、问答入口三处硬校验。\n6)
+                  前端：ModelForm 持有拉取与测试状态机（请求序号丢弃过期响应），字段顺序改为 模型名称→Base URL→API
+                  Key→模型类型→基础模型→是否生效→高级配置；模型类型新建可选、编辑只读；默认模型按类型唯一且不可停用/删除；模型页常驻「向量索引待重建」提示与一键重建。\n7)
+                  对等基线：以 SQLBot 为硬性基线，reference-parity.md 登记 B1–B14 / R1–R6 /
+                  F1–F13 共 33 条与 7 项有意偏离（D1–D7）。\n\n关键取舍：新增独立列而非复用
+                  protocol/config；类型维度在仓储层收口而非各调用点过滤；格式判定收敛为单一解析器；报文适配放在
+                  ChatModelClient 内部；重建必须全空间且强制重算。\n\n风险：default_model
+                  语义变更影响面大（迁移不回算，走回退逻辑）；新列回填错误会导致全站无模型（DEFAULT 1 +
+                  断言可用模型数不减少）；ChatModelClient
+                  触及问数主链路（只加分支，回归问数/图表/权限/定时任务）；Anthropic 与 Responses 无真实网关（stub
+                  单测并写入交付说明）；维度变化导致召回异常（切换前确认 + 重建幂等）。\n\nSpec
+                  Patch：无。本阶段只做文档一致性修正——reference-parity.md 第 4 节实际为 7
+                  项偏离（D1–D7），proposal/design/spec/tasks 的「6 项（D1–D6）」统一更正为 7
+                  项（D1–D7），不改变任何行为或验收范围。\n验证策略：后端单测 + 进程内 stub provider；前端复用
+                  askdata-server/e2e，Playwright 覆盖 10
+                  类用例（含字段顺序、拉取降级、校验失败可保存、向量端点分支、格式切换、默认模型保护、五语言）。
+                requirementsEvidence:
+                  contentHash: df66f44213af4fd76fe46803fbfbff36feca8a044d37a8ab0fb3de26ac811f77
+                  ref: docs/openspec/changes/aimodel-config-flow-revamp
+                sourceEvidence:
+                  contentHash: 62ddf39badff58584f74181d6cd6d3217f5523f1bd78b9933f6b1681698e8ec2
+                  ref: docs/openspec/changes/aimodel-config-flow-revamp
+      - sequence: 7
+        value:
+          designDoc: docs/openspec/changes/aimodel-config-flow-revamp/design.md
+      - sequence: 8
+        value:
+          contentHash: 408f684a895ab127129073f8006b8caa75106c0b2279284227c2373be380d4ed
+          ref: docs/openspec/changes/aimodel-config-flow-revamp/design.md
+      - sequence: 5
+        value:
+          handoffContext: docs/openspec/changes/aimodel-config-flow-revamp/.comet/handoff/design-context.json
+          handoffHash: bad4986e8d15b6566d115fe4d29212cbaad0b9707b47f8cedc03cfd14ddc9f8b
+          proposal: 技术方案：沿用 change 内 design.md 作为唯一 Design Doc，覆盖 15 项决策与端到端验证。\n1)
+            数据层：ai_model 新增 enable / valid / upstream_format / dimension 四列，新增
+            ai_embedding_index_state 单行状态表；三套方言迁移脚本，存量回填
+            enable=1、valid=1、upstream_format=1，并把 H2 向量列改为 CLOB、MySQL 改
+            MEDIUMTEXT，消除维度上限。\n2) 仓储与路由：AiModelRepository
+            只保留带类型参数的查询（findDefault/clearDefaults/countByType/listByWorkspace），编译期强制调用方声明类型；ChatModelRouter
+            仅暴露 chatModel()/embeddingModel()，按 model_type+enable+valid
+            过滤，无默认时回退该类型首个可用模型。\n3) 报文格式：新增 UpstreamFormatResolver 统一判定与 URL
+            规范化（自动识别 Azure/Anthropic，Responses 手选）；ChatModelClient.generate()
+            增加格式参数，按 Chat Completions / Anthropic Messages / Responses / Azure
+            四分支构造请求与解析流式事件，Chat Completions 现有路径不改结构。\n4) 接口：连通校验按类型分支（LLM 对话 /
+            向量 embeddings）并回写 valid；新增 POST /system/aimodel/models 代理上游
+            /models（失败降级 preset/none）；新增 embedding status 与 rebuild
+            两个管理接口，重建全空间、强制重算、复用单 worker 守卫。\n5) 向量：移除本地
+            ONNX（LocalEmbeddingModel、BertWordPieceTokenizer、onnxruntime
+            依赖、model-path
+            配置），无可用在线向量模型时网页会话/MCP/定时任务统一阻断；维度作为一等属性，启用、设默认、问答入口三处硬校验。\n6)
+            前端：ModelForm 持有拉取与测试状态机（请求序号丢弃过期响应），字段顺序改为 模型名称→Base URL→API
+            Key→模型类型→基础模型→是否生效→高级配置；模型类型新建可选、编辑只读；默认模型按类型唯一且不可停用/删除；模型页常驻「向量索引待重建」提示与一键重建。\n7)
+            对等基线：以 SQLBot 为硬性基线，reference-parity.md 登记 B1–B14 / R1–R6 / F1–F13 共
+            33 条与 7 项有意偏离（D1–D7）。\n\n关键取舍：新增独立列而非复用
+            protocol/config；类型维度在仓储层收口而非各调用点过滤；格式判定收敛为单一解析器；报文适配放在
+            ChatModelClient 内部；重建必须全空间且强制重算。\n\n风险：default_model
+            语义变更影响面大（迁移不回算，走回退逻辑）；新列回填错误会导致全站无模型（DEFAULT 1 +
+            断言可用模型数不减少）；ChatModelClient 触及问数主链路（只加分支，回归问数/图表/权限/定时任务）；Anthropic
+            与 Responses 无真实网关（stub 单测并写入交付说明）；维度变化导致召回异常（切换前确认 + 重建幂等）。\n\nSpec
+            Patch：无。本阶段只做文档一致性修正——reference-parity.md 第 4 节实际为 7
+            项偏离（D1–D7），proposal/design/spec/tasks 的「6 项（D1–D6）」统一更正为 7
+            项（D1–D7），不改变任何行为或验收范围。\n验证策略：后端单测 + 进程内 stub provider；前端复用
+            askdata-server/e2e，Playwright 覆盖 10
+            类用例（含字段顺序、拉取降级、校验失败可保存、向量端点分支、格式切换、默认模型保护、五语言）。
+          requirementsEvidence:
+            contentHash: df66f44213af4fd76fe46803fbfbff36feca8a044d37a8ab0fb3de26ac811f77
+            ref: docs/openspec/changes/aimodel-config-flow-revamp
+          sourceEvidence:
+            contentHash: 62ddf39badff58584f74181d6cd6d3217f5523f1bd78b9933f6b1681698e8ec2
+            ref: docs/openspec/changes/aimodel-config-flow-revamp
+      - sequence: 1
+        value:
+          event: open-complete
+      - sequence: 3
+        value:
+          choice: approved
+          proposal:
+            input:
+              change: aimodel-config-flow-revamp
+              changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+              workspaceBaseline:
+                ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+            outputs:
+              full.open:
+                event: open-complete
+              full.open.evidence:
+                contentHash: 62e10da7be46916dfa2e6054acb5342eb79add4dd5c654171a21afb37631d7bf
+                ref: docs/openspec/changes/aimodel-config-flow-revamp
+      - sequence: 2
+        value:
+          contentHash: 62e10da7be46916dfa2e6054acb5342eb79add4dd5c654171a21afb37631d7bf
+          ref: docs/openspec/changes/aimodel-config-flow-revamp
+      - sequence: 4
+        value:
+          contentHash: 62e10da7be46916dfa2e6054acb5342eb79add4dd5c654171a21afb37631d7bf
+      - sequence: 11
+        value:
+          designEvidence:
+            contentHash: 408f684a895ab127129073f8006b8caa75106c0b2279284227c2373be380d4ed
+            ref: docs/openspec/changes/aimodel-config-flow-revamp/design.md
+          plan: docs/superpowers/plans/2026-11-01-aimodel-config-flow-revamp.md
+          planEvidence:
+            contentHash: d89fd940dd33b2ef8fb5a33bf5a195e00e7cf9fb3f17706dd27d6981724ec8b7
+            ref: docs/superpowers/plans/2026-11-01-aimodel-config-flow-revamp.md
+          taskRevision: ac38135fd4d036b434d00c80ba8f54525643e65ec26dce37cd20003b5b0044c0
+      - sequence: 12
+        value:
+          contentHash: d89fd940dd33b2ef8fb5a33bf5a195e00e7cf9fb3f17706dd27d6981724ec8b7
+          ref: docs/superpowers/plans/2026-11-01-aimodel-config-flow-revamp.md
+      - sequence: 15
+        value:
+          choice: approved
+          proposal:
+            input:
+              change: aimodel-config-flow-revamp
+              changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+              workspaceBaseline:
+                ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+            outputs:
+              full.design.handoff:
+                handoffContext: docs/openspec/changes/aimodel-config-flow-revamp/.comet/handoff/design-context.json
+                handoffHash: 9b9145afdc0707944b132d134c29a30ac04bda3bf8412c11c618be02b0b78197
+                proposal: AI 模型配置流重构：ai_model 增加 enable/valid/upstream_format/dimension 字段（V5
+                  迁移，覆盖 mysql/postgresql，移除 h2）；支持
+                  CHAT/ANTHROPIC/RESPONSES/AZURE
+                  四种上游格式解析与分流；默认模型按类型隔离与启停保护；向量索引全空间重建（ai_embedding_index_state）；移除
+                  H2
+                  本地嵌入链路（LocalEmbeddingModel/BertWordPieceTokenizer/DbVectorStore/onnxruntime），元数据仅用
+                  MySQL 8.0+/PG 10+，测试切真实 MySQL/Qdrant/TEI/Redis 并在依赖不可达时 assume
+                  跳过；前端模型配置 UI 适配状态与多语言。设计较初版（rev 19）无范围扩张，仅因实现落地后补充细节，故
+                  reconcile 至 rev 20。
+                requirementsEvidence:
+                  contentHash: 37891a9d8323a5721af64fe4f0dcb6725aad2f938bd48b88f977db9dbb4dd25b
+                  ref: docs/openspec/changes/aimodel-config-flow-revamp
+                sourceEvidence:
+                  contentHash: d22a5e62e41cd40aa7c29d82c41eb70a4f48dba64e1b1ceda3eed67f74ed3071
+                  ref: docs/openspec/changes/aimodel-config-flow-revamp
+      - sequence: 14
+        value:
+          handoffContext: docs/openspec/changes/aimodel-config-flow-revamp/.comet/handoff/design-context.json
+          handoffHash: 9b9145afdc0707944b132d134c29a30ac04bda3bf8412c11c618be02b0b78197
+          proposal: AI 模型配置流重构：ai_model 增加 enable/valid/upstream_format/dimension 字段（V5
+            迁移，覆盖 mysql/postgresql，移除 h2）；支持 CHAT/ANTHROPIC/RESPONSES/AZURE
+            四种上游格式解析与分流；默认模型按类型隔离与启停保护；向量索引全空间重建（ai_embedding_index_state）；移除 H2
+            本地嵌入链路（LocalEmbeddingModel/BertWordPieceTokenizer/DbVectorStore/onnxruntime），元数据仅用
+            MySQL 8.0+/PG 10+，测试切真实 MySQL/Qdrant/TEI/Redis 并在依赖不可达时 assume
+            跳过；前端模型配置 UI 适配状态与多语言。设计较初版（rev 19）无范围扩张，仅因实现落地后补充细节，故 reconcile 至
+            rev 20。
+          requirementsEvidence:
+            contentHash: 37891a9d8323a5721af64fe4f0dcb6725aad2f938bd48b88f977db9dbb4dd25b
+            ref: docs/openspec/changes/aimodel-config-flow-revamp
+          sourceEvidence:
+            contentHash: d22a5e62e41cd40aa7c29d82c41eb70a4f48dba64e1b1ceda3eed67f74ed3071
+            ref: docs/openspec/changes/aimodel-config-flow-revamp
+      - sequence: 16
+        value:
+          designDoc: docs/openspec/changes/aimodel-config-flow-revamp/design.md
+      - sequence: 17
+        value:
+          contentHash: 6a5af9229a14a9df62038f905ff27d97f455bc67a765324409a840487f4f7bd7
+          ref: docs/openspec/changes/aimodel-config-flow-revamp/design.md
+      - sequence: 18
+        value:
+          designEvidence:
+            contentHash: 6a5af9229a14a9df62038f905ff27d97f455bc67a765324409a840487f4f7bd7
+            ref: docs/openspec/changes/aimodel-config-flow-revamp/design.md
+          plan: docs/superpowers/plans/2026-11-01-aimodel-config-flow-revamp.md
+          planEvidence:
+            contentHash: 517a0b714fe4388cd926efbd1fc93111ebf68f57fe44c6d957cc4285840c3e87
+            ref: docs/superpowers/plans/2026-11-01-aimodel-config-flow-revamp.md
+          taskRevision: 5c635dd1281d59cdf0f6c8228acaab4a456d3fbcc1938c74d2bc20326a00a590
+      - sequence: 19
+        value:
+          contentHash: 517a0b714fe4388cd926efbd1fc93111ebf68f57fe44c6d957cc4285840c3e87
+          ref: docs/superpowers/plans/2026-11-01-aimodel-config-flow-revamp.md
+      - sequence: 20
+        value:
+          event: build-complete
+      - sequence: 21
+        value:
+          argv:
+            - mvn
+            - -o
+            - -pl
+            - askdata/askdata-server
+            - test
+          changedDuringExecution: []
+          checkEpoch: 3
+          contentHash: 2b4af87a045590410427654b65f9190d453624da7d0315e9382ef770748c5c2c
+          cwd: .
+          environment: f6698f2c8d836b3bdd4fa7e96ef9190ac1486d1c5cd9a496efcc885a13aee2f3
+          exitCode: 1
+          inputAfter: cdcd8b3cb4677f3855cd8a392644bd63a058efa624009358560cf14f51fc4fdb
+          inputBefore: cdcd8b3cb4677f3855cd8a392644bd63a058efa624009358560cf14f51fc4fdb
+          manifestHash: 5f557a8a933fe26719ad651e5632d4db3fde348f11410cfa5c958bf2a78a4b41
+          manifestRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/17480f1e-8b33-4eca-9341-26722718971e.manifest
+          receiptRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/1b4f141f-427b-48b9-947e-bcbc15889cca.log
+          reusable: false
+          reused: false
+          scope: build
+          tier: full
+          timeoutMs: 3600000
+      - sequence: 22
+        value:
+          event: build-complete
+      - sequence: 23
+        value:
+          argv:
+            - mvn
+            - -pl
+            - askdata/askdata-server
+            - test
+          changedDuringExecution: []
+          checkEpoch: 3
+          contentHash: c73528afd13b6d6649f52ff92af6c97bc31f3812f39f4b0ae0b7bb8b1141ae27
+          cwd: .
+          environment: e31e64b2ba6535af83499311a1e8cf2ec828478f3905a9c6484aef190eea4a70
+          exitCode: 124
+          inputAfter: cdcd8b3cb4677f3855cd8a392644bd63a058efa624009358560cf14f51fc4fdb
+          inputBefore: cdcd8b3cb4677f3855cd8a392644bd63a058efa624009358560cf14f51fc4fdb
+          manifestHash: 5f557a8a933fe26719ad651e5632d4db3fde348f11410cfa5c958bf2a78a4b41
+          manifestRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/4eb90927-3a7b-47be-a769-0475b6481ff6.manifest
+          receiptRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/56eb778e-93b8-4c42-99bf-c5c12e9081e7.log
+          reusable: false
+          reused: false
+          scope: build
+          tier: full
+          timeoutMs: 300000
+      - sequence: 24
+        value:
+          event: build-complete
+      - sequence: 25
+        value:
+          argv:
+            - mvn
+            - -pl
+            - askdata/askdata-server
+            - test
+          changedDuringExecution: []
+          checkEpoch: 3
+          contentHash: 4c3798b80615b734dcb3f640eb3a4bca7a5aacffc0b57842e3334ae34d038d9b
+          cwd: .
+          environment: e31e64b2ba6535af83499311a1e8cf2ec828478f3905a9c6484aef190eea4a70
+          exitCode: 0
+          inputAfter: 7f1f50624bf338661bdcef3f39b1ab26645bee386ba333b3e47ef5cec23cdaf5
+          inputBefore: 7f1f50624bf338661bdcef3f39b1ab26645bee386ba333b3e47ef5cec23cdaf5
+          manifestHash: 6c113b811487e3880396f63bcc59c1a7d655779e6a112d40f55cfff210213262
+          manifestRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/7b20b1a6-c0ab-4a3c-9eeb-bdee22df1e13.manifest
+          receiptRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/4ef735d3-6395-481e-982c-99314d0b71ef.log
+          reusable: false
+          reused: false
+          scope: build
+          tier: full
+          timeoutMs: 1800000
+      - sequence: 26
+        value:
+          contentHash: 4c3798b80615b734dcb3f640eb3a4bca7a5aacffc0b57842e3334ae34d038d9b
+          ref: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/4ef735d3-6395-481e-982c-99314d0b71ef.log
+      - sequence: 28
+        value:
+          contentHash: ca06186f466fa809fa835e0e424fa269dcc066d968031d71090ed4e93788049a
+          ref: docs/superpowers/reports/aimodel-config-flow-revamp.md
+      - sequence: 27
+        value:
+          event: verification-ready
+          verificationReport: docs/superpowers/reports/aimodel-config-flow-revamp.md
+      - sequence: 29
+        value:
+          argv:
+            - mvn
+            - -pl
+            - askdata/askdata-server
+            - test
+          changedDuringExecution: []
+          checkEpoch: 4
+          contentHash: 18fb1fd4d76aac5eb5ed7e3aa30a93795f959387f1313ee24a3be441ca4849fe
+          cwd: .
+          deliveryInputs: {}
+          environment: e31e64b2ba6535af83499311a1e8cf2ec828478f3905a9c6484aef190eea4a70
+          exitCode: 0
+          inputAfter: 48625b1ed070d769d21f33b75dd902030e5cae68cf3c449001e5e1fce980f1ca
+          inputBefore: 48625b1ed070d769d21f33b75dd902030e5cae68cf3c449001e5e1fce980f1ca
+          manifestHash: 9f0116696d347efd52782f9e48fe7a5adad45795f6a20f48a64d9e0a3168b269
+          manifestRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/f31f4432-069e-4f19-a206-04b8aa849755.manifest
+          receiptRef: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/5bf7cfdd-41cc-4f37-86fb-22f85bce4ce3.log
+          reusable: false
+          reused: false
+          scope: verify
+          tier: full
+          timeoutMs: 1800000
+      - sequence: 30
+        value:
+          contentHash: 18fb1fd4d76aac5eb5ed7e3aa30a93795f959387f1313ee24a3be441ca4849fe
+          ref: .comet/runtime/classic-sdk-checks/e1a398422f665f455357518e2d0c42b6c943711a7bc02a7c533e03179a3bbbca/5bf7cfdd-41cc-4f37-86fb-22f85bce4ce3.log
+      - sequence: 32
+        value:
+          choice: local
+          proposal:
+            input:
+              change: aimodel-config-flow-revamp
+              changeDir: docs/openspec/changes/aimodel-config-flow-revamp
+              workspaceBaseline:
+                ref: 17f4abd8-57a6-4557-a7ef-e53e91227606
+            outputs:
+              full.archive.prepare:
+                summary: 模型配置流重构（aimodel-config-flow-revamp）归档：ai_model 增加
+                  enable/valid/upstream_format/dimension 字段（V5 迁移，覆盖
+                  mysql/postgresql，移除 h2）；支持 CHAT/ANTHROPIC/RESPONSES/AZURE
+                  四种上游格式解析与分流；默认模型按类型隔离与启停保护；向量索引全空间重建；移除 H2 本地嵌入链路，元数据仅用 MySQL
+                  8.0+/PG 10+；测试切真实 MySQL/Qdrant/TEI/Redis 并在依赖不可达时 assume
+                  跳过；前端模型配置 UI 适配。110/110 任务完成，Verify 真实环境 1120 后端用例 0 失败 5
+                  跳过、24 e2e 通过。归档影响当前 dev 分支，交付目标 local（归档并提交）。
+                targetBranch: dev
+      - sequence: 31
+        value:
+          summary: 模型配置流重构（aimodel-config-flow-revamp）归档：ai_model 增加
+            enable/valid/upstream_format/dimension 字段（V5 迁移，覆盖
+            mysql/postgresql，移除 h2）；支持 CHAT/ANTHROPIC/RESPONSES/AZURE
+            四种上游格式解析与分流；默认模型按类型隔离与启停保护；向量索引全空间重建；移除 H2 本地嵌入链路，元数据仅用 MySQL
+            8.0+/PG 10+；测试切真实 MySQL/Qdrant/TEI/Redis 并在依赖不可达时 assume 跳过；前端模型配置
+            UI 适配。110/110 任务完成，Verify 真实环境 1120 后端用例 0 失败 5 跳过、24 e2e 通过。归档影响当前
+            dev 分支，交付目标 local（归档并提交）。
+          targetBranch: dev
+      - sequence: 33
+        value:
+          baseCommit: 898d60b48faa50e897dfb3d0f56771f1288c815a
+          deliveryAction: local
+          targetBranch: dev
+          verifiedBranch: dev
+      - sequence: 34
+        value:
+          archiveDirectory: docs/openspec/changes/archive/2026-11-02-aimodel-config-flow-revamp
+    nodes:
+      - key: full.open
+        value: 0
+        left: null
+        right: null
+        height: 1
+      - key: full.open.evidence
+        value: 2
+        left: null
+        right: null
+        height: 1
+      - key: full.open.confirm
+        value: 1
+        left: 0
+        right: 1
+        height: 2
+      - key: full.open.revalidate
+        value: 3
+        left: null
+        right: null
+        height: 1
+      - key: full.open.evidence
+        value: 2
+        left: null
+        right: 3
+        height: 2
+      - key: full.open.confirm
+        value: 1
+        left: 0
+        right: 4
+        height: 3
+      - key: full.design.confirm
+        value: 4
+        left: null
+        right: null
+        height: 1
+      - key: full.open
+        value: 0
+        left: null
+        right: null
+        height: 1
+      - key: full.design.handoff
+        value: 5
+        left: 6
+        right: 7
+        height: 2
+      - key: full.open.confirm
+        value: 1
+        left: 8
+        right: 4
+        height: 3
+      - key: full.design.confirm
+        value: 4
+        left: null
+        right: null
+        height: 1
+      - key: full.design.evidence
+        value: 7
+        left: null
+        right: null
+        height: 1
+      - key: full.design.document
+        value: 6
+        left: 10
+        right: 11
+        height: 2
+      - key: full.design.handoff
+        value: 5
+        left: 12
+        right: 7
+        height: 3
+      - key: full.open.confirm
+        value: 1
+        left: 13
+        right: 4
+        height: 4
+      - key: full.build.configure
+        value: 8
+        left: null
+        right: null
+        height: 1
+      - key: full.design.confirm
+        value: 4
+        left: null
+        right: null
+        height: 1
+      - key: full.build.confirm
+        value: 9
+        left: 15
+        right: 16
+        height: 2
+      - key: full.design.handoff
+        value: 5
+        left: 11
+        right: 7
+        height: 2
+      - key: full.design.document
+        value: 6
+        left: 17
+        right: 18
+        height: 3
+      - key: full.open.confirm
+        value: 1
+        left: 19
+        right: 4
+        height: 4
+      - key: full.build.plan
+        value: 10
+        left: null
+        right: null
+        height: 1
+      - key: full.design.confirm
+        value: 4
+        left: null
+        right: null
+        height: 1
+      - key: full.build.plan.evidence
+        value: 11
+        left: 21
+        right: 22
+        height: 2
+      - key: full.build.confirm
+        value: 9
+        left: 15
+        right: 23
+        height: 3
+      - key: full.open.confirm
+        value: 1
+        left: 18
+        right: 4
+        height: 3
+      - key: full.design.document
+        value: 6
+        left: 24
+        right: 25
+        height: 4
+      - key: full.design.handoff
+        value: 13
+        left: null
+        right: null
+        height: 1
+      - key: full.design.confirm
+        value: 12
+        left: null
+        right: 27
+        height: 2
+      - key: full.design.confirm
+        value: 12
+        left: null
+        right: null
+        height: 1
+      - key: full.design.evidence
+        value: 14
+        left: null
+        right: null
+        height: 1
+      - key: full.design.handoff
+        value: 13
+        left: 30
+        right: null
+        height: 2
+      - key: full.design.document
+        value: 6
+        left: 29
+        right: 31
+        height: 3
+      - key: full.build.plan
+        value: 15
+        left: null
+        right: null
+        height: 1
+      - key: full.design.confirm
+        value: 12
+        left: null
+        right: null
+        height: 1
+      - key: full.build.plan.evidence
+        value: 16
+        left: 33
+        right: 34
+        height: 2
+      - key: full.design.document
+        value: 6
+        left: 35
+        right: 31
+        height: 3
+      - key: full.build.execute
+        value: 17
+        left: null
+        right: null
+        height: 1
+      - key: full.build.plan
+        value: 15
+        left: 37
+        right: null
+        height: 2
+      - key: full.build.plan.evidence
+        value: 16
+        left: 38
+        right: 34
+        height: 3
+      - key: full.design.document
+        value: 6
+        left: 39
+        right: 31
+        height: 4
+      - key: full.build.check
+        value: 18
+        left: null
+        right: null
+        height: 1
+      - key: full.build.plan
+        value: 15
+        left: null
+        right: null
+        height: 1
+      - key: full.build.execute
+        value: 17
+        left: 41
+        right: 42
+        height: 2
+      - key: full.build.plan.evidence
+        value: 16
+        left: 43
+        right: 34
+        height: 3
+      - key: full.design.document
+        value: 6
+        left: 44
+        right: 31
+        height: 4
+      - key: full.build.check
+        value: 19
+        left: null
+        right: null
+        height: 1
+      - key: full.build.execute
+        value: 17
+        left: 46
+        right: 42
+        height: 2
+      - key: full.build.plan.evidence
+        value: 16
+        left: 47
+        right: 34
+        height: 3
+      - key: full.design.document
+        value: 6
+        left: 48
+        right: 31
+        height: 4
+      - key: full.build.check.evidence
+        value: 21
+        left: null
+        right: null
+        height: 1
+      - key: full.build.check
+        value: 20
+        left: null
+        right: 50
+        height: 2
+      - key: full.build.plan.evidence
+        value: 16
+        left: 42
+        right: 34
+        height: 2
+      - key: full.build.execute
+        value: 17
+        left: 51
+        right: 52
+        height: 3
+      - key: full.design.document
+        value: 6
+        left: 53
+        right: 31
+        height: 4
+      - key: full.verify.run
+        value: 23
+        left: null
+        right: null
+        height: 1
+      - key: full.verify.report.evidence
+        value: 22
+        left: null
+        right: 55
+        height: 2
+      - key: full.design.handoff
+        value: 13
+        left: 30
+        right: 56
+        height: 3
+      - key: full.design.document
+        value: 6
+        left: 53
+        right: 57
+        height: 4
+      - key: full.design.handoff
+        value: 13
+        left: 30
+        right: null
+        height: 2
+      - key: full.verify.check.evidence
+        value: 25
+        left: null
+        right: null
+        height: 1
+      - key: full.verify.report.evidence
+        value: 22
+        left: 60
+        right: 55
+        height: 2
+      - key: full.verify.check
+        value: 24
+        left: 59
+        right: 61
+        height: 3
+      - key: full.design.document
+        value: 6
+        left: 53
+        right: 62
+        height: 4
+      - key: full.archive.prepare
+        value: 27
+        left: null
+        right: null
+        height: 1
+      - key: full.archive.confirm
+        value: 26
+        left: null
+        right: 64
+        height: 2
+      - key: full.build.check
+        value: 20
+        left: 65
+        right: 50
+        height: 3
+      - key: full.build.execute
+        value: 17
+        left: 66
+        right: 52
+        height: 4
+      - key: full.design.document
+        value: 6
+        left: 67
+        right: 62
+        height: 5
+      - key: full.archive.confirm
+        value: 26
+        left: null
+        right: null
+        height: 1
+      - key: full.archive.prepare
+        value: 27
+        left: null
+        right: null
+        height: 1
+      - key: full.archive.preflight
+        value: 28
+        left: 69
+        right: 70
+        height: 2
+      - key: full.build.check
+        value: 20
+        left: 71
+        right: 50
+        height: 3
+      - key: full.build.execute
+        value: 17
+        left: 72
+        right: 52
+        height: 4
+      - key: full.design.document
+        value: 6
+        left: 73
+        right: 62
+        height: 5
+      - key: full.archive.execute
+        value: 29
+        left: null
+        right: null
+        height: 1
+      - key: full.archive.confirm
+        value: 26
+        left: null
+        right: 75
+        height: 2
+      - key: full.build.check
+        value: 20
+        left: 70
+        right: 50
+        height: 2
+      - key: full.archive.preflight
+        value: 28
+        left: 76
+        right: 77
+        height: 3
+      - key: full.build.execute
+        value: 17
+        left: 78
+        right: 52
+        height: 4
+      - key: full.design.document
+        value: 6
+        left: 79
+        right: 62
+        height: 5
+      - key: full.build.configure
+        value: 30
+        left: null
+        right: null
+        height: 1
+      - key: full.design.confirm
+        value: 32
+        left: null
+        right: null
+        height: 1
+      - key: full.build.confirm
+        value: 31
+        left: 81
+        right: 82
+        height: 2
+      - key: full.design.evidence
+        value: 34
+        left: null
+        right: null
+        height: 1
+      - key: full.open
+        value: 36
+        left: null
+        right: null
+        height: 1
+      - key: full.design.handoff
+        value: 35
+        left: 84
+        right: 85
+        height: 2
+      - key: full.open.revalidate
+        value: 39
+        left: null
+        right: null
+        height: 1
+      - key: full.open.evidence
+        value: 38
+        left: null
+        right: 87
+        height: 2
+      - key: full.open.confirm
+        value: 37
+        left: 86
+        right: 88
+        height: 3
+      - key: full.design.document
+        value: 33
+        left: 83
+        right: 89
+        height: 4
+      - key: full.build.plan
+        value: 40
+        left: null
+        right: null
+        height: 1
+      - key: full.design.confirm
+        value: 32
+        left: null
+        right: null
+        height: 1
+      - key: full.build.plan.evidence
+        value: 41
+        left: 91
+        right: 92
+        height: 2
+      - key: full.build.confirm
+        value: 31
+        left: 81
+        right: 93
+        height: 3
+      - key: full.design.document
+        value: 33
+        left: 94
+        right: 89
+        height: 4
+      - key: full.design.handoff
+        value: 43
+        left: null
+        right: null
+        height: 1
+      - key: full.design.confirm
+        value: 42
+        left: null
+        right: 96
+        height: 2
+      - key: full.design.confirm
+        value: 42
+        left: null
+        right: null
+        height: 1
+      - key: full.design.evidence
+        value: 45
+        left: null
+        right: null
+        height: 1
+      - key: full.design.handoff
+        value: 43
+        left: 99
+        right: null
+        height: 2
+      - key: full.design.document
+        value: 44
+        left: 98
+        right: 100
+        height: 3
+      - key: full.build.plan
+        value: 46
+        left: null
+        right: null
+        height: 1
+      - key: full.design.confirm
+        value: 42
+        left: null
+        right: null
+        height: 1
+      - key: full.build.plan.evidence
+        value: 47
+        left: 102
+        right: 103
+        height: 2
+      - key: full.design.document
+        value: 44
+        left: 104
+        right: 100
+        height: 3
+      - key: full.build.execute
+        value: 48
+        left: null
+        right: null
+        height: 1
+      - key: full.build.plan
+        value: 46
+        left: 106
+        right: null
+        height: 2
+      - key: full.build.plan.evidence
+        value: 47
+        left: 107
+        right: 103
+        height: 3
+      - key: full.design.document
+        value: 44
+        left: 108
+        right: 100
+        height: 4
+      - key: full.build.check
+        value: 49
+        left: null
+        right: null
+        height: 1
+      - key: full.build.plan
+        value: 46
+        left: null
+        right: null
+        height: 1
+      - key: full.build.execute
+        value: 48
+        left: 110
+        right: 111
+        height: 2
+      - key: full.build.plan.evidence
+        value: 47
+        left: 112
+        right: 103
+        height: 3
+      - key: full.design.document
+        value: 44
+        left: 113
+        right: 100
+        height: 4
+      - key: full.build.execute
+        value: 50
+        left: 110
+        right: 111
+        height: 2
+      - key: full.build.plan.evidence
+        value: 47
+        left: 115
+        right: 103
+        height: 3
+      - key: full.design.document
+        value: 44
+        left: 116
+        right: 100
+        height: 4
+      - key: full.build.check
+        value: 51
+        left: null
+        right: null
+        height: 1
+      - key: full.build.execute
+        value: 50
+        left: 118
+        right: 111
+        height: 2
+      - key: full.build.plan.evidence
+        value: 47
+        left: 119
+        right: 103
+        height: 3
+      - key: full.design.document
+        value: 44
+        left: 120
+        right: 100
+        height: 4
+      - key: full.build.execute
+        value: 52
+        left: 118
+        right: 111
+        height: 2
+      - key: full.build.plan.evidence
+        value: 47
+        left: 122
+        right: 103
+        height: 3
+      - key: full.design.document
+        value: 44
+        left: 123
+        right: 100
+        height: 4
+      - key: full.build.check.evidence
+        value: 54
+        left: null
+        right: null
+        height: 1
+      - key: full.build.check
+        value: 53
+        left: null
+        right: 125
+        height: 2
+      - key: full.build.plan.evidence
+        value: 47
+        left: 111
+        right: 103
+        height: 2
+      - key: full.build.execute
+        value: 52
+        left: 126
+        right: 127
+        height: 3
+      - key: full.design.document
+        value: 44
+        left: 128
+        right: 100
+        height: 4
+      - key: full.verify.run
+        value: 56
+        left: null
+        right: null
+        height: 1
+      - key: full.verify.report.evidence
+        value: 55
+        left: null
+        right: 130
+        height: 2
+      - key: full.design.handoff
+        value: 43
+        left: 99
+        right: 131
+        height: 3
+      - key: full.design.document
+        value: 44
+        left: 128
+        right: 132
+        height: 4
+      - key: full.design.handoff
+        value: 43
+        left: 99
+        right: null
+        height: 2
+      - key: full.verify.check.evidence
+        value: 58
+        left: null
+        right: null
+        height: 1
+      - key: full.verify.report.evidence
+        value: 55
+        left: 135
+        right: 130
+        height: 2
+      - key: full.verify.check
+        value: 57
+        left: 134
+        right: 136
+        height: 3
+      - key: full.design.document
+        value: 44
+        left: 128
+        right: 137
+        height: 4
+      - key: full.archive.prepare
+        value: 60
+        left: null
+        right: null
+        height: 1
+      - key: full.archive.confirm
+        value: 59
+        left: null
+        right: 139
+        height: 2
+      - key: full.build.check
+        value: 53
+        left: 140
+        right: 125
+        height: 3
+      - key: full.build.execute
+        value: 52
+        left: 141
+        right: 127
+        height: 4
+      - key: full.design.document
+        value: 44
+        left: 142
+        right: 137
+        height: 5
+      - key: full.archive.confirm
+        value: 59
+        left: null
+        right: null
+        height: 1
+      - key: full.archive.prepare
+        value: 60
+        left: null
+        right: null
+        height: 1
+      - key: full.archive.preflight
+        value: 61
+        left: 144
+        right: 145
+        height: 2
+      - key: full.build.check
+        value: 53
+        left: 146
+        right: 125
+        height: 3
+      - key: full.build.execute
+        value: 52
+        left: 147
+        right: 127
+        height: 4
+      - key: full.design.document
+        value: 44
+        left: 148
+        right: 137
+        height: 5
+      - key: full.archive.execute
+        value: 62
+        left: null
+        right: null
+        height: 1
+      - key: full.archive.confirm
+        value: 59
+        left: null
+        right: 150
+        height: 2
+      - key: full.build.check
+        value: 53
+        left: 145
+        right: 125
+        height: 2
+      - key: full.archive.preflight
+        value: 61
+        left: 151
+        right: 152
+        height: 3
+      - key: full.build.execute
+        value: 52
+        left: 153
+        right: 127
+        height: 4
+      - key: full.design.document
+        value: 44
+        left: 154
+        right: 137
+        height: 5
+      - key: full.open
+        value: 36
+        left: null
+        right: null
+        height: 1
+      - key: full.open.evidence
+        value: 38
+        left: null
+        right: null
+        height: 1
+      - key: full.open.confirm
+        value: 37
+        left: 156
+        right: 157
+        height: 2
+      - key: full.open.revalidate
+        value: 39
+        left: null
+        right: null
+        height: 1
+      - key: full.open.evidence
+        value: 38
+        left: null
+        right: 159
+        height: 2
+      - key: full.open.confirm
+        value: 37
+        left: 156
+        right: 160
+        height: 3
+      - key: full.design.confirm
+        value: 32
+        left: null
+        right: null
+        height: 1
+      - key: full.open
+        value: 36
+        left: null
+        right: null
+        height: 1
+      - key: full.design.handoff
+        value: 35
+        left: 162
+        right: 163
+        height: 2
+      - key: full.open.confirm
+        value: 37
+        left: 164
+        right: 160
+        height: 3
+      - key: full.design.confirm
+        value: 32
+        left: null
+        right: null
+        height: 1
+      - key: full.design.evidence
+        value: 34
+        left: null
+        right: null
+        height: 1
+      - key: full.design.document
+        value: 33
+        left: 166
+        right: 167
+        height: 2
+      - key: full.design.handoff
+        value: 35
+        left: 168
+        right: 163
+        height: 3
+      - key: full.open.confirm
+        value: 37
+        left: 169
+        right: 160
+        height: 4
+      - key: full.archive.confirm
+        value: 59
+        left: null
+        right: null
+        height: 1
+      - key: full.archive.preflight
+        value: 61
+        left: null
+        right: null
+        height: 1
+      - key: full.archive.execute
+        value: 62
+        left: 171
+        right: 172
+        height: 2
+      - key: full.build.check
+        value: 53
+        left: null
+        right: null
+        height: 1
+      - key: full.build.configure
+        value: 30
+        left: null
+        right: null
+        height: 1
+      - key: full.build.check.evidence
+        value: 54
+        left: 174
+        right: 175
+        height: 2
+      - key: full.archive.prepare
+        value: 60
+        left: 173
+        right: 176
+        height: 3
+      - key: full.build.execute
+        value: 52
+        left: null
+        right: null
+        height: 1
+      - key: full.build.plan.evidence
+        value: 47
+        left: null
+        right: null
+        height: 1
+      - key: full.design.confirm
+        value: 42
+        left: 179
+        right: null
+        height: 2
+      - key: full.build.plan
+        value: 46
+        left: 178
+        right: 180
+        height: 3
+      - key: full.build.confirm
+        value: 31
+        left: 177
+        right: 181
+        height: 4
+      - key: full.design.evidence
+        value: 45
+        left: null
+        right: null
+        height: 1
+      - key: full.design.handoff
+        value: 43
+        left: 183
+        right: 163
+        height: 2
+      - key: full.open.evidence
+        value: 38
+        left: null
+        right: null
+        height: 1
+      - key: full.verify.check
+        value: 57
+        left: null
+        right: null
+        height: 1
+      - key: full.open.revalidate
+        value: 39
+        left: 185
+        right: 186
+        height: 2
+      - key: full.verify.run
+        value: 56
+        left: null
+        right: null
+        height: 1
+      - key: full.verify.report.evidence
+        value: 55
+        left: null
+        right: 188
+        height: 2
+      - key: full.verify.check.evidence
+        value: 58
+        left: 187
+        right: 189
+        height: 3
+      - key: full.open.confirm
+        value: 37
+        left: 184
+        right: 190
+        height: 4
+      - key: full.design.document
+        value: 44
+        left: 182
+        right: 191
+        height: 5
+      - key: full.open.evidence
+        value: 38
+        left: null
+        right: null
+        height: 1
+      - key: full.open
+        value: 36
+        left: null
+        right: 193
+        height: 2
+      - key: full.design.handoff
+        value: 35
+        left: null
+        right: null
+        height: 1
+      - key: full.open.confirm
+        value: 37
+        left: null
+        right: null
+        height: 1
+      - key: full.open.revalidate
+        value: 39
+        left: null
+        right: null
+        height: 1
+      - key: full.open.evidence
+        value: 38
+        left: 196
+        right: 197
+        height: 2
+      - key: full.open
+        value: 36
+        left: 195
+        right: 198
+        height: 3
+      - key: full.build.configure
+        value: 30
+        left: null
+        right: null
+        height: 1
+      - key: full.design.document
+        value: 33
+        left: null
+        right: null
+        height: 1
+      - key: full.design.handoff
+        value: 35
+        left: null
+        right: null
+        height: 1
+      - key: full.design.evidence
+        value: 34
+        left: 201
+        right: 202
+        height: 2
+      - key: full.design.confirm
+        value: 32
+        left: 200
+        right: 203
+        height: 3
+      - key: full.open
+        value: 36
+        left: 204
+        right: 198
+        height: 4
+      - key: full.design.handoff
+        value: 43
+        left: null
+        right: null
+        height: 1
+      - key: full.archive.prepare
+        value: 60
+        left: null
+        right: null
+        height: 1
+      - key: full.build.check.evidence
+        value: 54
+        left: null
+        right: null
+        height: 1
+      - key: full.build.check
+        value: 53
+        left: 207
+        right: 208
+        height: 2
+      - key: full.build.plan
+        value: 46
+        left: null
+        right: null
+        height: 1
+      - key: full.design.confirm
+        value: 42
+        left: null
+        right: null
+        height: 1
+      - key: full.build.plan.evidence
+        value: 47
+        left: 210
+        right: 211
+        height: 2
+      - key: full.build.execute
+        value: 52
+        left: 209
+        right: 212
+        height: 3
+      - key: full.design.evidence
+        value: 45
+        left: null
+        right: null
+        height: 1
+      - key: full.verify.check
+        value: 57
+        left: null
+        right: null
+        height: 1
+      - key: full.design.handoff
+        value: 43
+        left: 214
+        right: 215
+        height: 2
+      - key: full.verify.run
+        value: 56
+        left: null
+        right: null
+        height: 1
+      - key: full.verify.report.evidence
+        value: 55
+        left: null
+        right: 217
+        height: 2
+      - key: full.verify.check.evidence
+        value: 58
+        left: 216
+        right: 218
+        height: 3
+      - key: full.design.document
+        value: 44
+        left: 213
+        right: 219
+        height: 4
+      - key: full.open
+        value: 36
+        left: null
+        right: null
+        height: 1
+      - key: full.design.confirm
+        value: 32
+        left: null
+        right: null
+        height: 1
+      - key: full.design.handoff
+        value: 35
+        left: null
+        right: null
+        height: 1
+      - key: full.design.document
+        value: 33
+        left: 222
+        right: 223
+        height: 2
+      - key: full.open.confirm
+        value: 37
+        left: null
+        right: null
+        height: 1
+      - key: full.open.revalidate
+        value: 39
+        left: null
+        right: null
+        height: 1
+      - key: full.open.evidence
+        value: 38
+        left: 225
+        right: 226
+        height: 2
+      - key: full.open
+        value: 36
+        left: 224
+        right: 227
+        height: 3
+      - key: full.build.configure
+        value: 30
+        left: null
+        right: null
+        height: 1
+      - key: full.build.plan
+        value: 40
+        left: null
+        right: null
+        height: 1
+      - key: full.build.confirm
+        value: 31
+        left: 229
+        right: 230
+        height: 2
+      - key: full.design.document
+        value: 33
+        left: null
+        right: null
+        height: 1
+      - key: full.design.handoff
+        value: 35
+        left: null
+        right: null
+        height: 1
+      - key: full.design.evidence
+        value: 34
+        left: 232
+        right: 233
+        height: 2
+      - key: full.design.confirm
+        value: 32
+        left: 231
+        right: 234
+        height: 3
+      - key: full.open
+        value: 36
+        left: 235
+        right: 227
+        height: 4
+      - key: full.design.confirm
+        value: 42
+        left: null
+        right: null
+        height: 1
+      - key: full.design.handoff
+        value: 43
+        left: null
+        right: null
+        height: 1
+      - key: full.design.document
+        value: 44
+        left: 237
+        right: 238
+        height: 2
+      - key: full.build.plan
+        value: 46
+        left: null
+        right: null
+        height: 1
+      - key: full.design.confirm
+        value: 42
+        left: 240
+        right: null
+        height: 2
+      - key: full.design.evidence
+        value: 45
+        left: null
+        right: null
+        height: 1
+      - key: full.design.handoff
+        value: 43
+        left: 242
+        right: null
+        height: 2
+      - key: full.design.document
+        value: 44
+        left: 241
+        right: 243
+        height: 3
+      - key: full.build.execute
+        value: 52
+        left: null
+        right: null
+        height: 1
+      - key: full.build.check
+        value: 53
+        left: null
+        right: 245
+        height: 2
+      - key: full.build.plan.evidence
+        value: 47
+        left: null
+        right: null
+        height: 1
+      - key: full.design.confirm
+        value: 42
+        left: 247
+        right: null
+        height: 2
+      - key: full.build.plan
+        value: 46
+        left: 246
+        right: 248
+        height: 3
+      - key: full.design.document
+        value: 44
+        left: 249
+        right: 243
+        height: 4
+      - key: full.build.check
+        value: 53
+        left: null
+        right: null
+        height: 1
+      - key: full.build.execute
+        value: 52
+        left: null
+        right: null
+        height: 1
+      - key: full.build.check.evidence
+        value: 54
+        left: 251
+        right: 252
+        height: 2
+      - key: full.build.plan
+        value: 46
+        left: 253
+        right: 248
+        height: 3
+      - key: full.verify.run
+        value: 56
+        left: null
+        right: null
+        height: 1
+      - key: full.design.handoff
+        value: 43
+        left: 242
+        right: 255
+        height: 2
+      - key: full.design.document
+        value: 44
+        left: 254
+        right: 256
+        height: 4
+      - key: full.verify.check
+        value: 57
+        left: null
+        right: null
+        height: 1
+      - key: full.verify.run
+        value: 56
+        left: null
+        right: null
+        height: 1
+      - key: full.verify.report.evidence
+        value: 55
+        left: 258
+        right: 259
+        height: 2
+      - key: full.design.handoff
+        value: 43
+        left: 242
+        right: 260
+        height: 3
+      - key: full.design.document
+        value: 44
+        left: 254
+        right: 261
+        height: 4
+    maps:
+      - null
+      - 2
+      - 5
+      - 9
+      - 14
+      - 20
+      - 26
+      - 28
+      - 32
+      - 36
+      - 40
+      - 45
+      - 49
+      - 54
+      - 58
+      - 63
+      - 68
+      - 74
+      - 80
+      - 90
+      - 95
+      - 97
+      - 101
+      - 105
+      - 109
+      - 114
+      - 117
+      - 121
+      - 124
+      - 129
+      - 133
+      - 138
+      - 143
+      - 149
+      - 155
+      - 158
+      - 161
+      - 165
+      - 170
+      - 192
+      - 194
+      - 199
+      - 205
+      - 206
+      - 220
+      - 221
+      - 228
+      - 236
+      - 239
+      - 244
+      - 250
+      - 257
+      - 262
+    bindings:
+      - path:
+          - actions
+          - "0"
+          - input
+          - outputs
+        map: 0
+      - path:
+          - actions
+          - "1"
+          - input
+          - outputs
+        map: 1
+      - path:
+          - actions
+          - "2"
+          - input
+          - outputs
+        map: 2
+      - path:
+          - actions
+          - "3"
+          - input
+          - outputs
+        map: 3
+      - path:
+          - actions
+          - "4"
+          - input
+          - outputs
+        map: 4
+      - path:
+          - actions
+          - "5"
+          - input
+          - outputs
+        map: 5
+      - path:
+          - actions
+          - "6"
+          - input
+          - outputs
+        map: 6
+      - path:
+          - actions
+          - "7"
+          - input
+          - outputs
+        map: 0
+      - path:
+          - actions
+          - "8"
+          - input
+          - outputs
+        map: 7
+      - path:
+          - actions
+          - "9"
+          - input
+          - outputs
+        map: 8
+      - path:
+          - actions
+          - "10"
+          - input
+          - outputs
+        map: 9
+      - path:
+          - actions
+          - "11"
+          - input
+          - outputs
+        map: 10
+      - path:
+          - actions
+          - "12"
+          - input
+          - outputs
+        map: 11
+      - path:
+          - actions
+          - "13"
+          - input
+          - outputs
+        map: 11
+      - path:
+          - actions
+          - "14"
+          - input
+          - outputs
+        map: 12
+      - path:
+          - actions
+          - "15"
+          - input
+          - outputs
+        map: 12
+      - path:
+          - actions
+          - "16"
+          - input
+          - outputs
+        map: 13
+      - path:
+          - actions
+          - "17"
+          - input
+          - outputs
+        map: 14
+      - path:
+          - actions
+          - "18"
+          - input
+          - outputs
+        map: 15
+      - path:
+          - actions
+          - "19"
+          - input
+          - outputs
+        map: 16
+      - path:
+          - actions
+          - "20"
+          - input
+          - outputs
+        map: 17
+      - path:
+          - actions
+          - "21"
+          - input
+          - outputs
+        map: 18
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:1
+          - results
+        map: 0
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:11
+          - results
+        map: 19
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:13
+          - results
+        map: 20
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:14
+          - results
+        map: 0
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:16
+          - results
+        map: 21
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:18
+          - results
+        map: 22
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:20
+          - results
+        map: 23
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:21
+          - results
+        map: 24
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:22
+          - results
+        map: 25
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:23
+          - results
+        map: 26
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:24
+          - results
+        map: 27
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:25
+          - results
+        map: 28
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:27
+          - results
+        map: 29
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:29
+          - results
+        map: 30
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:31
+          - results
+        map: 31
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:33
+          - results
+        map: 32
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:34
+          - results
+        map: 33
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:35
+          - results
+        map: 34
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:4
+          - results
+        map: 35
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:5
+          - results
+        map: 36
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:7
+          - results
+        map: 37
+      - path:
+          - actionContexts
+          - aimodel-config-flow-revamp:9
+          - results
+        map: 38
+      - path:
+          - outputs
+        map: 39
+      - path:
+          - waits
+          - "0"
+          - results
+        map: 40
+      - path:
+          - waits
+          - "1"
+          - results
+        map: 41
+      - path:
+          - waits
+          - "2"
+          - results
+        map: 42
+      - path:
+          - waits
+          - "3"
+          - results
+        map: 43
+      - path:
+          - waits
+          - "4"
+          - results
+        map: 44
+      - path:
+          - evidenceWaits
+          - "0"
+          - results
+        map: 45
+      - path:
+          - evidenceWaits
+          - "1"
+          - results
+        map: 46
+      - path:
+          - evidenceWaits
+          - "2"
+          - results
+        map: 47
+      - path:
+          - evidenceWaits
+          - "3"
+          - results
+        map: 48
+      - path:
+          - evidenceWaits
+          - "4"
+          - results
+        map: 49
+      - path:
+          - evidenceWaits
+          - "5"
+          - results
+        map: 50
+      - path:
+          - evidenceWaits
+          - "6"
+          - results
+        map: 51
+      - path:
+          - evidenceWaits
+          - "7"
+          - results
+        map: 52
+  storageHash: ccb9c854021c7a2cec53acfba44413017360382b82e59ae49d1ea11d68b98d84
+check_epoch: 7

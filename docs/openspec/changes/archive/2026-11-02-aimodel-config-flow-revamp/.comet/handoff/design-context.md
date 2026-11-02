@@ -3,7 +3,7 @@
 - Change: aimodel-config-flow-revamp
 - Phase: design
 - Mode: compact
-- Context hash: bad4986e8d15b6566d115fe4d29212cbaad0b9707b47f8cedc03cfd14ddc9f8b
+- Context hash: 9b9145afdc0707944b132d134c29a30ac04bda3bf8412c11c618be02b0b78197
 
 Generated-by: comet-handoff.sh
 Task hash policy: task-content-v1. Read tasks.md for live completion; excerpts are design-time context.
@@ -107,8 +107,8 @@ Full source: docs/openspec/changes/aimodel-config-flow-revamp/proposal.md
 ## docs/openspec/changes/aimodel-config-flow-revamp/design.md
 
 - Source: docs/openspec/changes/aimodel-config-flow-revamp/design.md
-- Lines: 1-312
-- SHA256: 408f684a895ab127129073f8006b8caa75106c0b2279284227c2373be380d4ed
+- Lines: 1-388
+- SHA256: 6a5af9229a14a9df62038f905ff27d97f455bc67a765324409a840487f4f7bd7
 
 [TRUNCATED]
 
@@ -201,8 +201,8 @@ Full source: docs/openspec/changes/aimodel-config-flow-revamp/design.md
 ## docs/openspec/changes/aimodel-config-flow-revamp/tasks.md
 
 - Source: docs/openspec/changes/aimodel-config-flow-revamp/tasks.md
-- Lines: 1-159
-- SHA256: ac38135fd4d036b434d00c80ba8f54525643e65ec26dce37cd20003b5b0044c0
+- Lines: 1-168
+- SHA256: 5c635dd1281d59cdf0f6c8228acaab4a456d3fbcc1938c74d2bc20326a00a590
 
 [TRUNCATED]
 
@@ -211,82 +211,82 @@ Full source: docs/openspec/changes/aimodel-config-flow-revamp/design.md
 
 ## 0. 参考实现对等基线
 
-- [ ] 0.1 按 `reference-parity.md` 第 1 节逐条核对后端接口面（B1–B14），记录当前实现状态与本轮处置；验证：14 条全部有明确结论，无「暂不实现」 <!-- comet-task:fe4f34f5-db85-4442-a73f-ea7ab2525004 -->
-- [ ] 0.2 核对第 2 节运行时行为（R1–R6），确认 Chat Completions、vLLM、Azure、参数平铺四条链路均保留；验证：单测或代码走查记录存在性 <!-- comet-task:c8f50c5f-62ea-4be2-8b05-501b72879305 -->
-- [ ] 0.3 核对第 3 节前端表单行为（F1–F13），标记已有与缺失；验证：13 条全部有结论 <!-- comet-task:4d18d6f3-1bf5-48f3-8e4d-f2cb8453fe67 -->
-- [ ] 0.4 修复已发现的存量差异：`ModelForm.vue` 的 `handleParamsDel` 删除参数后未回写 `tempConfigMap`（SQLBot 第 84 行有）；验证：删除参数→切模型→切回，参数仍为删除后的状态 <!-- comet-task:190c398b-b3e0-4249-8d70-9dbce6659a75 -->
-- [ ] 0.5 把第 4 节 7 项有意偏离（D1–D7）逐条落到实现与测试，确保偏离是显式的而非遗漏；验证：每项偏离在单测或 e2e 中有对应用例 <!-- comet-task:792903db-3f9f-441c-8bd2-a873e9ab7f39 -->
+- [x] 0.1 按 `reference-parity.md` 第 1 节逐条核对后端接口面（B1–B14），记录当前实现状态与本轮处置；验证：14 条全部有明确结论，无「暂不实现」 <!-- comet-task:fe4f34f5-db85-4442-a73f-ea7ab2525004 -->
+- [x] 0.2 核对第 2 节运行时行为（R1–R6），确认 Chat Completions、vLLM、Azure、参数平铺四条链路均保留；验证：单测或代码走查记录存在性 <!-- comet-task:c8f50c5f-62ea-4be2-8b05-501b72879305 -->
+- [x] 0.3 核对第 3 节前端表单行为（F1–F13），标记已有与缺失；验证：13 条全部有结论 <!-- comet-task:4d18d6f3-1bf5-48f3-8e4d-f2cb8453fe67 -->
+- [x] 0.4 修复已发现的存量差异：`ModelForm.vue` 的 `handleParamsDel` 删除参数后未回写 `tempConfigMap`（SQLBot 第 84 行有）；验证：删除参数→切模型→切回，参数仍为删除后的状态 <!-- comet-task:190c398b-b3e0-4249-8d70-9dbce6659a75 -->
+- [x] 0.5 把第 4 节 7 项有意偏离（D1–D7）逐条落到实现与测试，确保偏离是显式的而非遗漏；验证：每项偏离在单测或 e2e 中有对应用例 <!-- comet-task:792903db-3f9f-441c-8bd2-a873e9ab7f39 -->
 
 ## 1. 数据库迁移
 
-- [ ] 1.1 在 `src/main/resources/db/migration/h2`、`mysql`、`postgresql` 各新增 `V2__ai_model_states.sql`，为 `ai_model` 增加 `enable`、`valid`、`upstream_format` 三列，均 `NOT NULL`，默认值分别为 `1`、`1`、`0`；验证：三份脚本语法一致，字段名与类型在各方言下均合法 <!-- comet-task:797dfdd3-c66a-4684-8f0b-f9ac5235d9db -->
-- [ ] 1.2 迁移脚本对存量行显式回填 `enable=1`、`valid=1`、`upstream_format=1`；验证：在 H2 上用存量数据执行迁移后 `SELECT COUNT(*) FROM ai_model WHERE enable=1 AND valid=1` 等于迁移前的总行数 <!-- comet-task:be4e0532-d688-44c9-b301-18679d27b449 -->
-- [ ] 1.3 启动应用验证迁移幂等：二次启动不报错、不回滚已有 `valid=0` 状态；验证：手动置一条 `valid=0` 后重启，该行仍为 `0` <!-- comet-task:4e8b86a6-62b5-40cf-9973-953950fe1dd6 -->
+- [x] 1.1 在 `src/main/resources/db/migration/h2`、`mysql`、`postgresql` 各新增 `V2__ai_model_states.sql`，为 `ai_model` 增加 `enable`、`valid`、`upstream_format` 三列，均 `NOT NULL`，默认值分别为 `1`、`1`、`0`；验证：三份脚本语法一致，字段名与类型在各方言下均合法 <!-- comet-task:797dfdd3-c66a-4684-8f0b-f9ac5235d9db -->
+- [x] 1.2 迁移脚本对存量行显式回填 `enable=1`、`valid=1`、`upstream_format=1`；验证：在 H2 上用存量数据执行迁移后 `SELECT COUNT(*) FROM ai_model WHERE enable=1 AND valid=1` 等于迁移前的总行数 <!-- comet-task:be4e0532-d688-44c9-b301-18679d27b449 -->
+- [x] 1.3 启动应用验证迁移幂等：二次启动不报错、不回滚已有 `valid=0` 状态；验证：手动置一条 `valid=0` 后重启，该行仍为 `0` <!-- comet-task:4e8b86a6-62b5-40cf-9973-953950fe1dd6 -->
 
 ## 2. 仓储与类型维度
 
-- [ ] 2.1 `AiModelRepository` 新增 `findDefault(int type)`、`listByType(int type)`、`countByType(int type)`，`clearDefaults(int type)` 改为按类型清除；验证：单测覆盖「清除 LLM 默认不影响向量默认」 <!-- comet-task:f13b20c2-15d9-437d-8a74-88c8ed836829 -->
-- [ ] 2.2 删除无类型版本的 `findDefault()`、`clearDefaults()`、`count()`，编译期暴露所有调用方；验证：`mvn -pl askdata/askdata-server compile` 通过且无遗留调用 <!-- comet-task:4e8a730a-736c-4c37-92e8-e6f3df94d1dc -->
-- [ ] 2.3 `listByWorkspace(long, int type)` 增加类型过滤，工作空间授权与 MCP 模型列表只传 LLM 类型；验证：单测断言向量模型不出现在返回列表中 <!-- comet-task:20519acd-2926-4711-a41f-70884244a6c4 -->
-- [ ] 2.4 仓储写入支持 `enable`、`valid`、`upstream_format` 三列，读取时映射到实体；验证：单测往返读写三次字段值不变 <!-- comet-task:3ab9d74e-41e9-4024-aab4-e3b11fa6563d -->
-- [ ] 2.5 `CryptoUtil` 加解密范围保持只覆盖 `api_domain`/`api_key`，新列明文存储；验证：单测断言新列读写不走加解密、`api_domain` 含多级路径时可原样往返 <!-- comet-task:90ee6774-87e6-4b52-9d9e-c64db46a718c -->
+- [x] 2.1 `AiModelRepository` 新增 `findDefault(int type)`、`listByType(int type)`、`countByType(int type)`，`clearDefaults(int type)` 改为按类型清除；验证：单测覆盖「清除 LLM 默认不影响向量默认」 <!-- comet-task:f13b20c2-15d9-437d-8a74-88c8ed836829 -->
+- [x] 2.2 删除无类型版本的 `findDefault()`、`clearDefaults()`、`count()`，编译期暴露所有调用方；验证：`mvn -pl askdata/askdata-server compile` 通过且无遗留调用 <!-- comet-task:4e8a730a-736c-4c37-92e8-e6f3df94d1dc -->
+- [x] 2.3 `listByWorkspace(long, int type)` 增加类型过滤，工作空间授权与 MCP 模型列表只传 LLM 类型；验证：单测断言向量模型不出现在返回列表中 <!-- comet-task:20519acd-2926-4711-a41f-70884244a6c4 -->
+- [x] 2.4 仓储写入支持 `enable`、`valid`、`upstream_format` 三列，读取时映射到实体；验证：单测往返读写三次字段值不变 <!-- comet-task:3ab9d74e-41e9-4024-aab4-e3b11fa6563d -->
+- [x] 2.5 `CryptoUtil` 加解密范围保持只覆盖 `api_domain`/`api_key`，新列明文存储；验证：单测断言新列读写不走加解密、`api_domain` 含多级路径时可原样往返 <!-- comet-task:90ee6774-87e6-4b52-9d9e-c64db46a718c -->
 
 ## 3. 默认模型与启停保护
 
-- [ ] 3.1 移除 `AiModelService.create()` 中 `count()==0` 自动设默认的逻辑；验证：新建首个模型后 `default_model` 仍为 0 <!-- comet-task:85b954d8-38cc-4502-8d6d-236bb561a923 -->
-- [ ] 3.2 设默认改为按类型清除，并在设默认前校验目标模型 `valid=1 && enable=1`，否则返回明确错误；验证：单测覆盖四种组合（可用+启用通过，其余三种被拒） <!-- comet-task:5b75ea90-25e8-42be-b237-7bc630255825 -->
-- [ ] 3.3 停用、删除默认模型时返回拒绝对应错误码，接口层不可绕过；验证：单测直接调用 service 与 controller 各一次，均被拒 <!-- comet-task:d6674b9e-ad79-4da9-ad54-368373cd0b4e -->
-- [ ] 3.4 `ChatModelRouter.chatModel()`、`embeddingModel()` 在无默认时回退到该类型首个 `valid=1 && enable=1` 模型；验证：单测构造「无默认 + 一个可用模型」断言选中该模型 <!-- comet-task:1bb6d6ce-5130-46d6-8ea8-7fcf8de17595 -->
-- [ ] 3.5 `chatModelById()` 拒绝非 LLM、`enable=0` 或 `valid=0` 的模型；验证：单测覆盖三种拒绝场景，错误信息区分「类型不符」与「模型不可用」 <!-- comet-task:7a4f901a-94ff-47f7-9700-881516057cd9 -->
+- [x] 3.1 移除 `AiModelService.create()` 中 `count()==0` 自动设默认的逻辑；验证：新建首个模型后 `default_model` 仍为 0 <!-- comet-task:85b954d8-38cc-4502-8d6d-236bb561a923 -->
+- [x] 3.2 设默认改为按类型清除，并在设默认前校验目标模型 `valid=1 && enable=1`，否则返回明确错误；验证：单测覆盖四种组合（可用+启用通过，其余三种被拒） <!-- comet-task:5b75ea90-25e8-42be-b237-7bc630255825 -->
+- [x] 3.3 停用、删除默认模型时返回拒绝对应错误码，接口层不可绕过；验证：单测直接调用 service 与 controller 各一次，均被拒 <!-- comet-task:d6674b9e-ad79-4da9-ad54-368373cd0b4e -->
+- [x] 3.4 `ChatModelRouter.chatModel()`、`embeddingModel()` 在无默认时回退到该类型首个 `valid=1 && enable=1` 模型；验证：单测构造「无默认 + 一个可用模型」断言选中该模型 <!-- comet-task:1bb6d6ce-5130-46d6-8ea8-7fcf8de17595 -->
+- [x] 3.5 `chatModelById()` 拒绝非 LLM、`enable=0` 或 `valid=0` 的模型；验证：单测覆盖三种拒绝场景，错误信息区分「类型不符」与「模型不可用」 <!-- comet-task:7a4f901a-94ff-47f7-9700-881516057cd9 -->
 
 ## 4. 上游格式解析器
 
-- [ ] 4.1 新增 `UpstreamFormatResolver`，输入 `(baseUrl, upstreamFormat, fullUrl)`，输出格式枚举；自动识别规则：`*.openai.azure.com|cn` → Azure，路径含 `/anthropic` 或 `api.anthropic.com` → Anthropic Messages，其余 → Chat Completions，Responses 仅手选；验证：参数化单测覆盖至少 8 组 URL <!-- comet-task:49bf86e1-738e-45e5-bd6c-376e2519b0e7 -->
-- [ ] 4.2 解析器同时提供 URL 规范化：去尾部 `/`、剥离尾部 `/chat/completions`、路径为空补 `/v1`；验证：单测断言 `https://api.deepseek.com` → `.../v1`，`https://api.openai.com/v1` 不重复追加 <!-- comet-task:fb9ac113-e4c3-4ec8-b4d6-16fe6ce91666 -->
-- [ ] 4.3 完整 URL 开启时原样返回，不追加路径；验证：单测断言返回值与入参严格相等 <!-- comet-task:9106839c-5e5f-448a-a2a4-c71c31d7f68a -->
+- [x] 4.1 新增 `UpstreamFormatResolver`，输入 `(baseUrl, upstreamFormat, fullUrl)`，输出格式枚举；自动识别规则：`*.openai.azure.com|cn` → Azure，路径含 `/anthropic` 或 `api.anthropic.com` → Anthropic Messages，其余 → Chat Completions，Responses 仅手选；验证：参数化单测覆盖至少 8 组 URL <!-- comet-task:49bf86e1-738e-45e5-bd6c-376e2519b0e7 -->
+- [x] 4.2 解析器同时提供 URL 规范化：去尾部 `/`、剥离尾部 `/chat/completions`、路径为空补 `/v1`；验证：单测断言 `https://api.deepseek.com` → `.../v1`，`https://api.openai.com/v1` 不重复追加 <!-- comet-task:fb9ac113-e4c3-4ec8-b4d6-16fe6ce91666 -->
+- [x] 4.3 完整 URL 开启时原样返回，不追加路径；验证：单测断言返回值与入参严格相等 <!-- comet-task:9106839c-5e5f-448a-a2a4-c71c31d7f68a -->
 
 ## 5. 对话客户端格式分支
 
-- [ ] 5.1 `ChatModelClient.generate()` 增加格式参数，5 处调用点统一从 `ModelRef` 取格式；验证：`mvn compile` 通过，且 `ChatKnowledgeService`、`ChatQuestionService`×2、`PermissionEnforcer`、`ScheduledTaskExecutor` 均无硬编码格式 <!-- comet-task:76b40a75-0e48-419c-a107-ec6b429c8b6e -->
-- [ ] 5.2 实现 Anthropic Messages 分支：`{base}/v1/messages`、`x-api-key` + `anthropic-version`、system 提升为顶层、`max_tokens` 默认 4096 且可被模型参数覆盖、剔除 `stream_options`；验证：stub 单测断言请求头与请求体结构 <!-- comet-task:70547d94-15f2-4a51-b336-f96a71127803 -->
-- [ ] 5.3 实现 Anthropic 流式解析：`message_start` / `content_block_delta` / `message_delta` / `message_stop`，usage 取 `input_tokens`/`output_tokens`；验证：stub 单测断言拼接文本与 usage 数值 <!-- comet-task:42c35425-98cf-4c60-a8b5-d978440c45ee -->
-- [ ] 5.4 实现 Responses 分支：`{base}/responses`、`input[]` 结构、解析 `response.output_text.delta` 与 `response.completed`；验证：stub 单测断言文本与完成事件 <!-- comet-task:11a9a099-50de-42d3-8ba8-af39350a0f46 -->
-- [ ] 5.5 实现 Azure OpenAI 分支：`{base}/openai/deployments/{deployment}/chat/completions?api-version=`、`api-key` 头、报文沿用 Chat Completions；验证：stub 单测断言路径与请求头 <!-- comet-task:eeb1ffb6-e27c-4d48-a17a-21ffa064e3fe -->
-- [ ] 5.6 回归 Chat Completions 分支行为不变：现有单测全绿，且请求体字节级与改动前一致；验证：`mvn -pl askdata/askdata-server test -Dtest='ChatModelClient*'` <!-- comet-task:8d15d96b-a4ae-47a8-acbf-21f91260a603 -->
+- [x] 5.1 `ChatModelClient.generate()` 增加格式参数，5 处调用点统一从 `ModelRef` 取格式；验证：`mvn compile` 通过，且 `ChatKnowledgeService`、`ChatQuestionService`×2、`PermissionEnforcer`、`ScheduledTaskExecutor` 均无硬编码格式 <!-- comet-task:76b40a75-0e48-419c-a107-ec6b429c8b6e -->
+- [x] 5.2 实现 Anthropic Messages 分支：`{base}/v1/messages`、`x-api-key` + `anthropic-version`、system 提升为顶层、`max_tokens` 默认 4096 且可被模型参数覆盖、剔除 `stream_options`；验证：stub 单测断言请求头与请求体结构 <!-- comet-task:70547d94-15f2-4a51-b336-f96a71127803 -->
+- [x] 5.3 实现 Anthropic 流式解析：`message_start` / `content_block_delta` / `message_delta` / `message_stop`，usage 取 `input_tokens`/`output_tokens`；验证：stub 单测断言拼接文本与 usage 数值 <!-- comet-task:42c35425-98cf-4c60-a8b5-d978440c45ee -->
+- [x] 5.4 实现 Responses 分支：`{base}/responses`、`input[]` 结构、解析 `response.output_text.delta` 与 `response.completed`；验证：stub 单测断言文本与完成事件 <!-- comet-task:11a9a099-50de-42d3-8ba8-af39350a0f46 -->
+- [x] 5.5 实现 Azure OpenAI 分支：`{base}/openai/deployments/{deployment}/chat/completions?api-version=`、`api-key` 头、报文沿用 Chat Completions；验证：stub 单测断言路径与请求头 <!-- comet-task:eeb1ffb6-e27c-4d48-a17a-21ffa064e3fe -->
+- [x] 5.6 回归 Chat Completions 分支行为不变：现有单测全绿，且请求体字节级与改动前一致；验证：`mvn -pl askdata/askdata-server test -Dtest='ChatModelClient*'` <!-- comet-task:8d15d96b-a4ae-47a8-acbf-21f91260a603 -->
 
 ## 6. 模型列表接口
 
-- [ ] 6.1 新增 `POST /api/v1/system/aimodel/models`，入参含 Base URL、Key、上游格式、完整 URL；返回 `{source, models[], error?}`，`source` 取 `remote`/`preset`/`none`；验证：controller 单测覆盖三种 source <!-- comet-task:402bcfe8-becd-4bba-a060-fd4bf531c4ce -->
-- [ ] 6.2 服务端代理请求上游 `/models`，限制返回条数上限，只发一次规范化请求，不做 404 路径探测；验证：stub 单测断言仅调用一次且条数被截断 <!-- comet-task:705c8784-0bfe-43a2-afbf-ef42dd98857f -->
-- [ ] 6.3 上游失败统一降级为可读错误，不返回 5xx，日志不记录 Key；验证：stub 401/404/超时三种场景均返回 200 + error 字段，日志断言无 key 子串 <!-- comet-task:23560ff6-0901-4ae4-849d-8cdc7d18017d -->
-- [ ] 6.4 完整 URL 无法剥离 `/chat/completions`、`/responses`、`/messages` 时，接口返回明确「不支持自动获取」错误且不发请求；验证：stub 断言零请求 <!-- comet-task:a407a823-9945-4eca-8c67-5f017f4af705 -->
+- [x] 6.1 新增 `POST /api/v1/system/aimodel/models`，入参含 Base URL、Key、上游格式、完整 URL；返回 `{source, models[], error?}`，`source` 取 `remote`/`preset`/`none`；验证：controller 单测覆盖三种 source <!-- comet-task:402bcfe8-becd-4bba-a060-fd4bf531c4ce -->
+- [x] 6.2 服务端代理请求上游 `/models`，限制返回条数上限，只发一次规范化请求，不做 404 路径探测；验证：stub 单测断言仅调用一次且条数被截断 <!-- comet-task:705c8784-0bfe-43a2-afbf-ef42dd98857f -->
+- [x] 6.3 上游失败统一降级为可读错误，不返回 5xx，日志不记录 Key；验证：stub 401/404/超时三种场景均返回 200 + error 字段，日志断言无 key 子串 <!-- comet-task:23560ff6-0901-4ae4-849d-8cdc7d18017d -->
+- [x] 6.4 完整 URL 无法剥离 `/chat/completions`、`/responses`、`/messages` 时，接口返回明确「不支持自动获取」错误且不发请求；验证：stub 断言零请求 <!-- comet-task:a407a823-9945-4eca-8c67-5f017f4af705 -->
 
 ## 7. 连通校验按类型
 
-- [ ] 7.1 `streamStatus()` 按模型类型分流：LLM 走对话补全，向量走 `{base}/embeddings`；验证：stub 单测分别断言命中的路径 <!-- comet-task:6b6c6a30-784f-403a-ae37-34fb438e5168 -->
-- [ ] 7.2 请求体携带 `id` 时校验结果回写 `valid`（成功 1 / 失败 0），不带 `id` 时只返回结论不落库；验证：单测断言幂等调用两次结果一致、未保存场景库中无新增行 <!-- comet-task:170e5924-3051-4bbe-a64b-b1be9f327769 -->
-- [ ] 7.3 向量校验请求体使用最小 `input`，解析 `data[0].embedding` 长度作为维度返回；验证：stub 单测断言返回维度等于 stub 向量长度 <!-- comet-task:e4510fd9-f810-47c6-95e9-ca109b9e5e17 -->
-- [ ] 7.4 保存接口不改写 `valid`，沿用库中值；验证：单测「仅改名称保存后 valid 仍为 1」与「valid=0 保存后仍为 0」 <!-- comet-task:a4ec2200-918c-4b1b-a5cc-22fb0865f4d7 -->
-- [ ] 7.5 校验结果回写走仓储专用方法（对齐 `sys_authentication` 的 `updateValid`），避免整行覆盖；验证：单测断言回写只更新 `valid` 一列 <!-- comet-task:35d3ea81-1f98-43fe-ba8a-c2af6aad9d71 -->
+- [x] 7.1 `streamStatus()` 按模型类型分流：LLM 走对话补全，向量走 `{base}/embeddings`；验证：stub 单测分别断言命中的路径 <!-- comet-task:6b6c6a30-784f-403a-ae37-34fb438e5168 -->
+- [x] 7.2 请求体携带 `id` 时校验结果回写 `valid`（成功 1 / 失败 0），不带 `id` 时只返回结论不落库；验证：单测断言幂等调用两次结果一致、未保存场景库中无新增行 <!-- comet-task:170e5924-3051-4bbe-a64b-b1be9f327769 -->
+- [x] 7.3 向量校验请求体使用最小 `input`，解析 `data[0].embedding` 长度作为维度返回；验证：stub 单测断言返回维度等于 stub 向量长度 <!-- comet-task:e4510fd9-f810-47c6-95e9-ca109b9e5e17 -->
+- [x] 7.4 保存接口不改写 `valid`，沿用库中值；验证：单测「仅改名称保存后 valid 仍为 1」与「valid=0 保存后仍为 0」 <!-- comet-task:a4ec2200-918c-4b1b-a5cc-22fb0865f4d7 -->
+- [x] 7.5 校验结果回写走仓储专用方法（对齐 `sys_authentication` 的 `updateValid`），避免整行覆盖；验证：单测断言回写只更新 `valid` 一列 <!-- comet-task:35d3ea81-1f98-43fe-ba8a-c2af6aad9d71 -->
 
 ## 8. 向量索引重建（全空间）
 
-- [ ] 8.1 新增 `ai_embedding_index_state` 单行状态表（`model_id`、`dimension`、`status`、`total`、`done`、`failed`、`current_scope`、`started_at`、`finished_at`、`message`），三套方言各一份；验证：H2/MySQL/PostgreSQL 建表语句字段一致，初始化一行 `id=1, status=idle` <!-- comet-task:7fb5aa1f-2572-4aa9-8159-968b17df10e9 -->
-- [ ] 8.2 `EmbeddingBackfillRunner` 增加 force 模式：忽略 `embedding IS NULL` 过滤，按 id 全量重算并覆盖；验证：单测预置非空向量，断言重建后值被替换而非跳过 <!-- comet-task:d4c9879e-f8cc-47d8-a462-9fddd96a4bdb -->
-- [ ] 8.3 重建任务收集全部工作空间（`terminology`/`data_training`/`core_datasource` 的 distinct `oid` ∪ `sys_workspace`），逐空间执行四类重算；验证：单测构造 3 个空间，断言每个空间四类采样均被处理 <!-- comet-task:294a6021-1df9-43a3-9f37-9e74133b555f -->
-- [ ] 8.4 单空间异常不中断整体：记录失败原因与空间 id，继续下一个空间；验证：单测让第 2 个空间抛错，断言第 3 个空间仍执行且结果中列出第 2 个空间失败 <!-- comet-task:3426ed91-6170-4cd3-aa3d-a50a3f907959 -->
-- [ ] 8.5 进度写入状态表（`done`/`total`/`current_scope`），完成后写入 `model_id`、`dimension`、`finished_at` 并将 `status` 置 `idle`；验证：单测断言任务前后状态字段变化 <!-- comet-task:4a78fc13-59b6-4814-9948-3524724d1853 -->
-- [ ] 8.6 新增 `GET /api/v1/system/aimodel/embedding/status`：返回是否待重建（当前默认向量模型 id ≠ `state.model_id` 或 `status=failed`）、进度与上次结果；验证：单测覆盖「未切换」「已切换未重建」「失败待重试」三种返回 <!-- comet-task:0ceb8288-ae93-42a9-aa33-6af8f4c513b1 -->
-- [ ] 8.7 新增 `POST /api/v1/system/aimodel/embedding/rebuild`：运行中重复调用返回「任务进行中」，不启动第二个任务；验证：并发调用两次，断言仅一次实际执行 <!-- comet-task:b32f9ea3-ad6e-443f-9c3f-4c89f94e946d -->
-- [ ] 8.8 维度变化时先按新维度重建集合并清理旧维度数据，再写入向量；验证：单测先写 768 维再切 1024 维，断言集合维度为 1024 且旧数据不参与检索 <!-- comet-task:cc24ea4b-919f-4e99-82fc-448e34c7c977 -->
-- [ ] 8.9 两个接口纳入审计日志，且仅管理员可调用；验证：非管理员调用返回 403，审计记录存在 <!-- comet-task:827341ed-a9e9-4dab-85ef-21ee609b5853 -->
+- [x] 8.1 新增 `ai_embedding_index_state` 单行状态表（`model_id`、`dimension`、`status`、`total`、`done`、`failed`、`current_scope`、`started_at`、`finished_at`、`message`），三套方言各一份；验证：H2/MySQL/PostgreSQL 建表语句字段一致，初始化一行 `id=1, status=idle` <!-- comet-task:7fb5aa1f-2572-4aa9-8159-968b17df10e9 -->
+- [x] 8.2 `EmbeddingBackfillRunner` 增加 force 模式：忽略 `embedding IS NULL` 过滤，按 id 全量重算并覆盖；验证：单测预置非空向量，断言重建后值被替换而非跳过 <!-- comet-task:d4c9879e-f8cc-47d8-a462-9fddd96a4bdb -->
+- [x] 8.3 重建任务收集全部工作空间（`terminology`/`data_training`/`core_datasource` 的 distinct `oid` ∪ `sys_workspace`），逐空间执行四类重算；验证：单测构造 3 个空间，断言每个空间四类采样均被处理 <!-- comet-task:294a6021-1df9-43a3-9f37-9e74133b555f -->
+- [x] 8.4 单空间异常不中断整体：记录失败原因与空间 id，继续下一个空间；验证：单测让第 2 个空间抛错，断言第 3 个空间仍执行且结果中列出第 2 个空间失败 <!-- comet-task:3426ed91-6170-4cd3-aa3d-a50a3f907959 -->
+- [x] 8.5 进度写入状态表（`done`/`total`/`current_scope`），完成后写入 `model_id`、`dimension`、`finished_at` 并将 `status` 置 `idle`；验证：单测断言任务前后状态字段变化 <!-- comet-task:4a78fc13-59b6-4814-9948-3524724d1853 -->
+- [x] 8.6 新增 `GET /api/v1/system/aimodel/embedding/status`：返回是否待重建（当前默认向量模型 id ≠ `state.model_id` 或 `status=failed`）、进度与上次结果；验证：单测覆盖「未切换」「已切换未重建」「失败待重试」三种返回 <!-- comet-task:0ceb8288-ae93-42a9-aa33-6af8f4c513b1 -->
+- [x] 8.7 新增 `POST /api/v1/system/aimodel/embedding/rebuild`：运行中重复调用返回「任务进行中」，不启动第二个任务；验证：并发调用两次，断言仅一次实际执行 <!-- comet-task:b32f9ea3-ad6e-443f-9c3f-4c89f94e946d -->
+- [x] 8.8 维度变化时先按新维度重建集合并清理旧维度数据，再写入向量；验证：单测先写 768 维再切 1024 维，断言集合维度为 1024 且旧数据不参与检索 <!-- comet-task:cc24ea4b-919f-4e99-82fc-448e34c7c977 -->
+- [x] 8.9 两个接口纳入审计日志，且仅管理员可调用；验证：非管理员调用返回 403，审计记录存在 <!-- comet-task:827341ed-a9e9-4dab-85ef-21ee609b5853 -->
 
 ## 9. 相邻后端模块适配
 
-- [ ] 9.1 `ChatModelRouter.defaultChatModel()` 改为「按类型默认 + 可用回退」，所有消费方零改动；验证：`ChatKnowledgeService`、`ChatQuestionService`×3、`PermissionEnforcer`、`ScheduledTaskExecutor` 单测全绿 <!-- comet-task:e1a89e7f-de50-44d1-8515-ab1ac10121a8 -->
-- [ ] 9.2 上述 6 处消费方补齐「无可用模型」处理，返回可读错误（后端消息 key）而非空指针；验证：单测把所有 LLM 置为不可用，断言抛出带消息码的业务异常 <!-- comet-task:6eafee1d-284b-4e5d-9154-fa901d37c1b9 -->
-- [ ] 9.3 `EmbeddingService`、`TableEmbeddingService`、`SchemaContextBuilder` 改为强制依赖在线向量模型；无可用模型时返回统一错误码而非降级；验证：单测断言无模型时抛出带消息码的异常，且不回退词法 <!-- comet-task:186e2e90-266e-4277-8640-ec3233151d1d -->
-- [ ] 9.4 `AskdataMcpTools.model_list` 与 `mcp_model_list`、`SqlbotMcpCompatController` 改用统一口径（LLM + 启用 + 可用），响应字段保持 SQLBot 兼容；验证：单测断言停用模型与向量模型均不返回，且原有字段集合不变 <!-- comet-task:d1f8928e-efb9-4bb1-9665-bbc030ff833b -->
+- [x] 9.1 `ChatModelRouter.defaultChatModel()` 改为「按类型默认 + 可用回退」，所有消费方零改动；验证：`ChatKnowledgeService`、`ChatQuestionService`×3、`PermissionEnforcer`、`ScheduledTaskExecutor` 单测全绿 <!-- comet-task:e1a89e7f-de50-44d1-8515-ab1ac10121a8 -->
+- [x] 9.2 上述 6 处消费方补齐「无可用模型」处理，返回可读错误（后端消息 key）而非空指针；验证：单测把所有 LLM 置为不可用，断言抛出带消息码的业务异常 <!-- comet-task:6eafee1d-284b-4e5d-9154-fa901d37c1b9 -->
+- [x] 9.3 `EmbeddingService`、`TableEmbeddingService`、`SchemaContextBuilder` 改为强制依赖在线向量模型；无可用模型时返回统一错误码而非降级；验证：单测断言无模型时抛出带消息码的异常，且不回退词法 <!-- comet-task:186e2e90-266e-4277-8640-ec3233151d1d -->
+- [x] 9.4 `AskdataMcpTools.model_list` 与 `mcp_model_list`、`SqlbotMcpCompatController` 改用统一口径（LLM + 启用 + 可用），响应字段保持 SQLBot 兼容；验证：单测断言停用模型与向量模型均不返回，且原有字段集合不变 <!-- comet-task:d1f8928e-efb9-4bb1-9665-bbc030ff833b -->
 
 ```
 

@@ -82,15 +82,15 @@
 - [x] 9.6 删除本地向量模型链路：移除 `LocalEmbeddingModel`、`BertWordPieceTokenizer`、`onnxruntime` 依赖、`askdata.embedding.model-path` 配置与相关文档，测试改用真实 Qdrant + 真实 MySQL + 真实 bge-m3（不可达则 assume-skip）；验证：`grep -r "LocalEmbeddingModel\|onnxruntime" src pom.xml` 无结果，全量测试通过 <!-- comet-task:b3063606-7c30-4a19-b0fd-8057a31196f4 -->
 - [x] 9.7 问答入口前置校验：网页会话、MCP 对话、定时任务在无可用在线向量模型时统一阻断并返回同一错误码；验证：单测三个入口各一次，错误码一致 <!-- comet-task:b041ef93-b94f-41da-9e38-bef0dd707bdc -->
 - [x] 9.8 模型配置页在无可用在线向量模型时展示提醒条并可跳转配置；验证：e2e 断言提醒条存在、点击进入模型新增页 <!-- comet-task:8b846ab9-2eef-40cf-96cc-9ac2bf042923 -->
-- [x] 9.9 向量存储只允许在线 Qdrant：删除 DbVectorStore 与 DB 向量列镜像、保留 `type` 作为可插拔入口（预留后端启动期显式失败）、未配置 url 时占位实现显式失败；验证：grep 无 DbVectorStore 引用，向量相关测试全绿，未配置 url 启动日志出现错误且不写本地
-- [x] 9.10 维度不一致不删集合：`ensureCollection` 改为抛错并保留既有向量，删集合收敛为 `dropCollection` 仅由显式重建调用，`EmbeddingService` 短路已知损坏集合；验证：真实 Qdrant 断言「拒写后原向量仍可召回」与「重建后可按新维度写入」
-- [x] 9.11 模型解析缓存：`ChatModelRouter.embeddingModel()` 缓存 60s，模型配置写路径调用 `invalidate()` 立即失效；验证：回填不再 2N 次查库，保存配置后下一次调用即生效
-- [x] 9.12 彻底移除 H2：删除 `db/migration/h2/`、`H2MetadbMigrationTest`、`com.h2database:h2` 依赖与 `DatasourceType.H2`（含 `JdbcEngine` 的 url/schema/方言兜底分支），`MetadataDatabaseGuard` 拒绝 H2 且去掉 `allow-non-mysql` 开关；验证：`grep -rn "h2" src/main` 无功能引用，全量测试通过
-- [x] 9.13 测试基建切到真实 MySQL：`MysqlTestSupport` 提供 `createSchema()`/`createEmptySchema()`/`bindSpringDatasource()`，Spring 上下文测试用 `@DynamicPropertySource` 注入独立 schema；验证：全量测试在 `ASKDATA_IT_MYSQL_*` 指向 MySQL 8 时全绿，不可达时整类 skip 且报告写明配置方式
-- [x] 9.14 修掉 H2 掩盖的方言缺陷：excel 预览 SQL 按主库方言引用标识符、MySQL/PG `fieldSql` 补 `ORDER BY`、`convertValue` 支持 `java.time`；验证：`JdbcEngineSmokeTest`/`ExcelServiceTest` 在真实 MySQL 上全绿
-- [x] 9.15 修掉作用域过滤与 LIKE 的方言缺陷：`'||'` 拼串改 `CONCAT(...) LIKE CONCAT('%,', ?, ',%')`（7 处，修复专属术语/提示词越权召回）、去掉 `LIKE ... ESCAPE '\'`（29 处，MySQL 下吞占位符）、`INSTR` 改标准 `POSITION(... IN ...)`；验证：`ChatKnowledgeServiceTest`/`CustomPrompt*`/`SystemDetailsTest` 在真实 MySQL 上全绿
-- [x] 9.16 全量测试在真实 MySQL + Qdrant + TEI 上跑通：清理测试里残留的 H2 基建（`EmbeddedDatabaseBuilder`）、空 `@TestPropertySource`、缺失 `@DynamicPropertySource` 的 `@SpringBootTest`、H2 专用 SQL（`VARCHAR(10000)`、`1672531200000L`、双引号标识符、保留字 `sql`）；验证：`mvn -o -pl askdata/askdata-server test` 零失败零错误
-- [ ] 9.17 清零 skip：Redis 跨实例防抖支持密码/端口配置并探测可达、ES 与 Ollama 缺省探测本机端口、SQLBot 白名单参考实现固化为测试夹具、企微/飞书换码支持 `api_base`（私有化/代理/测试可重定向）后启用原 `@Disabled` 用例；验证：全量测试 0 skipped
+- [x] 9.9 向量存储只允许在线 Qdrant：删除 DbVectorStore 与 DB 向量列镜像、保留 `type` 作为可插拔入口（预留后端启动期显式失败）、未配置 url 时占位实现显式失败；验证：grep 无 DbVectorStore 引用，向量相关测试全绿，未配置 url 启动日志出现错误且不写本地 <!-- comet-task:38880e27-5265-4e90-b1c0-ca89051c6333 -->
+- [x] 9.10 维度不一致不删集合：`ensureCollection` 改为抛错并保留既有向量，删集合收敛为 `dropCollection` 仅由显式重建调用，`EmbeddingService` 短路已知损坏集合；验证：真实 Qdrant 断言「拒写后原向量仍可召回」与「重建后可按新维度写入」 <!-- comet-task:f5363b77-b96f-4015-8cbb-7faf7e57c3d8 -->
+- [x] 9.11 模型解析缓存：`ChatModelRouter.embeddingModel()` 缓存 60s，模型配置写路径调用 `invalidate()` 立即失效；验证：回填不再 2N 次查库，保存配置后下一次调用即生效 <!-- comet-task:6e078be7-e5c9-48d8-9da1-1c7bd97be418 -->
+- [x] 9.12 彻底移除 H2：删除 `db/migration/h2/`、`H2MetadbMigrationTest`、`com.h2database:h2` 依赖与 `DatasourceType.H2`（含 `JdbcEngine` 的 url/schema/方言兜底分支），`MetadataDatabaseGuard` 拒绝 H2 且去掉 `allow-non-mysql` 开关；验证：`grep -rn "h2" src/main` 无功能引用，全量测试通过 <!-- comet-task:af36c1fb-d9a1-4f88-a188-df5157f8fbe3 -->
+- [x] 9.13 测试基建切到真实 MySQL：`MysqlTestSupport` 提供 `createSchema()`/`createEmptySchema()`/`bindSpringDatasource()`，Spring 上下文测试用 `@DynamicPropertySource` 注入独立 schema；验证：全量测试在 `ASKDATA_IT_MYSQL_*` 指向 MySQL 8 时全绿，不可达时整类 skip 且报告写明配置方式 <!-- comet-task:1d632721-44b7-4c97-b1bc-b3592b104050 -->
+- [x] 9.14 修掉 H2 掩盖的方言缺陷：excel 预览 SQL 按主库方言引用标识符、MySQL/PG `fieldSql` 补 `ORDER BY`、`convertValue` 支持 `java.time`；验证：`JdbcEngineSmokeTest`/`ExcelServiceTest` 在真实 MySQL 上全绿 <!-- comet-task:b96fddc2-44f6-4677-b423-4e92dc8807ee -->
+- [x] 9.15 修掉作用域过滤与 LIKE 的方言缺陷：`'||'` 拼串改 `CONCAT(...) LIKE CONCAT('%,', ?, ',%')`（7 处，修复专属术语/提示词越权召回）、去掉 `LIKE ... ESCAPE '\'`（29 处，MySQL 下吞占位符）、`INSTR` 改标准 `POSITION(... IN ...)`；验证：`ChatKnowledgeServiceTest`/`CustomPrompt*`/`SystemDetailsTest` 在真实 MySQL 上全绿 <!-- comet-task:44013ab9-e788-4682-8832-a3f887cd021e -->
+- [x] 9.16 全量测试在真实 MySQL + Qdrant + TEI 上跑通：清理测试里残留的 H2 基建（`EmbeddedDatabaseBuilder`）、空 `@TestPropertySource`、缺失 `@DynamicPropertySource` 的 `@SpringBootTest`、H2 专用 SQL（`VARCHAR(10000)`、`1672531200000L`、双引号标识符、保留字 `sql`）；验证：`mvn -o -pl askdata/askdata-server test` 零失败零错误 <!-- comet-task:ce7fc1c4-17c6-4bb0-aa06-6be327814bc2 -->
+- [x] 9.17 清零 skip：Redis 跨实例防抖支持密码/端口配置并探测可达、ES 与 Ollama 缺省探测本机端口、SQLBot 白名单参考实现固化为测试夹具、企微/飞书换码支持 `api_base`（私有化/代理/测试可重定向）后启用原 `@Disabled` 用例；验证：全量测试 0 skipped <!-- comet-task:033bdf12-200c-484b-a904-67f511f55dbe -->
 
 ## 10. 后端消息与文档
 
@@ -147,7 +147,7 @@
 - [x] 15.5 新增上游格式用例：选 Anthropic Messages 后向量置灰、请求命中 `/v1/messages`；验证：对应用例全绿 <!-- comet-task:7d3ffcc1-6754-43b4-a7a4-dfd186f946b4 -->
 - [x] 15.6 新增默认模型保护与编辑态只读用例；验证：对应用例全绿 <!-- comet-task:d1f8fcdb-f36e-4cb2-93ed-9a30345f5105 -->
 - [x] 15.7 新增五语言切换用例，断言「自定义」在五种语言下均有译文；验证：对应用例全绿 <!-- comet-task:3aa02786-6285-452d-b482-cb5c3a3e02e1 -->
-- [ ] 15.8 更新 `e2e/discover-aimodel.mjs` 中硬编码的「选择供应商」「API 域名」等选择器，使其匹配新文案与图标；验证：脚本可跑通并输出模型页元素树 <!-- comet-task:361b39d8-d8a7-4c2c-a10d-c6e0d0cfb99d -->
+- [x] 15.8 更新 `e2e/discover-aimodel.mjs` 中硬编码的「选择供应商」「API 域名」等选择器，使其匹配新文案与图标；验证：脚本可跑通并输出模型页元素树 <!-- comet-task:361b39d8-d8a7-4c2c-a10d-c6e0d0cfb99d -->
 - [x] 15.9 更新 `e2e/README.md`：补充 stub provider 说明、运行前置与新用例覆盖表；验证：README 中的命令可原样执行 <!-- comet-task:14de656f-9144-4ef2-a9d9-50e67f8cf95e -->
 
 ## 16. 集成回归
