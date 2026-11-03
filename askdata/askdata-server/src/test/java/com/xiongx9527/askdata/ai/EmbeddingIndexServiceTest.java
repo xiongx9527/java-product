@@ -52,7 +52,7 @@ class EmbeddingIndexServiceTest {
         modelRepository = new AiModelRepository(jdbc, ids);
         modelId = ids.nextId();
         modelRepository.insert(modelId, "", "https://api.example.com", 1, 0, "bge-m3", 1, "bge-m3",
-                false, "[]", 1, System.currentTimeMillis(), true, true, 1, 1024);
+                false, "[]", 1, System.currentTimeMillis(), true, 1, 1024);
         ChatModelRouter router = new ChatModelRouter(modelRepository, objectMapper);
         runner = mock(EmbeddingBackfillRunner.class);
         guard = mock(SingleWorkerGuard.class);

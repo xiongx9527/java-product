@@ -9,7 +9,6 @@ import icon_kimi_colorful from '@/assets/model/icon_kimi_colorful.png'
 import icon_txhy_colorful from '@/assets/model/icon_txhy_colorful.png'
 import icon_hsyq_colorful from '@/assets/model/icon_hsyq_colorful.png'
 // import icon_vllm_colorful from '@/assets/model/icon_vllm_colorful.png'
-import icon_custom_plug from '@/assets/model/icon_custom_plug.svg'
 import icon_minimax_colorful from '@/assets/model/icon_minimax_colorful.png'
 // import icon_azure_openAI_colorful from '@/assets/model/icon_Azure_OpenAI_colorful.png'
 
@@ -342,7 +341,7 @@ export const supplierList: Array<{
     id: 15,
     name: '自定义',
     i18nKey: 'supplier.custom',
-    icon: icon_custom_plug,
+    icon: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI4IiBmaWxsPSIjRjJGM0Y1Ii8+CiAgPHBhdGggZD0iTTEyIDd2NE0yMCA3djQiIHN0cm9rZT0iIzFDMUYyMyIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICA8cmVjdCB4PSI5IiB5PSIxMSIgd2lkdGg9IjE0IiBoZWlnaHQ9IjgiIHJ4PSIyLjUiIHN0cm9rZT0iIzFDMUYyMyIgc3Ryb2tlLXdpZHRoPSIyIi8+CiAgPHBhdGggZD0iTTE2IDE5djRhMyAzIDAgMCAwIDMgM2gxIiBzdHJva2U9IiMxQzFGMjMiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CiAgPGNpcmNsZSBjeD0iMjMiIGN5PSIyNiIgcj0iMiIgZmlsbD0iIzFDMUYyMyIvPgo8L3N2Zz4K',
     is_private: true,
     model_config: {
       0: {
@@ -362,4 +361,13 @@ export const base_model_options = (supplier_id: number, model_type?: number) => 
 
 export const get_supplier = (supplier_id: number) => {
   return supplierList.find((item: any) => item.id === supplier_id)
+}
+
+// 自定义提供商：列表/卡片里自定义模型的 supplier 字段存为 0（不在内置列表中），
+// 用此安全 getter 兜底，保证「自定义」图标能正常显示。
+export const customSupplier = supplierList.find(
+  (item: any) => item.i18nKey === 'supplier.custom'
+) as any
+export const get_supplier_safe = (supplier_id: number) => {
+  return get_supplier(supplier_id) || customSupplier
 }

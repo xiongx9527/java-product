@@ -5,7 +5,7 @@ import icon_moments_categories_outlined from '@/assets/svg/icon_moments-categori
 import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
 import icon_describe_outlined from '@/assets/svg/icon_describe_outlined.svg'
 import edit from '@/assets/svg/icon_edit_outlined.svg'
-import { get_supplier } from '@/entity/supplier'
+import { get_supplier_safe } from '@/entity/supplier'
 import { computed, ref, unref } from 'vue'
 const props = withDefaults(
   defineProps<{
@@ -16,7 +16,6 @@ const props = withDefaults(
     isDefault?: boolean
     supplier?: number
     num?: number
-    valid?: boolean
     enable?: boolean
     modelTypeRaw?: number | string
   }>(),
@@ -28,7 +27,6 @@ const props = withDefaults(
     isDefault: false,
     supplier: 0,
     num: 0,
-    valid: false,
     enable: false,
     modelTypeRaw: 0,
   }
@@ -36,12 +34,7 @@ const props = withDefaults(
 // 13.7 仅大语言模型（model_type=0）可授权工作空间；向量模型不允许授权
 const isLLM = computed(() => Number(props.modelTypeRaw) === 0)
 const errorMsg = ref('')
-const current_supplier = computed(() => {
-  if (!props.supplier) {
-    return null
-  }
-  return get_supplier(props.supplier)
-})
+const current_supplier = computed(() => get_supplier_safe(props.supplier))
 const showErrorMask = (msg?: string) => {
   if (!msg) {
     return
@@ -51,7 +44,15 @@ const showErrorMask = (msg?: string) => {
     errorMsg.value = ''
   }, 3000)
 }
-const emits = defineEmits(['edit', 'del', 'default', 'authorizedSpace', 'editWorkspaceList'])
+const emits = defineEmits(['edit', 'del', 'default', 'authorizedSpace', 'editWorkspaceList', 'enableChange', 'validate'])
+
+const handleEnableChange = (val: boolean) => {
+  emits('enableChange', { id: props.id, enable: val })
+}
+
+const handleValidate = () => {
+  emits('validate', { id: props.id })
+}
 
 const handleDefault = () => {
   emits('default')
@@ -123,16 +124,16 @@ defineExpose({ showErrorMask })
         </el-tooltip>
       </span>
     </div>
-    <!-- 13.1 可用/不可用 + 已启用/未启用 双状态 -->
+    <!-- 13.1 状态仅保留一个：启用开关（可直接切换；未通过连通校验时禁用） -->
     <div class="type-value">
       <span class="type">{{ $t('modelCfg.status') }}</span>
       <span class="value">
-        <el-tag :type="valid ? 'success' : 'danger'" size="small">
-          {{ valid ? $t('modelCfg.status_available') : $t('modelCfg.status_unavailable') }}
-        </el-tag>
-        <el-tag :type="enable ? 'success' : 'info'" size="small" style="margin-left: 6px">
-          {{ enable ? $t('modelCfg.status_enabled') : $t('modelCfg.status_disabled') }}
-        </el-tag>
+        <el-switch
+          class="enable-switch"
+          :model-value="enable"
+          
+          @change="handleEnableChange"
+        />
       </span>
     </div>
     <div class="methods">
@@ -151,7 +152,7 @@ defineExpose({ showErrorMask })
       </el-tooltip>
 
       <el-tooltip
-        v-else-if="!valid || !enable"
+        v-else-if="!enable"
         effect="dark"
         :content="$t('modelCfg.need_valid')"
         placement="top"
@@ -176,7 +177,6 @@ defineExpose({ showErrorMask })
         </el-icon>
         {{ $t('dashboard.edit') }}
       </el-button>
-
       <el-icon
         ref="buttonRef"
         v-click-outside="onClickOutside"
@@ -202,6 +202,12 @@ defineExpose({ showErrorMask })
               <icon_moments_categories_outlined></icon_moments_categories_outlined>
             </el-icon>
             {{ $t('authorized_space.authorized_space') }}
+          </div>
+          <div class="item" @click.stop="handleValidate">
+            <el-icon size="16">
+              <icon_describe_outlined></icon_describe_outlined>
+            </el-icon>
+            {{ $t('modelCfg.validate_connection') }}
           </div>
           <el-tooltip
             v-if="isDefault"

@@ -93,7 +93,7 @@ public final class EmbeddingModelTestSupport {
         long id = new IdGenerator().nextId();
         new AiModelRepository(jdbc, new IdGenerator()).insert(
                 id, "", url(), 1, 0, "it-bge-m3", 1, model(), true, "[]", 1,
-                System.currentTimeMillis(), true, true, 1, null);
+                System.currentTimeMillis(), true, 1, null);
         return id;
     }
 

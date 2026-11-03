@@ -55,7 +55,7 @@ class ChatModelSelectionParityTest {
     private long model(String name, boolean defaultModel) {
         long id = ids.nextId();
         repository.insert(id, "", "https://api.example.com", 1, 0, name, 0, name,
-                defaultModel, "[]", 1, System.currentTimeMillis(), true, true, 1, null);
+                defaultModel, "[]", 1, System.currentTimeMillis(), true, 1, null);
         return id;
     }
 

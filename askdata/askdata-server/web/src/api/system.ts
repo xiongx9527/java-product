@@ -26,6 +26,9 @@ export const modelApi = {
   delete: (id: number) => request.delete(`/system/aimodel/${id}`),
   query: (id: number) => request.get(`/system/aimodel/${id}`),
   setDefault: (id: number) => request.put(`/system/aimodel/default/${id}`),
+  // 列表内「启用」开关：仅切换 enable
+  enable: (id: number, enabled: boolean) =>
+    request.put(`/system/aimodel/${id}/enable?enable=${enabled}`),
   check: (data: any) => request.fetchStream('/system/aimodel/status', data),
   platform: (id: number, lazy?: number, pid?: string) =>
     request.post(`/system/platform/org/${id}`, { lazy, pid }),

@@ -342,6 +342,7 @@
     "pieces_in_total": "显示 {ms} 条数据",
     "actions": "操作",
     "test_connection": "测试连接",
+    "validate": "校验",
     "check": "校验",
     "connection_success": "连接成功",
     "connection_failed": "连接失败，请检查配置",
@@ -497,7 +498,7 @@
     "length_max_error": "{msg}长度不能超过{max}个字符",
     "model_name": "模型名称",
     "custom_model_name": "自定义的模型名称",
-    "enter_to_add": "列表中未列出的模型，直接输入模型名称，回车即可添加",
+    "enter_to_add": "请先点击「拉取模型」获取可选模型",
     "api_domain_name": "Base URL（API 域名）",
     "advanced_settings": "高级设置",
     "model_parameters": "模型参数",
@@ -521,7 +522,9 @@
     "dimension_tip": "连通校验成功后将自动填充，也可手动指定",
     "vector_default_confirm": "将「{msg}」设为向量默认模型后需重新向量化，影响所有工作空间，是否继续？",
     "default_unavailable": "当前没有「已启用且已通过校验」的默认对话模型，请先完成连通校验并启用",
-    "default_unavailable_admin": "管理员：当前存在模型但未配置可用的默认对话模型，请先完成连通校验并启用"
+    "default_unavailable_admin": "管理员：当前存在模型但未配置可用的默认对话模型，请先完成连通校验并启用",
+    "disable_default_error": "默认模型不可停用，请先将同类型的另一个可用模型设为默认",
+    "enable_requires_validate": "请先通过连通校验（点击「校验」）再启用该模型"
   },
   "user": {
     "workspace": "工作空间",
@@ -988,7 +991,7 @@
   },
   "modelCfg": {
     "format": "上游格式",
-    "format_auto": "自动识别",
+    "format_placeholder": "请选择上游格式（留空则按地址自动识别）",
     "full_url": "完整 URL",
     "full_url_tip": "填写的是完整端点地址，系统不再追加路径",
     "enabled": "是否生效",
@@ -1005,7 +1008,7 @@
     "rebuild_done": "重建完成",
     "rebuild_failed": "重建失败",
     "retry": "重试",
-    "status": "状态",
+    "status": "模型状态",
     "status_available": "可用",
     "status_unavailable": "不可用",
     "status_enabled": "已启用",
@@ -1013,7 +1016,10 @@
     "default_switch_tip": "切换默认向量模型需要重新向量化，并影响所有工作空间",
     "embedding_missing": "未配置可用的在线向量模型",
     "test_connection": "测试连接",
-    "test_success": "连接成功"
+    "test_success": "连接成功",
+    "validate_connection": "校验",
+    "enable_on": "已启用",
+    "enable_off": "已停用"
   },
   "modelType": {
     "embedding": "向量模型",

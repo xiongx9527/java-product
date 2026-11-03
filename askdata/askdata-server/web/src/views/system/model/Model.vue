@@ -14,7 +14,7 @@ import { modelApi } from '@/api/system'
 import Card from './Card.vue'
 import { getModelTypeName } from '@/entity/CommonEntity.ts'
 import { useI18n } from 'vue-i18n'
-import { get_supplier } from '@/entity/supplier'
+import { get_supplier_safe } from '@/entity/supplier'
 import { highlightKeyword } from '@/utils/xss'
 import AuthorizedWorkspaceDialogForModel from '@/views/system/workspace/AuthorizedWorkspaceDialogForModel.vue'
 import AuthorizedWorkspaceDraw from '@/views/system/workspace/AuthorizedWorkspaceDraw.vue'
@@ -27,7 +27,6 @@ interface Model {
   id?: string
   default_model: boolean
   supplier: number
-  valid?: boolean
   enable?: boolean
 }
 
@@ -73,7 +72,7 @@ const defaultModelListWithSearch = computed(() => {
     )
   }
   return tempModelList.map((item: any) => {
-    item['supplier_item'] = get_supplier(item.supplier) || {}
+    item['supplier_item'] = get_supplier_safe(item.supplier)
     return item
   })
 })
@@ -121,7 +120,9 @@ const modelCheckHandler = async (item: any) => {
 }
 const duplicateName = async (item: any) => {
   const res = await modelApi.queryAll()
-  const names = res.filter((ele: any) => ele.id !== item.id).map((ele: any) => ele.name)
+  // 编辑时 item.id 来自表单（字符串）、ele.id 来自接口（数字），统一转字符串比较，
+  // 避免「自己和自己」误判重名（否则改名保存会因包含自身而一直报重名）
+  const names = res.filter((ele: any) => String(ele.id) !== String(item.id)).map((ele: any) => ele.name)
   if (names.includes(item.name)) {
     ElMessage.error(t('embedded.duplicate_name'))
     return
@@ -130,15 +131,13 @@ const duplicateName = async (item: any) => {
     ...item,
   }
   if (!item.id) {
-    modelApi.add(param).then((res) => {
+    modelApi.add(param).then(() => {
       beforeClose()
       search()
       ElMessage({
         type: 'success',
         message: t('workspace.add_successfully'),
       })
-      // 连通校验需携带新建模型 id 才能回写 valid（新建时 item 无 id）
-      modelCheckHandler(res || item)
     })
     return
   }
@@ -149,7 +148,6 @@ const duplicateName = async (item: any) => {
       type: 'success',
       message: t('common.save_success'),
     })
-    modelCheckHandler(item)
   })
 }
 
@@ -158,8 +156,8 @@ const handleDefaultModelChange = (item: any) => {
   if (current_default_node?.id === item.id) {
     return
   }
-  // 13.3 仅对 valid=1 && enable=1 的模型可设默认
-  if (!item.valid || !item.enable) {
+  // 仅对 enable=1 的模型可设默认
+  if (!item.enable) {
     ElMessage.warning(t('modelCfg.need_valid'))
     return
   }
@@ -180,6 +178,8 @@ const handleDefaultModelChange = (item: any) => {
         modelApi.setDefault(item.id).then(() => {
           ElMessage.success(t('model.set_successfully'))
           search()
+        }).catch((e: any) => {
+          ElMessage.error(e?.message || String(e))
         })
       }
     },
@@ -202,7 +202,7 @@ const handleEditModel = (row: any) => {
   // supplier_item 只在「系统默认模型」弹层渲染时补到列表项上，直接点编辑时可能不存在；
   // 用供应商表兜底（supplier=0 表示列表里没有的自定义供应商），避免 row.supplier_item.name
   // 抛 TypeError 导致编辑抽屉打不开。
-  const supplier = row.supplier_item || get_supplier(row.supplier)
+  const supplier = row.supplier_item || get_supplier_safe(row.supplier)
   activeName.value = supplier?.name || row.name || ''
   activeNameI18nKey.value = supplier?.i18nKey || ''
   modelApi.query(row.id).then((res: any) => {
@@ -215,8 +215,8 @@ const handleEditModel = (row: any) => {
 
 const handleDefault = (row: any) => {
   if (row.default_model) return
-  // 13.3 仅对 valid=1 && enable=1 的模型可设默认
-  if (!row.valid || !row.enable) {
+  // 仅对 enable=1 的模型可设默认
+  if (!row.enable) {
     ElMessage.warning(t('modelCfg.need_valid'))
     return
   }
@@ -237,6 +237,8 @@ const handleDefault = (row: any) => {
         modelApi.setDefault(row.id).then(() => {
           ElMessage.success(t('model.set_successfully'))
           search()
+        }).catch((e: any) => {
+          ElMessage.error(e?.message || String(e))
         })
       }
     },
@@ -328,6 +330,76 @@ const search = () => {
     .finally(() => {
       searchLoading.value = false
     })
+}
+
+// 列表内「启用」开关：切换后回写本地列表，失败提示由后端校验抛出
+const handleEnableChange = async (payload: any) => {
+  const id = Number(payload.id)
+  // 列表 id 可能是字符串（接口返回），统一转字符串比较，否则找不到 item 导致本地状态不回写、开关回弹
+  const item = modelList.value.find((m: any) => String(m.id) === String(payload.id))
+  // 启动（启用）必须经连通校验驱动：手动打开开关直接拦截，避免「未校验即可用」
+  if (payload.enable === true) {
+    ElMessage.warning(t('model.enable_requires_validate'))
+    return
+  }
+  // 默认模型不可停用：前端直接拦截，不请求后端
+  if (item?.default_model && payload.enable === false) {
+    ElMessage.warning(t('model.disable_default_error'))
+    return
+  }
+  try {
+    await modelApi.enable(id, payload.enable)
+    // modelList 是 shallowRef，直接改 item.enable 不会触发重渲染；用新数组替换该元素以刷新开关状态
+    const idx = modelList.value.findIndex((m: any) => String(m.id) === String(id))
+    if (idx >= 0) {
+      modelList.value = modelList.value.map((m: any, i: number) =>
+        i === idx ? { ...m, enable: payload.enable } : m)
+    }
+    ElMessage.success(payload.enable ? t('modelCfg.enable_on') : t('modelCfg.enable_off'))
+  } catch (e: any) {
+    ElMessage.error(e?.message || String(e))
+  }
+}
+
+// 列表内「校验」：拉取模型完整配置后发起连通校验（与表单内校验同一后端），回写 enable 并刷新列表
+const handleValidate = async (payload: any) => {
+  const id = Number(payload.id)
+  try {
+    const detail: any = await modelApi.query(id)
+    const response: any = await modelApi.check({
+      id,
+      api_domain: detail.api_domain,
+      api_key: detail.api_key,
+      upstream_format: detail.upstream_format,
+      supplier: detail.supplier,
+      model_type: detail.model_type,
+      base_model: detail.base_model,
+      protocol: detail.protocol,
+      config_list: detail.config_list || [],
+    })
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let checkMsg = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      const lines = decoder.decode(value).trim().split('\n')
+      for (const line of lines) {
+        if (!line) continue
+        const data = JSON.parse(line)
+        if (data.error) checkMsg += data.error
+        else if (data.content) console.debug(data.content)
+      }
+    }
+    if (checkMsg) {
+      ElMessage.error(checkMsg)
+    } else {
+      ElMessage.success(t('modelCfg.test_success'))
+    }
+    await search()
+  } catch (e: any) {
+    ElMessage.error(String(e?.message || e))
+  }
 }
 
 // 13.5/13.6 向量索引待重建提示与一键重建
@@ -513,7 +585,6 @@ const submit = (item: any) => {
             :model-type="getModelTypeName(ele['model_type'])"
             :base-model="ele['base_model']"
             :is-default="ele['default_model']"
-            :valid="ele['valid']"
             :enable="ele['enable']"
             :model-type-raw="Number(ele['model_type'])"
             @edit="handleEditModel(ele)"
@@ -521,6 +592,8 @@ const submit = (item: any) => {
             @default="handleDefault(ele)"
             @authorized-space="handleAuthorizedSpace(ele)"
             @edit-workspace-list="handleEditWorkspaceList(ele)"
+            @enable-change="handleEnableChange"
+            @validate="handleValidate"
           ></card>
         </el-col>
       </el-row>
@@ -590,6 +663,9 @@ const submit = (item: any) => {
       ></ModelForm>
       <template v-if="activeStep !== 0" #footer>
         <el-button secondary @click="cancel"> {{ $t('common.cancel') }} </el-button>
+        <el-button :loading="modelFormRef?.testing" @click="modelFormRef?.testConnection?.()">
+          {{ $t('modelCfg.validate_connection') }}
+        </el-button>
         <el-button v-if="!editModel" secondary @click="preStep">
           {{ $t('ds.previous') }}
         </el-button>

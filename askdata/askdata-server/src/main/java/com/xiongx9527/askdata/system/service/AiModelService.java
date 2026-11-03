@@ -44,6 +44,9 @@ public class AiModelService {
     /** 向量模型。 */
     public static final int EMBEDDING_MODEL_TYPE = 1;
 
+    /** 重排模型（ai_model.model_type=2；本期不开放，仅 /info 兜底拉取时识别）。 */
+    public static final int RERANK_MODEL_TYPE = 2;
+
     /** 自定义提供商（供应商表 id=15）：无静态模型预设，拉取失败只能手输。 */
     public static final int CUSTOM_SUPPLIER = 15;
 
@@ -90,7 +93,6 @@ public class AiModelService {
                     "protocol", Rows.intg(row, "protocol", 1),
                     "default_model", Rows.bool(row, "default_model", false),
                     "enable", Rows.bool(row, "enable", true),
-                    "valid", Rows.bool(row, "valid", true),
                     "upstream_format", Rows.intg(row, "upstream_format", 1),
                     "dimension", Rows.get(row, "dimension"),
                     "ws_mapping_count", Rows.intg(row, "ws_mapping_count", 0)));
@@ -114,8 +116,7 @@ public class AiModelService {
         long id = idGenerator.nextId();
         // 新建不自动成为默认：默认模型必须可用且已启用，而新模型尚未通过连通校验
         boolean defaultModel = Rows.bool(body, "default_model", false);
-        boolean valid = Rows.bool(body, "valid", false);
-        boolean enable = Rows.bool(body, "enable", false) && valid;
+        boolean enable = Rows.bool(body, "enable", false);
         aiModelRepository.insert(
                 id,
                 CryptoUtil.normalizeForStore(Rows.str(body, "api_key")),
@@ -130,7 +131,6 @@ public class AiModelService {
                 1,
                 System.currentTimeMillis(),
                 enable,
-                valid,
                 Rows.intg(body, "upstream_format", 0),
                 dimensionOf(body));
         return editor(id);
@@ -148,8 +148,6 @@ public class AiModelService {
                 ? CryptoUtil.normalizeForStore(Rows.str(body, "api_domain"))
                 : Rows.str(existing, "api_domain");
         String config = body.containsKey("config_list") ? configJson(body) : Rows.str(existing, "config");
-        // valid 只由连通校验回写：保存配置沿用库中值，不因保存动作改写
-        boolean valid = Rows.bool(existing, "valid", false);
         boolean existingEnable = Rows.bool(existing, "enable", false);
         boolean defaultModel = Rows.get(body, "default_model") == null
                 ? Rows.bool(existing, "default_model", false)
@@ -165,9 +163,6 @@ public class AiModelService {
         if (isDefault && !requestedEnable) {
             // 默认模型不可停用：停用会让该类型链路无模型可用
             throw new BadRequestException(messageResolver.get("aimodel.disable_default_error"));
-        }
-        if (requestedEnable && !valid) {
-            throw new BadRequestException(messageResolver.get("aimodel.enable_requires_valid"));
         }
         // 决策 15：向量模型的维度是启用前提——维度未探测时无法校验存储对齐
         if (requestedEnable && modelType == EMBEDDING_MODEL_TYPE && dimension == null) {
@@ -188,10 +183,34 @@ public class AiModelService {
                 defaultModel,
                 config,
                 requestedEnable,
-                valid,
                 Rows.get(body, "upstream_format") == null ? Rows.intg(existing, "upstream_format", 0)
                         : Rows.intg(body, "upstream_format", 0),
                 dimension);
+    }
+
+    /**
+     * 启用前需已通过连通校验；向量模型需已探测维度；默认模型不可停用（与 update 同一套约束）。
+     */
+    @Transactional
+    public void setEnable(long id, boolean requestedEnable) {
+        currentUserService.requireAdmin();
+        Map<String, Object> existing = aiModelRepository.findById(id)
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("aimodel.not.found", id)));
+        int modelType = Rows.intg(existing, "model_type", 0);
+        Integer dimension = integerOf(Rows.get(existing, "dimension"));
+        boolean isDefault = Rows.bool(existing, "default_model", false);
+        // 启用必须经连通校验驱动（streamStatus 校验通过会直接 updateEnable）；
+        // 手动开关只允许「停用」，不允许「启用」，避免未校验即可用
+        if (requestedEnable) {
+            throw new BadRequestException(messageResolver.get("aimodel.enable_requires_valid"));
+        }
+        if (isDefault && !requestedEnable) {
+            throw new BadRequestException(messageResolver.get("aimodel.disable_default_error"));
+        }
+        if (requestedEnable && modelType == EMBEDDING_MODEL_TYPE && dimension == null) {
+            throw new BadRequestException(messageResolver.get("aimodel.enable_requires_dimension"));
+        }
+        aiModelRepository.updateEnable(id, requestedEnable);
     }
 
     @Transactional
@@ -214,7 +233,7 @@ public class AiModelService {
         if (Rows.bool(model, "default_model", false)) {
             return;
         }
-        if (!Rows.bool(model, "valid", false) || !Rows.bool(model, "enable", false)) {
+        if (!Rows.bool(model, "enable", false)) {
             throw new BadRequestException(messageResolver.get("aimodel.default.requires_available"));
         }
         // 只清除同类型默认标记，LLM 与向量模型互不影响
@@ -251,7 +270,7 @@ public class AiModelService {
     /** 指定类型下首个「已启用 + 已校验」的模型；不存在返回 null。 */
     private Map<String, Object> firstAvailable(int modelType) {
         for (Map<String, Object> row : aiModelRepository.listByType(modelType)) {
-            if (Rows.bool(row, "enable", false) && Rows.bool(row, "valid", false)) {
+            if (Rows.bool(row, "enable", false)) {
                 return row;
             }
         }
@@ -370,13 +389,31 @@ public class AiModelService {
         }
         try {
             List<Map<String, Object>> models = fetchModels(url, apiKey, apiDomain);
-            if (models.isEmpty()) {
-                return fallbackModels(supplier, result, messageResolver.get("aimodel.models.empty"));
+            if (!models.isEmpty()) {
+                result.put("source", "remote");
+                result.put("models", models);
+                return result;
             }
-            result.put("source", "remote");
-            result.put("models", models);
-            return result;
+            // /models 返回空：尝试 /info（TEI 等只暴露 /info 的嵌入/重排服务）
+            List<Map<String, Object>> infoModels = fetchModelsFromInfo(url, apiKey, apiDomain);
+            if (!infoModels.isEmpty()) {
+                result.put("source", "remote");
+                result.put("models", infoModels);
+                return result;
+            }
+            return fallbackModels(supplier, result, messageResolver.get("aimodel.models.empty"));
         } catch (Exception e) {
+            // /models 取不到（如 404）：尝试 /info 兜底
+            try {
+                List<Map<String, Object>> infoModels = fetchModelsFromInfo(url, apiKey, apiDomain);
+                if (!infoModels.isEmpty()) {
+                    result.put("source", "remote");
+                    result.put("models", infoModels);
+                    return result;
+                }
+            } catch (Exception ignored) {
+                // 沿用 /models 的错误信息
+            }
             return fallbackModels(supplier, result, messageResolver.get("aimodel.models.unavailable",
                     Maps.of("msg", e.getMessage() == null ? e.toString() : e.getMessage())));
         }
@@ -424,7 +461,7 @@ public class AiModelService {
                     if (id == null || id.isEmpty()) {
                         continue;
                     }
-                    models.add(Rows.of("id", id, "name", id, "model_type", guessModelType(id)));
+                    models.add(Rows.of("id", id, "name", id, "model_type", CHAT_MODEL_TYPE));
                     if (models.size() >= MAX_MODELS) {
                         break;
                     }
@@ -436,14 +473,113 @@ public class AiModelService {
         }
     }
 
-    /** 上游不返回类型，按名称推断向量模型（embedding / bge / gte 等）。 */
-    private static int guessModelType(String id) {
-        String lower = id.toLowerCase(java.util.Locale.ROOT);
-        if (lower.contains("embed") || lower.contains("bge") || lower.contains("gte")
-                || lower.contains("m3e") || lower.contains("text-embedding")) {
-            return EMBEDDING_MODEL_TYPE;
+    /**
+     * /models 列表不可用时（如 TEI 这类只暴露 /info 的嵌入/重排服务返回 404），
+     * 改从 /info 取模型信息：解析 served_model_name / model_id / id / name，
+     * 结合 TEI 的 model_type 推断 embedding 或 rerank，返回单元素模型清单。
+     *
+     * <p>依次尝试「{modelsUrl 的 /models 改名 /info}」与「根路径 /info」两种候选，
+     * 兼容 normalizeBase 追加的 /v1 前缀（OpenAI 约定）与 TEI 只在根路径暴露 /info 的情况。</p>
+     */
+    private List<Map<String, Object>> fetchModelsFromInfo(String modelsUrl, String apiKey, String apiDomain) throws IOException {
+        List<String> candidates = new ArrayList<>();
+        candidates.add(modelsUrl.replaceFirst("/models$", "/info"));
+        try {
+            java.net.URI uri = new java.net.URI(modelsUrl);
+            String root = uri.getScheme() + "://" + uri.getAuthority() + "/info";
+            if (!candidates.contains(root)) {
+                candidates.add(root);
+            }
+        } catch (Exception ignored) {
+            // 解析失败则只保留改名候选
         }
-        return CHAT_MODEL_TYPE;
+        for (String infoUrl : candidates) {
+            try {
+                List<Map<String, Object>> one = fetchOneFromInfo(infoUrl, apiKey, apiDomain);
+                if (one != null) {
+                    return one;
+                }
+            } catch (Exception ignored) {
+                // 尝试下一个候选
+            }
+        }
+        throw new IOException("no model via /info");
+    }
+
+    private List<Map<String, Object>> fetchOneFromInfo(String infoUrl, String apiKey, String apiDomain) throws IOException {
+        HttpURLConnection connection = (HttpURLConnection) new URL(infoUrl).openConnection();
+        try {
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(15000);
+            connection.setRequestProperty("Accept", "application/json");
+            if (apiKey != null && !apiKey.isEmpty()) {
+                if (com.xiongx9527.askdata.chat.service.ChatModelClient.isAzureEndpoint(apiDomain)) {
+                    connection.setRequestProperty("api-key", apiKey);
+                } else {
+                    connection.setRequestProperty("Authorization", "Bearer " + apiKey);
+                }
+            }
+            int code = connection.getResponseCode();
+            if (code >= 400) {
+                throw new IOException("HTTP " + code);
+            }
+            String text = readAllFully(connection.getInputStream());
+            JsonNode root = objectMapper.readTree(text);
+            String name = null;
+            JsonNode node = root.get("served_model_name");
+            if (node != null && !node.isNull()) {
+                name = node.asText();
+            }
+            if (name == null || name.isEmpty()) {
+                node = root.get("model_id");
+                if (node != null && !node.isNull()) {
+                    name = node.asText();
+                }
+            }
+            if (name == null || name.isEmpty()) {
+                node = root.get("id");
+                if (node != null && !node.isNull()) {
+                    name = node.asText();
+                }
+            }
+            if (name == null || name.isEmpty()) {
+                node = root.get("name");
+                if (node != null && !node.isNull()) {
+                    name = node.asText();
+                }
+            }
+            if (name == null || name.isEmpty()) {
+                return null;
+            }
+            // TEI 的 model_id / served_model_name 形如 /models/bge-m3，去掉 /models/ 前缀便于展示与存储
+            if (name.startsWith("/models/")) {
+                name = name.substring("/models/".length());
+            } else if (name.startsWith("/models")) {
+                name = name.substring("/models".length());
+            }
+            if (name.startsWith("/")) {
+                name = name.substring(1);
+            }
+            if (name.isEmpty()) {
+                return null;
+            }
+            // 依据 TEI model_type 推断类型，缺省按名称猜测
+            int type = CHAT_MODEL_TYPE;
+            JsonNode modelTypeNode = root.get("model_type");
+            if (modelTypeNode != null && modelTypeNode.isObject()) {
+                if (modelTypeNode.has("reranker")) {
+                    type = RERANK_MODEL_TYPE;
+                } else if (modelTypeNode.has("embedding")) {
+                    type = EMBEDDING_MODEL_TYPE;
+                }
+            }
+            List<Map<String, Object>> models = new ArrayList<>();
+            models.add(Rows.of("id", name, "name", name, "model_type", type));
+            return models;
+        } finally {
+            connection.disconnect();
+        }
     }
 
     /**
@@ -472,7 +608,7 @@ public class AiModelService {
             int format = com.xiongx9527.askdata.chat.service.UpstreamFormatResolver.resolve(
                     apiDomain, Rows.intg(body, "upstream_format", 0));
             Long modelId = Rows.get(body, "id") == null ? null : Rows.lng(body, "id", 0L);
-            // 网络异常同样属于「校验未通过」：必须回写 valid=0，否则界面会显示一个连不上的可用模型
+            // 网络异常同样属于「校验未通过」：必须回写 enable=0，否则界面会显示一个连不上的可用模型
             boolean passed = false;
             try {
                 if (modelType == EMBEDDING_MODEL_TYPE) {
@@ -490,11 +626,8 @@ public class AiModelService {
                 passed = false;
             }
             if (modelId != null) {
-                // valid 只由连通校验回写；enable 需用户手动开启
-                aiModelRepository.updateValid(modelId, passed);
-                if (!passed) {
-                    aiModelRepository.updateEnable(modelId, false);
-                }
+                // 校验通过即自动启用（enable 同时承载「已校验可用」与「是否生效」），失败置为不可用
+                aiModelRepository.updateEnable(modelId, passed);
             }
         } catch (Exception e) {
             emitError(writer, e.getMessage() == null ? e.toString() : e.getMessage());
@@ -593,7 +726,7 @@ public class AiModelService {
             if (code >= 400) {
                 String detail = readAll(connection.getErrorStream());
                 emitError(writer, messageResolver.get("aimodel.http_error", Maps.of("msg",
-                        "HTTP " + code + (detail.isEmpty() ? "" : ": " + detail))));
+                        "HTTP " + code + "：" + cleanErrorBody(detail))));
                 return false;
             }
             String contentType = connection.getContentType();
@@ -660,7 +793,7 @@ public class AiModelService {
                     public void onError(String message) {
                         failed[0] = true;
                         try {
-                            emitError(writer, message);
+                            emitError(writer, cleanErrorBody(message));
                         } catch (IOException ignored) {
                             // 响应已中断，错误已通过 failed 标记回传
                         }
@@ -756,6 +889,38 @@ public class AiModelService {
                 messageResolver.get("i18n_llm.validate_error", Maps.of("msg", message))));
     }
 
+    /**
+     * 把第三方模型服务返回的错误体转成可读提示，避免把原始 JSON（含转义、内层 message、provider 私有字段）
+     * 直接透传展示给用户。优先取 {@code error.message} / 顶层 {@code message}；命中「不支持对话」类语义时追加中文引导。
+     */
+    private String cleanErrorBody(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String readable = raw.trim();
+        try {
+            Map<String, Object> body = objectMapper.readValue(readable, Map.class);
+            Object error = body.get("error");
+            if (error instanceof Map) {
+                Object m = ((Map<?, ?>) error).get("message");
+                if (m != null) readable = String.valueOf(m);
+            } else if (body.get("message") != null) {
+                readable = String.valueOf(body.get("message"));
+            }
+        } catch (Exception ignored) {
+            // 非 JSON，保留原文
+        }
+        if (readable.length() > 300) {
+            readable = readable.substring(0, 300) + "…";
+        }
+        String lower = readable.toLowerCase();
+        if (lower.contains("does not support chat") || lower.contains("not support chat")
+                || lower.contains("unsupported model") || readable.contains("不支持对话")) {
+            readable += "。该模型可能并非对话（chat）模型，请确认「模型类型」选择是否正确。";
+        }
+        return readable;
+    }
+
     private static String readAll(InputStream inputStream) throws IOException {
         if (inputStream == null) {
             return "";
@@ -825,7 +990,6 @@ public class AiModelService {
         editor.put("api_key", CryptoUtil.resolvePlain(Rows.str(row, "api_key")));
         editor.put("config_list", parseConfigList(Rows.str(row, "config")));
         editor.put("enable", Rows.bool(row, "enable", true));
-        editor.put("valid", Rows.bool(row, "valid", true));
         editor.put("upstream_format", Rows.intg(row, "upstream_format", 1));
         editor.put("dimension", Rows.get(row, "dimension"));
         return editor;

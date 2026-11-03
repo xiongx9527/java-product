@@ -97,6 +97,14 @@ public class AiModelController {
         return Result.ok();
     }
 
+    /** 列表内开关：仅切换「是否生效」（enable），约束与 update 一致（需已连通校验、向量需维度、默认不可停用）。 */
+    @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.UPDATE)
+    @PutMapping({"/system/aimodel/{id}/enable"})
+    public Result<Void> setEnable(@PathVariable long id, @RequestParam boolean enable) {
+        aiModelService.setEnable(id, enable);
+        return Result.ok();
+    }
+
     /**
      * 上游模型列表拉取：代理请求 {@code /models}，返回 {@code {source, models[], error?}}。
      * source 为 remote / preset / none；preset 表示前端回退供应商静态清单。

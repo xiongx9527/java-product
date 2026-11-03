@@ -43,13 +43,13 @@ public class AiModelRepository {
 
     private static final String COLUMNS =
             "id, api_key, api_domain, protocol, supplier, name, model_type, base_model, default_model, "
-                    + "config, status, create_time, enable, valid, upstream_format, dimension";
+                    + "config, status, create_time, enable, upstream_format, dimension";
 
     /** /system/aimodel 列表（含 ws 映射计数，默认模型优先）。 */
     public List<Map<String, Object>> list(String keyword) {
         StringBuilder sql = new StringBuilder(
                 "SELECT m.id, m.name, m.model_type, m.base_model, m.supplier, m.protocol, m.default_model, "
-                        + "m.enable, m.valid, m.upstream_format, m.dimension, "
+                        + "m.enable, m.upstream_format, m.dimension, "
                         + "COALESCE(c.cnt, 0) AS ws_mapping_count FROM ai_model m "
                         + "LEFT JOIN (SELECT ai_model_id, COUNT(*) AS cnt FROM ai_model_workspace_mapping "
                         + "GROUP BY ai_model_id) c ON m.id = c.ai_model_id");
@@ -85,40 +85,34 @@ public class AiModelRepository {
 
     public void insert(long id, String apiKey, String apiDomain, int protocol, int supplier, String name,
                        int modelType, String baseModel, boolean defaultModel, String config, int status,
-                       long createTime, boolean enable, boolean valid, int upstreamFormat, Integer dimension) {
+                       long createTime, boolean enable, int upstreamFormat, Integer dimension) {
         jdbc.update("INSERT INTO ai_model (id, api_key, api_domain, protocol, supplier, name, model_type, "
-                        + "base_model, default_model, config, status, create_time, enable, valid, upstream_format, "
-                        + "dimension) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "base_model, default_model, config, status, create_time, enable, upstream_format, "
+                        + "dimension) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 id, apiKey, apiDomain, protocol, supplier, name, modelType, baseModel, defaultModel, config,
-                status, createTime, enable, valid, upstreamFormat, dimension);
+                status, createTime, enable, upstreamFormat, dimension);
         writeVersion.incrementAndGet();
     }
 
     /**
-     * 兼容旧调用方的插入：新列取默认值（enable=1、valid=1、upstream_format=1、dimension 空）。
+     * 兼容旧调用方的插入：新列取默认值（enable=1、upstream_format=1、dimension 空）。
      * 主要用于测试夹具与历史代码路径；正式写入请使用带状态参数的版本。
      */
     public void insert(long id, String apiKey, String apiDomain, int protocol, int supplier, String name,
                        int modelType, String baseModel, boolean defaultModel, String config, int status,
                        long createTime) {
         insert(id, apiKey, apiDomain, protocol, supplier, name, modelType, baseModel, defaultModel, config,
-                status, createTime, true, true, 1, null);
+                status, createTime, true, 1, null);
     }
 
     public void update(long id, String apiKey, String apiDomain, int protocol, int supplier, String name,
                        int modelType, String baseModel, boolean defaultModel, String config,
-                       boolean enable, boolean valid, int upstreamFormat, Integer dimension) {
+                       boolean enable, int upstreamFormat, Integer dimension) {
         jdbc.update("UPDATE ai_model SET api_key = ?, api_domain = ?, protocol = ?, supplier = ?, name = ?, "
-                        + "model_type = ?, base_model = ?, default_model = ?, config = ?, enable = ?, valid = ?, "
+                        + "model_type = ?, base_model = ?, default_model = ?, config = ?, enable = ?, "
                         + "upstream_format = ?, dimension = ? WHERE id = ?",
                 apiKey, apiDomain, protocol, supplier, name, modelType, baseModel, defaultModel, config,
-                enable, valid, upstreamFormat, dimension, id);
-        writeVersion.incrementAndGet();
-    }
-
-    /** 连通校验回写 valid（并清空/保留 enable 由调用方决定，见 AiModelService）。 */
-    public void updateValid(long id, boolean valid) {
-        jdbc.update("UPDATE ai_model SET valid = ? WHERE id = ?", valid, id);
+                enable, upstreamFormat, dimension, id);
         writeVersion.incrementAndGet();
     }
 
@@ -128,13 +122,9 @@ public class AiModelRepository {
         writeVersion.incrementAndGet();
     }
 
-    /** 启用状态回写（仅当 valid=1 时才允许置 1，条件写在 SQL 中避免并发绕过）。 */
+    /** 启用状态回写（enable 同时承载「已校验可用」与「是否生效」，连通校验通过即置 1、失败置 0）。 */
     public void updateEnable(long id, boolean enable) {
-        if (enable) {
-            jdbc.update("UPDATE ai_model SET enable = TRUE WHERE id = ? AND valid = TRUE", id);
-        } else {
-            jdbc.update("UPDATE ai_model SET enable = FALSE WHERE id = ?", id);
-        }
+        jdbc.update("UPDATE ai_model SET enable = ? WHERE id = ?", enable, id);
         writeVersion.incrementAndGet();
     }
 
@@ -222,7 +212,7 @@ public class AiModelRepository {
     /** 指定工作空间内可用（启用 + 已校验）的模型数，用于判定「无默认时是否唯一」。 */
     public int countAvailableInWorkspace(long wsId, int modelType) {
         Integer count = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM ai_model WHERE model_type = ? AND enable = TRUE AND valid = TRUE "
+                "SELECT COUNT(*) FROM ai_model WHERE model_type = ? AND enable = TRUE "
                         + "AND (default_model = TRUE OR id IN "
                         + "(SELECT ai_model_id FROM ai_model_workspace_mapping WHERE workspace_id = ?))",
                 Integer.class, modelType, wsId);
@@ -232,12 +222,12 @@ public class AiModelRepository {
     /**
      * /system/aimodel/list/by_ws：指定工作空间可用模型（默认模型可选并入）。
      *
-     * <p>候选口径：指定类型 + 已启用 + 已通过校验；工作空间绑定模型与（可选）该类型默认模型取并集。</p>
+     * <p>候选口径：指定类型 + 已启用；工作空间绑定模型与（可选）该类型默认模型取并集。</p>
      */
     public List<Map<String, Object>> listByWorkspace(long wsId, int modelType, boolean withDefault) {
         StringBuilder sql = new StringBuilder(
                 "SELECT id, name, default_model, supplier FROM ai_model WHERE model_type = ? "
-                        + "AND enable = TRUE AND valid = TRUE AND (id IN "
+                        + "AND enable = TRUE AND (id IN "
                         + "(SELECT ai_model_id FROM ai_model_workspace_mapping WHERE workspace_id = ?)");
         List<Object> args = new ArrayList<>();
         args.add(modelType);

@@ -6,7 +6,7 @@ import icon_delete from '@/assets/svg/icon_delete.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import ParamsForm from './ParamsForm.vue'
 import { modelTypeOptions } from '@/entity/CommonEntity.ts'
-import { base_model_options, get_supplier } from '@/entity/supplier'
+import { get_supplier } from '@/entity/supplier'
 import { useI18n } from 'vue-i18n'
 import { modelApi } from '@/api/system'
 
@@ -39,10 +39,9 @@ const modelForm = reactive({
   api_domain: '',
   config_list: [],
   protocol: 1,
-  upstream_format: 0, // 0=AUTO(即 Chat Completions)
+  upstream_format: null, // 未选择（后端按 URL 自动识别）；向量/重排类型不使用时选择器禁用
   full_url: false,
   enable: 0, // 1 生效 / 0 停用
-  valid: 0, // 后端连通校验回写，前端只读
   dimension: null as number | null, // 向量维度
 })
 const isCreate = ref(false)
@@ -52,7 +51,8 @@ const advancedSetting = ref([] as ParamsFormData[])
 const paramsFormDrawer = ref(false)
 let tempConfigMap = new Map<string, Array<any>>()
 
-// 12.12 表单内「测试连接」：对当前填写的接入参数做连通校验（保存前即可验证）
+// 12.12 「连通校验」：对当前填写的接入参数做校验（URL + api_key + model_type + base_model），保存前即可验证。
+// 校验按钮已移至父级 Model.vue 底部 footer（取消｜校验｜保存 之间）。
 const testing = ref(false)
 const testConnection = async () => {
   if (!modelForm.api_domain) {
@@ -95,7 +95,6 @@ const testConnection = async () => {
       return
     }
     ElMessage.success(t('modelCfg.test_success'))
-    modelForm.valid = 1
   } catch (e: any) {
     ElMessage.error(String(e?.message || e))
   } finally {
@@ -106,8 +105,6 @@ const testConnection = async () => {
 const modelSelected = computed(() => {
   return !!modelForm.base_model
 })
-// 12.8 仅在通过连通校验（valid=1）时可操作「是否生效」
-const canEnable = computed(() => modelForm.valid === 1)
 const currentSupplier = computed(() => {
   if (!modelForm.supplier) {
     return null
@@ -115,22 +112,10 @@ const currentSupplier = computed(() => {
   return get_supplier(modelForm.supplier)
 })
 
-// 12.5 选择具体上游格式后，向量类型不可用（向量不使用上游格式）
-const typeOptions = computed(() =>
-  modelTypeOptions.map((o) => ({
-    ...o,
-    disabled: o.value === 1 && modelForm.upstream_format !== 0,
-  }))
-)
+// 12.5 向量/重排类型不使用上游格式（其上游格式选择器已禁用），故类型选择不再受上游格式约束
+const typeOptions = computed(() => modelTypeOptions.map((o) => ({ ...o })))
 
-const modelList = computed(() => {
-  if (!modelForm.supplier) {
-    return []
-  }
-  return base_model_options(modelForm.supplier, modelForm.model_type)
-})
-
-// 12.7 远程拉取的模型清单（source=remote 时优先于供应商静态清单）
+// 12.7 远程拉取的模型清单（基础模型必须是真实拉取到的，禁止回退供应商静态预设）
 const pulling = ref(false)
 const pullState = ref<'idle' | 'loading' | 'success' | 'failed'>('idle')
 const pullSource = ref<'remote' | 'preset' | 'none' | ''>('')
@@ -139,10 +124,15 @@ const remoteModels = ref<Array<{ id: string; name: string }>>([])
 const pullSeq = ref(0)
 
 const mergedBaseModels = computed<any[]>(() => {
+  // 仅允许选择「已拉取」的模型；未拉取（或上游不可达仅回退预设）时下拉为空，必须先点「拉取模型」
   if (pullSource.value === 'remote' && remoteModels.value.length) {
     return remoteModels.value
   }
-  return modelList.value
+  // 编辑已存在模型时保留当前值以便展示，但不提供任何可选项（仍须拉取才能更换）
+  if (!isCreate.value && modelForm.base_model) {
+    return [{ id: modelForm.base_model, name: modelForm.base_model }]
+  }
+  return []
 })
 
 const pullModels = async () => {
@@ -171,13 +161,19 @@ const pullModels = async () => {
       if (remoteModels.value.length === 1 && !modelForm.base_model) {
         modelForm.base_model = remoteModels.value[0].name
       }
+      ElMessage.success(t('modelCfg.source_remote') + ' ' + remoteModels.value.map((m: any) => m.name).join('、'))
+    } else if (res.source === 'preset') {
+      pullState.value = 'failed'
+      ElMessage.info(t('modelCfg.source_preset'))
     } else {
       pullState.value = 'failed'
+      ElMessage.warning(res.error || t('modelCfg.fetch_failed'))
     }
   } catch (e: any) {
     if (seq !== pullSeq.value) return
     pullState.value = 'failed'
     pullError.value = String(e?.message || e)
+    ElMessage.error(pullError.value || t('modelCfg.fetch_failed'))
   } finally {
     if (seq === pullSeq.value) pulling.value = false
   }
@@ -331,19 +327,17 @@ const initForm = (item?: any) => {
     api_domain: '',
     config_list: [],
     protocol: 1,
-    upstream_format: 0,
+    upstream_format: null,
     full_url: false,
     enable: 0,
-    valid: 0,
     dimension: null,
   })
   if (item) {
     Object.assign(modelForm, {
       ...item,
-      upstream_format: item.upstream_format ?? 0,
+      upstream_format: item.upstream_format ? item.upstream_format : null,
       full_url: item.full_url ?? false,
       enable: item.enable ?? 0,
-      valid: item.valid ?? 0,
       dimension: item.dimension ?? null,
     })
     if (item?.config_list?.length) {
@@ -374,7 +368,12 @@ const baseModelChange = (val: string) => {
   }
   const current_model = mergedBaseModels.value?.find((model: any) => model.name == val)
   if (current_model) {
-    modelForm.api_domain = current_model.api_domain || getSupplierDomain() || ''
+    const suggested = current_model.api_domain || getSupplierDomain()
+    // 切换基础模型时，仅当用户尚未填写 base_url 才用模型/供应商默认域名自动填充；
+    // 远端模型本身不带 api_domain，盲目覆盖会把用户已填的 base_url 清空
+    if (suggested && !modelForm.api_domain) {
+      modelForm.api_domain = suggested
+    }
   }
   const current_config_list = tempConfigMap.get(`${modelForm.supplier}-${modelForm.base_model}`)
   if (current_config_list) {
@@ -411,12 +410,6 @@ const getModelDefaultArgs = () => {
 }
 const emits = defineEmits(['submit'])
 
-const onUpstreamFormatChange = () => {
-  // 12.5 选了具体格式后向量不可用；若当前是向量则回退到 LLM
-  if (modelForm.upstream_format !== 0 && modelForm.model_type === 1) {
-    modelForm.model_type = 0
-  }
-}
 
 const submitModel = () => {
   modelRef.value.validate((res: any) => {
@@ -437,6 +430,8 @@ defineExpose({
   initForm,
   submitModel,
   supplierChang,
+  testConnection,
+  testing,
 })
 </script>
 
@@ -488,21 +483,15 @@ defineExpose({
             </div>
           </el-form-item>
           <!-- API Key -->
-          <!-- API Key + 测试连接：保存前即可验证接入参数连通性（12.13 测试按钮与密钥同行，不悬浮） -->
           <el-form-item prop="api_key" label="API Key">
-            <div class="api-key-row">
-              <el-input
-                v-model="modelForm.api_key"
-                class="api-key-input"
-                clearable
-                :placeholder="$t('datasource.please_enter') + $t('common.empty') + 'API Key'"
-                type="password"
-                show-password
-              />
-              <el-button :loading="testing" @click="testConnection">
-                {{ t('modelCfg.test_connection') }}
-              </el-button>
-            </div>
+            <el-input
+              v-model="modelForm.api_key"
+              class="api-key-input"
+              clearable
+              :placeholder="$t('datasource.please_enter') + $t('common.empty') + 'API Key'"
+              type="password"
+              show-password
+            />
           </el-form-item>
           <!-- 模型类型：新建默认 LLM；编辑态只读；按上游格式置灰向量 -->
           <el-form-item prop="type" :label="t('model.model_type')">
@@ -531,9 +520,10 @@ defineExpose({
                 v-model="modelForm['base_model']"
                 class="base-model-select"
                 filterable
-                allow-create
-                default-first-option
                 :reserve-keyword="false"
+                :teleported="false"
+                popper-class="base-model-dropdown"
+                :placeholder="t('model.enter_to_add')"
                 @change="baseModelChange"
               >
                 <el-option
@@ -549,35 +539,10 @@ defineExpose({
               >
                 {{ t('model.pull_models') }}
               </el-button>
+              <el-button :loading="testing" @click="testConnection">
+                {{ t('modelCfg.validate_connection') }}
+              </el-button>
             </div>
-            <div class="base-model-actions">
-              <el-tag v-if="pullSource === 'remote'" size="small" type="success">
-                {{ t('modelCfg.source_remote') }}
-              </el-tag>
-              <el-tag v-else-if="pullSource === 'preset'" size="small" type="info">
-                {{ t('modelCfg.source_preset') }}
-              </el-tag>
-              <span v-if="pullError" class="pull-error">{{ pullError }}</span>
-            </div>
-          </el-form-item>
-          <!-- 是否生效：仅在 valid=1 时可操作 -->
-          <el-form-item :label="t('modelCfg.enabled')">
-            <el-tooltip
-              v-if="!canEnable"
-              effect="dark"
-              :content="t('modelCfg.need_valid')"
-              placement="right"
-            >
-              <span>
-                <el-switch v-model="modelForm.enable" :disabled="!canEnable" :active-value="1" :inactive-value="0" />
-              </span>
-            </el-tooltip>
-            <el-switch
-              v-else
-              v-model="modelForm.enable"
-              :active-value="1"
-              :inactive-value="0"
-            />
           </el-form-item>
         </el-form>
         <!-- 高级配置：常驻展示，不再折叠（12.6）-->
@@ -586,14 +551,17 @@ defineExpose({
         </div>
         <div v-if="modelSelected" class="advanced-body">
           <el-form label-position="top">
-          <!-- 上游格式 -->
-          <el-form-item :label="t('modelCfg.format')">
-            <el-select v-model="modelForm.upstream_format" style="width: 100%" @change="onUpstreamFormatChange">
-              <el-option :label="t('modelCfg.format_auto')" :value="0" />
+          <!-- 上游格式：仅 LLM 展示；向量/重排类型不参与上游格式选择，故隐藏 -->
+          <el-form-item v-if="modelForm.model_type === 0" :label="t('modelCfg.format')">
+            <el-select
+              v-model="modelForm.upstream_format"
+              style="width: 100%"
+              clearable
+              :placeholder="t('modelCfg.format_placeholder')"
+            >
               <el-option label="Chat Completions" :value="1" />
               <el-option label="Anthropic Messages" :value="2" />
               <el-option label="Responses" :value="3" />
-              <el-option label="Azure OpenAI" :value="4" />
             </el-select>
           </el-form-item>
           <!-- 向量维度（仅向量模型） -->
@@ -603,8 +571,10 @@ defineExpose({
           </el-form>
           <!-- 模型参数 -->
           <div class="model-params">
-            {{ t('model.model_parameters') }}
-            <span v-if="advancedSetting.length" class="param-count">({{ advancedSetting.length }})</span>
+            <span class="params-title">
+              {{ t('model.model_parameters') }}
+              <span v-if="advancedSetting.length" class="param-count">({{ advancedSetting.length }})</span>
+            </span>
             <span class="btn" @click="handleParamsCreate">
               <el-icon size="16">
                 <icon_add_outlined></icon_add_outlined>
@@ -695,9 +665,9 @@ defineExpose({
     align-items: center;
   }
   & > .ed-scrollbar {
-    .form-content {
-      width: 800px;
-      margin: 0 auto;
+      .form-content {
+        width: 960px;
+        margin: 0 auto;
       padding-top: 24px;
       height: 100%;
       padding-bottom: 80px;
@@ -742,6 +712,12 @@ defineExpose({
         gap: 8px;
         .base-model-select {
           flex: 1;
+          min-width: 0;
+        }
+
+        // 下拉面板稍微高些，便于一次看到更多拉取的模型
+        :deep(.base-model-dropdown) .el-select-dropdown__wrap {
+          max-height: 340px;
         }
       }
       .enter-label-hint {
@@ -784,10 +760,16 @@ defineExpose({
         .ed-form-item {
           margin-bottom: 16px;
         }
+        .full-url-row {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
         .full-url-tip {
-          margin-left: 8px;
           color: #8f959e;
           font-size: 12px;
+          line-height: 1.4;
         }
         .param-count {
           margin-left: 4px;
@@ -803,6 +785,11 @@ defineExpose({
         font-size: 14px;
         line-height: 22px;
         margin: 16px 0 8px 0;
+
+        .params-title {
+          display: inline-flex;
+          align-items: baseline;
+        }
 
         .btn {
           height: 26px;

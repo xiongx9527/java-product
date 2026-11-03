@@ -342,6 +342,7 @@
     "pieces_in_total": "{ms}개 데이터 표시",
     "actions": "작업",
     "test_connection": "연결 테스트",
+    "validate": "검증",
     "check": "검증",
     "connection_success": "연결 성공",
     "connection_failed": "연결 실패, 설정을 확인하십시오",
@@ -497,7 +498,7 @@
     "length_max_error": "{msg} 길이가 {max}자를 초과할 수 없습니다",
     "model_name": "모델 이름",
     "custom_model_name": "사용자 정의 모델 이름",
-    "enter_to_add": "목록에 없는 모델은 모델 이름을 직접 입력한 후 Enter 키를 눌러 추가할 수 있습니다",
+    "enter_to_add": "먼저 '모델 가져오기'를 클릭해 사용 가능한 모델을 불러오세요",
     "api_domain_name": "Base URL",
     "advanced_settings": "고급 설정",
     "model_parameters": "모델 매개변수",
@@ -521,7 +522,9 @@
     "dimension_tip": "연결 확인 성공 시 자동 입력되며, 수동 지정도 가능합니다",
     "vector_default_confirm": "「{msg}」을(를) 기본 임베딩 모델로 설정하면 모든 작업 공간에 영향을 주는 재벡터화가 필요합니다. 계속할까요?",
     "default_unavailable": "사용 가능한 기본 대화 모델(활성화+검증 완료)이 없습니다. 연결 확인을 수행하고 활성화하세요.",
-    "default_unavailable_admin": "관리자: 모델은 있으나 사용 가능한 기본 대화 모델이 없습니다. 연결 확인을 수행하고 활성화하세요."
+    "default_unavailable_admin": "관리자: 모델은 있으나 사용 가능한 기본 대화 모델이 없습니다. 연결 확인을 수행하고 활성화하세요.",
+    "disable_default_error": "기본 모델은 비활성화할 수 없습니다. 같은 유형의 다른 사용 가능한 모델을 기본으로 설정하세요.",
+    "enable_requires_validate": "연결 검췕(«검췕» 클릭)을 통과한 후에만 모델을 활성화할 수 있습니다."
   },
   "user": {
     "workspace": "작업 공간",
@@ -988,7 +991,7 @@
   },
   "modelCfg": {
     "format": "업스트림 형식",
-    "format_auto": "자동 감지",
+    "format_placeholder": "업스트림 형식 선택(비우면 URL로 자동 감지)",
     "full_url": "전체 URL",
     "full_url_tip": "전체 엔드포인트 주소이므로 경로를 추가하지 않습니다",
     "enabled": "사용 여부",
@@ -1005,7 +1008,7 @@
     "rebuild_done": "재구성 완료",
     "rebuild_failed": "재구성 실패",
     "retry": "재시도",
-    "status": "상태",
+    "status": "모델 상태",
     "status_available": "사용 가능",
     "status_unavailable": "사용 불가",
     "status_enabled": "활성화됨",
@@ -1013,7 +1016,10 @@
     "default_switch_tip": "기본 임베딩 모델을 전환하면 모든 작업 공간을 다시 벡터화해야 합니다",
     "embedding_missing": "사용 가능한 온라인 임베딩 모델이 없습니다",
     "test_connection": "연결 테스트",
-    "test_success": "연결 성공"
+    "test_success": "연결 성공",
+    "validate_connection": "연결 검증",
+    "enable_on": "활성화됨",
+    "enable_off": "비활성화됨"
   },
   "modelType": {
     "embedding": "임베딩 모델",

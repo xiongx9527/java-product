@@ -342,6 +342,7 @@
     "local_excelcsv": "Local Excel/CSV",
     "pieces_in_total": "Showing {ms} records",
     "test_connection": "Test Connection",
+    "validate": "Validate",
     "check": "Check",
     "connection_success": "Connection Successful",
     "connection_failed": "Connection Failed, Please Check Configuration",
@@ -497,7 +498,7 @@
     "length_max_error": "{msg} is limited to {max} characters",
     "model_name": "Model name",
     "custom_model_name": "Custom model name",
-    "enter_to_add": "For models not listed in the list, just enter the model name and press Enter to add",
+    "enter_to_add": "Click 'Pull Models' first to load available models",
     "api_domain_name": "Base URL",
     "advanced_settings": "Advanced settings",
     "model_parameters": "Model parameters",
@@ -521,7 +522,9 @@
     "dimension_tip": "Auto-filled after a successful connectivity check, or set manually",
     "vector_default_confirm": "Setting 「{msg}」 as the default embedding model requires re-vectorization and affects all workspaces. Continue?",
     "default_unavailable": "No enabled and validated default chat model is available. Run a connectivity check and enable one.",
-    "default_unavailable_admin": "Admin: models exist but none is a usable default chat model. Run a connectivity check and enable one."
+    "default_unavailable_admin": "Admin: models exist but none is a usable default chat model. Run a connectivity check and enable one.",
+    "disable_default_error": "The default model cannot be disabled. Set another available model of the same type as default first.",
+    "enable_requires_validate": "Enable the model only after passing the connectivity check (click Validate)"
   },
   "user": {
     "workspace": "Workspace",
@@ -988,7 +991,7 @@
   },
   "modelCfg": {
     "format": "Upstream format",
-    "format_auto": "Auto detect",
+    "format_placeholder": "Select upstream format (blank = auto-detect by URL)",
     "full_url": "Full URL",
     "full_url_tip": "The value is a complete endpoint; no path will be appended",
     "enabled": "Active",
@@ -1005,7 +1008,7 @@
     "rebuild_done": "Rebuild finished",
     "rebuild_failed": "Rebuild failed",
     "retry": "Retry",
-    "status": "Status",
+    "status": "Model Status",
     "status_available": "Available",
     "status_unavailable": "Unavailable",
     "status_enabled": "Enabled",
@@ -1013,7 +1016,10 @@
     "default_switch_tip": "Switching the default embedding model requires re-vectorizing all workspaces",
     "embedding_missing": "No online embedding model is configured",
     "test_connection": "Test connection",
-    "test_success": "Connection succeeded"
+    "test_success": "Connection succeeded",
+    "validate_connection": "Validate Connection",
+    "enable_on": "Enabled",
+    "enable_off": "Disabled"
   },
   "modelType": {
     "embedding": "Embedding model",

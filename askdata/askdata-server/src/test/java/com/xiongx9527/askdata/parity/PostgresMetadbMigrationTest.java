@@ -142,7 +142,7 @@ class PostgresMetadbMigrationTest {
         // 问答入口要求存在可用在线向量模型且索引已对齐（决策 14/15）
         long embeddingModelId = idGenerator.nextId();
         aiModelRepository.insert(embeddingModelId, "", stubBase, 1, 0, "parity-bge", 1, "bge-m3",
-                false, "[]", 1, System.currentTimeMillis(), true, true, 1, 8);
+                false, "[]", 1, System.currentTimeMillis(), true, 1, 8);
         jdbc.update("UPDATE ai_embedding_index_state SET model_id = ?, dimension = 8, status = 'idle' WHERE id = 1",
                 embeddingModelId);
         prepareTargetDatabase();

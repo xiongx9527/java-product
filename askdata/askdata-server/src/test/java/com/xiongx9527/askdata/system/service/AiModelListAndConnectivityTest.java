@@ -163,10 +163,10 @@ class AiModelListAndConnectivityTest {
         return body;
     }
 
-    private long insertModel(int modelType, String baseModel, boolean enable, boolean valid) {
+    private long insertModel(int modelType, String baseModel, boolean enable) {
         long id = ids.nextId();
         repository.insert(id, "sk-secret-value", base(), 1, 1, "模型" + id, modelType, baseModel,
-                false, "[]", 1, System.currentTimeMillis(), enable, valid, 1, null);
+                false, "[]", 1, System.currentTimeMillis(), enable, 1, null);
         return id;
     }
 
@@ -310,7 +310,7 @@ class AiModelListAndConnectivityTest {
 
     @Test
     void embeddingCheckWritesDimensionAndValid() throws Exception {
-        long id = insertModel(AiModelService.EMBEDDING_MODEL_TYPE, "bge-m3", false, false);
+        long id = insertModel(AiModelService.EMBEDDING_MODEL_TYPE, "bge-m3", false);
         String output = streamStatus(statusBody(AiModelService.EMBEDDING_MODEL_TYPE, "bge-m3", id));
 
         assertTrue(output.contains(String.valueOf(embeddingDimension)), output);
@@ -321,7 +321,7 @@ class AiModelListAndConnectivityTest {
 
     @Test
     void failedCheckMarksModelUnavailableAndDisablesIt() throws Exception {
-        long id = insertModel(AiModelService.CHAT_MODEL_TYPE, "gpt-4o", true, true);
+        long id = insertModel(AiModelService.CHAT_MODEL_TYPE, "gpt-4o", true);
         chatSse = "{\"error\":\"boom\"}";
         // 非 SSE 响应体会被当作 JSON 解析，仍返回成功；改用 401 更贴近真实失败
         modelsStatus = 200;
@@ -337,7 +337,7 @@ class AiModelListAndConnectivityTest {
 
     @Test
     void checkWithoutIdDoesNotTouchAnyRow() throws Exception {
-        long id = insertModel(AiModelService.CHAT_MODEL_TYPE, "gpt-4o", false, false);
+        long id = insertModel(AiModelService.CHAT_MODEL_TYPE, "gpt-4o", false);
         streamStatus(statusBody(AiModelService.CHAT_MODEL_TYPE, "gpt-4o", null));
         assertEquals(Boolean.FALSE, jdbc.queryForObject("SELECT valid FROM ai_model WHERE id = ?", Boolean.class, id),
                 "不带 id 的校验只返回结论，不落库");
@@ -349,7 +349,7 @@ class AiModelListAndConnectivityTest {
 
     @Test
     void updateKeepsStoredValid() {
-        long id = insertModel(AiModelService.CHAT_MODEL_TYPE, "gpt-4o", true, true);
+        long id = insertModel(AiModelService.CHAT_MODEL_TYPE, "gpt-4o", true);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("name", "改名");
         body.put("api_domain", base());
