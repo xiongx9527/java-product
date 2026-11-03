@@ -1023,6 +1023,7 @@
   },
   "modelType": {
     "embedding": "임베딩 모델",
+    "rerank": "리랭크 모델",
     "llm": "대형 언어 모델"
   },
   "audit": {

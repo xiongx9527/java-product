@@ -730,6 +730,74 @@ public class ChatModelClient {
         }
     }
 
+    /**
+     * 重排连通校验（rerank）：向 rerank 端点发一次最小请求，2xx 且有响应体即视为可用。
+     *
+     * <p>兼容两类常见形态：TEI 风格 {@code {"query","texts"}} 与 OpenAI 兼容
+     * {@code {"model","query","documents"}}——请求体同时携带，未知字段通常被忽略。
+     * 端点依次尝试 {@code /rerank} 与 {@code /v1/rerank}。失败返回 false（不抛异常）。</p>
+     */
+    public boolean rerank(String apiDomain, String apiKey, String baseModel) {
+        if (apiDomain == null || apiDomain.trim().isEmpty()) {
+            return false;
+        }
+        List<String> texts = java.util.Collections.singletonList("ping");
+        for (String url : rerankUrls(apiDomain)) {
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) new URL(url).openConnection();
+                connection.setRequestMethod("POST");
+                connection.setDoOutput(true);
+                connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+                connection.setReadTimeout(READ_TIMEOUT_MS);
+                connection.setRequestProperty("Content-Type", "application/json");
+                if (apiKey != null && !apiKey.isEmpty()) {
+                    connection.setRequestProperty("Authorization", "Bearer " + apiKey);
+                }
+                Map<String, Object> payload = new LinkedHashMap<>();
+                if (baseModel != null && !baseModel.isEmpty()) {
+                    payload.put("model", baseModel);
+                }
+                payload.put("query", "ping");
+                payload.put("texts", texts);
+                payload.put("documents", texts);
+                connection.getOutputStream().write(objectMapper.writeValueAsBytes(payload));
+                connection.getOutputStream().flush();
+                int code = connection.getResponseCode();
+                if (code >= 200 && code < 300) {
+                    String body = readAllFully(connection.getInputStream());
+                    if (body != null && !body.trim().isEmpty() && !"[]".equals(body.trim())) {
+                        return true;
+                    }
+                } else {
+                    log.info("rerank 探测 {} HTTP {}", url, code);
+                }
+            } catch (Exception e) {
+                log.info("rerank 探测 {} 异常: {}", url, e.getMessage());
+            } finally {
+                if (connection != null) {
+                    connection.disconnect();
+                }
+            }
+        }
+        return false;
+    }
+
+    /** rerank 候选端点：{@code /rerank}（TEI）与 {@code /v1/rerank}（OpenAI 兼容）。 */
+    static List<String> rerankUrls(String apiDomain) {
+        String base = trimBase(apiDomain);
+        List<String> urls = new ArrayList<>();
+        if (base.endsWith("/rerank")) {
+            urls.add(base);
+            return urls;
+        }
+        urls.add(base + "/rerank");
+        if (!base.endsWith("/v1")) {
+            urls.add(base + "/v1/rerank");
+        }
+        return urls;
+    }
+
     /** 余弦相似度（两向量等长）。 */
     public static double cosine(double[] left, double[] right) {
         if (left == null || right == null || left.length != right.length || left.length == 0) {

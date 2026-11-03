@@ -297,8 +297,8 @@ const beforeClose = () => {
 }
 const supplierChang = (supplier: any) => {
   modelForm.supplier = supplier.id
-  const config = supplier.model_config[modelForm.model_type || 0]
-  modelForm.api_domain = config.api_domain
+  const config = supplier.model_config?.[modelForm.model_type || 0] || {}
+  modelForm.api_domain = config.api_domain || ''
   modelForm.base_model = ''
   modelForm.protocol = supplier.type === 'vllm' ? 2 : 1
   advancedSetting.value = []
@@ -388,13 +388,13 @@ const baseModelChange = (val: string) => {
   }
 }
 const getSupplierDomain = () => {
-  return currentSupplier.value?.model_config[modelForm.model_type || 0].api_domain
+  return currentSupplier.value?.model_config?.[modelForm.model_type || 0]?.api_domain
 }
 const getModelDefaultArgs = () => {
   if (!modelForm.supplier || !modelForm.base_model) {
     return null
   }
-  const model_config = currentSupplier.value?.model_config[modelForm.model_type || 0]
+  const model_config = currentSupplier.value?.model_config?.[modelForm.model_type || 0]
   const common_args = model_config?.common_args || []
   const current_model = mergedBaseModels.value?.find((model: any) => model.name == modelForm.base_model)
 

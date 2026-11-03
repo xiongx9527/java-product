@@ -613,6 +613,8 @@ public class AiModelService {
             try {
                 if (modelType == EMBEDDING_MODEL_TYPE) {
                     passed = checkEmbedding(apiDomain, apiKey, baseModel, modelId, writer);
+                } else if (modelType == RERANK_MODEL_TYPE) {
+                    passed = checkRerank(apiDomain, apiKey, baseModel, writer);
                 } else if (format == com.xiongx9527.askdata.chat.service.UpstreamFormatResolver.ANTHROPIC
                         || format == com.xiongx9527.askdata.chat.service.UpstreamFormatResolver.RESPONSES) {
                     passed = checkChatWithFormat(apiDomain, apiKey, baseModel, params, format, writer);
@@ -762,6 +764,18 @@ public class AiModelService {
         if (modelId != null) {
             aiModelRepository.updateDimension(modelId, dimension);
         }
+        return true;
+    }
+
+    /** 重排模型连通校验：探测 rerank 端点（TEI / OpenAI 兼容），通过即视为可用。 */
+    private boolean checkRerank(String apiDomain, String apiKey, String baseModel, PrintWriter writer)
+            throws IOException {
+        boolean ok = chatModelClient.rerank(apiDomain, apiKey, baseModel);
+        if (!ok) {
+            emitError(writer, messageResolver.get("aimodel.rerank.unavailable"));
+            return false;
+        }
+        writeLine(writer, Rows.of("content", "rerank ok"));
         return true;
     }
 

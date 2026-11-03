@@ -18,6 +18,7 @@ export const modelTypeOptions: ModelTypeOption[] = [
     supportedFormats: ['chat_completions', 'azure', 'anthropic_messages', 'responses'],
   },
   { label: '向量模型', value: 1, i18nKey: 'modelType.embedding', supportedFormats: [] },
+  { label: '重排模型', value: 2, i18nKey: 'modelType.rerank', supportedFormats: [] },
 ]
 
 export const getModelTypeName = (value: any) => {

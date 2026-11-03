@@ -573,7 +573,7 @@ const submit = (item: any) => {
           :md="12"
           :lg="8"
           :xl="6"
-          class="mb-16"
+          class="mb-20"
         >
           <card
             :id="ele.id"
@@ -709,8 +709,8 @@ const submit = (item: any) => {
       width: 100%;
     }
 
-    .mb-16 {
-      margin-bottom: 16px;
+    .mb-20 {
+      margin-bottom: 20px;
     }
   }
 }

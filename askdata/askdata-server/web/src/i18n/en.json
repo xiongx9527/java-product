@@ -1023,6 +1023,7 @@
   },
   "modelType": {
     "embedding": "Embedding model",
+    "rerank": "Rerank Model",
     "llm": "Large Language Model"
   },
   "audit": {

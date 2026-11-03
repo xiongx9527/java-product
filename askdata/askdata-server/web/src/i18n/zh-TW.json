@@ -1023,6 +1023,7 @@
   },
   "modelType": {
     "embedding": "向量模型",
+    "rerank": "重排模型",
     "llm": "大語言模型"
   },
   "audit": {
