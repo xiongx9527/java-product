@@ -69,6 +69,7 @@ const testConnection = async () => {
       supplier: modelForm.supplier,
       model_type: modelForm.model_type,
       base_model: modelForm.base_model,
+      dimension: modelForm.dimension,
     })
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
@@ -86,6 +87,7 @@ const testConnection = async () => {
         if (!line) continue
         const data = JSON.parse(line)
         if (data.error) checkMsg += data.error
+        else if (data.dimension != null) modelForm.dimension = data.dimension
         else if (data.content) console.debug(data.content)
       }
     }
@@ -509,6 +511,10 @@ defineExpose({
               />
             </el-select>
           </el-form-item>
+          <!-- 向量维度（仅向量模型）：位于基础模型之上；校验时比对模型实际输出维度 -->
+          <el-form-item v-if="modelForm.model_type === 1" prop="dimension" :label="t('modelCfg.dimension')">
+            <el-input v-model="modelForm.dimension" type="number" :placeholder="t('model.dimension_tip')" />
+          </el-form-item>
           <!-- 基础模型：支持远程拉取，标注来源 -->
           <el-form-item class="custom-require" prop="base_model">
             <template #label>
@@ -563,10 +569,6 @@ defineExpose({
               <el-option label="Anthropic Messages" :value="2" />
               <el-option label="Responses" :value="3" />
             </el-select>
-          </el-form-item>
-          <!-- 向量维度（仅向量模型） -->
-          <el-form-item v-if="modelForm.model_type === 1" :label="t('modelCfg.dimension')">
-            <el-input v-model="modelForm.dimension" type="number" :placeholder="t('model.dimension_tip')" />
           </el-form-item>
           </el-form>
           <!-- 模型参数 -->

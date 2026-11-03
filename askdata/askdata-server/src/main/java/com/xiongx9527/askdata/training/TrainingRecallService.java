@@ -65,9 +65,8 @@ public class TrainingRecallService {
         if (ids == null || ids.isEmpty()) {
             return;
         }
-        for (Long id : ids) {
-            embeddingService.deleteEmbedding("data_training", id);
-        }
+        // 批量删除：一次远程调用清掉整批 SQL 示例向量
+        embeddingService.deleteEmbeddings("data_training", ids);
     }
 
     public void saveEmbeddings(List<Long> ids) {
@@ -76,7 +75,7 @@ public class TrainingRecallService {
         }
         try {
             List<Map<String, Object>> rows = jdbc.queryForList(
-                    "SELECT id, question FROM data_training WHERE id IN (" + placeholders(ids.size()) + ")",
+                    "SELECT id, question, oid FROM data_training WHERE id IN (" + placeholders(ids.size()) + ")",
                     ids.toArray());
             if (rows.isEmpty()) {
                 return;
@@ -90,7 +89,9 @@ public class TrainingRecallService {
                 return;
             }
             for (int i = 0; i < rows.size(); i++) {
-                embeddingService.writeEmbedding("data_training", Rows.lng(rows.get(i), "id", 0L), vectors.get(i));
+                // payload 带 oid：删工作空间时可按 oid 一次清空
+                embeddingService.writeEmbedding("data_training", Rows.lng(rows.get(i), "id", 0L), vectors.get(i),
+                        com.xiongx9527.askdata.common.util.Maps.of("oid", Rows.lng(rows.get(i), "oid", 0L)));
             }
         } catch (Exception e) {
             log.info("SQL 示例向量写入失败（不影响主链路）: {}", e.getMessage());

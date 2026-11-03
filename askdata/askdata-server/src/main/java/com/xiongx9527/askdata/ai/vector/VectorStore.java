@@ -1,6 +1,7 @@
 package com.xiongx9527.askdata.ai.vector;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 向量存储抽象（可插拔后端）。
@@ -76,6 +77,15 @@ public interface VectorStore {
     void ensureCollection(String collection, int dimension);
 
     /**
+     * 读取集合当前的向量维度，用于「模型维度 vs 向量存储」联合校验。
+     *
+     * <p>集合不存在或后端不可用时返回 {@code null}（表示尚未建立索引，不做阻断）。</p>
+     */
+    default Integer collectionDimension(String collection) {
+        return null;
+    }
+
+    /**
      * 删除集合（不存在视为成功）。<b>会丢弃集合内全部向量</b>，
      * 只允许由显式重建链路（{@code EmbeddingService#resetCollections}）调用。
      */
@@ -84,8 +94,44 @@ public interface VectorStore {
     /** 写入 / 更新单条向量。 */
     void upsert(String collection, long id, double[] vector);
 
+    /**
+     * 写入 / 更新单条向量并附带 payload（业务维度元数据，如 {@code ds_id} / {@code oid}）。
+     *
+     * <p>payload 让清理不再依赖「先查出 id 列表」：删数据源时可按 {@code ds_id} 一次删掉
+     * 它的全部表向量，即使进程在删库和删向量之间崩溃也不会留孤儿点。默认实现忽略 payload。</p>
+     */
+    default void upsert(String collection, long id, double[] vector, Map<String, Object> payload) {
+        upsert(collection, id, vector);
+    }
+
+    /**
+     * 按 payload 精确匹配删除（{@code key == value}）。
+     *
+     * <p>与 {@link #deleteBatch} 互补：批量删需要先知道 id，按 payload 删只依赖写入时带的元数据。</p>
+     */
+    void deleteByPayload(String collection, String key, Object value);
+
     /** 删除单条向量。 */
     void delete(String collection, long id);
+
+    /**
+     * 批量删除向量（同一集合）。默认逐条删除，后端应覆盖为单次批量请求。
+     *
+     * <p>删除数据源时会一次清掉它的全部表向量，表数可达上千：逐条删会把请求数
+     * 和失败窗口放大到表数量级，批量接口让「删数据源」保持一次远程调用。</p>
+     *
+     * @param ids 待删除的 point id（空表直接返回）
+     */
+    default void deleteBatch(String collection, List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        for (Long id : ids) {
+            if (id != null) {
+                delete(collection, id);
+            }
+        }
+    }
 
     /**
      * 按向量召回 topK。

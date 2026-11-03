@@ -64,9 +64,8 @@ public class TerminologyRecallService {
         if (ids == null || ids.isEmpty()) {
             return;
         }
-        for (Long id : ids) {
-            embeddingService.deleteEmbedding("terminology", id);
-        }
+        // 批量删除：一次远程调用清掉整批术语向量
+        embeddingService.deleteEmbeddings("terminology", ids);
     }
 
     public void saveEmbeddings(List<Long> ids) {
@@ -83,7 +82,7 @@ public class TerminologyRecallService {
                 args[ids.size() + i] = ids.get(i);
             }
             List<Map<String, Object>> rows = jdbc.queryForList(
-                    "SELECT id, pid, word FROM terminology WHERE id IN (" + placeholders(ids.size()) + ")"
+                    "SELECT id, pid, word, oid FROM terminology WHERE id IN (" + placeholders(ids.size()) + ")"
                             + " OR pid IN (" + placeholders(ids.size()) + ")",
                     args);
             if (rows.isEmpty()) {
@@ -99,7 +98,9 @@ public class TerminologyRecallService {
             }
             for (int i = 0; i < rows.size(); i++) {
                 long id = Rows.lng(rows.get(i), "id", 0L);
-                embeddingService.writeEmbedding("terminology", id, vectors.get(i));
+                // payload 带 oid：删工作空间时可按 oid 一次清空，不必先查 id
+                embeddingService.writeEmbedding("terminology", id, vectors.get(i),
+                        com.xiongx9527.askdata.common.util.Maps.of("oid", Rows.lng(rows.get(i), "oid", 0L)));
             }
         } catch (Exception e) {
             log.info("术语向量写入失败（不影响主链路）: {}", e.getMessage());

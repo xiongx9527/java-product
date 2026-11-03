@@ -126,6 +126,27 @@ public class QdrantVectorStore implements VectorStore {
         }
     }
 
+    /**
+     * 读取集合现有维度：集合不存在（404）或后端不可用时返回 {@code null}。
+     *
+     * <p>只读探测，不建集合、不删数据——用于「模型维度 vs 向量存储」联合校验，
+     * 让运维在校验阶段就发现「模型维度与集合维度不一致，写入必然被拒」。</p>
+     */
+    @Override
+    public Integer collectionDimension(String collection) {
+        try {
+            Response existing = request("GET", "/collections/" + collection, null);
+            if (existing.code != 200) {
+                return null;
+            }
+            int size = existingSize(existing.body);
+            return size > 0 ? size : null;
+        } catch (IOException e) {
+            log.info("Qdrant 读取集合 {} 维度失败: {}", collection, e.getMessage());
+            return null;
+        }
+    }
+
     private void createCollection(String collection, int dimension) throws IOException {
         Map<String, Object> vectors = new LinkedHashMap<>();
         vectors.put("size", dimension);
@@ -140,12 +161,21 @@ public class QdrantVectorStore implements VectorStore {
 
     @Override
     public void upsert(String collection, long id, double[] vector) {
+        upsert(collection, id, vector, null);
+    }
+
+    /** 写入并附带 payload：payload 是删除时的唯一依据，缺省不写该字段。 */
+    @Override
+    public void upsert(String collection, long id, double[] vector, Map<String, Object> payload) {
         if (vector == null) {
             return;
         }
         Map<String, Object> point = new LinkedHashMap<>();
         point.put("id", id);
         point.put("vector", toList(vector));
+        if (payload != null && !payload.isEmpty()) {
+            point.put("payload", payload);
+        }
         List<Map<String, Object>> points = new ArrayList<>();
         points.add(point);
         Map<String, Object> body = new LinkedHashMap<>();
@@ -170,6 +200,55 @@ public class QdrantVectorStore implements VectorStore {
             request("POST", "/collections/" + collection + "/points/delete?wait=true", body);
         } catch (IOException e) {
             throw new IllegalStateException("Qdrant 删除失败 " + collection + "/" + id + ": " + e.getMessage(), e);
+        }
+    }
+
+    /** 批量删除：一次请求提交全部 id（Qdrant {@code points/delete} 原生支持 id 数组）。 */
+    @Override
+    public void deleteBatch(String collection, List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("points", new ArrayList<>(ids));
+        try {
+            Response response = request("POST", "/collections/" + collection + "/points/delete?wait=true", body);
+            if (response.code >= 300 && response.code != 404) {
+                log.warn("Qdrant 批量删除失败 {}（{} 个 id）HTTP {}: {}",
+                        collection, ids.size(), response.code, response.body);
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Qdrant 批量删除失败 " + collection + "（" + ids.size()
+                    + " 个 id）: " + e.getMessage(), e);
+        }
+    }
+
+    /** 按 payload 精确匹配删除（Qdrant {@code points/delete} 的 filter 形式）。 */
+    @Override
+    public void deleteByPayload(String collection, String key, Object value) {
+        if (key == null || key.isEmpty() || value == null) {
+            return;
+        }
+        Map<String, Object> match = new LinkedHashMap<>();
+        match.put("value", value);
+        Map<String, Object> condition = new LinkedHashMap<>();
+        condition.put("key", key);
+        condition.put("match", match);
+        List<Map<String, Object>> must = new ArrayList<>();
+        must.add(condition);
+        Map<String, Object> filter = new LinkedHashMap<>();
+        filter.put("must", must);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("filter", filter);
+        try {
+            Response response = request("POST", "/collections/" + collection + "/points/delete?wait=true", body);
+            if (response.code >= 300 && response.code != 404) {
+                log.warn("Qdrant 按 payload 删除失败 {}（{}={}）HTTP {}: {}",
+                        collection, key, value, response.code, response.body);
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Qdrant 按 payload 删除失败 " + collection + "（" + key + "="
+                    + value + "）: " + e.getMessage(), e);
         }
     }
 

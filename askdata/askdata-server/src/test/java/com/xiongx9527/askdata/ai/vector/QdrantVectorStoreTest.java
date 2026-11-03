@@ -100,6 +100,59 @@ class QdrantVectorStoreTest {
     }
 
     @Test
+    void deleteBatchRemovesAllGivenPointsInOneCall() {
+        store.ensureCollection(collection(), 2);
+        store.upsert(collection(), 1L, new double[] {1D, 0D});
+        store.upsert(collection(), 2L, new double[] {0D, 1D});
+        store.upsert(collection(), 3L, new double[] {0.7D, 0.7D});
+        assertEquals(3, store.query(collection(), new double[] {1D, 0D}, 10).size());
+
+        List<Long> ids = new ArrayList<>();
+        ids.add(1L);
+        ids.add(2L);
+        store.deleteBatch(collection(), ids);
+
+        List<VectorStore.IdScore> rest = store.query(collection(), new double[] {1D, 0D}, 10);
+        assertEquals(1, rest.size(), "批量删除后只应剩未传入的 point");
+        assertEquals(3L, rest.get(0).id());
+    }
+
+    @Test
+    void payloadUpsertEnablesDeleteByPayload() {
+        store.ensureCollection(collection(), 2);
+        java.util.Map<String, Object> first = new java.util.HashMap<>();
+        first.put("ds_id", 100L);
+        java.util.Map<String, Object> second = new java.util.HashMap<>();
+        second.put("ds_id", 200L);
+        store.upsert(collection(), 1L, new double[] {1D, 0D}, first);
+        store.upsert(collection(), 2L, new double[] {0.7D, 0.7D}, first);
+        store.upsert(collection(), 3L, new double[] {0D, 1D}, second);
+        assertEquals(3, store.query(collection(), new double[] {1D, 0D}, 10).size());
+
+        store.deleteByPayload(collection(), "ds_id", 100L);
+
+        List<VectorStore.IdScore> rest = store.query(collection(), new double[] {1D, 0D}, 10);
+        assertEquals(1, rest.size(), "按 payload 删除应只清掉匹配 ds_id 的点");
+        assertEquals(3L, rest.get(0).id());
+    }
+
+    @Test
+    void deleteBatchOnEmptyListIsNoop() {
+        store.ensureCollection(collection(), 2);
+        store.upsert(collection(), 4L, new double[] {1D, 0D});
+        store.deleteBatch(collection(), new ArrayList<>());
+        assertEquals(1, store.query(collection(), new double[] {1D, 0D}, 5).size(), "空 id 列表不得删除任何点");
+    }
+
+    @Test
+    void collectionDimensionReadsRealSizeAndNullWhenAbsent() {
+        assertEquals(null, store.collectionDimension(collection()), "集合不存在时应返回 null（不阻断）");
+
+        store.ensureCollection(collection(), 5);
+        assertEquals(5, store.collectionDimension(collection()), "应读到建集合时的真实维度");
+    }
+
+    @Test
     void dimensionMismatchIsRejectedWithoutDroppingData() {
         store.ensureCollection(collection(), 2);
         store.upsert(collection(), 9L, new double[] {1D, 0D});

@@ -40,6 +40,17 @@ public class WorkspaceService {
 
     private final IdGenerator idGenerator;
 
+    /**
+     * 工作空间向量清理：删空间时一并清掉四类向量（业务行保留，但向量不能留孤儿）。
+     * 直接构造的单测可缺省。
+     */
+    private WorkspaceCleanupService cleanupService;
+
+    @Autowired(required = false)
+    public void setCleanupService(WorkspaceCleanupService cleanupService) {
+        this.cleanupService = cleanupService;
+    }
+
     public WorkspaceService(WorkspaceRepository workspaceRepository, UserWsRepository userWsRepository,
                             UserRepository userRepository, UserService userService,
                             CurrentUserService currentUserService, IdGenerator idGenerator) {
@@ -153,7 +164,13 @@ public class WorkspaceService {
             List<Long> remaining = userRepository.oidListOf(uid);
             userRepository.updateOid(uid, remaining.isEmpty() ? 0L : remaining.get(0));
         }
+        // 业务行与空间同生共死（事务内删），向量在提交后再删
+        java.util.Map<String, List<Long>> vectorIds =
+                cleanupService == null ? null : cleanupService.deleteBusinessRows(id);
         workspaceRepository.delete(id);
+        if (cleanupService != null) {
+            com.xiongx9527.askdata.common.tx.AfterCommit.run(() -> cleanupService.deleteVectors(id, vectorIds));
+        }
     }
 
     // ------------------------------------------------------------------

@@ -66,6 +66,17 @@ public class AiModelService {
 
     private final com.xiongx9527.askdata.chat.service.ChatModelClient chatModelClient;
 
+    /**
+     * 向量服务：用于「模型维度 vs 向量存储」联合校验。直接构造的单测可缺省，
+     * 缺省时只校验模型实际输出维度，不探测在线集合。
+     */
+    private com.xiongx9527.askdata.ai.EmbeddingService embeddingService;
+
+    @Autowired(required = false)
+    public void setEmbeddingService(com.xiongx9527.askdata.ai.EmbeddingService embeddingService) {
+        this.embeddingService = embeddingService;
+    }
+
     public AiModelService(AiModelRepository aiModelRepository, CurrentUserService currentUserService,
                           IdGenerator idGenerator, ObjectMapper objectMapper,
                           com.xiongx9527.askdata.chat.service.ChatModelClient chatModelClient) {
@@ -168,23 +179,35 @@ public class AiModelService {
         if (requestedEnable && modelType == EMBEDDING_MODEL_TYPE && dimension == null) {
             throw new BadRequestException(messageResolver.get("aimodel.enable_requires_dimension"));
         }
+        int protocol = Rows.get(body, "protocol") == null ? Rows.intg(existing, "protocol", 1)
+                : Rows.intg(body, "protocol", 1);
+        int supplier = Rows.get(body, "supplier") == null ? Rows.intg(existing, "supplier", 0)
+                : Rows.intg(body, "supplier", 0);
+        String baseModel = Rows.get(body, "base_model") == null ? Rows.str(existing, "base_model")
+                : Rows.str(body, "base_model");
+        int upstreamFormat = Rows.get(body, "upstream_format") == null
+                ? Rows.intg(existing, "upstream_format", 0) : Rows.intg(body, "upstream_format", 0);
+        // 强校验：编辑默认模型必须先通过真实联网探测，否则新配置不落库（避免保存出一个连不上的默认模型）
+        if (isDefault || defaultModel) {
+            String probeError = probeModel(modelType, apiDomain, apiKey, baseModel, config, protocol,
+                    upstreamFormat);
+            if (probeError != null) {
+                throw new BadRequestException(messageResolver.get("aimodel.update.probe_failed", probeError));
+            }
+        }
         aiModelRepository.update(
                 id,
                 apiKey,
                 apiDomain,
-                Rows.get(body, "protocol") == null ? Rows.intg(existing, "protocol", 1)
-                        : Rows.intg(body, "protocol", 1),
-                Rows.get(body, "supplier") == null ? Rows.intg(existing, "supplier", 0)
-                        : Rows.intg(body, "supplier", 0),
+                protocol,
+                supplier,
                 Rows.get(body, "name") == null ? Rows.str(existing, "name") : Rows.str(body, "name"),
                 modelType,
-                Rows.get(body, "base_model") == null ? Rows.str(existing, "base_model")
-                        : Rows.str(body, "base_model"),
+                baseModel,
                 defaultModel,
                 config,
                 requestedEnable,
-                Rows.get(body, "upstream_format") == null ? Rows.intg(existing, "upstream_format", 0)
-                        : Rows.intg(body, "upstream_format", 0),
+                upstreamFormat,
                 dimension);
     }
 
@@ -235,6 +258,14 @@ public class AiModelService {
         }
         if (!Rows.bool(model, "enable", false)) {
             throw new BadRequestException(messageResolver.get("aimodel.default.requires_available"));
+        }
+        // 强校验：设为默认前真实联网探测一次，避免把「连不上」的模型推成全局默认
+        String probeError = probeModel(Rows.intg(model, "model_type", 0),
+                Rows.str(model, "api_domain"), Rows.str(model, "api_key"),
+                Rows.str(model, "base_model"), Rows.str(model, "config"),
+                Rows.intg(model, "protocol", 1), Rows.intg(model, "upstream_format", 0));
+        if (probeError != null) {
+            throw new BadRequestException(messageResolver.get("aimodel.default.probe_failed", probeError));
         }
         // 只清除同类型默认标记，LLM 与向量模型互不影响
         aiModelRepository.clearDefaults(Rows.intg(model, "model_type", 0));
@@ -612,7 +643,7 @@ public class AiModelService {
             boolean passed = false;
             try {
                 if (modelType == EMBEDDING_MODEL_TYPE) {
-                    passed = checkEmbedding(apiDomain, apiKey, baseModel, modelId, writer);
+                    passed = checkEmbedding(apiDomain, apiKey, baseModel, modelId, dimensionOf(body), writer);
                 } else if (modelType == RERANK_MODEL_TYPE) {
                     passed = checkRerank(apiDomain, apiKey, baseModel, writer);
                 } else if (format == com.xiongx9527.askdata.chat.service.UpstreamFormatResolver.ANTHROPIC
@@ -751,7 +782,7 @@ public class AiModelService {
      * 三处硬校验的共同来源。</p>
      */
     private boolean checkEmbedding(String apiDomain, String apiKey, String baseModel, Long modelId,
-                                   PrintWriter writer) throws IOException {
+                                   Integer expectedDimension, PrintWriter writer) throws IOException {
         List<double[]> vectors = chatModelClient.embed(apiDomain, apiKey, baseModel,
                 java.util.Collections.singletonList("1+1=?"));
         if (vectors == null || vectors.isEmpty() || vectors.get(0) == null || vectors.get(0).length == 0) {
@@ -759,12 +790,142 @@ public class AiModelService {
             return false;
         }
         int dimension = vectors.get(0).length;
+        // 校验填写的向量维度与模型实际输出维度一致；未填写则以探测值回填（前端据 dimension 字段回填）
+        // 传字符串而非 Integer：MessageFormat 会给数字加千分位（1024 → 1,024）
+        if (expectedDimension != null && expectedDimension != dimension) {
+            emitError(writer, messageResolver.get("aimodel.dimension.mismatch",
+                    String.valueOf(expectedDimension), String.valueOf(dimension)));
+            return false;
+        }
+        // 联合校验前置：向量库未配置/不可达不能当成「还没有集合」而放行
+        if (embeddingService != null) {
+            if (!embeddingService.vectorStoreConfigured()) {
+                emitError(writer, messageResolver.get("aimodel.vector_store.unconfigured"));
+                return false;
+            }
+            if (!embeddingService.vectorStoreReachable()) {
+                emitError(writer, messageResolver.get("aimodel.vector_store.unreachable"));
+                return false;
+            }
+        }
+        // 联合校验：模型输出维度必须与在线向量库现有集合维度一致，否则写入必然被拒
+        String storeConflict = storeDimensionConflict(dimension);
+        if (storeConflict != null) {
+            if (isDefaultEmbeddingModel(modelId)) {
+                // 已生效的默认模型与存储维度不一致 = 破损状态，直接判校验失败并要求重建
+                emitError(writer, storeConflict);
+                return false;
+            }
+            // 非默认模型：仅提示，切换为默认后必须先执行向量索引重建
+            writeLine(writer, Rows.of("content", storeConflict));
+        }
         writeLine(writer, Rows.of("content", "embedding dimension=" + dimension));
         writeLine(writer, Rows.of("dimension", dimension));
         if (modelId != null) {
             aiModelRepository.updateDimension(modelId, dimension);
         }
         return true;
+    }
+
+    /**
+     * 模型维度与向量存储现有集合维度的联合校验。
+     *
+     * <p>集合维度在建集合时固定，模型输出维度不同则所有写入被拒。返回的文案同时用于
+     * 「默认模型校验失败」与「非默认模型提示」两条路径。</p>
+     *
+     * @return {@code null} 表示一致、尚无集合或向量服务不可用（不阻断）
+     */
+    private String storeDimensionConflict(int modelDimension) {
+        if (embeddingService == null) {
+            return null;
+        }
+        Map<String, Integer> conflicts = embeddingService.collectionsWithDimensionOtherThan(modelDimension);
+        if (conflicts.isEmpty()) {
+            return null;
+        }
+        Integer storeDimension = conflicts.values().iterator().next();
+        return messageResolver.get("aimodel.dimension.store_mismatch",
+                String.valueOf(storeDimension), String.valueOf(modelDimension));
+    }
+
+    /** 该 id 是否为当前默认向量模型（默认模型与存储维度不一致属于必须重建的破损状态）。 */
+    private boolean isDefaultEmbeddingModel(Long modelId) {
+        if (modelId == null) {
+            return false;
+        }
+        java.util.Optional<Map<String, Object>> current = aiModelRepository.findDefault(EMBEDDING_MODEL_TYPE);
+        return current.isPresent() && Rows.lng(current.get(), "id", 0L) == modelId.longValue();
+    }
+
+    /**
+     * 默认模型强校验：真正联网探测一次（按模型类型走对话 / 向量 / 重排各自的端点）。
+     *
+     * <p>与 {@link #streamStatus} 共用同一套探测实现，只是把 NDJSON 帧写进内存缓冲区，
+     * 失败时取第一条错误文案作为原因——保证「设为默认」与「编辑默认模型」校验口径一致。</p>
+     *
+     * @return {@code null} 表示探测通过；否则为失败原因
+     */
+    private String probeModel(int modelType, String apiDomain, String apiKey, String baseModel,
+                              String configJson, int protocol, int upstreamFormat) {
+        String domain = CryptoUtil.resolvePlain(apiDomain);
+        String key = CryptoUtil.resolvePlain(apiKey);
+        if (domain == null || domain.isEmpty() || baseModel == null || baseModel.isEmpty()) {
+            return messageResolver.get("aimodel.api_domain.required");
+        }
+        Map<String, Object> params = modelParams(Maps.of("config_list", parseConfigList(configJson)));
+        try {
+            if (modelType == EMBEDDING_MODEL_TYPE) {
+                List<double[]> vectors = chatModelClient.embed(domain, key, baseModel,
+                        java.util.Collections.singletonList("1+1=?"));
+                boolean ok = vectors != null && !vectors.isEmpty() && vectors.get(0) != null
+                        && vectors.get(0).length > 0;
+                return ok ? null : messageResolver.get("aimodel.embedding.unavailable");
+            }
+            if (modelType == RERANK_MODEL_TYPE) {
+                return chatModelClient.rerank(domain, key, baseModel)
+                        ? null : messageResolver.get("aimodel.rerank.unavailable");
+            }
+            java.io.StringWriter sink = new java.io.StringWriter();
+            PrintWriter writer = new PrintWriter(sink);
+            int format = com.xiongx9527.askdata.chat.service.UpstreamFormatResolver.resolve(
+                    domain, upstreamFormat);
+            boolean ok;
+            if (format == com.xiongx9527.askdata.chat.service.UpstreamFormatResolver.ANTHROPIC
+                    || format == com.xiongx9527.askdata.chat.service.UpstreamFormatResolver.RESPONSES) {
+                ok = checkChatWithFormat(domain, key, baseModel, params, format, writer);
+            } else {
+                boolean azure = com.xiongx9527.askdata.chat.service.ChatModelClient.isAzureEndpoint(domain);
+                String url = connectivityUrl(domain, baseModel, params, protocol);
+                ok = checkModel(url, key, baseModel, params, azure, writer);
+            }
+            writer.flush();
+            if (ok) {
+                return null;
+            }
+            String reason = firstError(sink.toString());
+            return reason == null ? messageResolver.get("aimodel.default.probe_failed_generic") : reason;
+        } catch (Exception e) {
+            return e.getMessage() == null ? e.toString() : e.getMessage();
+        }
+    }
+
+    /** 从探测输出（NDJSON）里取第一条错误文案。 */
+    private static String firstError(String ndjson) {
+        if (ndjson == null) {
+            return null;
+        }
+        for (String line : ndjson.split("\n")) {
+            int start = line.indexOf("\"error\":\"");
+            if (start < 0) {
+                continue;
+            }
+            int from = start + "\"error\":\"".length();
+            int end = line.indexOf('"', from);
+            if (end > from) {
+                return line.substring(from, end);
+            }
+        }
+        return null;
     }
 
     /** 重排模型连通校验：探测 rerank 端点（TEI / OpenAI 兼容），通过即视为可用。 */

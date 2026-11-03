@@ -178,6 +178,8 @@ const handleDefaultModelChange = (item: any) => {
         modelApi.setDefault(item.id).then(() => {
           ElMessage.success(t('model.set_successfully'))
           search()
+          // 切换默认向量模型后立即刷新索引状态，让「待重建」提示条即时出现
+          if (isVector) loadEmbeddingStatus()
         }).catch((e: any) => {
           ElMessage.error(e?.message || String(e))
         })
@@ -237,6 +239,8 @@ const handleDefault = (row: any) => {
         modelApi.setDefault(row.id).then(() => {
           ElMessage.success(t('model.set_successfully'))
           search()
+          // 切换默认向量模型后立即刷新索引状态，让「待重建」提示条即时出现
+          if (isVector) loadEmbeddingStatus()
         }).catch((e: any) => {
           ElMessage.error(e?.message || String(e))
         })

@@ -310,9 +310,10 @@ public class DatasourceService {
         datasourceRepository.delete(id);
         tableRepository.deleteByDsId(id);
         fieldRepository.deleteByDsId(id);
-        // 业务行删除后同步清理在线向量，避免 Qdrant 里留下孤儿 point
+        // 业务行删除后清理在线向量：放到事务提交后执行，避免回滚时「行还在、向量已删」
         if (datasourceEmbeddingService != null) {
-            datasourceEmbeddingService.deleteEmbeddings(id, tableIds);
+            com.xiongx9527.askdata.common.tx.AfterCommit.run(
+                    () -> datasourceEmbeddingService.deleteEmbeddings(id, tableIds));
         }
         // 数据源删除：关闭并移除其连接池（对齐 SQLBot remove_pool）
         poolManager.removeDatasource(id);
@@ -835,7 +836,9 @@ public class DatasourceService {
             fieldRepository.deleteByTableIdsNotIn(dsId, tableIds);
         }
         if (datasourceEmbeddingService != null) {
-            datasourceEmbeddingService.deleteTableEmbeddings(removedTableIds);
+            // 提交后再删向量：取消勾选回滚时不能把向量先删掉
+            com.xiongx9527.askdata.common.tx.AfterCommit.run(
+                    () -> datasourceEmbeddingService.deleteTableEmbeddings(removedTableIds));
         }
     }
 

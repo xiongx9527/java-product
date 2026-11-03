@@ -186,14 +186,21 @@ public class EmbeddingBackfillRunner {
     public int backfillTables(Long oid) {
         try {
             Object[] args = oid == null ? new Object[0] : new Object[] {oid};
-            String dsFilter = oid == null ? null : "ds_id IN (SELECT id FROM core_datasource WHERE oid = ?)";
+            String dsFilter = oid == null ? null : "t.ds_id IN (SELECT id FROM core_datasource WHERE oid = ?)";
+            // 连出 oid/ds_id 用于 payload：重建后所有点都带维度信息，删数据源/空间可按 payload 清理
             List<Map<String, Object>> rows = jdbc.queryForList(
-                    "SELECT id FROM core_table" + where(dsFilter, false), args);
+                    "SELECT t.id, t.ds_id, d.oid FROM core_table t"
+                            + " LEFT JOIN core_datasource d ON d.id = t.ds_id" + where(dsFilter, false), args);
             int count = 0;
             for (Map<String, Object> row : rows) {
                 long id = Rows.lng(row, "id", 0L);
                 double[] vector = embeddingService.embed(tableDoc(id));
-                if (vector != null && embeddingService.writeEmbedding("core_table", id, vector)) {
+                java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+                payload.put("ds_id", Rows.lng(row, "ds_id", 0L));
+                if (Rows.get(row, "oid") != null) {
+                    payload.put("oid", Rows.lng(row, "oid", 0L));
+                }
+                if (vector != null && embeddingService.writeEmbedding("core_table", id, vector, payload)) {
                     count++;
                 }
             }

@@ -34,20 +34,27 @@ public class DatasourceEmbeddingService {
 
     private final JdbcTemplate jdbc;
 
-    /** 删除数据源及其表的向量（业务行删除后调用，避免在线库留下孤儿 point）。 */
+    /**
+     * 删除数据源及其表的向量（业务行删除后调用，避免在线库留下孤儿 point）。
+     *
+     * <p>表向量走一次批量删除：数据源下可能有上千张表，逐条删会把请求数与失败窗口
+     * 放大到表数量级。</p>
+     */
     public void deleteEmbeddings(long dsId, java.util.List<Long> tableIds) {
-        embeddingService.deleteEmbedding("core_datasource", dsId);
+        // 1) 按 payload 删：与表行是否还存在无关，进程在「删库」「删向量」之间崩溃也不会漏
+        embeddingService.deleteEmbeddingsByPayload("core_datasource", "ds_id", dsId);
+        embeddingService.deleteEmbeddingsByPayload("core_table", "ds_id", dsId);
+        // 2) 兜底：改造前写入的点没有 payload，按已知 id 再删一遍
+        embeddingService.deleteEmbeddings("core_datasource", java.util.Collections.singletonList(dsId));
         deleteTableEmbeddings(tableIds);
     }
 
-    /** 删除表向量（表被取消勾选 / 同步移除时调用）。 */
+    /** 删除表向量（表被取消勾选 / 同步移除时调用；批量删除）。 */
     public void deleteTableEmbeddings(java.util.List<Long> tableIds) {
-        if (tableIds == null) {
+        if (tableIds == null || tableIds.isEmpty()) {
             return;
         }
-        for (Long tableId : tableIds) {
-            embeddingService.deleteEmbedding("core_table", tableId);
-        }
+        embeddingService.deleteEmbeddings("core_table", tableIds);
     }
 
     public DatasourceEmbeddingService(EmbeddingService embeddingService, JdbcTemplate jdbc) {
@@ -74,7 +81,8 @@ public class DatasourceEmbeddingService {
                 return;
             }
             double[] vector = embeddingService.embed(doc);
-            if (vector != null && embeddingService.writeEmbedding("core_datasource", datasourceId, vector)) {
+            if (vector != null && embeddingService.writeEmbedding("core_datasource", datasourceId, vector,
+                    VectorPayload.ofDatasource(jdbc, datasourceId))) {
                 // 记录本次向量由哪个模型生成：向量模型是全局配置，切换后据此判定该行向量已失效
                 jdbc.update("UPDATE core_datasource SET embedding_model_id = ? WHERE id = ?",
                         embeddingService.currentEmbeddingModelId(), datasourceId);

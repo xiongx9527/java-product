@@ -90,6 +90,59 @@ public class EmbeddingService {
         return vectorStore == null ? "askdata" : vectorStore.collectionPrefix();
     }
 
+    /** 向量存储是否已配置（未配置时任何向量读写都不可用）。 */
+    public boolean vectorStoreConfigured() {
+        return vectorStore != null && vectorStore.configured();
+    }
+
+    /**
+     * 向量存储是否可达。
+     *
+     * <p>维度联合校验必须区分「没有集合」和「连不上」：前者是懒创建的正常状态，
+     * 后者不能当成通过，否则向量库配错地址时校验会静默放行。</p>
+     */
+    public boolean vectorStoreReachable() {
+        return vectorStore != null && vectorStore.configured() && vectorStore.health();
+    }
+
+    /**
+     * 在线向量库现有集合的维度（集合名 → 维度），只包含已建立的集合。
+     *
+     * <p>集合维度在建集合时固定，模型输出维度必须与之一致才能写入；不一致时
+     * 由 {@link #collectionsWithDimensionOtherThan(int)} 提供给联合校验链路。
+     * 后端不可达或集合尚未建立时返回空表（不阻断）。</p>
+     */
+    public java.util.Map<String, Integer> storeDimensions() {
+        java.util.Map<String, Integer> result = new java.util.LinkedHashMap<>();
+        if (vectorStore == null) {
+            return result;
+        }
+        for (String objectType : WRITABLE_TABLES) {
+            String collection = vectorStore.collectionFor(objectType);
+            Integer dimension = vectorStore.collectionDimension(collection);
+            if (dimension != null && dimension > 0) {
+                result.put(collection, dimension);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 现有集合中维度与 {@code expectedDimension} 不一致的集合（集合名 → 实际维度）。
+     *
+     * <p>供「向量模型维度 vs 向量存储」联合校验：非空表示按该维度写入会被拒绝，
+     * 必须先执行向量索引重建（重建会按新维度重建集合）。</p>
+     */
+    public java.util.Map<String, Integer> collectionsWithDimensionOtherThan(int expectedDimension) {
+        java.util.Map<String, Integer> conflicts = new java.util.LinkedHashMap<>();
+        for (java.util.Map.Entry<String, Integer> entry : storeDimensions().entrySet()) {
+            if (entry.getValue() != null && entry.getValue() != expectedDimension) {
+                conflicts.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return conflicts;
+    }
+
     // ------------------------------------------------------------------
     // 向量计算
     // ------------------------------------------------------------------
@@ -235,6 +288,18 @@ public class EmbeddingService {
      * @return 是否写入成功（失败仅记日志，不影响调用方主链路）
      */
     public boolean writeEmbedding(String table, long id, double[] vector) {
+        return writeEmbedding(table, id, vector, null);
+    }
+
+    /**
+     * 写入向量并附带 payload（{@code ds_id} / {@code oid} 等业务元数据）。
+     *
+     * <p>payload 是「按数据源清理」的依据：删数据源时不必先查出全部表 id，
+     * 直接按 {@code ds_id} 一次删掉即可，进程中途崩溃也不会留孤儿点。</p>
+     *
+     * @param payload 业务元数据，可为 null
+     */
+    public boolean writeEmbedding(String table, long id, double[] vector, java.util.Map<String, Object> payload) {
         if (vector == null || !isWritableTable(table)) {
             return false;
         }
@@ -244,12 +309,36 @@ public class EmbeddingService {
         }
         try {
             ensureCollection(vectorStore.collectionFor(table), vector.length);
-            vectorStore.upsert(vectorStore.collectionFor(table), id, vector);
+            vectorStore.upsert(vectorStore.collectionFor(table), id, vector, payload);
         } catch (Exception e) {
             logWriteFailure(table, id, e);
             return false;
         }
         return true;
+    }
+
+    /**
+     * 按 payload 精确匹配批量删除（如 {@code ds_id = 123}）。
+     *
+     * <p>失败只记日志：残留点由后续重建兜底，不回滚业务删除。</p>
+     *
+     * @param table 对象类型（即表名，须在白名单内）
+     * @param key   payload 字段名
+     * @param value 匹配值
+     */
+    public void deleteEmbeddingsByPayload(String table, String key, Object value) {
+        if (!isWritableTable(table) || key == null || value == null) {
+            return;
+        }
+        if (vectorStore == null) {
+            log.warn("未注入向量存储，跳过按 payload 删除 {}/{}={}", table, key, value);
+            return;
+        }
+        try {
+            vectorStore.deleteByPayload(vectorStore.collectionFor(table), key, value);
+        } catch (Exception e) {
+            log.warn("按 payload 删除向量失败 {}/{}={}（孤儿点由重建清理）: {}", table, key, value, e.getMessage());
+        }
     }
 
     /** 写入失败日志：同一集合的「维度未就绪」只告警一次，避免回填上千行时刷屏。 */
@@ -282,6 +371,30 @@ public class EmbeddingService {
             vectorStore.delete(vectorStore.collectionFor(table), id);
         } catch (Exception e) {
             log.warn("删除向量失败 {}/{}（孤儿点由重建清理）: {}", table, id, e.getMessage());
+        }
+    }
+
+    /**
+     * 批量删除向量：一次远程调用清掉同一集合内的多个 point。
+     *
+     * <p>删除数据源时会一次清掉它的全部表向量（表数可达上千），逐条删会把请求数和
+     * 失败窗口放大到表数量级；失败仍只记日志，残留由后续重建兜底。</p>
+     *
+     * @param table 对象类型（即表名，须在白名单内）
+     * @param ids   记录 id 列表
+     */
+    public void deleteEmbeddings(String table, java.util.List<Long> ids) {
+        if (ids == null || ids.isEmpty() || !isWritableTable(table)) {
+            return;
+        }
+        if (vectorStore == null) {
+            log.warn("未注入向量存储，跳过批量删除 {}/{}", table, ids.size());
+            return;
+        }
+        try {
+            vectorStore.deleteBatch(vectorStore.collectionFor(table), ids);
+        } catch (Exception e) {
+            log.warn("批量删除向量失败 {}（{} 个 id，孤儿点由重建清理）: {}", table, ids.size(), e.getMessage());
         }
     }
 

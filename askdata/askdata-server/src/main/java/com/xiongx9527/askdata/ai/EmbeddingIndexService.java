@@ -91,11 +91,27 @@ public class EmbeddingIndexService {
                 ? null : Rows.intg(state, "dimension", 0);
         String status = state == null ? "idle" : Rows.str(state, "status");
         boolean failed = "failed".equals(status);
+        // 联合校验：在线集合维度必须与当前默认向量模型维度一致，否则写入会被拒（需重建）
+        Map<String, Integer> storeDimensions = embeddingService == null
+                ? new LinkedHashMap<String, Integer>() : embeddingService.storeDimensions();
+        Integer storeDimension = null;
+        boolean dimensionConsistent = true;
+        for (Integer dimension : storeDimensions.values()) {
+            if (storeDimension == null) {
+                storeDimension = dimension;
+            }
+            if (currentDimension != null && !currentDimension.equals(dimension)) {
+                dimensionConsistent = false;
+            }
+        }
+        boolean storeMismatch = currentModelId != null && !dimensionConsistent;
         boolean pending = currentModelId != null
-                && (rebuiltModelId == null || !rebuiltModelId.equals(currentModelId) || failed);
+                && (rebuiltModelId == null || !rebuiltModelId.equals(currentModelId) || failed || storeMismatch);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("pending", pending);
+        result.put("store_dimension", storeDimension);
+        result.put("dimension_consistent", dimensionConsistent);
         result.put("status", status);
         result.put("running", running.get() || "running".equals(status));
         result.put("model_id", currentModelId);

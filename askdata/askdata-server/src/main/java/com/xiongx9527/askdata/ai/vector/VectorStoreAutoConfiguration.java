@@ -121,6 +121,11 @@ public class VectorStoreAutoConfiguration {
         }
 
         @Override
+        public void deleteByPayload(String collection, String key, Object value) {
+            throw unavailable();
+        }
+
+        @Override
         public List<IdScore> query(String collection, double[] vector, int topK, List<Long> candidateIds) {
             throw unavailable();
         }

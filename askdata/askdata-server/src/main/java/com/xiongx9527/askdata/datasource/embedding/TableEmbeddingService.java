@@ -296,6 +296,8 @@ public class TableEmbeddingService {
             try {
                 // 直接构造（离线单测）时没有统一服务，集合只确认一次，避免每张表一次 GET /collections
                 boolean collectionEnsured = false;
+                // payload 带 ds_id：删数据源时按它一次清空，不必先查表 id
+                java.util.Map<String, Object> payload = VectorPayload.ofDatasource(jdbc, dsId);
                 for (Map<String, Object> table : tableRepository.listByDsIdChecked(dsId)) {
                     long tableId = Rows.lng(table, "id", 0L);
                     double[] vector = embed(tableDoc(tableId));
@@ -305,14 +307,14 @@ public class TableEmbeddingService {
                     // 在线库是唯一存储：不镜像 DB 列（DB 列不再保存向量）
                     try {
                         if (embeddingService != null) {
-                            embeddingService.writeEmbedding("core_table", tableId, vector);
+                            embeddingService.writeEmbedding("core_table", tableId, vector, payload);
                         } else {
                             if (!collectionEnsured) {
                                 vectorStore.ensureCollection(vectorStore.collectionFor("core_table"),
                                         vector.length);
                                 collectionEnsured = true;
                             }
-                            vectorStore.upsert(vectorStore.collectionFor("core_table"), tableId, vector);
+                            vectorStore.upsert(vectorStore.collectionFor("core_table"), tableId, vector, payload);
                         }
                     } catch (Exception e) {
                         log.warn("表级向量写入在线库失败 ds={} tbl={}: {}", dsId, tableId, e.getMessage());
