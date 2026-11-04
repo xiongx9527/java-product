@@ -31,8 +31,11 @@ const props = withDefaults(
     modelTypeRaw: 0,
   }
 )
-// 13.7 仅大语言模型（model_type=0）可授权工作空间；向量模型不允许授权
-const isLLM = computed(() => Number(props.modelTypeRaw) === 0)
+// 13.7 大语言模型（model_type=0）与重排模型（model_type=2）可授权工作空间；向量模型不允许授权
+const canAuthorizeWorkspace = computed(() => {
+  const modelType = Number(props.modelTypeRaw)
+  return modelType === 0 || modelType === 2
+})
 const errorMsg = ref('')
 const current_supplier = computed(() => get_supplier_safe(props.supplier))
 const showErrorMask = (msg?: string) => {
@@ -197,7 +200,7 @@ defineExpose({ showErrorMask })
         placement="bottom-start"
       >
         <div class="content">
-          <div v-if="isLLM" class="item" @click.stop="handleAuthorizedSpace">
+          <div v-if="canAuthorizeWorkspace" class="item" @click.stop="handleAuthorizedSpace">
             <el-icon size="16">
               <icon_moments_categories_outlined></icon_moments_categories_outlined>
             </el-icon>
