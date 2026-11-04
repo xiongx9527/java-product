@@ -429,6 +429,8 @@ let embeddingTimer: any = null
 
 // 右下角悬浮按钮：点击展开向量重建进度面板
 const rebuildPanelOpen = ref(false)
+// 左上角状态弹框：有未完结任务时自动展示，可手动收起（收起后右下角 FAB 仍可作入口）
+const showStatusPopup = ref(true)
 const fabStatus = computed(() => {
   const s = embeddingState.value
   if (s.running) return 'running'
@@ -443,8 +445,14 @@ const closeRebuildPanel = () => {
   rebuildPanelOpen.value = false
 }
 
-// 重建进行中或待重建（含失败/中断）：用于锁定向量默认模型的设置与编辑
-const rebuildActive = computed(() => !!embeddingState.value.pending || !!embeddingState.value.running)
+// 存在未完结记录（running/interrupted/failed）：用于锁定向量默认模型的设置与编辑。
+// 注意：点击后内存 running 标记立即置位，但 DB status 由后台线程 markRunning 异步落库，
+// 存在短暂的 status='idle' 窗口，故以 running 优先判定，避免面板瞬间回退成「无记录」。
+const hasUnfinished = computed(() => {
+  const s = embeddingState.value || {}
+  return !!s.running || (!!s.status && s.status !== 'idle')
+})
+const rebuildActive = computed(() => hasUnfinished.value)
 // 存在失败空间清单：可「仅重试失败」
 const hasFailedScopes = computed(() => {
   const s = embeddingState.value.failed_scopes
@@ -457,7 +465,7 @@ const loadEmbeddingStatus = () => {
     .then((res: any) => {
       embeddingState.value = res || {}
       if (embeddingState.value.running) {
-        if (!embeddingTimer) embeddingTimer = setInterval(loadEmbeddingStatus, 2000)
+        if (!embeddingTimer) embeddingTimer = setInterval(loadEmbeddingStatus, 1000)
       } else if (embeddingTimer) {
         clearInterval(embeddingTimer)
         embeddingTimer = null
@@ -468,17 +476,26 @@ const loadEmbeddingStatus = () => {
 
 const startRebuild = (mode?: string) => {
   embeddingRebuilding.value = true
+  showStatusPopup.value = true
   modelApi
     .rebuildEmbedding(mode)
     .then((res: any) => {
       if (res && res.started === false) {
-        ElMessage.warning(
-          res.reason === 'no_failed' ? t('modelCfg.rebuild_no_failed') : t('modelCfg.fetch_failed')
-        )
+        // 分级：无失败项/已在重建属于「需注意」的警告；无可用向量模型/其它属于启动失败
+        if (res.reason === 'no_failed') {
+          ElMessage.warning(t('modelCfg.rebuild_no_failed'))
+        } else if (res.reason === 'running') {
+          ElMessage.warning(t('modelCfg.rebuild_running'))
+        } else if (res.reason === 'no_embedding_model') {
+          ElMessage.error(t('modelCfg.embedding_missing'))
+        } else {
+          ElMessage.error(t('modelCfg.rebuild_start_failed'))
+        }
         return
       }
-      ElMessage.success(t('modelCfg.rebuild_running'))
-      if (!embeddingTimer) embeddingTimer = setInterval(loadEmbeddingStatus, 2000)
+      // 「正在重建」是状态提醒（期间会锁默认向量模型、清空集合），不是操作成功
+      ElMessage.warning(t('modelCfg.rebuild_running'))
+      if (!embeddingTimer) embeddingTimer = setInterval(loadEmbeddingStatus, 1000)
     })
     .catch(() => {})
     .finally(() => {
@@ -562,6 +579,88 @@ const submit = (item: any) => {
   <div class="model-config no-padding">
     <!-- 13.5/13.6 向量索引重建：右下角悬浮按钮 + 点击展开进度面板 -->
     <Teleport to="body">
+      <!-- 13.5/13.6 左上角状态弹框：重建/失败/中断时自动展示进度与操作 -->
+      <transition name="ed-zoom-in">
+        <div
+          v-if="hasUnfinished && showStatusPopup"
+          class="embedding-status-pop"
+          :class="fabStatus"
+          @click.stop
+        >
+          <div class="sp-head">
+            <span class="sp-dot"></span>
+            <span class="sp-title">{{ t('modelCfg.rebuild_title') }}</span>
+            <el-icon class="sp-close" @click="showStatusPopup = false">
+              <icon_close_outlined class="svg-icon" />
+            </el-icon>
+          </div>
+          <div class="sp-body">
+            <div class="sp-status" :class="fabStatus">
+              <template v-if="embeddingState.running">
+                {{ embeddingState.done }}/{{ embeddingState.total }}
+                <span v-if="embeddingState.current_scope"> · {{ embeddingState.current_scope }}</span>
+              </template>
+              <template v-else-if="embeddingState.failed > 0">
+                <span class="danger">{{ t('modelCfg.rebuild_failed') }}</span>
+              </template>
+              <template v-else-if="embeddingState.interrupted">
+                <span class="warn">{{ t('modelCfg.rebuild_stopped') }}</span>
+              </template>
+              <template v-else-if="embeddingState.pending">
+                <span class="warn">{{ t('modelCfg.rebuild_pending') }}</span>
+              </template>
+              <template v-else>{{ t('modelCfg.rebuild_idle') }}</template>
+            </div>
+            <el-progress
+              v-if="embeddingState.total > 0"
+              :percentage="embeddingProgress"
+              :stroke-width="6"
+              class="sp-progress"
+            />
+            <div class="sp-model" v-if="embeddingState.model_name">
+              {{ t('modelCfg.rebuild_model') }}: {{ embeddingState.model_name }}
+            </div>
+            <div class="sp-actions">
+              <el-button
+                v-if="embeddingState.running"
+                size="small"
+                type="warning"
+                :loading="embeddingStopping"
+                @click="stopRebuild"
+              >
+                {{ t('modelCfg.rebuild_stop') }}
+              </el-button>
+              <el-button
+                size="small"
+                :loading="embeddingStopping"
+                @click="cancelRebuild"
+              >
+                {{ t('modelCfg.rebuild_cancel') }}
+              </el-button>
+              <el-button
+                v-if="embeddingState.interrupted || embeddingState.failed > 0"
+                size="small"
+                link
+                type="primary"
+                :loading="embeddingRebuilding"
+                @click="startRebuild('resume')"
+              >
+                {{ t('modelCfg.rebuild_resume') }}
+              </el-button>
+              <el-button
+                v-if="(embeddingState.failed > 0 || embeddingState.interrupted) && hasFailedScopes"
+                size="small"
+                link
+                type="primary"
+                :loading="embeddingRebuilding"
+                @click="startRebuild('retry-failed')"
+              >
+                {{ t('modelCfg.rebuild_retry_failed') }}
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </transition>
       <div class="embedding-fab-wrap">
         <transition name="ed-zoom-in">
           <div v-if="rebuildPanelOpen" class="embedding-panel" @click.stop>
@@ -572,6 +671,7 @@ const submit = (item: any) => {
               </el-icon>
             </div>
             <div class="panel-body">
+              <template v-if="hasUnfinished">
               <div class="panel-status" :class="fabStatus">
                 <template v-if="embeddingState.running">
                   {{ embeddingState.done }}/{{ embeddingState.total }}
@@ -589,11 +689,14 @@ const submit = (item: any) => {
                 <template v-else>{{ t('modelCfg.rebuild_idle') }}</template>
               </div>
               <el-progress
-                v-if="embeddingState.running"
+                v-if="hasUnfinished && embeddingState.total > 0"
                 :percentage="embeddingProgress"
                 :stroke-width="6"
                 class="panel-progress"
               />
+              <div class="panel-model" v-if="hasUnfinished && embeddingState.model_name">
+                {{ t('modelCfg.rebuild_model') }}: {{ embeddingState.model_name }}
+              </div>
               <div class="panel-meta" v-if="embeddingState.operator || embeddingState.started_at">
                 <div v-if="embeddingState.operator" class="meta-item">
                   {{ t('modelCfg.rebuild_operator') }}: {{ embeddingState.operator }}
@@ -605,13 +708,34 @@ const submit = (item: any) => {
                   {{ t('modelCfg.rebuild_duration') }}: {{ formatRebuildDuration(embeddingState.duration_ms) }}
                 </div>
               </div>
-              <div class="panel-actions">
-                <el-button v-if="embeddingState.running" size="small" type="warning" :loading="embeddingStopping" @click="stopRebuild">
-                  {{ t('modelCfg.rebuild_stop') }}
-                </el-button>
-                <template v-else>
-                  <el-button size="small" type="primary" :loading="embeddingRebuilding" @click="startRebuild('full')">
+              </template>
+              <div class="panel-actions" :class="{ center: !hasUnfinished }">
+                <template v-if="!hasUnfinished">
+                  <el-button
+                    size="small"
+                    type="primary"
+                    :loading="embeddingRebuilding"
+                    @click="startRebuild('full')"
+                  >
                     {{ t('modelCfg.rebuild_action') }}
+                  </el-button>
+                </template>
+                <template v-else>
+                  <el-button
+                    v-if="embeddingState.running"
+                    size="small"
+                    type="warning"
+                    :loading="embeddingStopping"
+                    @click="stopRebuild"
+                  >
+                    {{ t('modelCfg.rebuild_stop') }}
+                  </el-button>
+                  <el-button
+                    size="small"
+                    :loading="embeddingStopping"
+                    @click="cancelRebuild"
+                  >
+                    {{ t('modelCfg.rebuild_cancel') }}
                   </el-button>
                   <el-button
                     v-if="embeddingState.interrupted || embeddingState.failed > 0"
@@ -984,6 +1108,80 @@ const submit = (item: any) => {
     margin-top: 24px;
   }
 }
+.embedding-status-pop {
+  position: fixed;
+  top: 24px;
+  left: 24px;
+  z-index: 2001;
+  width: 320px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  border-left: 4px solid var(--ed-color-primary, #409eff);
+  &.warn {
+    border-left-color: #e6a23c;
+  }
+  &.running {
+    border-left-color: #409eff;
+  }
+  .sp-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: #f5f7fa;
+    border-bottom: 1px solid #ebeef5;
+    .sp-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--ed-color-primary, #409eff);
+    }
+    .sp-title {
+      font-weight: 600;
+      font-size: 14px;
+      flex: 1;
+    }
+    .sp-close {
+      cursor: pointer;
+      color: #909399;
+      &:hover {
+        color: #409eff;
+      }
+    }
+  }
+  .sp-body {
+    padding: 14px;
+    .sp-status {
+      font-size: 13px;
+      color: #606266;
+      margin-bottom: 10px;
+      &.running {
+        color: #409eff;
+      }
+      &.warn .danger {
+        color: var(--ed-color-danger, #f56c6c);
+      }
+      &.warn .warn {
+        color: #e6a23c;
+      }
+    }
+    .sp-progress {
+      margin-bottom: 12px;
+    }
+    .sp-model {
+      font-size: 13px;
+      color: #606266;
+      margin-bottom: 12px;
+    }
+    .sp-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+  }
+}
 .embedding-fab-wrap {
   position: fixed;
   right: 28px;
@@ -1091,6 +1289,14 @@ const submit = (item: any) => {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
+      &.center {
+        justify-content: center;
+      }
+    }
+    .panel-model {
+      font-size: 13px;
+      color: #606266;
+      margin-bottom: 12px;
     }
   }
 }

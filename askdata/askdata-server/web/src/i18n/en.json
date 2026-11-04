@@ -1005,6 +1005,7 @@
     "rebuild_title": "Vector index needs rebuilding",
     "rebuild_idle": "No rebuild task",
     "rebuild_action": "Rebuild vectors",
+    "rebuild_model": "Current vector model",
     "rebuild_running": "Rebuilding",
     "rebuild_pending": "Rebuild pending",
     "rebuild_cancel": "Cancel rebuild",
@@ -1012,7 +1013,7 @@
     "rebuild_operator": "Operator",
     "rebuild_op_time": "Operation time",
     "rebuild_duration": "Duration",
-    "rebuild_stopping_then_cancel": "Rebuild stopped; click cancel again to release the lock",
+    "rebuild_stopping_then_cancel": "Cancelling rebuild, please wait…",
     "rebuild_done": "Rebuild finished",
     "rebuild_failed": "Rebuild failed",
     "retry": "Retry",
@@ -1033,7 +1034,8 @@
     "rebuild_resume": "Resume rebuild",
     "rebuild_retry_failed": "Retry failed only",
     "rebuild_locked": "Vector index is being rebuilt; the default embedding model cannot be modified right now",
-    "rebuild_no_failed": "No failed items to retry"
+    "rebuild_no_failed": "No failed items to retry",
+    "rebuild_start_failed": "Failed to start rebuild, please try again later"
   },
   "modelType": {
     "embedding": "Embedding model",

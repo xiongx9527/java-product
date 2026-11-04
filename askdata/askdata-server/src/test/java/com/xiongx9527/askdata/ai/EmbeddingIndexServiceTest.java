@@ -4,7 +4,6 @@ import com.xiongx9527.askdata.support.MysqlTestSupport;
 
 import com.xiongx9527.askdata.chat.service.ChatModelClient;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter;
-import com.xiongx9527.askdata.common.lock.SingleWorkerGuard;
 import com.xiongx9527.askdata.common.startup.EmbeddingBackfillRunner;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.support.MetadbMigration;
@@ -47,8 +46,6 @@ class EmbeddingIndexServiceTest {
 
     private EmbeddingBackfillRunner runner;
 
-    private SingleWorkerGuard guard;
-
     private long modelId;
 
     @BeforeEach
@@ -60,10 +57,8 @@ class EmbeddingIndexServiceTest {
                 false, "[]", 1, System.currentTimeMillis(), true, 1, 1024);
         ChatModelRouter router = new ChatModelRouter(modelRepository, objectMapper);
         runner = mock(EmbeddingBackfillRunner.class);
-        guard = mock(SingleWorkerGuard.class);
-        when(guard.tryAcquire(org.mockito.ArgumentMatchers.anyString())).thenReturn(true);
         service = new EmbeddingIndexService(jdbc, router, runner,
-                new AiEmbeddingIndexStateRepository(jdbc), guard);
+                new AiEmbeddingIndexStateRepository(jdbc));
     }
 
     private void waitUntilRunning() throws Exception {
@@ -119,7 +114,7 @@ class EmbeddingIndexServiceTest {
         jdbc.update("INSERT INTO terminology (id, oid, word, enabled) VALUES (2, 102, 'b', TRUE)");
         jdbc.update("INSERT INTO terminology (id, oid, word, enabled) VALUES (3, 103, 'c', TRUE)");
         org.mockito.Mockito.doThrow(new IllegalStateException("boom"))
-                .when(runner).rebuildWorkspace(102L);
+                .when(runner).rebuildWorkspace(org.mockito.ArgumentMatchers.eq(102L), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
 
         service.rebuild(null);
         waitUntilNotRunning();
@@ -137,7 +132,7 @@ class EmbeddingIndexServiceTest {
         org.mockito.Mockito.doAnswer(invocation -> {
             blocker.await(5, TimeUnit.SECONDS);
             return 0;
-        }).when(runner).rebuildWorkspace(org.mockito.ArgumentMatchers.anyLong());
+        }).when(runner).rebuildWorkspace(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
 
         Map<String, Object> first = service.rebuild(null);
         Map<String, Object> second = service.rebuild(null);
@@ -197,7 +192,7 @@ class EmbeddingIndexServiceTest {
         org.mockito.Mockito.doAnswer(invocation -> {
             latch.await(5, TimeUnit.SECONDS);
             return 0;
-        }).when(runner).rebuildWorkspace(org.mockito.ArgumentMatchers.anyLong());
+        }).when(runner).rebuildWorkspace(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
 
         service.rebuild(null);
         waitUntilRunning();

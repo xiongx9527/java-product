@@ -257,7 +257,7 @@ public class ChartImageService {
         try {
             return fileStorage.read(entry.url());
         } catch (Exception e) {
-            log.warn("chart image read failed for token {}: {}", token, e.getMessage());
+            log.warn("chart image read failed: {}", e.getMessage());
             return null;
         }
     }
@@ -346,7 +346,7 @@ public class ChartImageService {
                     removed++;
                 }
             } catch (Exception ex) {
-                log.debug("chart token row delete failed {}: {}", e.token(), ex.getMessage());
+                log.debug("chart token row delete failed: {}", ex.getMessage());
             }
             synchronized (storeLock) {
                 store.remove(e.token());

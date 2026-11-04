@@ -1005,6 +1005,7 @@
     "rebuild_title": "向量索引待重建",
     "rebuild_idle": "暂无重建任务",
     "rebuild_action": "一键重新向量",
+    "rebuild_model": "当前向量模型",
     "rebuild_running": "正在重建",
     "rebuild_pending": "待重建",
     "rebuild_cancel": "取消重建",
@@ -1012,7 +1013,7 @@
     "rebuild_operator": "操作人",
     "rebuild_op_time": "操作时间",
     "rebuild_duration": "耗时",
-    "rebuild_stopping_then_cancel": "重建已停止，再次点击取消以释放锁定",
+    "rebuild_stopping_then_cancel": "正在取消重建，请稍候…",
     "rebuild_done": "重建完成",
     "rebuild_failed": "重建失败",
     "retry": "重试",
@@ -1033,7 +1034,8 @@
     "rebuild_resume": "继续重建",
     "rebuild_retry_failed": "仅重试失败",
     "rebuild_locked": "向量索引重建中，暂不可修改默认向量模型",
-    "rebuild_no_failed": "没有可重试的失败项"
+    "rebuild_no_failed": "没有可重试的失败项",
+    "rebuild_start_failed": "重建启动失败，请稍后重试"
   },
   "modelType": {
     "embedding": "向量模型",

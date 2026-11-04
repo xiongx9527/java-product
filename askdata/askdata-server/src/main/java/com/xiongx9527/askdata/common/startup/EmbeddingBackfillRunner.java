@@ -18,6 +18,8 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
+import java.util.function.IntConsumer;
 
 /**
  * 启动期向量回填（对齐 SQLBot {@code main.py} 的三个 {@code init_*_embedding_data}）。
@@ -113,11 +115,35 @@ public class EmbeddingBackfillRunner {
 
     /** 重建入口：按工作空间对四类向量做全量强制重算（忽略「向量为空」过滤）。 */
     public int rebuildWorkspace(long oid) {
+        return rebuildWorkspace(oid, null, null);
+    }
+
+    /**
+     * 重建入口（可中断）：在四个子步骤之间以及逐条 embed 的循环内轮询 {@code stopRequested}，
+     * 使「停止 / 取消重建」能在一两条向量（约 1s）内生效，而不必等整个工作空间跑完。
+     */
+    public int rebuildWorkspace(long oid, BooleanSupplier stopRequested, IntConsumer onProgress) {
         int count = 0;
-        count += backfillTerminology(oid);
-        count += backfillTraining(oid);
-        count += backfillTables(oid);
-        count += backfillDatasources(oid);
+        if (isStopped(stopRequested)) {
+            return count;
+        }
+        int term = backfillTerminology(oid);
+        count += term;
+        notifyProgress(onProgress, term);
+        if (isStopped(stopRequested)) {
+            return count;
+        }
+        int train = backfillTraining(oid);
+        count += train;
+        notifyProgress(onProgress, train);
+        if (isStopped(stopRequested)) {
+            return count;
+        }
+        count += backfillTables(oid, stopRequested, onProgress);
+        if (isStopped(stopRequested)) {
+            return count;
+        }
+        count += backfillDatasources(oid, stopRequested, onProgress);
         return count;
     }
 
@@ -184,6 +210,11 @@ public class EmbeddingBackfillRunner {
 
     /** 表向量回填（按数据源所属工作空间过滤）。 */
     public int backfillTables(Long oid) {
+        return backfillTables(oid, null, null);
+    }
+
+    /** 表向量回填（可中断：逐条 embed 前轮询停止信号）。 */
+    public int backfillTables(Long oid, BooleanSupplier stopRequested, IntConsumer onProgress) {
         try {
             Object[] args = oid == null ? new Object[0] : new Object[] {oid};
             String dsFilter = oid == null ? null : "t.ds_id IN (SELECT id FROM core_datasource WHERE oid = ?)";
@@ -193,6 +224,10 @@ public class EmbeddingBackfillRunner {
                             + " LEFT JOIN core_datasource d ON d.id = t.ds_id" + where(dsFilter, false), args);
             int count = 0;
             for (Map<String, Object> row : rows) {
+                if (isStopped(stopRequested)) {
+                    log.info("表向量回填已取消，提前结束（已完成 {} 条）", count);
+                    break;
+                }
                 long id = Rows.lng(row, "id", 0L);
                 double[] vector = embeddingService.embed(tableDoc(id));
                 java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
@@ -202,6 +237,7 @@ public class EmbeddingBackfillRunner {
                 }
                 if (vector != null && embeddingService.writeEmbedding("core_table", id, vector, payload)) {
                     count++;
+                    notifyProgress(onProgress, 1);
                 }
             }
             if (count > 0) {
@@ -221,15 +257,25 @@ public class EmbeddingBackfillRunner {
 
     /** 数据源向量回填（可指定工作空间）。 */
     public int backfillDatasources(Long oid) {
+        return backfillDatasources(oid, null, null);
+    }
+
+    /** 数据源向量回填（可中断：逐条 embed 前轮询停止信号）。 */
+    public int backfillDatasources(Long oid, BooleanSupplier stopRequested, IntConsumer onProgress) {
         try {
             Object[] args = oid == null ? new Object[0] : new Object[] {oid};
             List<Map<String, Object>> rows = jdbc.queryForList(
                     "SELECT id FROM core_datasource" + where(null, oid != null), args);
             int count = 0;
             for (Map<String, Object> row : rows) {
+                if (isStopped(stopRequested)) {
+                    log.info("数据源向量回填已取消，提前结束（已完成 {} 条）", count);
+                    break;
+                }
                 long id = Rows.lng(row, "id", 0L);
                 datasourceEmbeddingService.saveEmbedding(id);
                 count++;
+                notifyProgress(onProgress, 1);
             }
             if (count > 0) {
                 log.info("数据源向量回填完成：{} 条", count);
@@ -303,6 +349,18 @@ public class EmbeddingBackfillRunner {
             conditions.add("oid = ?");
         }
         return conditions.isEmpty() ? "" : " WHERE " + String.join(" AND ", conditions);
+    }
+
+    /** 进度回调：null 或增量 <=0 时忽略。 */
+    private static void notifyProgress(IntConsumer onProgress, int delta) {
+        if (onProgress != null && delta > 0) {
+            onProgress.accept(delta);
+        }
+    }
+
+    /** 停止信号：null 视为不中断。 */
+    private static boolean isStopped(BooleanSupplier stopRequested) {
+        return stopRequested != null && stopRequested.getAsBoolean();
     }
 
     private static List<Long> idsOf(List<Map<String, Object>> rows) {

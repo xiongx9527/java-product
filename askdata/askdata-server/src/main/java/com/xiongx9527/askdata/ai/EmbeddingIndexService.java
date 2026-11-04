@@ -2,7 +2,6 @@ package com.xiongx9527.askdata.ai;
 
 import com.xiongx9527.askdata.chat.service.ChatModelRouter;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter.ModelRef;
-import com.xiongx9527.askdata.common.lock.SingleWorkerGuard;
 import com.xiongx9527.askdata.common.startup.EmbeddingBackfillRunner;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
@@ -24,6 +23,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 向量索引重建（全空间、强制重算、状态持久化）。
@@ -53,8 +53,6 @@ public class EmbeddingIndexService implements ApplicationRunner {
 
     private final AiEmbeddingIndexStateRepository stateRepository;
 
-    private final SingleWorkerGuard singleWorkerGuard;
-
     private final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "embedding-index-rebuild");
         thread.setDaemon(true);
@@ -66,6 +64,13 @@ public class EmbeddingIndexService implements ApplicationRunner {
 
     /** 停止信号：runRebuild 每空间前轮询，为真则本次重建在下一个空间前终止。 */
     private final AtomicBoolean stopped = new AtomicBoolean(false);
+
+    /**
+     * 取消意图：用户点击「取消重建」且重建正在运行时置位。runRebuild 在停止分支据此决定
+     * 是把记录置为 interrupted（仅暂停，可续做）还是 markCanceled（清空记录、释放锁定）。
+     * 实现「一次点击即停止并释放」的体验，无需二次点击。
+     */
+    private final AtomicBoolean cancelRequested = new AtomicBoolean(false);
 
     /**
      * 向量服务：重建前清空在线集合。Spring 装配注入；直接构造（单测）时可缺省，
@@ -89,13 +94,11 @@ public class EmbeddingIndexService implements ApplicationRunner {
 
     public EmbeddingIndexService(JdbcTemplate jdbc, ChatModelRouter modelRouter,
                                  EmbeddingBackfillRunner backfillRunner,
-                                 AiEmbeddingIndexStateRepository stateRepository,
-                                 SingleWorkerGuard singleWorkerGuard) {
+                                 AiEmbeddingIndexStateRepository stateRepository) {
         this.jdbc = jdbc;
         this.modelRouter = modelRouter;
         this.backfillRunner = backfillRunner;
         this.stateRepository = stateRepository;
-        this.singleWorkerGuard = singleWorkerGuard;
     }
 
     /**
@@ -150,6 +153,7 @@ public class EmbeddingIndexService implements ApplicationRunner {
         result.put("running", running.get() || "running".equals(status));
         result.put("interrupted", "interrupted".equals(status));
         result.put("model_id", currentModelId);
+        result.put("model_name", model.map(ref -> ref.name).orElse(null));
         result.put("dimension", currentDimension);
         result.put("rebuilt_model_id", rebuiltModelId);
         result.put("rebuilt_dimension", rebuiltDimension);
@@ -260,10 +264,17 @@ public class EmbeddingIndexService implements ApplicationRunner {
             scopes = workspaces();
             startIndex = 0;
         }
-        final int total = (state == null ? scopes.size() : Rows.intg(state, "total", scopes.size()));
+        // FULL 模式按「实际待重建向量条数」计算 total（与启动期回填的四类范围一致：
+        // 逐个工作空间累加 术语/示例/表/数据源 的记录数），使进度条反映真实向量进度；
+        // 不能用历史 state.total（上一次空跑记录会让后续全量重建以 0 计、进度与记录不显示）。
+        // resume/retry-failed 复用历史 total 以延续进度。
+        final int total = MODE_FULL.equals(effectiveMode)
+                ? scopes.stream().mapToInt(this::scopeRecordCount).sum()
+                : (state == null ? scopes.size() : Rows.intg(state, "total", scopes.size()));
         final String resolvedMode = effectiveMode;
         final String operator = currentOperator();
         stopped.set(false);
+        cancelRequested.set(false);
         try {
             executor.submit(() -> runRebuild(modelRef, resolvedMode, scopes, startIndex, total, operator));
         } catch (RuntimeException e) {
@@ -288,6 +299,7 @@ public class EmbeddingIndexService implements ApplicationRunner {
             return result;
         }
         stopped.set(true);
+        cancelRequested.set(false);
         stateRepository.requestStop();
         result.put("stopped", true);
         return result;
@@ -301,6 +313,7 @@ public class EmbeddingIndexService implements ApplicationRunner {
         Map<String, Object> result = new LinkedHashMap<>();
         if (running.get()) {
             stopped.set(true);
+            cancelRequested.set(true);
             stateRepository.requestStop();
             result.put("canceled", false);
             result.put("stopped", true);
@@ -334,11 +347,10 @@ public class EmbeddingIndexService implements ApplicationRunner {
 
     /** 重建主流程：逐工作空间执行四类重算，单空间失败不中断；支持停止与续做。 */
     private void runRebuild(ModelRef model, String mode, List<Long> scopes, int startIndex, int total, String operator) {
-        if (!singleWorkerGuard.tryAcquire(SingleWorkerGuard.EMBEDDING_BACKFILL_KEY)) {
-            log.info("向量重建未获得单 worker 守卫，跳过本次重建");
-            running.set(false);
-            return;
-        }
+        // 注意：手动「一键重新向量」不再复用启动期回填的 SingleWorkerGuard(EMBEDDING_BACKFILL_KEY)。
+        // 该守卫带 300s 防抖窗口，回填一旦执行，窗口内所有手动重建都会被静默跳过（「运行中」标记被
+        // 立即复位却无任何实际工作），表现为点击无反应。手动重建的单实例互斥已由本类的 running 标记保证，
+        // 故此处去除守卫门禁，确保用户点击即可真正执行。
         boolean reset = MODE_FULL.equals(mode);
         if (reset) {
             if (embeddingService != null) {
@@ -352,10 +364,12 @@ public class EmbeddingIndexService implements ApplicationRunner {
         } else {
             stateRepository.markRunningResuming(model.id, model.dimension, total, mode, operator);
         }
-        int done = currentDone();
+        // 用计数器承载进度：回填器逐条回调时累加并落库，前端轮询即可看到 done 实时增长
+        final AtomicInteger doneCounter = new AtomicInteger(currentDone());
         // retry-failed 只重试失败空间：failed 重新计数，仅保留本次仍失败的空间；
         // 其余模式（full/resume）沿用既有进度（full 已由 markRunning 归零，resume 保留中断前计数）
-        int failed = MODE_RETRY_FAILED.equals(mode) ? 0 : currentFailed();
+        final AtomicInteger failedCounter =
+                new AtomicInteger(MODE_RETRY_FAILED.equals(mode) ? 0 : currentFailed());
         List<Long> failedOids = new ArrayList<>();
         List<String> failures = new ArrayList<>();
         boolean stoppedByUser = false;
@@ -365,21 +379,33 @@ public class EmbeddingIndexService implements ApplicationRunner {
                     stoppedByUser = true;
                     break;
                 }
-                Long oid = scopes.get(i);
-                stateRepository.updateProgress(done, failed, String.valueOf(oid));
+                final Long oid = scopes.get(i);
+                stateRepository.updateProgress(doneCounter.get(), failedCounter.get(), String.valueOf(oid));
                 try {
-                    backfillRunner.rebuildWorkspace(oid);
-                    done++;
+                    // 停止信号（逐条中断）+ 进度回调（逐条推进 done 并落库，进度条实时刷新）
+                    backfillRunner.rebuildWorkspace(oid, stopped::get, delta -> {
+                        int d = doneCounter.addAndGet(delta);
+                        stateRepository.updateProgress(d, failedCounter.get(), String.valueOf(oid));
+                    });
                 } catch (Exception e) {
-                    failed++;
+                    failedCounter.incrementAndGet();
                     failedOids.add(oid);
                     failures.add(oid + ": " + (e.getMessage() == null ? e.toString() : e.getMessage()));
                     log.warn("工作空间 {} 向量重建失败: {}", oid, e.getMessage());
                 }
-                stateRepository.updateProgress(done, failed, String.valueOf(oid));
+                stateRepository.updateProgress(doneCounter.get(), failedCounter.get(), String.valueOf(oid));
             }
-            if (stoppedByUser) {
-                stateRepository.markInterrupted(done, failed);
+            int done = doneCounter.get();
+            int failed = failedCounter.get();
+            // 停止/取消信号可能在最后一个工作空间的耗时重算过程中才到达（循环顶部检查不到），
+            // 因此收尾时再判定一次内存停止标志，确保取消不会被误记为「完成」。
+            if (stoppedByUser || stopped.get()) {
+                if (cancelRequested.get()) {
+                    // 用户点击「取消重建」：清空记录回 idle，释放「重建期间锁定默认向量模型」约束
+                    stateRepository.markCanceled(model.id, model.dimension, operator);
+                } else {
+                    stateRepository.markInterrupted(done, failed);
+                }
             } else if (failedOids.isEmpty()) {
                 stateRepository.markFinished(model.id, model.dimension, done, failed, null);
             } else {
@@ -387,9 +413,9 @@ public class EmbeddingIndexService implements ApplicationRunner {
             }
         } catch (Exception e) {
             log.warn("向量重建异常终止: {}", e.getMessage());
-            stateRepository.markFailed(done, failed, e.getMessage(), toJson(failedOids));
+            stateRepository.markFailed(doneCounter.get(), failedCounter.get(), e.getMessage(), toJson(failedOids));
         } finally {
-            singleWorkerGuard.release(SingleWorkerGuard.EMBEDDING_BACKFILL_KEY);
+            cancelRequested.set(false);
             running.set(false);
         }
     }
@@ -492,5 +518,35 @@ public class EmbeddingIndexService implements ApplicationRunner {
             log.debug("读取 sys_workspace 失败（忽略）: {}", e.getMessage());
         }
         return new ArrayList<>(scopes);
+    }
+
+    /**
+     * 单个作用域（oid；null 表示全部）下的待重建向量条数，与启动期回填覆盖的四类范围一致：
+     * 术语（父术语 + 同义词）、SQL 示例、表、数据源。用于 FULL 重建时把 total 设为真实向量数，
+     * 使进度条反映实际工作量（而非工作空间个数）。
+     */
+    int scopeRecordCount(Long oid) {
+        boolean withOid = oid != null;
+        Object[] args = withOid ? new Object[] { oid } : new Object[0];
+        String oidCond = withOid ? " WHERE oid = ?" : "";
+        int n = 0;
+        n += countRows("SELECT COUNT(*) c FROM terminology WHERE pid IS NULL" + oidCond, args);
+        n += countRows("SELECT COUNT(DISTINCT pid) c FROM terminology WHERE pid IS NOT NULL" + oidCond, args);
+        n += countRows("SELECT COUNT(*) c FROM data_training" + oidCond, args);
+        String tableSql = "SELECT COUNT(*) c FROM core_table t LEFT JOIN core_datasource d ON d.id = t.ds_id"
+                + (withOid ? " WHERE t.ds_id IN (SELECT id FROM core_datasource WHERE oid = ?)" : "");
+        n += countRows(tableSql, args);
+        n += countRows("SELECT COUNT(*) c FROM core_datasource" + oidCond, args);
+        return n;
+    }
+
+    private int countRows(String sql, Object[] args) {
+        try {
+            return jdbc.queryForList(sql, args).stream()
+                    .mapToInt(r -> Rows.intg(r, "c", 0)).sum();
+        } catch (Exception e) {
+            log.debug("统计重建条数失败（忽略）: {}", e.getMessage());
+            return 0;
+        }
     }
 }

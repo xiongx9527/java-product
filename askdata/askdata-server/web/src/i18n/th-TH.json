@@ -1005,6 +1005,7 @@
     "rebuild_title": "ต้องสร้างดัชนีเวกเตอร์ใหม่",
     "rebuild_idle": "ไม่มีงานสร้างใหม่",
     "rebuild_action": "สร้างเวกเตอร์ใหม่",
+    "rebuild_model": "โมเดลเวกเตอร์ปัจจุบัน",
     "rebuild_running": "กำลังสร้างใหม่",
     "rebuild_pending": "รอสร้างใหม่",
     "rebuild_cancel": "ยกเลิกการสร้างใหม่",
@@ -1012,7 +1013,7 @@
     "rebuild_operator": "ผู้ดำเนินการ",
     "rebuild_op_time": "เวลาดำเนินการ",
     "rebuild_duration": "ระยะเวลา",
-    "rebuild_stopping_then_cancel": "หยุดการสร้างใหม่แล้ว คลิกยกเลิกอีกครั้งเพื่อปลดล็อก",
+    "rebuild_stopping_then_cancel": "กำลังยกเลิกการสร้างใหม่ กรุณารอสักครู่…",
     "rebuild_done": "สร้างใหม่เสร็จสิ้น",
     "rebuild_failed": "สร้างใหม่ล้มเหลว",
     "retry": "ลองอีกครั้ง",
@@ -1033,7 +1034,8 @@
     "rebuild_resume": "สร้างใหม่ต่อ",
     "rebuild_retry_failed": "ลองใหม่เฉพาะที่ล้มเหลว",
     "rebuild_locked": "กำลังสร้างดัชนีเวกเตอร์ใหม่ ยังไม่สามารถแก้ไขโมเดลเวกเตอร์เริ่มต้นได้",
-    "rebuild_no_failed": "ไม่มีรายการที่ล้มเหลวให้ลองใหม่"
+    "rebuild_no_failed": "ไม่มีรายการที่ล้มเหลวให้ลองใหม่",
+    "rebuild_start_failed": "ไม่สามารถเริ่มการสร้างใหม่ได้ กรุณาลองอีกครั้งในภายหลัง"
   },
   "modelType": {
     "embedding": "โมเดลเวกเตอร์",

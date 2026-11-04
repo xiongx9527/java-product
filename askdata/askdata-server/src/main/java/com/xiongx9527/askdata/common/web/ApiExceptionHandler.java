@@ -78,13 +78,13 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(NotLoginException.class)
     public ResponseEntity<String> notLogin(NotLoginException e) {
-        log.info("未登录访问: {}", e.getMessage());
+        // Sa-Token 的异常 message 含完整 token 值，禁止写入日志或响应体，避免认证失效时泄露凭据
+        log.info("未登录访问: type={}", e.getType());
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .header(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, allowedOrigin())
                 .header(AUTH_FAILURE_HEADER, AUTH_FAILURE_SESSION)
                 .header(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, AUTH_FAILURE_HEADER)
-                .body(messageResolver.get("i18n_permission.authenticate_invalid",
-                        Maps.of("msg", String.valueOf(e.getMessage()))));
+                .body(messageResolver.get("i18n_permission.authenticate_expired"));
     }
 
     @ExceptionHandler(AuthFailureException.class)
