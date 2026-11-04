@@ -1003,6 +1003,7 @@
     "dimension": "벡터 차원",
     "type_locked": "편집 중에는 모델 유형을 변경할 수 없습니다",
     "rebuild_title": "벡터 인덱스를 재구성해야 합니다",
+    "rebuild_idle": "재구성 작업 없음",
     "rebuild_action": "벡터 재구성",
     "rebuild_running": "재구성 중",
     "rebuild_done": "재구성 완료",

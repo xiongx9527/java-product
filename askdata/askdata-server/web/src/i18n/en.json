@@ -1003,6 +1003,7 @@
     "dimension": "Dimension",
     "type_locked": "Model type cannot be changed while editing",
     "rebuild_title": "Vector index needs rebuilding",
+    "rebuild_idle": "No rebuild task",
     "rebuild_action": "Rebuild vectors",
     "rebuild_running": "Rebuilding",
     "rebuild_done": "Rebuild finished",

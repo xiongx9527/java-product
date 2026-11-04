@@ -1003,6 +1003,7 @@
     "dimension": "向量维度",
     "type_locked": "编辑时不可修改模型类型",
     "rebuild_title": "向量索引待重建",
+    "rebuild_idle": "暂无重建任务",
     "rebuild_action": "一键重新向量",
     "rebuild_running": "正在重建",
     "rebuild_done": "重建完成",

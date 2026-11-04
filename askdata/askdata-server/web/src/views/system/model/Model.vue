@@ -427,6 +427,21 @@ const embeddingRebuilding = ref(false)
 const embeddingStopping = ref(false)
 let embeddingTimer: any = null
 
+// 右下角悬浮按钮：点击展开向量重建进度面板
+const rebuildPanelOpen = ref(false)
+const fabStatus = computed(() => {
+  const s = embeddingState.value
+  if (s.running) return 'running'
+  if (s.failed > 0 || s.interrupted) return 'warn'
+  return 'idle'
+})
+const toggleRebuildPanel = () => {
+  rebuildPanelOpen.value = !rebuildPanelOpen.value
+}
+const closeRebuildPanel = () => {
+  rebuildPanelOpen.value = false
+}
+
 // 重建进行中或待重建（含失败/中断）：用于锁定向量默认模型的设置与编辑
 const rebuildActive = computed(() => !!embeddingState.value.pending || !!embeddingState.value.running)
 // 存在失败空间清单：可「仅重试失败」
@@ -507,58 +522,83 @@ const submit = (item: any) => {
 
 <template>
   <div class="model-config no-padding">
-    <!-- 13.5/13.6 向量索引待重建提示条 + 一键重建 + 进度 -->
-    <div v-if="embeddingState.pending || embeddingState.running" class="embedding-banner">
-      <div class="banner-row">
-        <span class="banner-title">{{ t('modelCfg.rebuild_title') }}</span>
-        <span v-if="embeddingState.running" class="banner-status">
-          {{ embeddingState.done }}/{{ embeddingState.total }}
-          <span v-if="embeddingState.current_scope"> · {{ embeddingState.current_scope }}</span>
-        </span>
-        <span v-else-if="embeddingState.failed > 0" class="banner-status failed">
-          {{ t('modelCfg.rebuild_failed') }}
-        </span>
-        <span v-else-if="embeddingState.interrupted" class="banner-status interrupted">
-          {{ t('modelCfg.rebuild_stopped') }}
-        </span>
-        <template v-if="embeddingState.running">
-          <el-button size="small" type="warning" :loading="embeddingStopping" @click="stopRebuild">
-            {{ t('modelCfg.rebuild_stop') }}
-          </el-button>
-        </template>
-        <template v-else>
-          <el-button size="small" type="primary" :loading="embeddingRebuilding" @click="startRebuild('full')">
-            {{ t('modelCfg.rebuild_action') }}
-          </el-button>
-          <el-button
-            v-if="embeddingState.interrupted || embeddingState.failed > 0"
-            size="small"
-            link
-            type="primary"
-            :loading="embeddingRebuilding"
-            @click="startRebuild('resume')"
-          >
-            {{ t('modelCfg.rebuild_resume') }}
-          </el-button>
-          <el-button
-            v-if="(embeddingState.failed > 0 || embeddingState.interrupted) && hasFailedScopes"
-            size="small"
-            link
-            type="primary"
-            :loading="embeddingRebuilding"
-            @click="startRebuild('retry-failed')"
-          >
-            {{ t('modelCfg.rebuild_retry_failed') }}
-          </el-button>
-        </template>
+    <!-- 13.5/13.6 向量索引重建：右下角悬浮按钮 + 点击展开进度面板 -->
+    <Teleport to="body">
+      <div class="embedding-fab-wrap">
+        <transition name="ed-zoom-in">
+          <div v-if="rebuildPanelOpen" class="embedding-panel" @click.stop>
+            <div class="panel-head">
+              <span class="panel-title">{{ t('modelCfg.rebuild_title') }}</span>
+              <el-icon class="panel-close" @click="closeRebuildPanel">
+                <icon_close_outlined class="svg-icon" />
+              </el-icon>
+            </div>
+            <div class="panel-body">
+              <div class="panel-status" :class="fabStatus">
+                <template v-if="embeddingState.running">
+                  {{ embeddingState.done }}/{{ embeddingState.total }}
+                  <span v-if="embeddingState.current_scope"> · {{ embeddingState.current_scope }}</span>
+                </template>
+                <template v-else-if="embeddingState.failed > 0">
+                  <span class="danger">{{ t('modelCfg.rebuild_failed') }}</span>
+                </template>
+                <template v-else-if="embeddingState.interrupted">
+                  <span class="warn">{{ t('modelCfg.rebuild_stopped') }}</span>
+                </template>
+                <template v-else>{{ t('modelCfg.rebuild_idle') }}</template>
+              </div>
+              <el-progress
+                v-if="embeddingState.running"
+                :percentage="embeddingProgress"
+                :stroke-width="6"
+                class="panel-progress"
+              />
+              <div class="panel-actions">
+                <el-button v-if="embeddingState.running" size="small" type="warning" :loading="embeddingStopping" @click="stopRebuild">
+                  {{ t('modelCfg.rebuild_stop') }}
+                </el-button>
+                <template v-else>
+                  <el-button size="small" type="primary" :loading="embeddingRebuilding" @click="startRebuild('full')">
+                    {{ t('modelCfg.rebuild_action') }}
+                  </el-button>
+                  <el-button
+                    v-if="embeddingState.interrupted || embeddingState.failed > 0"
+                    size="small"
+                    link
+                    type="primary"
+                    :loading="embeddingRebuilding"
+                    @click="startRebuild('resume')"
+                  >
+                    {{ t('modelCfg.rebuild_resume') }}
+                  </el-button>
+                  <el-button
+                    v-if="(embeddingState.failed > 0 || embeddingState.interrupted) && hasFailedScopes"
+                    size="small"
+                    link
+                    type="primary"
+                    :loading="embeddingRebuilding"
+                    @click="startRebuild('retry-failed')"
+                  >
+                    {{ t('modelCfg.rebuild_retry_failed') }}
+                  </el-button>
+                </template>
+              </div>
+            </div>
+          </div>
+        </transition>
+        <button
+          class="embedding-fab"
+          :class="fabStatus"
+          :title="t('modelCfg.rebuild_title')"
+          @click="toggleRebuildPanel"
+        >
+          <svg class="fab-icon" viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+            <path d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+          </svg>
+          <span v-if="fabStatus !== 'idle'" class="fab-dot"></span>
+        </button>
       </div>
-      <el-progress
-        v-if="embeddingState.running"
-        :percentage="embeddingProgress"
-        :stroke-width="6"
-        class="banner-progress"
-      />
-    </div>
+    </Teleport>
     <div class="model-methods">
       <span class="title">{{ t('model.ai_model_configuration') }}</span>
       <div class="button-input">
@@ -869,33 +909,123 @@ const submit = (item: any) => {
     margin-top: 24px;
   }
 }
-.embedding-banner {
-  margin: 16px 16px 0 16px;
-  padding: 12px 16px;
-  border: 1px solid #f5d99a;
-  background: #fff8ec;
-  border-radius: 8px;
-  .banner-row {
+.embedding-fab-wrap {
+  position: fixed;
+  right: 28px;
+  bottom: 32px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+}
+.embedding-fab {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border: none;
+  border-radius: 50%;
+  background: var(--ed-color-primary, #409eff);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.24);
+  }
+  &.warn {
+    background: #e6a23c;
+  }
+  &.running {
+    background: #409eff;
+  }
+  .fab-icon {
+    width: 24px;
+    height: 24px;
+    color: #fff;
+  }
+  .fab-dot {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #f56c6c;
+    border: 2px solid #fff;
+  }
+  &.running .fab-dot {
+    background: #fff;
+    animation: fab-pulse 1.2s infinite;
+  }
+}
+@keyframes fab-pulse {
+  0% { transform: scale(0.7); opacity: 0.6; }
+  50% { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(0.7); opacity: 0.6; }
+}
+.embedding-panel {
+  width: 320px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  .panel-head {
     display: flex;
     align-items: center;
-    gap: 12px;
-  }
-  .banner-title {
-    font-weight: 600;
-    font-size: 14px;
-  }
-  .banner-status {
-    color: #8f959e;
-    font-size: 13px;
-    &.failed {
-      color: var(--ed-color-danger);
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: #f5f7fa;
+    border-bottom: 1px solid #ebeef5;
+    .panel-title {
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .panel-close {
+      cursor: pointer;
+      color: #909399;
+      &:hover {
+        color: #409eff;
+      }
     }
   }
-  .banner-progress {
-    margin-top: 8px;
+  .panel-body {
+    padding: 14px;
+    .panel-status {
+      font-size: 13px;
+      color: #606266;
+      margin-bottom: 10px;
+      &.running {
+        color: #409eff;
+      }
+      &.warn .danger {
+        color: var(--ed-color-danger, #f56c6c);
+      }
+      &.warn .warn {
+        color: #e6a23c;
+      }
+    }
+    .panel-progress {
+      margin-bottom: 12px;
+    }
+    .panel-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
   }
-  .banner-retry {
-    margin-top: 4px;
-  }
+}
+.ed-zoom-in-enter-active,
+.ed-zoom-in-leave-active {
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+.ed-zoom-in-enter-from,
+.ed-zoom-in-leave-to {
+  transform: scale(0.92);
+  opacity: 0;
 }
 </style>
