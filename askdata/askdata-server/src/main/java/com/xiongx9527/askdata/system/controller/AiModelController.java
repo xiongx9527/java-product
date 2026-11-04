@@ -69,6 +69,14 @@ public class AiModelController {
         return Result.ok(embeddingIndexService.stop());
     }
 
+    /** 取消未完成的重建记录（释放「重建期间锁定默认向量模型」约束），管理员。 */
+    @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.UPDATE)
+    @PostMapping({"/system/aimodel/embedding/rebuild/cancel"})
+    public Result<Map<String, Object>> embeddingRebuildCancel() {
+        currentUserService.requireAdmin();
+        return Result.ok(embeddingIndexService.cancel());
+    }
+
     @GetMapping({"/system/aimodel"})
     public Result<List<Map<String, Object>>> list(@RequestParam(required = false) String keyword) {
         return Result.ok(aiModelService.list(keyword));

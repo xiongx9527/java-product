@@ -433,6 +433,7 @@ const fabStatus = computed(() => {
   const s = embeddingState.value
   if (s.running) return 'running'
   if (s.failed > 0 || s.interrupted) return 'warn'
+  if (s.pending) return 'pending'
   return 'idle'
 })
 const toggleRebuildPanel = () => {
@@ -498,6 +499,43 @@ const stopRebuild = () => {
     })
 }
 
+const cancelRebuild = () => {
+  embeddingStopping.value = true
+  modelApi
+    .embeddingCancel()
+    .then((res: any) => {
+      if (res && res.stopped && !res.canceled) {
+        ElMessage.info(t('modelCfg.rebuild_stopping_then_cancel'))
+      } else {
+        ElMessage.success(t('modelCfg.rebuild_canceled'))
+      }
+      loadEmbeddingStatus()
+    })
+    .catch(() => {})
+    .finally(() => {
+      embeddingStopping.value = false
+    })
+}
+
+const formatRebuildTime = (ms) => {
+  if (!ms) return ''
+  try {
+    return new Date(Number(ms)).toLocaleString()
+  } catch (e) {
+    return String(ms)
+  }
+}
+
+const formatRebuildDuration = (ms) => {
+  const v = Number(ms || 0)
+  if (v <= 0) return ''
+  const totalSec = Math.floor(v / 1000)
+  if (totalSec < 60) return totalSec + 's'
+  const m = Math.floor(totalSec / 60)
+  const s = totalSec % 60
+  return s > 0 ? m + 'm' + s + 's' : m + 'm'
+}
+
 const embeddingProgress = computed(() => {
   const total = embeddingState.value.total || 0
   const done = embeddingState.value.done || 0
@@ -545,6 +583,9 @@ const submit = (item: any) => {
                 <template v-else-if="embeddingState.interrupted">
                   <span class="warn">{{ t('modelCfg.rebuild_stopped') }}</span>
                 </template>
+                <template v-else-if="embeddingState.pending">
+                  <span class="warn">{{ t('modelCfg.rebuild_pending') }}</span>
+                </template>
                 <template v-else>{{ t('modelCfg.rebuild_idle') }}</template>
               </div>
               <el-progress
@@ -553,6 +594,17 @@ const submit = (item: any) => {
                 :stroke-width="6"
                 class="panel-progress"
               />
+              <div class="panel-meta" v-if="embeddingState.operator || embeddingState.started_at">
+                <div v-if="embeddingState.operator" class="meta-item">
+                  {{ t('modelCfg.rebuild_operator') }}: {{ embeddingState.operator }}
+                </div>
+                <div v-if="embeddingState.started_at" class="meta-item">
+                  {{ t('modelCfg.rebuild_op_time') }}: {{ formatRebuildTime(embeddingState.started_at) }}
+                </div>
+                <div v-if="embeddingState.duration_ms" class="meta-item">
+                  {{ t('modelCfg.rebuild_duration') }}: {{ formatRebuildDuration(embeddingState.duration_ms) }}
+                </div>
+              </div>
               <div class="panel-actions">
                 <el-button v-if="embeddingState.running" size="small" type="warning" :loading="embeddingStopping" @click="stopRebuild">
                   {{ t('modelCfg.rebuild_stop') }}
@@ -821,6 +873,29 @@ const submit = (item: any) => {
       margin-bottom: 20px;
     }
   }
+}
+.embedding-fab.pending {
+  background: #e6a23c;
+}
+.embedding-fab.pending .fab-dot {
+  background: #fff;
+  animation: fab-pulse 1.2s infinite;
+}
+.panel-status.pending .warn {
+  color: #e6a23c;
+}
+.panel-meta {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #ebeef5;
+  font-size: 12px;
+  color: #909399;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.panel-meta .meta-item {
+  line-height: 1.5;
 }
 </style>
 

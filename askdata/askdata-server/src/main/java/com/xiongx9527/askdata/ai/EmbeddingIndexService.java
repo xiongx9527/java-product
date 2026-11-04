@@ -5,6 +5,7 @@ import com.xiongx9527.askdata.chat.service.ChatModelRouter.ModelRef;
 import com.xiongx9527.askdata.common.lock.SingleWorkerGuard;
 import com.xiongx9527.askdata.common.startup.EmbeddingBackfillRunner;
 import com.xiongx9527.askdata.common.util.Rows;
+import com.xiongx9527.askdata.system.service.CurrentUserService;
 import com.xiongx9527.askdata.system.repository.AiEmbeddingIndexStateRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -76,6 +77,14 @@ public class EmbeddingIndexService implements ApplicationRunner {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setEmbeddingService(EmbeddingService embeddingService) {
         this.embeddingService = embeddingService;
+    }
+
+    /** Spring 装配：取当前登录用户以记录操作人（直接构造的单测可缺省）。 */
+    private CurrentUserService currentUserService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setCurrentUserService(CurrentUserService currentUserService) {
+        this.currentUserService = currentUserService;
     }
 
     public EmbeddingIndexService(JdbcTemplate jdbc, ChatModelRouter modelRouter,
@@ -156,6 +165,16 @@ public class EmbeddingIndexService implements ApplicationRunner {
             result.put("failed_scopes", Rows.get(state, "failed_scopes"));
             result.put("mode", Rows.get(state, "mode"));
             result.put("stop_requested", Rows.bool(state, "stop_requested", false));
+            result.put("operator", Rows.get(state, "operator"));
+            long startedAt = Rows.lng(state, "started_at", 0L);
+            long finishedAt = Rows.lng(state, "finished_at", 0L);
+            long durationMs = 0L;
+            if (startedAt > 0L) {
+                long end = "running".equals(status) ? System.currentTimeMillis()
+                        : (finishedAt > 0L ? finishedAt : System.currentTimeMillis());
+                durationMs = end - startedAt;
+            }
+            result.put("duration_ms", durationMs);
         }
         return result;
     }
@@ -243,9 +262,10 @@ public class EmbeddingIndexService implements ApplicationRunner {
         }
         final int total = (state == null ? scopes.size() : Rows.intg(state, "total", scopes.size()));
         final String resolvedMode = effectiveMode;
+        final String operator = currentOperator();
         stopped.set(false);
         try {
-            executor.submit(() -> runRebuild(modelRef, resolvedMode, scopes, startIndex, total));
+            executor.submit(() -> runRebuild(modelRef, resolvedMode, scopes, startIndex, total, operator));
         } catch (RuntimeException e) {
             running.set(false);
             throw e;
@@ -273,6 +293,27 @@ public class EmbeddingIndexService implements ApplicationRunner {
         return result;
     }
 
+    /**
+     * 取消未完成的重建记录：若正在重建先中断；随后以当前默认向量模型为基线置 idle，
+     * 释放「重建期间锁定默认向量模型」约束，使用户可继续设置/编辑默认向量模型。
+     */
+    public Map<String, Object> cancel() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (running.get()) {
+            stopped.set(true);
+            stateRepository.requestStop();
+            result.put("canceled", false);
+            result.put("stopped", true);
+            return result;
+        }
+        Optional<ModelRef> model = modelRouter.embeddingModel();
+        Long currentModelId = model.map(ref -> ref.id).orElse(null);
+        Integer currentDimension = model.map(ref -> ref.dimension).orElse(null);
+        stateRepository.markCanceled(currentModelId, currentDimension, currentOperator());
+        result.put("canceled", true);
+        return result;
+    }
+
     /** 崩溃恢复：孤儿 running 状态转为 interrupted。 */
     public void selfHealOnStartup() {
         try {
@@ -292,7 +333,7 @@ public class EmbeddingIndexService implements ApplicationRunner {
     }
 
     /** 重建主流程：逐工作空间执行四类重算，单空间失败不中断；支持停止与续做。 */
-    private void runRebuild(ModelRef model, String mode, List<Long> scopes, int startIndex, int total) {
+    private void runRebuild(ModelRef model, String mode, List<Long> scopes, int startIndex, int total, String operator) {
         if (!singleWorkerGuard.tryAcquire(SingleWorkerGuard.EMBEDDING_BACKFILL_KEY)) {
             log.info("向量重建未获得单 worker 守卫，跳过本次重建");
             running.set(false);
@@ -307,9 +348,9 @@ public class EmbeddingIndexService implements ApplicationRunner {
             }
         }
         if (MODE_FULL.equals(mode)) {
-            stateRepository.markRunning(model.id, model.dimension, total, MODE_FULL);
+            stateRepository.markRunning(model.id, model.dimension, total, MODE_FULL, operator);
         } else {
-            stateRepository.markRunningResuming(model.id, model.dimension, total, mode);
+            stateRepository.markRunningResuming(model.id, model.dimension, total, mode, operator);
         }
         int done = currentDone();
         // retry-failed 只重试失败空间：failed 重新计数，仅保留本次仍失败的空间；
@@ -360,6 +401,23 @@ public class EmbeddingIndexService implements ApplicationRunner {
 
     private int currentFailed() {
         return stateRepository.find().map(s -> Rows.intg(s, "failed", 0)).orElse(0);
+    }
+
+    /** 当前登录用户账号（记录操作人）；无上下文或取不到时返回 null。 */
+    private String currentOperator() {
+        if (currentUserService == null) {
+            return null;
+        }
+        try {
+            Map<String, Object> user = currentUserService.currentUser();
+            if (user == null) {
+                return null;
+            }
+            String account = Rows.str(user, "account");
+            return account != null && !account.isEmpty() ? account : Rows.str(user, "name");
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** resume：从 last 已完成空间之后续做（current_scope 为已完成的最大空间）。 */

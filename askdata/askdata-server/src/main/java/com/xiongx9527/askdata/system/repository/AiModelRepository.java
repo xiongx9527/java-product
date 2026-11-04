@@ -58,7 +58,8 @@ public class AiModelRepository {
             sql.append(" WHERE m.name LIKE ?");
             args.add("%" + UserRepository.escapeLike(keyword) + "%");
         }
-        sql.append(" ORDER BY m.default_model DESC, m.name, m.create_time");
+        // 先按模型类型分组（对话 0 → 向量 1 → 重排 2），同类型内默认模型优先，再按名称/创建时间稳定排序。
+        sql.append(" ORDER BY m.model_type ASC, m.default_model DESC, m.name, m.create_time");
         return jdbc.queryForList(sql.toString(), args.toArray());
     }
 

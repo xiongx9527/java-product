@@ -41,4 +41,5 @@ export const modelApi = {
   rebuildEmbedding: (mode?: string) =>
     request.post('/system/aimodel/embedding/rebuild', mode ? { mode } : {}),
   stopRebuild: () => request.post('/system/aimodel/embedding/rebuild/stop'),
+  embeddingCancel: () => request.post('/system/aimodel/embedding/rebuild/cancel'),
 }
