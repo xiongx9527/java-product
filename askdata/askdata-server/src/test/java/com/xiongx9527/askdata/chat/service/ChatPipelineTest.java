@@ -942,6 +942,47 @@ class ChatPipelineTest {
     }
 
     // ------------------------------------------------------------------
+    // A2：追问历史 = 上一轮 GENERATE_SQL 的完整 model messages（剔除 system）
+    // ------------------------------------------------------------------
+
+    @Test
+    void followUpQuestionReusesPreviousModelMessagesAsHistory() throws Exception {
+        long chatId = Rows.lng(chatService.start(Rows.of("datasource", dsId)), "id", 0L);
+        chatQuestionService.streamQuestion(
+                Rows.of("question", "第一问：每个状态的订单数", "chat_id", chatId), new MockHttpServletResponse());
+        chatQuestionService.streamQuestion(
+                Rows.of("question", "第二问：各状态金额", "chat_id", chatId), new MockHttpServletResponse());
+
+        List<String> sqlBodies = requestBodiesForPrompt("请只输出 SQL");
+        assertTrue(sqlBodies.size() >= 2, "应至少有两次 SQL 生成请求，实际 " + sqlBodies.size());
+        JsonNode messages = objectMapper.readTree(sqlBodies.get(sqlBodies.size() - 1)).get("messages");
+        assertNotNull(messages, "SQL 生成请求必须携带 messages");
+
+        int systemCount = 0;
+        boolean hasPreviousAssistant = false;
+        boolean hasPreviousQuestion = false;
+        for (JsonNode message : messages) {
+            String role = message.get("role").asText();
+            String content = message.get("content").asText();
+            if ("system".equals(role)) {
+                systemCount++;
+            }
+            if ("assistant".equals(role) && content.contains("\"sql\"")) {
+                hasPreviousAssistant = true;
+            }
+            if ("user".equals(role) && content.contains("第一问：每个状态的订单数")) {
+                hasPreviousQuestion = true;
+            }
+        }
+        assertEquals(1, systemCount, "历史轮次不得重复注入 system");
+        assertTrue(hasPreviousQuestion, "历史应包含上一轮 user 问题: " + messages);
+        assertTrue(hasPreviousAssistant, "历史应包含上一轮 assistant 的完整模型输出（含 sql）: " + messages);
+        JsonNode last = messages.get(messages.size() - 1);
+        assertEquals("user", last.get("role").asText());
+        assertTrue(last.get("content").asText().contains("第二问：各状态金额"), last.toString());
+    }
+
+    // ------------------------------------------------------------------
     // 重新生成（前端 views/chat/index.vue 的 askAgain：/regenerate <record_id>）
     // ------------------------------------------------------------------
 

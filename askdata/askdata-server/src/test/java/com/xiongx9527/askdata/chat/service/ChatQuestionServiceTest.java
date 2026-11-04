@@ -3,13 +3,17 @@ package com.xiongx9527.askdata.chat.service;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class ChatQuestionServiceTest {
 
@@ -73,5 +77,27 @@ class ChatQuestionServiceTest {
         List<String> tables = ChatQuestionService.usedTables(
                 "SELECT * FROM (SELECT id FROM secrets UNION ALL SELECT id FROM logs) t");
         assertEquals(new HashSet<>(Arrays.asList("secrets", "logs")), new HashSet<>(tables));
+    }
+
+    // ------------------------------------------------------------------
+    // A3：静态数据源白名单只放行「本轮 schema 实际召回」的表（retrieved-only）
+    // ------------------------------------------------------------------
+
+    @Test
+    void validateSqlRejectsCheckedButNotRecalledTable() {
+        SchemaContextBuilder schemaContextBuilder = mock(SchemaContextBuilder.class);
+        // orders 与 ghost 都是勾选表，但本轮仅 orders 进入 schema 提示词
+        when(schemaContextBuilder.selectedTableNames(99L, "订单状态", "订单状态"))
+                .thenReturn(Arrays.asList("orders"));
+        when(schemaContextBuilder.checkedTableColumns(99L))
+                .thenReturn(Collections.<String, java.util.Map<String, String>>emptyMap());
+        ChatQuestionService service = new ChatQuestionService(null, null, null, null, null,
+                schemaContextBuilder, null, null, null, null, null, null, null, null, null, null, null, null);
+
+        String error = service.validateSql("SELECT * FROM ghost", "mysql", 99L, null, "订单状态", "订单状态");
+        assertNotNull(error, "勾选但未进入本轮 schema 的表必须被拒绝");
+        assertTrue(error.contains("ghost"), error);
+        assertNull(service.validateSql("SELECT id FROM orders", "mysql", 99L, null, "订单状态", "订单状态"),
+                "进入本轮 schema 的表必须放行");
     }
 }

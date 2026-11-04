@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.permission;
 
+import com.xiongx9527.askdata.chat.service.ChatModelClient;
+import com.xiongx9527.askdata.chat.service.ChatModelRouter;
 import com.xiongx9527.askdata.common.util.Lists;
 import com.xiongx9527.askdata.common.util.Maps;
 import com.xiongx9527.askdata.common.util.Sets;
@@ -11,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -22,13 +25,19 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 /**
@@ -44,6 +53,14 @@ class PermissionEnforcerTest {
     @Mock
     private CurrentUserService currentUserService;
 
+    /** A4 行权限兜底：默认模型 + LLM 改写（确定性改写失败时使用）。 */
+    @Mock
+    private ChatModelClient chatModelClient;
+
+    @Mock
+    private ChatModelRouter modelRouter;
+
+    @Spy
     @InjectMocks
     private PermissionEnforcer enforcer;
 
@@ -214,6 +231,72 @@ class PermissionEnforcerTest {
         List<Map<String, Object>> rows = target.queryForList(rewritten);
         // 仅 east 行（id 1,3）存活：未过滤会是 4 行，过滤后 2 行，证明 UNION 分支未被绕过
         assertEquals(2, rows.size(), "row permission must filter UNION to east region only");
+    }
+
+    // ---- A4 LLM 兜底：确定性改写失败时改由 LLM 施加行权限，并复验 fail-closed ----
+
+    @Test
+    void llmFallbackAppliesRowFilterWhenDeterministicRewriteFails() {
+        Map<String, Object> user = Maps.of("id", 7L, "is_admin", false);
+        when(currentUserService.currentUser()).thenReturn(user);
+        when(currentUserService.isAdmin(user)).thenReturn(false);
+        when(permQuery.rowFilters(anyLong(), anyLong(), anyLong(), any()))
+                .thenReturn(Lists.of(Maps.of("table", "orders", "filter", "(region = 'east')")));
+        when(permQuery.hiddenColumns(anyLong(), anyLong(), anyLong(), anyString()))
+                .thenReturn(Collections.<String>emptySet());
+        // 模拟「JSQLParser 确定性改写失败」：兜底必须由 LLM 改写完成
+        doThrow(new IllegalStateException("deterministic rewrite failed"))
+                .when(enforcer).rewriteSqlWithRowFilters(any(net.sf.jsqlparser.statement.Statement.class), anyMap());
+        when(modelRouter.defaultChatModel()).thenReturn(Optional.of(modelRef()));
+        when(chatModelClient.generate(anyString(), anyString(), anyString(), any(), any(), anyInt()))
+                .thenReturn("SELECT id FROM (SELECT * FROM orders WHERE region = 'east') t");
+
+        PermissionEnforcer.EnforcedQuery enforced = enforcer.enforce(1L, 7L, 10L, "SELECT id FROM orders");
+
+        assertTrue(enforced.getSql().contains("region = 'east'"),
+                "LLM fallback must still apply the row filter: " + enforced.getSql());
+    }
+
+    @Test
+    void llmFallbackRejectedWhenRowFilterMissing() {
+        Map<String, Object> user = Maps.of("id", 7L, "is_admin", false);
+        when(currentUserService.currentUser()).thenReturn(user);
+        when(currentUserService.isAdmin(user)).thenReturn(false);
+        when(permQuery.rowFilters(anyLong(), anyLong(), anyLong(), any()))
+                .thenReturn(Lists.of(Maps.of("table", "orders", "filter", "(region = 'east')")));
+        when(permQuery.hiddenColumns(anyLong(), anyLong(), anyLong(), anyString()))
+                .thenReturn(Collections.<String>emptySet());
+        doThrow(new IllegalStateException("deterministic rewrite failed"))
+                .when(enforcer).rewriteSqlWithRowFilters(any(net.sf.jsqlparser.statement.Statement.class), anyMap());
+        when(modelRouter.defaultChatModel()).thenReturn(Optional.of(modelRef()));
+        // LLM 未注入行权限谓词：复验失败必须拒绝（fail-closed），不得放行未加固 SQL
+        when(chatModelClient.generate(anyString(), anyString(), anyString(), any(), any(), anyInt()))
+                .thenReturn("SELECT id FROM orders");
+
+        assertThrows(PermissionEnforcer.PermissionEnforceException.class,
+                () -> enforcer.enforce(1L, 7L, 10L, "SELECT id FROM orders"));
+    }
+
+    @Test
+    void llmFallbackRejectedWhenNoDefaultModel() {
+        Map<String, Object> user = Maps.of("id", 7L, "is_admin", false);
+        when(currentUserService.currentUser()).thenReturn(user);
+        when(currentUserService.isAdmin(user)).thenReturn(false);
+        when(permQuery.rowFilters(anyLong(), anyLong(), anyLong(), any()))
+                .thenReturn(Lists.of(Maps.of("table", "orders", "filter", "(region = 'east')")));
+        when(permQuery.hiddenColumns(anyLong(), anyLong(), anyLong(), anyString()))
+                .thenReturn(Collections.<String>emptySet());
+        doThrow(new IllegalStateException("deterministic rewrite failed"))
+                .when(enforcer).rewriteSqlWithRowFilters(any(net.sf.jsqlparser.statement.Statement.class), anyMap());
+        when(modelRouter.defaultChatModel()).thenReturn(Optional.<ChatModelRouter.ModelRef>empty());
+
+        assertThrows(PermissionEnforcer.PermissionEnforceException.class,
+                () -> enforcer.enforce(1L, 7L, 10L, "SELECT id FROM orders"));
+    }
+
+    private static ChatModelRouter.ModelRef modelRef() {
+        return new ChatModelRouter.ModelRef(1L, "stub", "stub-model", "https://api.example.com",
+                "stub-key", 0, 0, Collections.<String, Object>emptyMap(), null);
     }
 
     private static int countOccurrences(String haystack, String needle) {

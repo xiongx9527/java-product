@@ -22,7 +22,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.sql.Connection;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -87,6 +89,49 @@ class ChatRagTest {
         assertTrue(content.contains("\"tables\":"), content);
         assertFalse(content.contains("\nsuccess\":"), "字段名缺少前导引号: " + content);
         assertFalse(content.contains("\nsql\":"), "字段名缺少前导引号: " + content);
+    }
+
+    // ------------------------------------------------------------------
+    // A1：多轮 ack 消息序列（对齐 SQLBot init_messages）
+    // ------------------------------------------------------------------
+
+    @Test
+    void buildSqlMessagesFollowsSqlbotMultiRoundAckSequence() {
+        List<ChatModelClient.ModelMessage> messages = schemaContextBuilder.buildSqlMessages(
+                "每个状态的订单数", 1L, "", "", Collections.<String>emptyList(), null, "每个状态的订单数");
+        assertEquals(Arrays.asList("system", "user", "assistant", "user", "assistant", "user"), rolesOf(messages));
+        assertTrue(messages.get(0).content.contains("SQL"), "system 应为 SQL 系统提示词");
+        assertTrue(messages.get(2).content.contains("我已掌握所有规则"), messages.get(2).content);
+        assertTrue(messages.get(4).content.contains("我已确认您提供的数据库信息与表结构schema"), messages.get(4).content);
+        assertTrue(messages.get(5).content.contains("【用户问题】"), messages.get(5).content);
+    }
+
+    @Test
+    void buildSqlMessagesInsertsOptionalAcksAndHistoryBeforeQuestion() {
+        List<ChatModelClient.ModelMessage> history = Arrays.asList(
+                new ChatModelClient.ModelMessage("user", "上一问：每个状态的订单数"),
+                new ChatModelClient.ModelMessage("assistant", "{\"success\": true, \"sql\": \"SELECT 1\"}"));
+        List<ChatModelClient.ModelMessage> messages = schemaContextBuilder.buildSqlMessages(
+                "第二问：各状态金额", 1L, "订单金额指实付金额", "回答要简洁",
+                Arrays.asList("SELECT status, COUNT(*) FROM orders GROUP BY status"), history,
+                "第二问：各状态金额");
+        // system, rules/ack, schema/ack, custom/ack, terminology/ack, examples/ack, 历史轮次, question
+        assertEquals(Arrays.asList("system", "user", "assistant", "user", "assistant", "user", "assistant",
+                "user", "assistant", "user", "assistant", "user", "assistant", "user"), rolesOf(messages));
+        assertTrue(messages.get(6).content.contains("我已确认您提供的额外信息"), messages.get(6).content);
+        assertTrue(messages.get(8).content.contains("我已确认您提供的术语信息"), messages.get(8).content);
+        assertTrue(messages.get(10).content.contains("我已确认您提供的SQL示例"), messages.get(10).content);
+        assertEquals("上一问：每个状态的订单数", messages.get(11).content);
+        assertTrue(messages.get(12).content.contains("\"sql\""), messages.get(12).content);
+        assertTrue(messages.get(13).content.contains("第二问：各状态金额"), messages.get(13).content);
+    }
+
+    private static List<String> rolesOf(List<ChatModelClient.ModelMessage> messages) {
+        List<String> roles = new ArrayList<>();
+        for (ChatModelClient.ModelMessage message : messages) {
+            roles.add(message.role);
+        }
+        return roles;
     }
 
     private static String firstUserContaining(List<ChatModelClient.ModelMessage> msgs, String substr) {
