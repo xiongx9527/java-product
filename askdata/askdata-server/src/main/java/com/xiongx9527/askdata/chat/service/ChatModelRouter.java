@@ -170,8 +170,11 @@ public class ChatModelRouter {
     /**
      * 指定 id 的对话模型（对齐 SQLBot {@code custom_model}：可按次选择模型）。
      *
-     * <p>除类型/启用/校验三项外，还要求模型在当前工作空间可见（显式绑定或该类型默认模型）——
+     * <p>除类型/启用两项外，还要求模型在当前工作空间可见（显式绑定或该类型默认模型）——
      * SQLBot 只在 {@code ws} 的模型列表内生效，否则任意 id 都能跨空间取用。</p>
+     *
+     * <p>「已校验」不再单独判定：{@code ai_model.valid} 列已合并进 {@code enable}
+     * （见 V6__drop_ai_model_valid.sql），启用即代表通过过连通校验。</p>
      */
     public Optional<ModelRef> chatModelById(long id, long oid) {
         Optional<Map<String, Object>> row = aiModelRepository.findById(id);
@@ -180,8 +183,7 @@ public class ChatModelRouter {
         }
         Map<String, Object> model = row.get();
         if (Rows.intg(model, "model_type", CHAT_MODEL_TYPE) != CHAT_MODEL_TYPE
-                || !Rows.bool(model, "enable", false)
-                || !Rows.bool(model, "valid", false)) {
+                || !Rows.bool(model, "enable", false)) {
             return Optional.empty();
         }
         if (!aiModelRepository.isAvailableInWorkspace(id, oid)) {
@@ -213,10 +215,10 @@ public class ChatModelRouter {
         return Optional.ofNullable(model);
     }
 
-    /** 指定类型下首个「已启用 + 已校验」的模型；不存在返回 null。 */
+    /** 指定类型下首个已启用的模型；不存在返回 null。 */
     private Map<String, Object> firstAvailable(int modelType) {
         for (Map<String, Object> row : aiModelRepository.listByType(modelType)) {
-            if (Rows.bool(row, "enable", false) && Rows.bool(row, "valid", false)) {
+            if (Rows.bool(row, "enable", false)) {
                 return row;
             }
         }

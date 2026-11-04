@@ -3,6 +3,7 @@ package com.xiongx9527.askdata.system.controller;
 import com.xiongx9527.askdata.common.audit.AuditLog;
 import com.xiongx9527.askdata.common.audit.AuditModule;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
+import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.Result;
 import com.xiongx9527.askdata.system.service.AiModelService;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -54,9 +55,18 @@ public class AiModelController {
     /** 一键重新向量：全空间强制重算；任务进行中时返回 started=false（管理员）。 */
     @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.UPDATE)
     @PostMapping({"/system/aimodel/embedding/rebuild"})
-    public Result<Map<String, Object>> embeddingRebuild() {
+    public Result<Map<String, Object>> embeddingRebuild(@RequestBody(required = false) Map<String, Object> body) {
         currentUserService.requireAdmin();
-        return Result.ok(embeddingIndexService.rebuild());
+        String mode = body == null ? null : Rows.str(body, "mode");
+        return Result.ok(embeddingIndexService.rebuild(mode));
+    }
+
+    /** 停止正在进行的向量重建：置停止信号，当前工作空间完成后标记 interrupted（管理员）。 */
+    @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.UPDATE)
+    @PostMapping({"/system/aimodel/embedding/rebuild/stop"})
+    public Result<Map<String, Object>> embeddingRebuildStop() {
+        currentUserService.requireAdmin();
+        return Result.ok(embeddingIndexService.stop());
     }
 
     @GetMapping({"/system/aimodel"})

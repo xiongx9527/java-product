@@ -38,5 +38,7 @@ export const modelApi = {
   models: (data: any) => request.post('/system/aimodel/models', data),
   // 向量索引状态与一键重建
   embeddingStatus: () => request.get('/system/aimodel/embedding/status'),
-  rebuildEmbedding: () => request.post('/system/aimodel/embedding/rebuild'),
+  rebuildEmbedding: (mode?: string) =>
+    request.post('/system/aimodel/embedding/rebuild', mode ? { mode } : {}),
+  stopRebuild: () => request.post('/system/aimodel/embedding/rebuild/stop'),
 }

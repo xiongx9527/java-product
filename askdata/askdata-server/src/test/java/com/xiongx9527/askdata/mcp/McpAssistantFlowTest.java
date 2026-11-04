@@ -73,6 +73,10 @@ class McpAssistantFlowTest {
     static void mysqlDatasource(DynamicPropertyRegistry registry) {
         mysql = MysqlTestSupport.createEmptySchema();
         MysqlTestSupport.bindSpringDatasource(registry, mysql);
+        // 本用例只验证 MCP 链路，不验证向量检索：显式关闭在线向量存储，避免受本机
+        // Qdrant 里已有集合的维度影响（集合维度与桩模型维度不一致会让索引被判为待重建，
+        // 问答入口直接阻断，与用例目标无关）。关闭后召回走词法降级，链路其余部分不变。
+        registry.add("askdata.vector-store.qdrant.url", () -> "");
     }
     /** 被查询的目标 MySQL 库（首个用例创建后复用）。 */
     private static JdbcTemplate targetJdbc;

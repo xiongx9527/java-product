@@ -46,7 +46,7 @@ class MysqlMetadbDialectTest {
         assertEquals(12, count(jdbc, "sys_arg"));
         assertEquals(3, count(jdbc, "system_variable"));
         assertEquals(19, count(jdbc, "core_field"));
-        assertEquals(Lists.of("1", "2", "3", "4", "5"), versions(jdbc));
+        assertEquals(Lists.of("1", "2", "3", "4", "5", "6"), versions(jdbc));
     }
 
     @Test

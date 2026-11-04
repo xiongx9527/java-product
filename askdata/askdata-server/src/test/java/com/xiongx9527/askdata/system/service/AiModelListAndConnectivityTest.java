@@ -305,16 +305,16 @@ class AiModelListAndConnectivityTest {
     }
 
     // ------------------------------------------------------------------
-    // A7.2 / A7.3 valid 与维度回写
+    // A7.2 / A7.3 启用状态与维度回写（valid 已合并进 enable）
     // ------------------------------------------------------------------
 
     @Test
-    void embeddingCheckWritesDimensionAndValid() throws Exception {
+    void embeddingCheckWritesDimensionAndEnable() throws Exception {
         long id = insertModel(AiModelService.EMBEDDING_MODEL_TYPE, "bge-m3", false);
         String output = streamStatus(statusBody(AiModelService.EMBEDDING_MODEL_TYPE, "bge-m3", id));
 
         assertTrue(output.contains(String.valueOf(embeddingDimension)), output);
-        assertEquals(Boolean.TRUE, jdbc.queryForObject("SELECT valid FROM ai_model WHERE id = ?", Boolean.class, id));
+        assertEquals(Boolean.TRUE, jdbc.queryForObject("SELECT enable FROM ai_model WHERE id = ?", Boolean.class, id));
         assertEquals(embeddingDimension,
                 jdbc.queryForObject("SELECT dimension FROM ai_model WHERE id = ?", Integer.class, id));
     }
@@ -331,24 +331,24 @@ class AiModelListAndConnectivityTest {
         body.put("api_domain", "http://127.0.0.1:1");
         service.streamStatus(body, response);
 
-        assertEquals(Boolean.FALSE, jdbc.queryForObject("SELECT valid FROM ai_model WHERE id = ?", Boolean.class, id));
-        assertEquals(Boolean.FALSE, jdbc.queryForObject("SELECT enable FROM ai_model WHERE id = ?", Boolean.class, id));
+        assertEquals(Boolean.FALSE, jdbc.queryForObject("SELECT enable FROM ai_model WHERE id = ?", Boolean.class, id),
+                "校验失败必须回写 enable=0，界面不能显示一个连不上的可用模型");
     }
 
     @Test
     void checkWithoutIdDoesNotTouchAnyRow() throws Exception {
         long id = insertModel(AiModelService.CHAT_MODEL_TYPE, "gpt-4o", false);
         streamStatus(statusBody(AiModelService.CHAT_MODEL_TYPE, "gpt-4o", null));
-        assertEquals(Boolean.FALSE, jdbc.queryForObject("SELECT valid FROM ai_model WHERE id = ?", Boolean.class, id),
+        assertEquals(Boolean.FALSE, jdbc.queryForObject("SELECT enable FROM ai_model WHERE id = ?", Boolean.class, id),
                 "不带 id 的校验只返回结论，不落库");
     }
 
     // ------------------------------------------------------------------
-    // A7.4 保存不改写 valid
+    // A7.4 保存不改写启用状态
     // ------------------------------------------------------------------
 
     @Test
-    void updateKeepsStoredValid() {
+    void updateKeepsStoredEnable() {
         long id = insertModel(AiModelService.CHAT_MODEL_TYPE, "gpt-4o", true);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("name", "改名");
@@ -360,7 +360,7 @@ class AiModelListAndConnectivityTest {
         body.put("enable", true);
         body.put("id", id);
         service.update(body);
-        assertEquals(Boolean.TRUE, jdbc.queryForObject("SELECT valid FROM ai_model WHERE id = ?", Boolean.class, id));
+        assertEquals(Boolean.TRUE, jdbc.queryForObject("SELECT enable FROM ai_model WHERE id = ?", Boolean.class, id));
         assertEquals("改名", jdbc.queryForObject("SELECT name FROM ai_model WHERE id = ?", String.class, id));
     }
 }

@@ -48,19 +48,19 @@ class AiModelEmbeddingEndpointGuardTest {
         org.mockito.Mockito.doThrow(new ForbiddenException("forbidden"))
                 .when(currentUserService).requireAdmin();
 
-        assertThrows(ForbiddenException.class, controller::embeddingRebuild);
-        verify(embeddingIndexService, never()).rebuild();
+        assertThrows(ForbiddenException.class, () -> controller.embeddingRebuild(null));
+        verify(embeddingIndexService, never()).rebuild(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
     void adminCanReadStatusAndTriggerRebuild() {
         when(embeddingIndexService.status()).thenReturn(new LinkedHashMap<>());
-        when(embeddingIndexService.rebuild()).thenReturn(new LinkedHashMap<>());
+        when(embeddingIndexService.rebuild(org.mockito.ArgumentMatchers.any())).thenReturn(new LinkedHashMap<>());
 
         assertNotNull(controller.embeddingStatus());
-        assertNotNull(controller.embeddingRebuild());
+        assertNotNull(controller.embeddingRebuild(null));
         verify(embeddingIndexService).status();
-        verify(embeddingIndexService).rebuild();
+        verify(embeddingIndexService).rebuild(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -71,7 +71,7 @@ class AiModelEmbeddingEndpointGuardTest {
         assertEquals(AuditModule.AI_MODEL, statusLog.module());
         assertEquals(AuditOperationType.VIEW, statusLog.operation());
 
-        Method rebuild = AiModelController.class.getMethod("embeddingRebuild");
+        Method rebuild = AiModelController.class.getMethod("embeddingRebuild", java.util.Map.class);
         AuditLog rebuildLog = rebuild.getAnnotation(AuditLog.class);
         assertNotNull(rebuildLog, "触发向量重建需记录审计");
         assertEquals(AuditModule.AI_MODEL, rebuildLog.module());

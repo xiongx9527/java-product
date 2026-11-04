@@ -50,14 +50,23 @@ class DebounceRedisCrossInstanceTest {
 
     @BeforeAll
     static void requireRedis() {
-        LettuceConnectionFactory probe = connectionFactory();
+        // 建连本身也可能失败（例如 Redis 开了 requirepass 而没给密码时抛 NOAUTH），
+        // 因此 connectionFactory() 必须一起放进 try，否则整类报错而不是按约定跳过
+        String failure = null;
+        LettuceConnectionFactory probe = null;
         try {
+            probe = connectionFactory();
             probe.getConnection().ping();
         } catch (Exception e) {
-            Assumptions.assumeTrue(false, "Redis 不可达（" + host() + ":" + port() + "）：" + e.getMessage());
+            failure = e.getMessage();
         } finally {
-            probe.destroy();
+            if (probe != null) {
+                probe.destroy();
+            }
         }
+        Assumptions.assumeTrue(failure == null,
+                "Redis 不可达（" + host() + ":" + port() + "）：" + failure
+                        + "；用 -Daskdata.test.redis.password=... 或 ASKDATA_TEST_REDIS_PASSWORD 提供凭据");
     }
 
     @Test

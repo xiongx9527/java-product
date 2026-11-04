@@ -1019,7 +1019,13 @@
     "test_success": "连接成功",
     "validate_connection": "校验",
     "enable_on": "已启用",
-    "enable_off": "已停用"
+    "enable_off": "已停用",
+    "rebuild_stop": "停止",
+    "rebuild_stopped": "已停止",
+    "rebuild_resume": "继续重建",
+    "rebuild_retry_failed": "仅重试失败",
+    "rebuild_locked": "向量索引重建中，暂不可修改默认向量模型",
+    "rebuild_no_failed": "没有可重试的失败项"
   },
   "modelType": {
     "embedding": "向量模型",

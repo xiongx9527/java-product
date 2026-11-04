@@ -156,6 +156,11 @@ const handleDefaultModelChange = (item: any) => {
   if (current_default_node?.id === item.id) {
     return
   }
+  // 5.11 重建期间锁定：向量默认模型改动会令索引与模型语义错乱，重建未完成时禁止设置
+  if (Number(item.model_type) === 1 && rebuildActive.value) {
+    ElMessage.warning(t('modelCfg.rebuild_locked'))
+    return
+  }
   // 仅对 enable=1 的模型可设默认
   if (!item.enable) {
     ElMessage.warning(t('modelCfg.need_valid'))
@@ -198,6 +203,11 @@ const handleAddModel = () => {
   modelConfigvVisible.value = true
 }
 const handleEditModel = (row: any) => {
+  // 5.11 重建期间锁定：编辑「默认向量模型」会令索引与模型语义错乱，重建未完成时禁止
+  if (row.default_model && Number(row.model_type) === 1 && rebuildActive.value) {
+    ElMessage.warning(t('modelCfg.rebuild_locked'))
+    return
+  }
   activeStep.value = 1
   editModel.value = true
   activeType.value = row.supplier
@@ -217,6 +227,11 @@ const handleEditModel = (row: any) => {
 
 const handleDefault = (row: any) => {
   if (row.default_model) return
+  // 5.11 重建期间锁定：向量默认模型改动会令索引与模型语义错乱，重建未完成时禁止设置
+  if (Number(row.model_type) === 1 && rebuildActive.value) {
+    ElMessage.warning(t('modelCfg.rebuild_locked'))
+    return
+  }
   // 仅对 enable=1 的模型可设默认
   if (!row.enable) {
     ElMessage.warning(t('modelCfg.need_valid'))
@@ -409,7 +424,16 @@ const handleValidate = async (payload: any) => {
 // 13.5/13.6 向量索引待重建提示与一键重建
 const embeddingState = ref<any>({})
 const embeddingRebuilding = ref(false)
+const embeddingStopping = ref(false)
 let embeddingTimer: any = null
+
+// 重建进行中或待重建（含失败/中断）：用于锁定向量默认模型的设置与编辑
+const rebuildActive = computed(() => !!embeddingState.value.pending || !!embeddingState.value.running)
+// 存在失败空间清单：可「仅重试失败」
+const hasFailedScopes = computed(() => {
+  const s = embeddingState.value.failed_scopes
+  return !!s && String(s).trim().length > 0
+})
 
 const loadEmbeddingStatus = () => {
   modelApi
@@ -426,13 +450,15 @@ const loadEmbeddingStatus = () => {
     .catch(() => {})
 }
 
-const startRebuild = () => {
+const startRebuild = (mode?: string) => {
   embeddingRebuilding.value = true
   modelApi
-    .rebuildEmbedding()
+    .rebuildEmbedding(mode)
     .then((res: any) => {
       if (res && res.started === false) {
-        ElMessage.warning(t('modelCfg.fetch_failed'))
+        ElMessage.warning(
+          res.reason === 'no_failed' ? t('modelCfg.rebuild_no_failed') : t('modelCfg.fetch_failed')
+        )
         return
       }
       ElMessage.success(t('modelCfg.rebuild_running'))
@@ -441,6 +467,19 @@ const startRebuild = () => {
     .catch(() => {})
     .finally(() => {
       embeddingRebuilding.value = false
+    })
+}
+
+const stopRebuild = () => {
+  embeddingStopping.value = true
+  modelApi
+    .stopRebuild()
+    .then(() => {
+      ElMessage.success(t('modelCfg.rebuild_stopped'))
+    })
+    .catch(() => {})
+    .finally(() => {
+      embeddingStopping.value = false
     })
 }
 
@@ -469,7 +508,7 @@ const submit = (item: any) => {
 <template>
   <div class="model-config no-padding">
     <!-- 13.5/13.6 向量索引待重建提示条 + 一键重建 + 进度 -->
-    <div v-if="embeddingState.pending" class="embedding-banner">
+    <div v-if="embeddingState.pending || embeddingState.running" class="embedding-banner">
       <div class="banner-row">
         <span class="banner-title">{{ t('modelCfg.rebuild_title') }}</span>
         <span v-if="embeddingState.running" class="banner-status">
@@ -479,9 +518,39 @@ const submit = (item: any) => {
         <span v-else-if="embeddingState.failed > 0" class="banner-status failed">
           {{ t('modelCfg.rebuild_failed') }}
         </span>
-        <el-button size="small" type="primary" :loading="embeddingRebuilding" @click="startRebuild">
-          {{ t('modelCfg.rebuild_action') }}
-        </el-button>
+        <span v-else-if="embeddingState.interrupted" class="banner-status interrupted">
+          {{ t('modelCfg.rebuild_stopped') }}
+        </span>
+        <template v-if="embeddingState.running">
+          <el-button size="small" type="warning" :loading="embeddingStopping" @click="stopRebuild">
+            {{ t('modelCfg.rebuild_stop') }}
+          </el-button>
+        </template>
+        <template v-else>
+          <el-button size="small" type="primary" :loading="embeddingRebuilding" @click="startRebuild('full')">
+            {{ t('modelCfg.rebuild_action') }}
+          </el-button>
+          <el-button
+            v-if="embeddingState.interrupted || embeddingState.failed > 0"
+            size="small"
+            link
+            type="primary"
+            :loading="embeddingRebuilding"
+            @click="startRebuild('resume')"
+          >
+            {{ t('modelCfg.rebuild_resume') }}
+          </el-button>
+          <el-button
+            v-if="(embeddingState.failed > 0 || embeddingState.interrupted) && hasFailedScopes"
+            size="small"
+            link
+            type="primary"
+            :loading="embeddingRebuilding"
+            @click="startRebuild('retry-failed')"
+          >
+            {{ t('modelCfg.rebuild_retry_failed') }}
+          </el-button>
+        </template>
       </div>
       <el-progress
         v-if="embeddingState.running"
@@ -489,11 +558,6 @@ const submit = (item: any) => {
         :stroke-width="6"
         class="banner-progress"
       />
-      <div v-else-if="embeddingState.failed > 0" class="banner-retry">
-        <el-button size="small" link type="primary" :loading="embeddingRebuilding" @click="startRebuild">
-          {{ t('modelCfg.retry') }}
-        </el-button>
-      </div>
     </div>
     <div class="model-methods">
       <span class="title">{{ t('model.ai_model_configuration') }}</span>

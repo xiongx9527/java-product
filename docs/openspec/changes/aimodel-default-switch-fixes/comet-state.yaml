@@ -1,0 +1,2135 @@
+# comet-execution: managed-run
+change_id: f624392b-b716-4fd6-9887-b0f35b12cf72
+workflow: full
+language: zh-CN
+phase: build
+context_compression: off
+build_mode: direct
+build_pause: null
+subagent_dispatch: null
+tdd_mode: direct
+review_mode: standard
+isolation: current
+verify_mode: null
+auto_transition: true
+base_ref: 6356f453ecee5b9a2e0ffc61704a3f705ba7d777
+design_doc: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+plan: docs/superpowers/plans/2026-11-04-aimodel-default-switch-fixes.md
+verify_result: pending
+verify_failures: 0
+verification_report: null
+branch_status: pending
+created_at: 2026-11-03
+verified_at: null
+archive_confirmation: null
+archived: false
+bound_branch: dev
+direct_override: true
+handoff_context: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+handoff_hash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+classic_profile: null
+classic_migration: null
+run_checkpoint:
+  schema: comet.workflow-run-checkpoint.v1
+  hash: a045fedb5c63d49b3239383481d308097cf1aa87d2c550233b9f1365de95b25b
+  run:
+    protocolVersion: 1
+    schemaVersion: 1
+    runId: aimodel-default-switch-fixes
+    revision: 1
+    workflow:
+      id: comet-classic-full
+      version: "1"
+      hash: ee198afdb53add0c23f98202aae8cdbe4079b9f4ebf7a62ed4ab8411ed591db5
+    definitionHashes:
+      '["comet-classic-full","1"]': ee198afdb53add0c23f98202aae8cdbe4079b9f4ebf7a62ed4ab8411ed591db5
+    initialStateHash: af829cc22b46c9f1f850c65b40cc2901488815304d8b342b5e25750276dae7a3
+    input:
+      change: aimodel-default-switch-fixes
+      changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+      workspaceBaseline:
+        ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+    state:
+      archiveConfirmation: null
+      archived: false
+      autoTransition: true
+      baseRef: 6356f453ecee5b9a2e0ffc61704a3f705ba7d777
+      boundBranch: dev
+      branchStatus: pending
+      buildMode: direct
+      buildPause: null
+      checkEpoch: 2
+      classicMigration: null
+      classicProfile: null
+      contextCompression: off
+      createdAt: 2026-11-03
+      designDoc: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+      directOverride: true
+      handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+      handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+      isolation: current
+      language: zh-CN
+      phase: build
+      plan: docs/superpowers/plans/2026-11-04-aimodel-default-switch-fixes.md
+      reviewMode: standard
+      subagentDispatch: null
+      tddMode: direct
+      verificationReport: null
+      verifiedAt: null
+      verifyFailures: 0
+      verifyMode: null
+      verifyResult: pending
+      workflow: full
+    status: running
+    sequence: 13
+    actions:
+      - attempt: 1
+        claim:
+          executorId: comet-classic-guard
+          token: portable-0974097f06497a36e21451073ad79346146562123064c1c14599691774c63562
+        executionOrigin:
+          workflow:
+            hash: ee198afdb53add0c23f98202aae8cdbe4079b9f4ebf7a62ed4ab8411ed591db5
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-default-switch-fixes:1
+        input:
+          input:
+            change: aimodel-default-switch-fixes
+            changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+            workspaceBaseline:
+              ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+          outputs: {}
+        inputHash: f5d13b2c1b381bcc0a47df94bf3e117bfdb247a20159e46aff5e64a70261a8c0
+        outcome:
+          actionId: aimodel-default-switch-fixes:1
+          attempt: 1
+          claimToken: portable-0974097f06497a36e21451073ad79346146562123064c1c14599691774c63562
+          inputHash: f5d13b2c1b381bcc0a47df94bf3e117bfdb247a20159e46aff5e64a70261a8c0
+          outcomeId: 36979a11-a308-432a-83f2-7ccec05d33c6
+          output:
+            event: open-complete
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: 7f156f86ea0e6e947a09260d5bf7412532833b54a13c2de8a2425ce838bb6520
+            outcomeId: 36979a11-a308-432a-83f2-7ccec05d33c6
+        reconciliations: []
+        ref: comet-open
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-default-switch-fixes
+        status: succeeded
+        stepId: full.open
+        type: invoke_skill
+      - attempt: 1
+        claim:
+          executorId: comet-classic-open-revalidate
+          token: portable-43a23ae42ace1c494b28396898f6bd8fb9d725cb696b1928ea302916fdf33337
+        executionOrigin:
+          workflow:
+            hash: ee198afdb53add0c23f98202aae8cdbe4079b9f4ebf7a62ed4ab8411ed591db5
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-default-switch-fixes:4
+        input:
+          input:
+            change: aimodel-default-switch-fixes
+            changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+            workspaceBaseline:
+              ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+          outputs:
+            full.open:
+              event: open-complete
+            full.open.confirm:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.open:
+                    event: open-complete
+                  full.open.evidence:
+                    contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+                    ref: docs/openspec/changes/aimodel-default-switch-fixes
+            full.open.evidence:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+              ref: docs/openspec/changes/aimodel-default-switch-fixes
+        inputHash: 473baf82fe06ee036983d86367b83599daded425b49c9a115eeba17dd5db4a0a
+        outcome:
+          actionId: aimodel-default-switch-fixes:4
+          attempt: 1
+          claimToken: portable-43a23ae42ace1c494b28396898f6bd8fb9d725cb696b1928ea302916fdf33337
+          inputHash: 473baf82fe06ee036983d86367b83599daded425b49c9a115eeba17dd5db4a0a
+          outcomeId: aimodel-default-switch-fixes:4:1:executor-result
+          output:
+            contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: 7b30b81d66fb567004c1eaf076dbcb1a7493f477a812687627539489ca3b97f6
+            outcomeId: aimodel-default-switch-fixes:4:1:executor-result
+        reconciliations: []
+        ref: classic-open-revalidate
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-default-switch-fixes
+        status: succeeded
+        stepId: full.open.revalidate
+        type: call_tool
+      - attempt: 1
+        claim:
+          executorId: comet-classic-state
+          token: portable-c7ae44f8a6c34bb7c4059fcd0dce6a354ad29b6ceda25d61c33e3653426d221e
+        executionOrigin:
+          workflow:
+            hash: ee198afdb53add0c23f98202aae8cdbe4079b9f4ebf7a62ed4ab8411ed591db5
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-default-switch-fixes:5
+        input:
+          input:
+            change: aimodel-default-switch-fixes
+            changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+            workspaceBaseline:
+              ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+          outputs:
+            full.open:
+              event: open-complete
+            full.open.confirm:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.open:
+                    event: open-complete
+                  full.open.evidence:
+                    contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+                    ref: docs/openspec/changes/aimodel-default-switch-fixes
+            full.open.evidence:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+              ref: docs/openspec/changes/aimodel-default-switch-fixes
+            full.open.revalidate:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+        inputHash: 9478fae8ceaa87d21dbb0ae2da76d75fccec646b19e2911ae4d390b2a48f0c96
+        outcome:
+          actionId: aimodel-default-switch-fixes:5
+          attempt: 1
+          claimToken: portable-c7ae44f8a6c34bb7c4059fcd0dce6a354ad29b6ceda25d61c33e3653426d221e
+          inputHash: 9478fae8ceaa87d21dbb0ae2da76d75fccec646b19e2911ae4d390b2a48f0c96
+          outcomeId: aa3b7890-bf9d-4b74-8687-817e9ac99200
+          output:
+            handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+            handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+            proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+              EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+              维度冲突时硬拦截；D3
+              仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+              probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+              done/failed/total/current_scope)、停止(stop_requested
+              列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从 current_scope
+              断点续做)、仅重试失败(解析 failed_scopes 只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检
+              state.status=running 且无活线程→标 interrupted 并令 pending=true；Redis 旧锁
+              owner 主动释放)。新增 V7 迁移：ai_embedding_index_state 增加
+              failed_scopes/stop_requested/mode 列，status 值域加
+              interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+              setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化 stop_requested
+              而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制 full；崩溃恢复标 interrupted 而非
+              failed 以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+              interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+              ai-model-configuration / ai-model-connectivity delta specs（已
+              validate 通过）。
+            requirementsEvidence:
+              contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+              ref: docs/openspec/changes/aimodel-default-switch-fixes
+            sourceEvidence:
+              contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+              ref: docs/openspec/changes/aimodel-default-switch-fixes
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: 488c49455db599925c8749aa681cb3218111cf25bd79b73c7e4e65eafdfa5fb0
+            outcomeId: aa3b7890-bf9d-4b74-8687-817e9ac99200
+        reconciliations: []
+        ref: comet-design
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-default-switch-fixes
+        status: succeeded
+        stepId: full.design.handoff
+        type: invoke_skill
+      - attempt: 1
+        claim:
+          executorId: comet-classic-state
+          token: portable-44911a0c4903bab6d518b9ac22b0d8db3d6ebde8e0f91490bc4ff7166a6cbf14
+        executionOrigin:
+          workflow:
+            hash: ee198afdb53add0c23f98202aae8cdbe4079b9f4ebf7a62ed4ab8411ed591db5
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-default-switch-fixes:7
+        input:
+          input:
+            change: aimodel-default-switch-fixes
+            changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+            workspaceBaseline:
+              ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+          outputs:
+            full.design.confirm:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.design.handoff:
+                    handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+                    handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+                    proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                      EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                      维度冲突时硬拦截；D3
+                      仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                      probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                      done/failed/total/current_scope)、停止(stop_requested
+                      列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                      current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                      只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                      且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner
+                      主动释放)。新增 V7 迁移：ai_embedding_index_state 增加
+                      failed_scopes/stop_requested/mode 列，status 值域加
+                      interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                      setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化
+                      stop_requested 而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制
+                      full；崩溃恢复标 interrupted 而非 failed
+                      以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                      interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                      ai-model-configuration / ai-model-connectivity delta
+                      specs（已 validate 通过）。
+                    requirementsEvidence:
+                      contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+                    sourceEvidence:
+                      contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+            full.design.handoff:
+              handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+              handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+              proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                维度冲突时硬拦截；D3
+                仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                done/failed/total/current_scope)、停止(stop_requested
+                列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner 主动释放)。新增 V7
+                迁移：ai_embedding_index_state 增加 failed_scopes/stop_requested/mode
+                列，status 值域加 interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化 stop_requested
+                而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制 full；崩溃恢复标 interrupted 而非
+                failed 以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                ai-model-configuration / ai-model-connectivity delta specs（已
+                validate 通过）。
+              requirementsEvidence:
+                contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+              sourceEvidence:
+                contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+            full.open:
+              event: open-complete
+            full.open.confirm:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.open:
+                    event: open-complete
+                  full.open.evidence:
+                    contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+                    ref: docs/openspec/changes/aimodel-default-switch-fixes
+            full.open.evidence:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+              ref: docs/openspec/changes/aimodel-default-switch-fixes
+            full.open.revalidate:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+        inputHash: 6667719dbd425fa0e8239a6e0b53cbdf58be746db5409f522adf6041e3df7267
+        outcome:
+          actionId: aimodel-default-switch-fixes:7
+          attempt: 1
+          claimToken: portable-44911a0c4903bab6d518b9ac22b0d8db3d6ebde8e0f91490bc4ff7166a6cbf14
+          inputHash: 6667719dbd425fa0e8239a6e0b53cbdf58be746db5409f522adf6041e3df7267
+          outcomeId: c353c225-0d7e-442d-a800-2c8d100a6799
+          output:
+            designDoc: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: 8b8f3e484ce3843d61b434a5fd405756e0a3ecc50c16caaca222f7dc282d7f7f
+            outcomeId: c353c225-0d7e-442d-a800-2c8d100a6799
+        reconciliations: []
+        ref: comet-design
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-default-switch-fixes
+        status: succeeded
+        stepId: full.design.document
+        type: invoke_skill
+      - attempt: 1
+        claim:
+          executorId: comet-classic-state
+          token: portable-0939797e25714452ce15e65a21adab69dc8be90f69f1245d47f4df295ddea48e
+        executionOrigin:
+          workflow:
+            hash: ee198afdb53add0c23f98202aae8cdbe4079b9f4ebf7a62ed4ab8411ed591db5
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-default-switch-fixes:9
+        input:
+          input:
+            change: aimodel-default-switch-fixes
+            changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+            workspaceBaseline:
+              ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+          outputs:
+            full.design.confirm:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.design.handoff:
+                    handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+                    handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+                    proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                      EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                      维度冲突时硬拦截；D3
+                      仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                      probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                      done/failed/total/current_scope)、停止(stop_requested
+                      列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                      current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                      只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                      且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner
+                      主动释放)。新增 V7 迁移：ai_embedding_index_state 增加
+                      failed_scopes/stop_requested/mode 列，status 值域加
+                      interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                      setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化
+                      stop_requested 而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制
+                      full；崩溃恢复标 interrupted 而非 failed
+                      以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                      interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                      ai-model-configuration / ai-model-connectivity delta
+                      specs（已 validate 通过）。
+                    requirementsEvidence:
+                      contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+                    sourceEvidence:
+                      contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+            full.design.document:
+              designDoc: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+            full.design.evidence:
+              contentHash: f9314a150311ea433148a53f59c19672be574f5d07ff2250c4bc868c145a86d9
+              ref: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+            full.design.handoff:
+              handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+              handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+              proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                维度冲突时硬拦截；D3
+                仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                done/failed/total/current_scope)、停止(stop_requested
+                列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner 主动释放)。新增 V7
+                迁移：ai_embedding_index_state 增加 failed_scopes/stop_requested/mode
+                列，status 值域加 interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化 stop_requested
+                而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制 full；崩溃恢复标 interrupted 而非
+                failed 以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                ai-model-configuration / ai-model-connectivity delta specs（已
+                validate 通过）。
+              requirementsEvidence:
+                contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+              sourceEvidence:
+                contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+            full.open:
+              event: open-complete
+            full.open.confirm:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.open:
+                    event: open-complete
+                  full.open.evidence:
+                    contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+                    ref: docs/openspec/changes/aimodel-default-switch-fixes
+            full.open.evidence:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+              ref: docs/openspec/changes/aimodel-default-switch-fixes
+            full.open.revalidate:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+        inputHash: 088c4c63b9746e0c2f6425debd8dc12717fe4965022fcc3236ad1aff8bfdeb87
+        outcome:
+          actionId: aimodel-default-switch-fixes:9
+          attempt: 1
+          claimToken: portable-0939797e25714452ce15e65a21adab69dc8be90f69f1245d47f4df295ddea48e
+          inputHash: 088c4c63b9746e0c2f6425debd8dc12717fe4965022fcc3236ad1aff8bfdeb87
+          outcomeId: 52a132ee-d642-4a16-ba98-78485c526dbd
+          output:
+            boundBranch: dev
+            buildMode: direct
+            directOverride: true
+            isolation: current
+            reviewMode: standard
+            subagentDispatch: null
+            tddMode: direct
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: c226212f73d2c04759794f3656ab73392d2b5b8250b29e043d37f9883df8f44e
+            outcomeId: 52a132ee-d642-4a16-ba98-78485c526dbd
+        reconciliations: []
+        ref: comet-build
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-default-switch-fixes
+        status: succeeded
+        stepId: full.build.configure
+        type: invoke_skill
+      - attempt: 1
+        claim:
+          executorId: comet-classic-state
+          token: portable-0761271523eb0a12b985aea066b19c4c898711f3039a4f4a7c4a8093072bb83f
+        executionOrigin:
+          workflow:
+            hash: ee198afdb53add0c23f98202aae8cdbe4079b9f4ebf7a62ed4ab8411ed591db5
+            id: comet-classic-full
+            version: "1"
+        id: aimodel-default-switch-fixes:11
+        input:
+          input:
+            change: aimodel-default-switch-fixes
+            changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+            workspaceBaseline:
+              ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+          outputs:
+            full.build.configure:
+              boundBranch: dev
+              buildMode: direct
+              directOverride: true
+              isolation: current
+              reviewMode: standard
+              subagentDispatch: null
+              tddMode: direct
+            full.build.confirm:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.build.configure:
+                    boundBranch: dev
+                    buildMode: direct
+                    directOverride: true
+                    isolation: current
+                    reviewMode: standard
+                    subagentDispatch: null
+                    tddMode: direct
+            full.design.confirm:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.design.handoff:
+                    handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+                    handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+                    proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                      EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                      维度冲突时硬拦截；D3
+                      仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                      probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                      done/failed/total/current_scope)、停止(stop_requested
+                      列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                      current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                      只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                      且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner
+                      主动释放)。新增 V7 迁移：ai_embedding_index_state 增加
+                      failed_scopes/stop_requested/mode 列，status 值域加
+                      interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                      setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化
+                      stop_requested 而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制
+                      full；崩溃恢复标 interrupted 而非 failed
+                      以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                      interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                      ai-model-configuration / ai-model-connectivity delta
+                      specs（已 validate 通过）。
+                    requirementsEvidence:
+                      contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+                    sourceEvidence:
+                      contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+            full.design.document:
+              designDoc: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+            full.design.evidence:
+              contentHash: f9314a150311ea433148a53f59c19672be574f5d07ff2250c4bc868c145a86d9
+              ref: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+            full.design.handoff:
+              handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+              handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+              proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                维度冲突时硬拦截；D3
+                仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                done/failed/total/current_scope)、停止(stop_requested
+                列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner 主动释放)。新增 V7
+                迁移：ai_embedding_index_state 增加 failed_scopes/stop_requested/mode
+                列，status 值域加 interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化 stop_requested
+                而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制 full；崩溃恢复标 interrupted 而非
+                failed 以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                ai-model-configuration / ai-model-connectivity delta specs（已
+                validate 通过）。
+              requirementsEvidence:
+                contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+              sourceEvidence:
+                contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+            full.open:
+              event: open-complete
+            full.open.confirm:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.open:
+                    event: open-complete
+                  full.open.evidence:
+                    contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+                    ref: docs/openspec/changes/aimodel-default-switch-fixes
+            full.open.evidence:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+              ref: docs/openspec/changes/aimodel-default-switch-fixes
+            full.open.revalidate:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+        inputHash: 6b5cf1bb45e42e71db4a3cbe315e5b96ec4b1f228a61805c86045cde18b77e2f
+        outcome:
+          actionId: aimodel-default-switch-fixes:11
+          attempt: 1
+          claimToken: portable-0761271523eb0a12b985aea066b19c4c898711f3039a4f4a7c4a8093072bb83f
+          inputHash: 6b5cf1bb45e42e71db4a3cbe315e5b96ec4b1f228a61805c86045cde18b77e2f
+          outcomeId: 11a41231-3a15-4fe9-8100-89b46724d208
+          output:
+            designEvidence:
+              contentHash: f9314a150311ea433148a53f59c19672be574f5d07ff2250c4bc868c145a86d9
+              ref: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+            plan: docs/superpowers/plans/2026-11-04-aimodel-default-switch-fixes.md
+            planEvidence:
+              contentHash: 9681139833c115c4de82b08944071c77245ccd8cb4e9b1a45e7ae1f5a74886a2
+              ref: docs/superpowers/plans/2026-11-04-aimodel-default-switch-fixes.md
+            taskRevision: fbd9c64a62b4362c285601098d57e23daf4afcd3cf3fd672f65898f1b2fa6857
+          status: succeeded
+        protocolVersion: 1
+        receipts:
+          - hash: eec836ee60a15bf1409f538fbb229b0abad7541c777bb4c865b29829cf200cf0
+            outcomeId: 11a41231-3a15-4fe9-8100-89b46724d208
+        reconciliations: []
+        ref: comet-build
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-default-switch-fixes
+        status: succeeded
+        stepId: full.build.plan
+        type: invoke_skill
+      - attempt: 1
+        id: aimodel-default-switch-fixes:13
+        input:
+          input:
+            change: aimodel-default-switch-fixes
+            changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+            workspaceBaseline:
+              ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+          outputs:
+            full.build.configure:
+              boundBranch: dev
+              buildMode: direct
+              directOverride: true
+              isolation: current
+              reviewMode: standard
+              subagentDispatch: null
+              tddMode: direct
+            full.build.confirm:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.build.configure:
+                    boundBranch: dev
+                    buildMode: direct
+                    directOverride: true
+                    isolation: current
+                    reviewMode: standard
+                    subagentDispatch: null
+                    tddMode: direct
+            full.build.plan:
+              designEvidence:
+                contentHash: f9314a150311ea433148a53f59c19672be574f5d07ff2250c4bc868c145a86d9
+                ref: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+              plan: docs/superpowers/plans/2026-11-04-aimodel-default-switch-fixes.md
+              planEvidence:
+                contentHash: 9681139833c115c4de82b08944071c77245ccd8cb4e9b1a45e7ae1f5a74886a2
+                ref: docs/superpowers/plans/2026-11-04-aimodel-default-switch-fixes.md
+              taskRevision: fbd9c64a62b4362c285601098d57e23daf4afcd3cf3fd672f65898f1b2fa6857
+            full.build.plan.evidence:
+              contentHash: 9681139833c115c4de82b08944071c77245ccd8cb4e9b1a45e7ae1f5a74886a2
+              ref: docs/superpowers/plans/2026-11-04-aimodel-default-switch-fixes.md
+            full.design.confirm:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.design.handoff:
+                    handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+                    handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+                    proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                      EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                      维度冲突时硬拦截；D3
+                      仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                      probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                      done/failed/total/current_scope)、停止(stop_requested
+                      列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                      current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                      只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                      且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner
+                      主动释放)。新增 V7 迁移：ai_embedding_index_state 增加
+                      failed_scopes/stop_requested/mode 列，status 值域加
+                      interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                      setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化
+                      stop_requested 而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制
+                      full；崩溃恢复标 interrupted 而非 failed
+                      以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                      interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                      ai-model-configuration / ai-model-connectivity delta
+                      specs（已 validate 通过）。
+                    requirementsEvidence:
+                      contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+                    sourceEvidence:
+                      contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+            full.design.document:
+              designDoc: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+            full.design.evidence:
+              contentHash: f9314a150311ea433148a53f59c19672be574f5d07ff2250c4bc868c145a86d9
+              ref: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+            full.design.handoff:
+              handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+              handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+              proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                维度冲突时硬拦截；D3
+                仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                done/failed/total/current_scope)、停止(stop_requested
+                列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner 主动释放)。新增 V7
+                迁移：ai_embedding_index_state 增加 failed_scopes/stop_requested/mode
+                列，status 值域加 interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化 stop_requested
+                而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制 full；崩溃恢复标 interrupted 而非
+                failed 以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                ai-model-configuration / ai-model-connectivity delta specs（已
+                validate 通过）。
+              requirementsEvidence:
+                contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+              sourceEvidence:
+                contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+            full.open:
+              event: open-complete
+            full.open.confirm:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.open:
+                    event: open-complete
+                  full.open.evidence:
+                    contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+                    ref: docs/openspec/changes/aimodel-default-switch-fixes
+            full.open.evidence:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+              ref: docs/openspec/changes/aimodel-default-switch-fixes
+            full.open.revalidate:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+        inputHash: 92c272899eadbe0f71c12e4797d95ec5b5452cf91508aac6fd90d5ac06258e32
+        protocolVersion: 1
+        receipts: []
+        reconciliations: []
+        ref: comet-build
+        requiredCapabilities: []
+        retry: manual
+        runId: aimodel-default-switch-fixes
+        status: pending
+        stepId: full.build.execute
+        type: invoke_skill
+    actionContexts:
+      aimodel-default-switch-fixes:1:
+        results: {}
+        sequence: 1
+      aimodel-default-switch-fixes:11:
+        results:
+          full.build.configure:
+            sequence: 9
+            value:
+              boundBranch: dev
+              buildMode: direct
+              directOverride: true
+              isolation: current
+              reviewMode: standard
+              subagentDispatch: null
+              tddMode: direct
+          full.build.confirm:
+            sequence: 10
+            value:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.build.configure:
+                    boundBranch: dev
+                    buildMode: direct
+                    directOverride: true
+                    isolation: current
+                    reviewMode: standard
+                    subagentDispatch: null
+                    tddMode: direct
+          full.design.confirm:
+            sequence: 6
+            value:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.design.handoff:
+                    handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+                    handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+                    proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                      EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                      维度冲突时硬拦截；D3
+                      仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                      probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                      done/failed/total/current_scope)、停止(stop_requested
+                      列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                      current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                      只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                      且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner
+                      主动释放)。新增 V7 迁移：ai_embedding_index_state 增加
+                      failed_scopes/stop_requested/mode 列，status 值域加
+                      interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                      setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化
+                      stop_requested 而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制
+                      full；崩溃恢复标 interrupted 而非 failed
+                      以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                      interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                      ai-model-configuration / ai-model-connectivity delta
+                      specs（已 validate 通过）。
+                    requirementsEvidence:
+                      contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+                    sourceEvidence:
+                      contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.design.document:
+            sequence: 7
+            value:
+              designDoc: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+          full.design.evidence:
+            sequence: 8
+            value:
+              contentHash: f9314a150311ea433148a53f59c19672be574f5d07ff2250c4bc868c145a86d9
+              ref: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+          full.design.handoff:
+            sequence: 5
+            value:
+              handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+              handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+              proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                维度冲突时硬拦截；D3
+                仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                done/failed/total/current_scope)、停止(stop_requested
+                列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner 主动释放)。新增 V7
+                迁移：ai_embedding_index_state 增加 failed_scopes/stop_requested/mode
+                列，status 值域加 interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化 stop_requested
+                而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制 full；崩溃恢复标 interrupted 而非
+                failed 以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                ai-model-configuration / ai-model-connectivity delta specs（已
+                validate 通过）。
+              requirementsEvidence:
+                contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+              sourceEvidence:
+                contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open:
+            sequence: 1
+            value:
+              event: open-complete
+          full.open.confirm:
+            sequence: 3
+            value:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.open:
+                    event: open-complete
+                  full.open.evidence:
+                    contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+                    ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open.evidence:
+            sequence: 2
+            value:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+              ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open.revalidate:
+            sequence: 4
+            value:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+        sequence: 11
+      aimodel-default-switch-fixes:13:
+        results:
+          full.build.configure:
+            sequence: 9
+            value:
+              boundBranch: dev
+              buildMode: direct
+              directOverride: true
+              isolation: current
+              reviewMode: standard
+              subagentDispatch: null
+              tddMode: direct
+          full.build.confirm:
+            sequence: 10
+            value:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.build.configure:
+                    boundBranch: dev
+                    buildMode: direct
+                    directOverride: true
+                    isolation: current
+                    reviewMode: standard
+                    subagentDispatch: null
+                    tddMode: direct
+          full.build.plan:
+            sequence: 11
+            value:
+              designEvidence:
+                contentHash: f9314a150311ea433148a53f59c19672be574f5d07ff2250c4bc868c145a86d9
+                ref: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+              plan: docs/superpowers/plans/2026-11-04-aimodel-default-switch-fixes.md
+              planEvidence:
+                contentHash: 9681139833c115c4de82b08944071c77245ccd8cb4e9b1a45e7ae1f5a74886a2
+                ref: docs/superpowers/plans/2026-11-04-aimodel-default-switch-fixes.md
+              taskRevision: fbd9c64a62b4362c285601098d57e23daf4afcd3cf3fd672f65898f1b2fa6857
+          full.build.plan.evidence:
+            sequence: 12
+            value:
+              contentHash: 9681139833c115c4de82b08944071c77245ccd8cb4e9b1a45e7ae1f5a74886a2
+              ref: docs/superpowers/plans/2026-11-04-aimodel-default-switch-fixes.md
+          full.design.confirm:
+            sequence: 6
+            value:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.design.handoff:
+                    handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+                    handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+                    proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                      EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                      维度冲突时硬拦截；D3
+                      仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                      probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                      done/failed/total/current_scope)、停止(stop_requested
+                      列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                      current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                      只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                      且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner
+                      主动释放)。新增 V7 迁移：ai_embedding_index_state 增加
+                      failed_scopes/stop_requested/mode 列，status 值域加
+                      interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                      setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化
+                      stop_requested 而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制
+                      full；崩溃恢复标 interrupted 而非 failed
+                      以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                      interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                      ai-model-configuration / ai-model-connectivity delta
+                      specs（已 validate 通过）。
+                    requirementsEvidence:
+                      contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+                    sourceEvidence:
+                      contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.design.document:
+            sequence: 7
+            value:
+              designDoc: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+          full.design.evidence:
+            sequence: 8
+            value:
+              contentHash: f9314a150311ea433148a53f59c19672be574f5d07ff2250c4bc868c145a86d9
+              ref: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+          full.design.handoff:
+            sequence: 5
+            value:
+              handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+              handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+              proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                维度冲突时硬拦截；D3
+                仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                done/failed/total/current_scope)、停止(stop_requested
+                列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner 主动释放)。新增 V7
+                迁移：ai_embedding_index_state 增加 failed_scopes/stop_requested/mode
+                列，status 值域加 interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化 stop_requested
+                而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制 full；崩溃恢复标 interrupted 而非
+                failed 以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                ai-model-configuration / ai-model-connectivity delta specs（已
+                validate 通过）。
+              requirementsEvidence:
+                contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+              sourceEvidence:
+                contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open:
+            sequence: 1
+            value:
+              event: open-complete
+          full.open.confirm:
+            sequence: 3
+            value:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.open:
+                    event: open-complete
+                  full.open.evidence:
+                    contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+                    ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open.evidence:
+            sequence: 2
+            value:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+              ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open.revalidate:
+            sequence: 4
+            value:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+        sequence: 13
+      aimodel-default-switch-fixes:4:
+        results:
+          full.open:
+            sequence: 1
+            value:
+              event: open-complete
+          full.open.confirm:
+            sequence: 3
+            value:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.open:
+                    event: open-complete
+                  full.open.evidence:
+                    contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+                    ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open.evidence:
+            sequence: 2
+            value:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+              ref: docs/openspec/changes/aimodel-default-switch-fixes
+        sequence: 4
+      aimodel-default-switch-fixes:5:
+        results:
+          full.open:
+            sequence: 1
+            value:
+              event: open-complete
+          full.open.confirm:
+            sequence: 3
+            value:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.open:
+                    event: open-complete
+                  full.open.evidence:
+                    contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+                    ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open.evidence:
+            sequence: 2
+            value:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+              ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open.revalidate:
+            sequence: 4
+            value:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+        sequence: 5
+      aimodel-default-switch-fixes:7:
+        results:
+          full.design.confirm:
+            sequence: 6
+            value:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.design.handoff:
+                    handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+                    handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+                    proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                      EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                      维度冲突时硬拦截；D3
+                      仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                      probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                      done/failed/total/current_scope)、停止(stop_requested
+                      列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                      current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                      只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                      且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner
+                      主动释放)。新增 V7 迁移：ai_embedding_index_state 增加
+                      failed_scopes/stop_requested/mode 列，status 值域加
+                      interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                      setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化
+                      stop_requested 而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制
+                      full；崩溃恢复标 interrupted 而非 failed
+                      以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                      interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                      ai-model-configuration / ai-model-connectivity delta
+                      specs（已 validate 通过）。
+                    requirementsEvidence:
+                      contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+                    sourceEvidence:
+                      contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.design.handoff:
+            sequence: 5
+            value:
+              handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+              handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+              proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                维度冲突时硬拦截；D3
+                仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                done/failed/total/current_scope)、停止(stop_requested
+                列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner 主动释放)。新增 V7
+                迁移：ai_embedding_index_state 增加 failed_scopes/stop_requested/mode
+                列，status 值域加 interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化 stop_requested
+                而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制 full；崩溃恢复标 interrupted 而非
+                failed 以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                ai-model-configuration / ai-model-connectivity delta specs（已
+                validate 通过）。
+              requirementsEvidence:
+                contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+              sourceEvidence:
+                contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open:
+            sequence: 1
+            value:
+              event: open-complete
+          full.open.confirm:
+            sequence: 3
+            value:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.open:
+                    event: open-complete
+                  full.open.evidence:
+                    contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+                    ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open.evidence:
+            sequence: 2
+            value:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+              ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open.revalidate:
+            sequence: 4
+            value:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+        sequence: 7
+      aimodel-default-switch-fixes:9:
+        results:
+          full.design.confirm:
+            sequence: 6
+            value:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.design.handoff:
+                    handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+                    handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+                    proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                      EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                      维度冲突时硬拦截；D3
+                      仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                      probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                      done/failed/total/current_scope)、停止(stop_requested
+                      列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                      current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                      只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                      且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner
+                      主动释放)。新增 V7 迁移：ai_embedding_index_state 增加
+                      failed_scopes/stop_requested/mode 列，status 值域加
+                      interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                      setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化
+                      stop_requested 而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制
+                      full；崩溃恢复标 interrupted 而非 failed
+                      以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                      interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                      ai-model-configuration / ai-model-connectivity delta
+                      specs（已 validate 通过）。
+                    requirementsEvidence:
+                      contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+                    sourceEvidence:
+                      contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.design.document:
+            sequence: 7
+            value:
+              designDoc: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+          full.design.evidence:
+            sequence: 8
+            value:
+              contentHash: f9314a150311ea433148a53f59c19672be574f5d07ff2250c4bc868c145a86d9
+              ref: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+          full.design.handoff:
+            sequence: 5
+            value:
+              handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+              handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+              proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                维度冲突时硬拦截；D3
+                仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                done/failed/total/current_scope)、停止(stop_requested
+                列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner 主动释放)。新增 V7
+                迁移：ai_embedding_index_state 增加 failed_scopes/stop_requested/mode
+                列，status 值域加 interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化 stop_requested
+                而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制 full；崩溃恢复标 interrupted 而非
+                failed 以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                ai-model-configuration / ai-model-connectivity delta specs（已
+                validate 通过）。
+              requirementsEvidence:
+                contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+              sourceEvidence:
+                contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open:
+            sequence: 1
+            value:
+              event: open-complete
+          full.open.confirm:
+            sequence: 3
+            value:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.open:
+                    event: open-complete
+                  full.open.evidence:
+                    contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+                    ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open.evidence:
+            sequence: 2
+            value:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+              ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open.revalidate:
+            sequence: 4
+            value:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+        sequence: 9
+    waits:
+      - id: aimodel-default-switch-fixes:3
+        stepId: full.open.confirm
+        sequence: 3
+        status: resolved
+        proposal:
+          input:
+            change: aimodel-default-switch-fixes
+            changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+            workspaceBaseline:
+              ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+          outputs:
+            full.open:
+              event: open-complete
+            full.open.evidence:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+              ref: docs/openspec/changes/aimodel-default-switch-fixes
+        proposalHash: 0f2d7cf6c33bb4e69f86349825757a66299ffbf7e43d2a7e5eeeac6990e69be1
+        choices:
+          - approved
+          - rejected
+        results:
+          full.open:
+            sequence: 1
+            value:
+              event: open-complete
+          full.open.evidence:
+            sequence: 2
+            value:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+              ref: docs/openspec/changes/aimodel-default-switch-fixes
+        decision:
+          id: classic-open-0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+          choice: approved
+          proposalHash: 0f2d7cf6c33bb4e69f86349825757a66299ffbf7e43d2a7e5eeeac6990e69be1
+      - id: aimodel-default-switch-fixes:6
+        stepId: full.design.confirm
+        sequence: 6
+        status: resolved
+        proposal:
+          input:
+            change: aimodel-default-switch-fixes
+            changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+            workspaceBaseline:
+              ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+          outputs:
+            full.design.handoff:
+              handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+              handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+              proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                维度冲突时硬拦截；D3
+                仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                done/failed/total/current_scope)、停止(stop_requested
+                列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner 主动释放)。新增 V7
+                迁移：ai_embedding_index_state 增加 failed_scopes/stop_requested/mode
+                列，status 值域加 interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化 stop_requested
+                而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制 full；崩溃恢复标 interrupted 而非
+                failed 以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                ai-model-configuration / ai-model-connectivity delta specs（已
+                validate 通过）。
+              requirementsEvidence:
+                contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+              sourceEvidence:
+                contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+        proposalHash: ce9ae5ae35075968bb25493e06e7791f289332e2028ec07c45dc687b2285a104
+        choices:
+          - approved
+          - rejected
+        results:
+          full.design.handoff:
+            sequence: 5
+            value:
+              handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+              handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+              proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                维度冲突时硬拦截；D3
+                仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                done/failed/total/current_scope)、停止(stop_requested
+                列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner 主动释放)。新增 V7
+                迁移：ai_embedding_index_state 增加 failed_scopes/stop_requested/mode
+                列，status 值域加 interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化 stop_requested
+                而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制 full；崩溃恢复标 interrupted 而非
+                failed 以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                ai-model-configuration / ai-model-connectivity delta specs（已
+                validate 通过）。
+              requirementsEvidence:
+                contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+              sourceEvidence:
+                contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open:
+            sequence: 1
+            value:
+              event: open-complete
+          full.open.confirm:
+            sequence: 3
+            value:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.open:
+                    event: open-complete
+                  full.open.evidence:
+                    contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+                    ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open.evidence:
+            sequence: 2
+            value:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+              ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open.revalidate:
+            sequence: 4
+            value:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+        decision:
+          id: classic-design-ce9ae5ae35075968bb25493e06e7791f289332e2028ec07c45dc687b2285a104-approved
+          choice: approved
+          proposalHash: ce9ae5ae35075968bb25493e06e7791f289332e2028ec07c45dc687b2285a104
+      - id: aimodel-default-switch-fixes:10
+        stepId: full.build.confirm
+        sequence: 10
+        status: resolved
+        proposal:
+          input:
+            change: aimodel-default-switch-fixes
+            changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+            workspaceBaseline:
+              ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+          outputs:
+            full.build.configure:
+              boundBranch: dev
+              buildMode: direct
+              directOverride: true
+              isolation: current
+              reviewMode: standard
+              subagentDispatch: null
+              tddMode: direct
+        proposalHash: 8fdc9b0b28481660a92894d9276f96c2511f8779235f1d0485ee33d51f406393
+        choices:
+          - approved
+          - rejected
+        results:
+          full.build.configure:
+            sequence: 9
+            value:
+              boundBranch: dev
+              buildMode: direct
+              directOverride: true
+              isolation: current
+              reviewMode: standard
+              subagentDispatch: null
+              tddMode: direct
+          full.design.confirm:
+            sequence: 6
+            value:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.design.handoff:
+                    handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+                    handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+                    proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                      EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                      维度冲突时硬拦截；D3
+                      仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                      probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                      done/failed/total/current_scope)、停止(stop_requested
+                      列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                      current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                      只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                      且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner
+                      主动释放)。新增 V7 迁移：ai_embedding_index_state 增加
+                      failed_scopes/stop_requested/mode 列，status 值域加
+                      interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                      setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化
+                      stop_requested 而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制
+                      full；崩溃恢复标 interrupted 而非 failed
+                      以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                      interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                      ai-model-configuration / ai-model-connectivity delta
+                      specs（已 validate 通过）。
+                    requirementsEvidence:
+                      contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+                    sourceEvidence:
+                      contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.design.document:
+            sequence: 7
+            value:
+              designDoc: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+          full.design.evidence:
+            sequence: 8
+            value:
+              contentHash: f9314a150311ea433148a53f59c19672be574f5d07ff2250c4bc868c145a86d9
+              ref: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+          full.design.handoff:
+            sequence: 5
+            value:
+              handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+              handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+              proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                维度冲突时硬拦截；D3
+                仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                done/failed/total/current_scope)、停止(stop_requested
+                列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner 主动释放)。新增 V7
+                迁移：ai_embedding_index_state 增加 failed_scopes/stop_requested/mode
+                列，status 值域加 interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化 stop_requested
+                而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制 full；崩溃恢复标 interrupted 而非
+                failed 以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                ai-model-configuration / ai-model-connectivity delta specs（已
+                validate 通过）。
+              requirementsEvidence:
+                contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+              sourceEvidence:
+                contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open:
+            sequence: 1
+            value:
+              event: open-complete
+          full.open.confirm:
+            sequence: 3
+            value:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.open:
+                    event: open-complete
+                  full.open.evidence:
+                    contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+                    ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open.evidence:
+            sequence: 2
+            value:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+              ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open.revalidate:
+            sequence: 4
+            value:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+        decision:
+          id: 94e460b2-1da5-400b-9799-2abadaaf9ac3
+          choice: approved
+          proposalHash: 8fdc9b0b28481660a92894d9276f96c2511f8779235f1d0485ee33d51f406393
+    evidenceWaits:
+      - id: aimodel-default-switch-fixes:2
+        stepId: full.open.evidence
+        sequence: 2
+        kind: classic-open-artifacts
+        status: resolved
+        results:
+          full.open:
+            sequence: 1
+            value:
+              event: open-complete
+        receipt:
+          ref: docs/openspec/changes/aimodel-default-switch-fixes
+          contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+          submissionId: af60a620-daa3-4a65-9e67-b11048987a94
+      - id: aimodel-default-switch-fixes:8
+        stepId: full.design.evidence
+        sequence: 8
+        kind: classic-design-document
+        status: resolved
+        results:
+          full.design.confirm:
+            sequence: 6
+            value:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.design.handoff:
+                    handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+                    handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+                    proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                      EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                      维度冲突时硬拦截；D3
+                      仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                      probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                      done/failed/total/current_scope)、停止(stop_requested
+                      列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                      current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                      只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                      且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner
+                      主动释放)。新增 V7 迁移：ai_embedding_index_state 增加
+                      failed_scopes/stop_requested/mode 列，status 值域加
+                      interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                      setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化
+                      stop_requested 而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制
+                      full；崩溃恢复标 interrupted 而非 failed
+                      以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                      interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                      ai-model-configuration / ai-model-connectivity delta
+                      specs（已 validate 通过）。
+                    requirementsEvidence:
+                      contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+                    sourceEvidence:
+                      contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.design.document:
+            sequence: 7
+            value:
+              designDoc: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+          full.design.handoff:
+            sequence: 5
+            value:
+              handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+              handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+              proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                维度冲突时硬拦截；D3
+                仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                done/failed/total/current_scope)、停止(stop_requested
+                列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner 主动释放)。新增 V7
+                迁移：ai_embedding_index_state 增加 failed_scopes/stop_requested/mode
+                列，status 值域加 interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化 stop_requested
+                而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制 full；崩溃恢复标 interrupted 而非
+                failed 以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                ai-model-configuration / ai-model-connectivity delta specs（已
+                validate 通过）。
+              requirementsEvidence:
+                contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+              sourceEvidence:
+                contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open:
+            sequence: 1
+            value:
+              event: open-complete
+          full.open.confirm:
+            sequence: 3
+            value:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.open:
+                    event: open-complete
+                  full.open.evidence:
+                    contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+                    ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open.evidence:
+            sequence: 2
+            value:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+              ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open.revalidate:
+            sequence: 4
+            value:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+        receipt:
+          ref: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+          contentHash: f9314a150311ea433148a53f59c19672be574f5d07ff2250c4bc868c145a86d9
+          submissionId: c1014157-f1af-4d03-8ff2-7c27a269a41a
+      - id: aimodel-default-switch-fixes:12
+        stepId: full.build.plan.evidence
+        sequence: 12
+        kind: classic-build-plan
+        status: resolved
+        results:
+          full.build.configure:
+            sequence: 9
+            value:
+              boundBranch: dev
+              buildMode: direct
+              directOverride: true
+              isolation: current
+              reviewMode: standard
+              subagentDispatch: null
+              tddMode: direct
+          full.build.confirm:
+            sequence: 10
+            value:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.build.configure:
+                    boundBranch: dev
+                    buildMode: direct
+                    directOverride: true
+                    isolation: current
+                    reviewMode: standard
+                    subagentDispatch: null
+                    tddMode: direct
+          full.build.plan:
+            sequence: 11
+            value:
+              designEvidence:
+                contentHash: f9314a150311ea433148a53f59c19672be574f5d07ff2250c4bc868c145a86d9
+                ref: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+              plan: docs/superpowers/plans/2026-11-04-aimodel-default-switch-fixes.md
+              planEvidence:
+                contentHash: 9681139833c115c4de82b08944071c77245ccd8cb4e9b1a45e7ae1f5a74886a2
+                ref: docs/superpowers/plans/2026-11-04-aimodel-default-switch-fixes.md
+              taskRevision: fbd9c64a62b4362c285601098d57e23daf4afcd3cf3fd672f65898f1b2fa6857
+          full.design.confirm:
+            sequence: 6
+            value:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.design.handoff:
+                    handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+                    handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+                    proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                      EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                      维度冲突时硬拦截；D3
+                      仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                      probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                      done/failed/total/current_scope)、停止(stop_requested
+                      列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                      current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                      只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                      且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner
+                      主动释放)。新增 V7 迁移：ai_embedding_index_state 增加
+                      failed_scopes/stop_requested/mode 列，status 值域加
+                      interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                      setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化
+                      stop_requested 而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制
+                      full；崩溃恢复标 interrupted 而非 failed
+                      以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                      interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                      ai-model-configuration / ai-model-connectivity delta
+                      specs（已 validate 通过）。
+                    requirementsEvidence:
+                      contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+                    sourceEvidence:
+                      contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                      ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.design.document:
+            sequence: 7
+            value:
+              designDoc: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+          full.design.evidence:
+            sequence: 8
+            value:
+              contentHash: f9314a150311ea433148a53f59c19672be574f5d07ff2250c4bc868c145a86d9
+              ref: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+          full.design.handoff:
+            sequence: 5
+            value:
+              handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+              handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+              proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                维度冲突时硬拦截；D3
+                仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                done/failed/total/current_scope)、停止(stop_requested
+                列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner 主动释放)。新增 V7
+                迁移：ai_embedding_index_state 增加 failed_scopes/stop_requested/mode
+                列，status 值域加 interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化 stop_requested
+                而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制 full；崩溃恢复标 interrupted 而非
+                failed 以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+                interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                ai-model-configuration / ai-model-connectivity delta specs（已
+                validate 通过）。
+              requirementsEvidence:
+                contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+              sourceEvidence:
+                contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open:
+            sequence: 1
+            value:
+              event: open-complete
+          full.open.confirm:
+            sequence: 3
+            value:
+              choice: approved
+              proposal:
+                input:
+                  change: aimodel-default-switch-fixes
+                  changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+                  workspaceBaseline:
+                    ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+                outputs:
+                  full.open:
+                    event: open-complete
+                  full.open.evidence:
+                    contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+                    ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open.evidence:
+            sequence: 2
+            value:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+              ref: docs/openspec/changes/aimodel-default-switch-fixes
+          full.open.revalidate:
+            sequence: 4
+            value:
+              contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+        receipt:
+          ref: docs/superpowers/plans/2026-11-04-aimodel-default-switch-fixes.md
+          contentHash: 9681139833c115c4de82b08944071c77245ccd8cb4e9b1a45e7ae1f5a74886a2
+          submissionId: 09941087-df3b-4152-8d8e-a87ecd1eb986
+    ready: []
+    joins: {}
+    outputs:
+      full.build.configure:
+        sequence: 9
+        value:
+          boundBranch: dev
+          buildMode: direct
+          directOverride: true
+          isolation: current
+          reviewMode: standard
+          subagentDispatch: null
+          tddMode: direct
+      full.build.confirm:
+        sequence: 10
+        value:
+          choice: approved
+          proposal:
+            input:
+              change: aimodel-default-switch-fixes
+              changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+              workspaceBaseline:
+                ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+            outputs:
+              full.build.configure:
+                boundBranch: dev
+                buildMode: direct
+                directOverride: true
+                isolation: current
+                reviewMode: standard
+                subagentDispatch: null
+                tddMode: direct
+      full.build.plan:
+        sequence: 11
+        value:
+          designEvidence:
+            contentHash: f9314a150311ea433148a53f59c19672be574f5d07ff2250c4bc868c145a86d9
+            ref: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+          plan: docs/superpowers/plans/2026-11-04-aimodel-default-switch-fixes.md
+          planEvidence:
+            contentHash: 9681139833c115c4de82b08944071c77245ccd8cb4e9b1a45e7ae1f5a74886a2
+            ref: docs/superpowers/plans/2026-11-04-aimodel-default-switch-fixes.md
+          taskRevision: fbd9c64a62b4362c285601098d57e23daf4afcd3cf3fd672f65898f1b2fa6857
+      full.build.plan.evidence:
+        sequence: 12
+        value:
+          contentHash: 9681139833c115c4de82b08944071c77245ccd8cb4e9b1a45e7ae1f5a74886a2
+          ref: docs/superpowers/plans/2026-11-04-aimodel-default-switch-fixes.md
+      full.design.confirm:
+        sequence: 6
+        value:
+          choice: approved
+          proposal:
+            input:
+              change: aimodel-default-switch-fixes
+              changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+              workspaceBaseline:
+                ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+            outputs:
+              full.design.handoff:
+                handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+                handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+                proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+                  EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+                  维度冲突时硬拦截；D3
+                  仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+                  probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+                  done/failed/total/current_scope)、停止(stop_requested
+                  列+内存标志，循环每空间前检查置 interrupted)、重新开始(full 清集合/resume 从
+                  current_scope 断点续做)、仅重试失败(解析 failed_scopes
+                  只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检 state.status=running
+                  且无活线程→标 interrupted 并令 pending=true；Redis 旧锁 owner 主动释放)。新增 V7
+                  迁移：ai_embedding_index_state 增加
+                  failed_scopes/stop_requested/mode 列，status 值域加
+                  interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+                  setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化 stop_requested
+                  而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制 full；崩溃恢复标 interrupted
+                  而非 failed 以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending
+                  须把 interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+                  ai-model-configuration / ai-model-connectivity delta specs（已
+                  validate 通过）。
+                requirementsEvidence:
+                  contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+                  ref: docs/openspec/changes/aimodel-default-switch-fixes
+                sourceEvidence:
+                  contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+                  ref: docs/openspec/changes/aimodel-default-switch-fixes
+      full.design.document:
+        sequence: 7
+        value:
+          designDoc: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+      full.design.evidence:
+        sequence: 8
+        value:
+          contentHash: f9314a150311ea433148a53f59c19672be574f5d07ff2250c4bc868c145a86d9
+          ref: docs/openspec/changes/aimodel-default-switch-fixes/design.md
+      full.design.handoff:
+        sequence: 5
+        value:
+          handoffContext: docs/openspec/changes/aimodel-default-switch-fixes/.comet/handoff/design-context.json
+          handoffHash: b72fb94b856b46c798aabddc39ceeb0e6904f0ec00717a82d6c32f15f1e29f4e
+          proposal: 默认模型切换健壮性修复 + 向量重建可控性增强。技术方案：D1 update 入口补 clearDefaults 保证默认唯一；D2 复用
+            EmbeddingService.storeDimensionConflict，setDefault/update(向量默认)
+            维度冲突时硬拦截；D3
+            仅当连线字段(api_domain/api_key/base_model/protocol/supplier/upstream_format)变化才重探；D4
+            probeModel 比对返回向量长度与 dimension；D5 向量重建可控性：进度(status 已含
+            done/failed/total/current_scope)、停止(stop_requested 列+内存标志，循环每空间前检查置
+            interrupted)、重新开始(full 清集合/resume 从 current_scope 断点续做)、仅重试失败(解析
+            failed_scopes 只重算失败空间)、崩溃恢复(ApplicationRunner 启动自检
+            state.status=running 且无活线程→标 interrupted 并令 pending=true；Redis 旧锁
+            owner 主动释放)。新增 V7 迁移：ai_embedding_index_state 增加
+            failed_scopes/stop_requested/mode 列，status 值域加
+            interrupted。重建期间锁定：isRebuildActive() 时前端禁用、后端
+            setDefault(向量)/update(默认向量) 返回 4xx 拒绝。取舍：停止用持久化 stop_requested
+            而非纯内存，保证重启后状态一致；resume 仅在维度未变时允许，维度变强制 full；崩溃恢复标 interrupted 而非
+            failed 以保留断点。风险：维度变化全量重建耗时较长；Redis 锁 TTL 须小于单次重建耗时；pending 须把
+            interrupted 视同 failed，否则问答静默返回缺数据。Spec Patch 即本 change 的
+            ai-model-configuration / ai-model-connectivity delta specs（已
+            validate 通过）。
+          requirementsEvidence:
+            contentHash: dd3059bd1d4f2567464f3067640d69b3fb47f073c53561ca0e5c1ddf199386cb
+            ref: docs/openspec/changes/aimodel-default-switch-fixes
+          sourceEvidence:
+            contentHash: cc5e311a525207c2a8d5be7df9962a5fc83e3ed46831b08ddd40ff58ff10de4c
+            ref: docs/openspec/changes/aimodel-default-switch-fixes
+      full.open:
+        sequence: 1
+        value:
+          event: open-complete
+      full.open.confirm:
+        sequence: 3
+        value:
+          choice: approved
+          proposal:
+            input:
+              change: aimodel-default-switch-fixes
+              changeDir: docs/openspec/changes/aimodel-default-switch-fixes
+              workspaceBaseline:
+                ref: c5d0c741-4058-4aca-991c-f7bd01e4953e
+            outputs:
+              full.open:
+                event: open-complete
+              full.open.evidence:
+                contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+                ref: docs/openspec/changes/aimodel-default-switch-fixes
+      full.open.evidence:
+        sequence: 2
+        value:
+          contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+          ref: docs/openspec/changes/aimodel-default-switch-fixes
+      full.open.revalidate:
+        sequence: 4
+        value:
+          contentHash: 0c3efbfb8bd091b54fd7758d396c62923e1a780d84ddad8d2648f60455267222
+    children: []
+    lineage: []
+  sourceRevision: 19
+  sourceHash: e8ea45226e484fe7b91bfdec4c31e6e1d611f3ace4b9169aa3b3cb393f00c1fd
+check_epoch: 2

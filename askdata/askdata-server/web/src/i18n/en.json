@@ -1019,7 +1019,13 @@
     "test_success": "Connection succeeded",
     "validate_connection": "Validate Connection",
     "enable_on": "Enabled",
-    "enable_off": "Disabled"
+    "enable_off": "Disabled",
+    "rebuild_stop": "Stop",
+    "rebuild_stopped": "Stopped",
+    "rebuild_resume": "Resume rebuild",
+    "rebuild_retry_failed": "Retry failed only",
+    "rebuild_locked": "Vector index is being rebuilt; the default embedding model cannot be modified right now",
+    "rebuild_no_failed": "No failed items to retry"
   },
   "modelType": {
     "embedding": "Embedding model",

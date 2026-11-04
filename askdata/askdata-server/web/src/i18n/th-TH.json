@@ -1019,7 +1019,13 @@
     "test_success": "เชื่อมต่อสำเร็จ",
     "validate_connection": "ตรวจสอบการเชื่อมต่อ",
     "enable_on": "เปิดใช้งานแล้ว",
-    "enable_off": "ปิดใช้งานแล้ว"
+    "enable_off": "ปิดใช้งานแล้ว",
+    "rebuild_stop": "หยุด",
+    "rebuild_stopped": "หยุดแล้ว",
+    "rebuild_resume": "สร้างใหม่ต่อ",
+    "rebuild_retry_failed": "ลองใหม่เฉพาะที่ล้มเหลว",
+    "rebuild_locked": "กำลังสร้างดัชนีเวกเตอร์ใหม่ ยังไม่สามารถแก้ไขโมเดลเวกเตอร์เริ่มต้นได้",
+    "rebuild_no_failed": "ไม่มีรายการที่ล้มเหลวให้ลองใหม่"
   },
   "modelType": {
     "embedding": "โมเดลเวกเตอร์",
