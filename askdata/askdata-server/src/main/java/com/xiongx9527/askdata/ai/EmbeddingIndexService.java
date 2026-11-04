@@ -6,6 +6,8 @@ import com.xiongx9527.askdata.common.startup.EmbeddingBackfillRunner;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import com.xiongx9527.askdata.system.repository.AiEmbeddingIndexStateRepository;
+import com.xiongx9527.askdata.system.repository.WorkspaceRepository;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -52,6 +54,8 @@ public class EmbeddingIndexService implements ApplicationRunner {
     private final EmbeddingBackfillRunner backfillRunner;
 
     private final AiEmbeddingIndexStateRepository stateRepository;
+    private final WorkspaceRepository workspaceRepository;
+    private final MessageResolver messageResolver;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "embedding-index-rebuild");
@@ -94,11 +98,15 @@ public class EmbeddingIndexService implements ApplicationRunner {
 
     public EmbeddingIndexService(JdbcTemplate jdbc, ChatModelRouter modelRouter,
                                  EmbeddingBackfillRunner backfillRunner,
-                                 AiEmbeddingIndexStateRepository stateRepository) {
+                                 AiEmbeddingIndexStateRepository stateRepository,
+                                 WorkspaceRepository workspaceRepository,
+                                 MessageResolver messageResolver) {
         this.jdbc = jdbc;
         this.modelRouter = modelRouter;
         this.backfillRunner = backfillRunner;
         this.stateRepository = stateRepository;
+        this.workspaceRepository = workspaceRepository;
+        this.messageResolver = messageResolver;
     }
 
     /**
@@ -163,6 +171,23 @@ public class EmbeddingIndexService implements ApplicationRunner {
             result.put("done", Rows.intg(state, "done", 0));
             result.put("failed", Rows.intg(state, "failed", 0));
             result.put("current_scope", Rows.get(state, "current_scope"));
+            // 解析「当前工作空间」名称：库里存的是 id；sys_workspace.name 可能是字面量，
+            // 也可能是 i18n_ 前缀的国际化 key（如 i18n_default_workspace），需经 MessageResolver 还原为本地化名称
+            Object scopeObj = Rows.get(state, "current_scope");
+            String scopeName = null;
+            if (scopeObj != null) {
+                try {
+                    long scopeId = Long.parseLong(String.valueOf(scopeObj).trim());
+                    String rawName = workspaceRepository.findById(scopeId)
+                            .map(w -> w.get("name") == null ? null : String.valueOf(w.get("name")))
+                            .orElse(null);
+                    if (rawName != null) {
+                        scopeName = rawName.startsWith("i18n_") ? messageResolver.get(rawName) : rawName;
+                    }
+                } catch (NumberFormatException ignore) {
+                }
+            }
+            result.put("current_scope_name", scopeName);
             result.put("started_at", Rows.get(state, "started_at"));
             result.put("finished_at", Rows.get(state, "finished_at"));
             result.put("message", Rows.get(state, "message"));

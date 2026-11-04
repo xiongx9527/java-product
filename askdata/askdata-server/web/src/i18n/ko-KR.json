@@ -1035,7 +1035,8 @@
     "rebuild_retry_failed": "실패 항목만 재시도",
     "rebuild_locked": "벡터 인덱스를 재구성하는 중이라 기본 임베딩 모델을 수정할 수 없습니다",
     "rebuild_no_failed": "재시도할 실패 항목이 없습니다",
-    "rebuild_start_failed": "재구성을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요"
+    "rebuild_start_failed": "재구성을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요",
+    "rebuild_current_ws": "현재 작업 공간"
   },
   "modelType": {
     "embedding": "임베딩 모델",

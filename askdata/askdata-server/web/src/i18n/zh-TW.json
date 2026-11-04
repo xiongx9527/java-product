@@ -1035,7 +1035,8 @@
     "rebuild_retry_failed": "僅重試失敗",
     "rebuild_locked": "向量索引重建中，暫不可修改預設向量模型",
     "rebuild_no_failed": "沒有可重試的失敗項",
-    "rebuild_start_failed": "重建啟動失敗，請稍後重試"
+    "rebuild_start_failed": "重建啟動失敗，請稍後重試",
+  "rebuild_current_ws": "當前工作空間"
   },
   "modelType": {
     "embedding": "向量模型",

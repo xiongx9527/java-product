@@ -7,8 +7,10 @@ import com.xiongx9527.askdata.chat.service.ChatModelRouter;
 import com.xiongx9527.askdata.common.startup.EmbeddingBackfillRunner;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.support.MetadbMigration;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.system.repository.AiEmbeddingIndexStateRepository;
 import com.xiongx9527.askdata.system.repository.AiModelRepository;
+import com.xiongx9527.askdata.system.repository.WorkspaceRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -58,7 +60,8 @@ class EmbeddingIndexServiceTest {
         ChatModelRouter router = new ChatModelRouter(modelRepository, objectMapper);
         runner = mock(EmbeddingBackfillRunner.class);
         service = new EmbeddingIndexService(jdbc, router, runner,
-                new AiEmbeddingIndexStateRepository(jdbc));
+                new AiEmbeddingIndexStateRepository(jdbc),
+                mock(WorkspaceRepository.class), mock(MessageResolver.class));
     }
 
     private void waitUntilRunning() throws Exception {

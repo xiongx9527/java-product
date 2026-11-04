@@ -1035,7 +1035,8 @@
     "rebuild_retry_failed": "Retry failed only",
     "rebuild_locked": "Vector index is being rebuilt; the default embedding model cannot be modified right now",
     "rebuild_no_failed": "No failed items to retry",
-    "rebuild_start_failed": "Failed to start rebuild, please try again later"
+    "rebuild_start_failed": "Failed to start rebuild, please try again later",
+    "rebuild_current_ws": "Current workspace"
   },
   "modelType": {
     "embedding": "Embedding model",
