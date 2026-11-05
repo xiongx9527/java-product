@@ -14,7 +14,7 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
-import com.xiongx9527.askdata.system.sso.SamlSignatureVerifier;
+import com.xiongx9527.fw.plus.auth.social.SamlSignatureVerifier;
 
 /**
  * SAML2 认证源客户端。

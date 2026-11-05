@@ -1,6 +1,7 @@
 package com.xiongx9527.askdata.system.sso;
 
 import com.xiongx9527.askdata.system.service.UserService;
+import com.xiongx9527.fw.plus.auth.social.SocialLoginProviderRegistry;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -9,8 +10,8 @@ import org.springframework.context.annotation.Configuration;
 public class SsoConfig {
 
     @Bean
-    public ExternalIdpService externalIdpService() {
-        return new ExternalIdpService();
+    public ExternalIdpService externalIdpService(SocialLoginProviderRegistry registry) {
+        return new ExternalIdpService(registry);
     }
 
     @Bean

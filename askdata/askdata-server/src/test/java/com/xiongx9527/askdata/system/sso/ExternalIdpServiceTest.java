@@ -1,11 +1,23 @@
 package com.xiongx9527.askdata.system.sso;
 
 import com.xiongx9527.askdata.common.util.Maps;
-
 import com.xiongx9527.askdata.system.service.UserService;
-
+import com.xiongx9527.fw.plus.auth.social.SocialLoginProviderRegistry;
+import com.xiongx9527.fw.plus.auth.social.enterprise.DingTalkSocialLoginProvider;
+import com.xiongx9527.fw.plus.auth.social.enterprise.FeishuSocialLoginProvider;
+import com.xiongx9527.fw.plus.auth.social.enterprise.LarkSocialLoginProvider;
+import com.xiongx9527.fw.plus.auth.social.enterprise.LdapSocialLoginProvider;
+import com.xiongx9527.fw.plus.auth.social.enterprise.WechatWorkSocialLoginProvider;
+import com.xiongx9527.fw.plus.auth.social.general.CasSocialLoginProvider;
+import com.xiongx9527.fw.plus.auth.social.general.OidcSocialLoginProvider;
+import com.xiongx9527.fw.plus.auth.social.general.Saml2SocialLoginProvider;
+import com.xiongx9527.fw.plus.auth.social.personal.WechatScanSocialLoginProvider;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -21,10 +33,27 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * 验收 A7：外部 IdP（OIDC/CAS/SAML2/企业微信/钉钉/飞书/Lark）可完成授权登录解析并自动开通本地账号。
- * 采用 mock IdP（StubHttp）+ 真实 RS256/XMLDSig 签名验证协议流程，无需真实 IdP。
+ * 验收 A7：外部 IdP（OIDC/CAS/SAML2/企业微信/钉钉/飞书/Lark）经框架 fw-plus-auth-social 完成授权登录解析并自动开通本地账号。
+ * 框架 provider 走真实 HTTP（SocialHttpUtils），故 resolveIdentity 用例用内嵌 HttpServer 提供 token/jwks/断言等固定响应；
+ * OIDC/SAML2 同时验证签名校验（RS256/JWKS、XML DSig）。
  */
 class ExternalIdpServiceTest {
+
+    private static SocialLoginProviderRegistry registry() {
+        SocialLoginProviderRegistry r = new SocialLoginProviderRegistry();
+        r.register(new OidcSocialLoginProvider());
+        r.register(new CasSocialLoginProvider());
+        r.register(new Saml2SocialLoginProvider());
+        r.register(new WechatWorkSocialLoginProvider());
+        r.register(new DingTalkSocialLoginProvider());
+        r.register(new FeishuSocialLoginProvider());
+        r.register(new LarkSocialLoginProvider());
+        r.register(new LdapSocialLoginProvider());
+        r.register(new WechatScanSocialLoginProvider());
+        return r;
+    }
+
+    private final ExternalIdpService service = new ExternalIdpService(registry());
 
     private static ExternalIdpConfig cfg() {
         ExternalIdpConfig c = new ExternalIdpConfig();
@@ -37,35 +66,44 @@ class ExternalIdpServiceTest {
         return c;
     }
 
-    /** 按 URL 子串返回固定响应的 mock IdP HTTP 客户端。 */
-    static class StubHttp implements IdpHttpClient {
-        private final Map<String, String> responses;
-
-        StubHttp(Map<String, String> responses) {
-            this.responses = responses;
+    private static HttpServer startServer(Map<String, String> routes) throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        for (Map.Entry<String, String> e : routes.entrySet()) {
+            final String body = e.getValue();
+            server.createContext(e.getKey(), exchange -> {
+                byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, bytes.length);
+                exchange.getResponseBody().write(bytes);
+                exchange.getResponseBody().close();
+            });
         }
+        server.start();
+        return server;
+    }
 
-        private Response match(String url) {
-            for (Map.Entry<String, String> e : responses.entrySet()) {
-                if (url != null && url.contains(e.getKey())) {
-                    return new Response(200, e.getValue());
-                }
-            }
-            return new Response(404, "");
-        }
-
-        @Override
-        public Response get(String url, Map<String, String> headers) {
-            return match(url);
-        }
-
-        @Override
-        public Response postForm(String url, Map<String, String> form, Map<String, String> headers) {
-            return match(url);
+    private static String json(Object obj) {
+        try {
+            return new ObjectMapper().writeValueAsString(obj);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
         }
     }
 
-    private final ExternalIdpService service = new ExternalIdpService();
+    @Test
+    void authorizationUrlContainsClientAndState() {
+        String url = service.authorizationUrl(IdpType.OIDC, cfg(), "st123");
+        assertNotNull(url);
+        assertTrue(url.contains("client_id=cid"), url);
+        assertTrue(url.contains("state=st123"), url);
+        assertTrue(url.contains("nonce=st123"), url);
+    }
+
+    @Test
+    void samlAuthorizationUrlCarriesAuthnRequest() {
+        String url = service.authorizationUrl(IdpType.SAML2, cfg(), "st123");
+        assertTrue(url.contains("SAMLRequest="), url);
+        assertTrue(url.contains("RelayState=st123"), url);
+    }
 
     @Test
     void oidcVerifiesSignedIdTokenAndResolvesIdentity() throws Exception {
@@ -80,21 +118,27 @@ class ExternalIdpServiceTest {
         claims.put("nonce", "st-1");
         String idToken = IdpTestCrypto.idToken(pair.getPrivate(), "k1", claims);
 
-        ExternalIdpConfig oidc = cfg();
-        oidc.setExtra(Maps.of("jwks-url", "https://idp/jwks", "issuer", "https://idp"));
-        StubHttp http = new StubHttp(Maps.of(
-                "jwks", IdpTestCrypto.jwks(pair, "k1"),
-                "token", "{\"access_token\":\"at\",\"id_token\":\"" + idToken + "\"}",
-                "userinfo", "{\"email\":\"a@b.com\",\"name\":\"Alice\"}"));
+        Map<String, String> routes = new LinkedHashMap<String, String>();
+        routes.put("/token", json(Maps.of("access_token", "at", "id_token", idToken)));
+        routes.put("/jwks", IdpTestCrypto.jwks(pair, "k1"));
+        HttpServer server = startServer(routes);
+        try {
+            String base = "http://localhost:" + server.getAddress().getPort();
+            ExternalIdpConfig oidc = cfg();
+            oidc.setTokenUrl(base + "/token");
+            oidc.setExtra(Maps.of("jwks-url", base + "/jwks", "issuer", "https://idp"));
 
-        IdpCallback callback = new IdpCallback();
-        callback.setCode("c");
-        callback.setState("st-1");
-        ExternalIdentity idp = service.resolveIdentity(IdpType.OIDC, oidc, callback, http);
-        assertEquals("sub-123", idp.getAccount());
-        assertEquals("Alice", idp.getName());
-        assertEquals("a@b.com", idp.getEmail());
-        assertEquals("sub-123", idp.getExternalId());
+            IdpCallback callback = new IdpCallback();
+            callback.setCode("c");
+            callback.setState("st-1");
+            ExternalIdentity idp = service.resolveIdentity(IdpType.OIDC, oidc, callback, IdpHttpClient.defaultClient());
+            assertEquals("oidc:sub-123", idp.getAccount());
+            assertEquals("Alice", idp.getName());
+            assertEquals("a@b.com", idp.getEmail());
+            assertEquals("sub-123", idp.getExternalId());
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test
@@ -105,18 +149,27 @@ class ExternalIdpServiceTest {
         claims.put("aud", "cid");
         claims.put("sub", "sub-123");
         claims.put("exp", System.currentTimeMillis() / 1000L + 300L);
-        String idToken = IdpTestCrypto.idToken(signer.getPrivate(), "k1", claims);
+        // id_token 用 other 私钥签名，而 jwks 只提供 signer 的公钥 -> 验签必失败
+        String idToken = IdpTestCrypto.idToken(other.getPrivate(), "k1", claims);
 
-        ExternalIdpConfig oidc = cfg();
-        oidc.setExtra(Maps.of("jwks-url", "https://idp/jwks"));
-        StubHttp http = new StubHttp(Maps.of(
-                "jwks", IdpTestCrypto.jwks(other, "k1"),
-                "token", "{\"access_token\":\"at\",\"id_token\":\"" + idToken + "\"}"));
-        IdpCallback callback = new IdpCallback();
-        callback.setCode("c");
-        IllegalStateException error = assertThrows(IllegalStateException.class,
-                () -> service.resolveIdentity(IdpType.OIDC, oidc, callback, http));
-        assertTrue(error.getMessage().contains("signature"), error.getMessage());
+        Map<String, String> routes = new LinkedHashMap<String, String>();
+        routes.put("/token", json(Maps.of("access_token", "at", "id_token", idToken)));
+        routes.put("/jwks", IdpTestCrypto.jwks(signer, "k1"));
+        HttpServer server = startServer(routes);
+        try {
+            String base = "http://localhost:" + server.getAddress().getPort();
+            ExternalIdpConfig oidc = cfg();
+            oidc.setTokenUrl(base + "/token");
+            oidc.setExtra(Maps.of("jwks-url", base + "/jwks"));
+
+            IdpCallback callback = new IdpCallback();
+            callback.setCode("c");
+            IllegalStateException error = assertThrows(IllegalStateException.class,
+                    () -> service.resolveIdentity(IdpType.OIDC, oidc, callback, IdpHttpClient.defaultClient()));
+            assertTrue(error.getMessage().contains("signature"), error.getMessage());
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test
@@ -127,42 +180,23 @@ class ExternalIdpServiceTest {
         claims.put("sub", "sub-123");
         claims.put("exp", System.currentTimeMillis() / 1000L + 300L);
         String idToken = IdpTestCrypto.idToken(pair.getPrivate(), "k1", claims);
-        StubHttp http = new StubHttp(Maps.of(
-                "token", "{\"access_token\":\"at\",\"id_token\":\"" + idToken + "\"}"));
-        IdpCallback callback = new IdpCallback();
-        callback.setCode("c");
-        // 未配置 jwks-url / id-token-cert：拒绝而不是静默接受
-        IllegalStateException error = assertThrows(IllegalStateException.class,
-                () -> service.resolveIdentity(IdpType.OIDC, cfg(), callback, http));
-        assertTrue(error.getMessage().contains("jwks-url"), error.getMessage());
-    }
 
-    @Test
-    void wechatWorkResolvesIdentity() {
-        ExternalIdpConfig wc = cfg();
-        wc.setTokenUrl("https://idp/gettoken");
-        StubHttp http = new StubHttp(Maps.of(
-                "gettoken", "{\"access_token\":\"at\"}",
-                "userinfo", "{\"userid\":\"U1\",\"name\":\"Bob\",\"email\":\"b@c.com\"}"));
-        ExternalIdentity idp = service.resolveIdentity(IdpType.WECHAT_WORK, wc,
-                IdpCallback.fromQuery(Maps.of("code", "c")), http);
-        assertEquals("wechat:U1", idp.getAccount());
-        assertEquals("Bob", idp.getName());
-    }
+        Map<String, String> routes = new LinkedHashMap<String, String>();
+        routes.put("/token", json(Maps.of("access_token", "at", "id_token", idToken)));
+        HttpServer server = startServer(routes);
+        try {
+            String base = "http://localhost:" + server.getAddress().getPort();
+            ExternalIdpConfig oidc = cfg();
+            oidc.setTokenUrl(base + "/token");
 
-    @Test
-    void casResolvesIdentityFromXml() {
-        String xml = "<cas:serviceResponse xmlns:cas='http://www.yale.edu/tp/cas'>"
-                + "<cas:authenticationSuccess><cas:user>casuser</cas:user>"
-                + "<cas:attributes><cas:attribute name='email'>cas@e.com</cas:attribute>"
-                + "</cas:attributes></cas:authenticationSuccess></cas:serviceResponse>";
-        ExternalIdpConfig cas = cfg();
-        cas.setTokenUrl("https://idp/serviceValidate");
-        StubHttp http = new StubHttp(Maps.of("serviceValidate", xml));
-        ExternalIdentity idp = service.resolveIdentity(IdpType.CAS, cas,
-                IdpCallback.fromQuery(Maps.of("ticket", "t")), http);
-        assertEquals("cas:casuser", idp.getAccount());
-        assertEquals("cas@e.com", idp.getEmail());
+            IdpCallback callback = new IdpCallback();
+            callback.setCode("c");
+            IllegalStateException error = assertThrows(IllegalStateException.class,
+                    () -> service.resolveIdentity(IdpType.OIDC, oidc, callback, IdpHttpClient.defaultClient()));
+            assertTrue(error.getMessage().contains("jwks-url"), error.getMessage());
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test
@@ -175,20 +209,21 @@ class ExternalIdpServiceTest {
         IdpCallback cb = new IdpCallback();
         cb.setSamlResponse(IdpTestCrypto.base64(xml));
 
-        ExternalIdentity idp = service.resolveIdentity(IdpType.SAML2, saml, cb, new StubHttp(Maps.of()));
+        ExternalIdentity idp = service.resolveIdentity(IdpType.SAML2, saml, cb, IdpHttpClient.defaultClient());
         assertEquals("saml:uidval", idp.getAccount());
         assertEquals("e@f.com", idp.getEmail());
     }
 
     @Test
-    void saml2RejectsUnsignedAssertion() {
+    void saml2RejectsUnsignedAssertion() throws Exception {
+        KeyPair pair = IdpTestCrypto.rsaKeyPair();
         ExternalIdpConfig saml = cfg();
-        saml.setExtra(Maps.of("saml-cert", "AAAA"));
+        saml.setExtra(Maps.of("saml-cert", IdpTestCrypto.publicKeyBase64(pair)));
         IdpCallback cb = new IdpCallback();
         cb.setSamlResponse(IdpTestCrypto.base64(IdpTestCrypto.unsignedSamlResponse("uidval", "e@f.com")));
 
         IllegalStateException error = assertThrows(IllegalStateException.class,
-                () -> service.resolveIdentity(IdpType.SAML2, saml, cb, new StubHttp(Maps.of())));
+                () -> service.resolveIdentity(IdpType.SAML2, saml, cb, IdpHttpClient.defaultClient()));
         assertTrue(error.getMessage().contains("not signed"), error.getMessage());
     }
 
@@ -197,7 +232,7 @@ class ExternalIdpServiceTest {
         IdpCallback cb = new IdpCallback();
         cb.setSamlResponse(IdpTestCrypto.base64(IdpTestCrypto.unsignedSamlResponse("uidval", "e@f.com")));
         IllegalStateException error = assertThrows(IllegalStateException.class,
-                () -> service.resolveIdentity(IdpType.SAML2, cfg(), cb, new StubHttp(Maps.of())));
+                () -> service.resolveIdentity(IdpType.SAML2, cfg(), cb, IdpHttpClient.defaultClient()));
         assertTrue(error.getMessage().contains("certificate is not configured"), error.getMessage());
     }
 
@@ -212,8 +247,52 @@ class ExternalIdpServiceTest {
         IdpCallback cb = new IdpCallback();
         cb.setSamlResponse(IdpTestCrypto.base64(tampered));
         IllegalStateException error = assertThrows(IllegalStateException.class,
-                () -> service.resolveIdentity(IdpType.SAML2, saml, cb, new StubHttp(Maps.of())));
+                () -> service.resolveIdentity(IdpType.SAML2, saml, cb, IdpHttpClient.defaultClient()));
         assertTrue(error.getMessage().contains("signature"), error.getMessage());
+    }
+
+    @Test
+    void wechatWorkResolvesIdentity() throws Exception {
+        Map<String, String> routes = new LinkedHashMap<String, String>();
+        routes.put("/cgi-bin/gettoken", json(Maps.of("errcode", 0, "errmsg", "ok", "access_token", "at")));
+        routes.put("/cgi-bin/user/getuserinfo", json(Maps.of("userid", "U1")));
+        routes.put("/cgi-bin/user/get", json(Maps.of("name", "Bob", "email", "b@c.com")));
+        HttpServer server = startServer(routes);
+        try {
+            String base = "http://localhost:" + server.getAddress().getPort();
+            ExternalIdpConfig wc = cfg();
+            wc.setClientId("corp");
+            wc.setClientSecret("sec");
+            wc.setExtra(Maps.of("api_base", base));
+            ExternalIdentity idp = service.resolveIdentity(IdpType.WECHAT_WORK, wc,
+                    IdpCallback.fromQuery(Maps.of("code", "c")), IdpHttpClient.defaultClient());
+            assertEquals("wechat:U1", idp.getAccount());
+            assertEquals("Bob", idp.getName());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void casResolvesIdentityFromXml() throws Exception {
+        String xml = "<cas:serviceResponse xmlns:cas='http://www.yale.edu/tp/cas'>"
+                + "<cas:authenticationSuccess><cas:user>casuser</cas:user>"
+                + "<cas:attributes><cas:attribute name='email'>cas@e.com</cas:attribute>"
+                + "</cas:attributes></cas:authenticationSuccess></cas:serviceResponse>";
+        Map<String, String> routes = new LinkedHashMap<String, String>();
+        routes.put("/serviceValidate", xml);
+        HttpServer server = startServer(routes);
+        try {
+            String base = "http://localhost:" + server.getAddress().getPort();
+            ExternalIdpConfig cas = cfg();
+            cas.setTokenUrl(base + "/serviceValidate");
+            ExternalIdentity idp = service.resolveIdentity(IdpType.CAS, cas,
+                    IdpCallback.fromQuery(Maps.of("ticket", "t")), IdpHttpClient.defaultClient());
+            assertEquals("cas:casuser", idp.getAccount());
+            assertEquals("cas@e.com", idp.getEmail());
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test
@@ -230,24 +309,6 @@ class ExternalIdpServiceTest {
     @Test
     void unsupportedTypeRejected() {
         assertThrows(IllegalArgumentException.class,
-                () -> service.resolveIdentity(null, cfg(), new IdpCallback(), new StubHttp(Maps.of())));
-    }
-
-    @Test
-    void authorizationUrlContainsClientAndState() {
-        String url = service.authorizationUrl(IdpType.OIDC, cfg(), "st123");
-        assertNotNull(url);
-        assertTrue(url.contains("client_id=cid"));
-        assertTrue(url.contains("state=st123"));
-        // nonce 与 state 绑定，供 id_token 校验使用
-        assertTrue(url.contains("nonce=st123"), url);
-    }
-
-    @Test
-    void samlAuthorizationUrlCarriesAuthnRequest() {
-        String url = service.authorizationUrl(IdpType.SAML2, cfg(), "st123");
-        assertTrue(url.contains("SAMLRequest="), url);
-        assertTrue(url.contains("RelayState=st123"), url);
+                () -> service.resolveIdentity(null, cfg(), new IdpCallback(), IdpHttpClient.defaultClient()));
     }
 }
-

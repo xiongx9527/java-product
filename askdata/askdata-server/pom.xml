@@ -74,6 +74,13 @@
             <groupId>com.xiongx9527.fw.plus</groupId>
             <artifactId>fw-plus-auth-satoken</artifactId>
         </dependency>
+        <!-- 社交/企业登录：委托框架 fw-plus-auth-social（纯库，零 Spring 依赖）；
+             Redis token 缓存与 Spring 装配由 product 侧实现。BOM 未纳管，需显式版本。 -->
+        <dependency>
+            <groupId>com.xiongx9527.fw.plus</groupId>
+            <artifactId>fw-plus-auth-social</artifactId>
+            <version>${revision}</version>
+        </dependency>
         <!-- Sa-Token：Spring Boot 2.7 / javax 线必须用 SB2 变体。
              boot3 变体会传递引入 sa-token-jakarta-servlet 与 jakarta.servlet-api 6.0.0
              （major 55，JDK 8 加载即抛 UnsupportedClassVersionError）。 -->
@@ -113,6 +120,42 @@
         <dependency>
             <groupId>com.xiongx9527.fw.plus.ai</groupId>
             <artifactId>fw-plus-ai-mcp-server-spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- 问数功能能力全部下沉到框架 4 模块（仅 0.1.1-SNAPSHOT，禁止 0.3.0）：
+             askdata=NL2SQL 生成/执行/图表/召回编排；base=LlmPort 等接口；
+             support=LlmPort 装饰器(cost/moderation/failover/quota/trace)与检索/RAG 原语；
+             native=各厂商 LlmPort/Embedding/Rerank 实现与向量库。
+             jdbc-engine / lock 为执行与锁能力底座。 -->
+        <dependency>
+            <groupId>com.xiongx9527.fw.plus.ai</groupId>
+            <artifactId>fw-plus-ai-askdata</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.xiongx9527.fw.plus.ai</groupId>
+            <artifactId>fw-plus-ai-base</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.xiongx9527.fw.plus.ai</groupId>
+            <artifactId>fw-plus-ai-support</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.xiongx9527.fw.plus.ai</groupId>
+            <artifactId>fw-plus-ai-native</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.xiongx9527.fw.plus</groupId>
+            <artifactId>fw-plus-jdbc-engine</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.xiongx9527.fw.plus</groupId>
+            <artifactId>fw-plus-lock</artifactId>
+            <version>${revision}</version>
         </dependency>
 
         <!-- Web 层与 JDBC（元数据库 H2；skeleton 期以 JdbcTemplate 访问登录必需表） -->

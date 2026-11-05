@@ -1,5 +1,7 @@
 package com.xiongx9527.askdata.system.sso;
 
+import com.xiongx9527.fw.plus.auth.social.SamlSignatureVerifier;
+
 import org.junit.jupiter.api.Test;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
