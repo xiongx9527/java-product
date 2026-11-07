@@ -371,3 +371,31 @@ export const customSupplier = supplierList.find(
 export const get_supplier_safe = (supplier_id: number) => {
   return get_supplier(supplier_id) || customSupplier
 }
+
+/**
+ * 厂商 → 推荐协议（联动默认值）。
+ *
+ * 选中某厂商且使用其「原生 base_url」时，协议默认取此表值（可见联动 + 正确默认，如 Gemini→GEMINI）；
+ * 一旦用户把 base_url 改成别的（例如把 DeepSeek 指向 Anthropic 兼容代理），协议改为按 URL 自动识别，
+ * 不再受此表约束——协议跟随接入端点，与框架 LlmPortResolver「显式协议优先、厂商给默认」一致。
+ *
+ * 下拉始终全开，用户可随时覆盖；自定义（id=15）不在此表 → 协议按 URL 识别。
+ *
+ * 规则对齐厂商真实接入协议：
+ * - 阿里云百炼 / 千帆 / DeepSeek / 腾讯混元 / 讯飞星火 / OpenAI / Kimi / 腾讯云 / 火山引擎 / MiniMax
+ *   均为 OpenAI 兼容（Chat Completions）；
+ * - Gemini 原生协议（GEMINI）。
+ */
+export const SUPPLIER_PROTOCOL_HINT: Record<number, string> = {
+  1: 'OPENAI_CHAT_COMPLETIONS', // 阿里云百炼（/compatible-mode/v1）
+  2: 'OPENAI_CHAT_COMPLETIONS', // 千帆大模型（/v2/）
+  3: 'OPENAI_CHAT_COMPLETIONS', // DeepSeek
+  4: 'OPENAI_CHAT_COMPLETIONS', // 腾讯混元
+  5: 'OPENAI_CHAT_COMPLETIONS', // 讯飞星火
+  6: 'GEMINI', // Gemini 原生协议
+  7: 'OPENAI_CHAT_COMPLETIONS', // OpenAI
+  8: 'OPENAI_CHAT_COMPLETIONS', // Kimi（Moonshot）
+  9: 'OPENAI_CHAT_COMPLETIONS', // 腾讯云
+  10: 'OPENAI_CHAT_COMPLETIONS', // 火山引擎
+  13: 'OPENAI_CHAT_COMPLETIONS', // MiniMax
+}

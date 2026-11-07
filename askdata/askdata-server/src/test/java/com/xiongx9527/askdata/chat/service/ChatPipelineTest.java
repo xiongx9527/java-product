@@ -14,11 +14,14 @@ import com.xiongx9527.askdata.ai.EmbeddingService;
 import com.xiongx9527.askdata.chat.repository.ChatRepository;
 import com.xiongx9527.askdata.chat.repository.RecommendedQuestionRepository;
 import com.xiongx9527.askdata.chat.service.ChatChartBuilder;
+import com.xiongx9527.askdata.chat.service.AskDataLlmPort;
 import com.xiongx9527.askdata.chat.service.ChatModelClient;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter;
 import com.xiongx9527.askdata.chat.service.ChatQuestionService;
+import com.xiongx9527.askdata.chat.service.FrameworkModelBridge;
 import com.xiongx9527.askdata.chart.server.ChartImageService;
 import com.xiongx9527.askdata.chat.service.ChatService;
+import com.xiongx9527.askdata.config.FallbackProperties;
 import com.xiongx9527.askdata.chat.service.SchemaContextBuilder;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.util.Rows;
@@ -164,8 +167,10 @@ class ChatPipelineTest {
         Mockito.when(currentUserService.oidOf(Mockito.any())).thenReturn(1L);
         Mockito.when(currentUserService.uid()).thenReturn(1L);
 
-        ChatModelClient modelClient = new ChatModelClient(objectMapper);
         ChatModelRouter modelRouter = new ChatModelRouter(new AiModelRepository(appJdbc, idGenerator), objectMapper);
+        FrameworkModelBridge frameworkBridge = new FrameworkModelBridge();
+        AskDataLlmPort askDataLlmPort = new AskDataLlmPort(modelRouter, frameworkBridge, new FallbackProperties());
+        ChatModelClient modelClient = new ChatModelClient(objectMapper, frameworkBridge, askDataLlmPort);
         datasourceService = new DatasourceService(datasourceRepository, tableRepository, fieldRepository,
                 new ExcelService(appJdbc, engine, excelDir.toString(), messageResolver), engine, currentUserService,
                 objectMapper, messageResolver,
@@ -185,7 +190,7 @@ class ChatPipelineTest {
         briefOverride = null;
         startStubServer();
         new AiModelRepository(appJdbc, idGenerator).insert(idGenerator.nextId(), "",
-                "http://127.0.0.1:" + stubPort, 1, 0, "stub-gemma3", 0, "gemma3", true, "[]", 1,
+                "http://127.0.0.1:" + stubPort, "OPENAI_CHAT_COMPLETIONS", 0, "stub-gemma3", 0, "gemma3", true, "[]", 1,
                 System.currentTimeMillis());
 
         ChatRepository chatRepository = new ChatRepository(appJdbc, idGenerator, objectMapper);
@@ -387,7 +392,7 @@ class ChatPipelineTest {
     void customModelAppliesToSqlAndChartGeneration() throws Exception {
         long customModelId = idGenerator.nextId();
         new AiModelRepository(appJdbc, idGenerator).insert(customModelId, "",
-                "http://127.0.0.1:" + stubPort, 1, 0, "自定义模型", 0, "custom-gemma", false,
+                "http://127.0.0.1:" + stubPort, "OPENAI_CHAT_COMPLETIONS", 0, "自定义模型", 0, "custom-gemma", false,
                 "[]", 1, System.currentTimeMillis());
         // 非默认模型必须在当前工作空间内授权才可选用
         appJdbc.update("INSERT INTO ai_model_workspace_mapping (id, ai_model_id, workspace_id) VALUES (?, ?, ?)",

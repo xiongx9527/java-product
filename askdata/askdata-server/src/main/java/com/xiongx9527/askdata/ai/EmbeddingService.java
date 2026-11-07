@@ -2,7 +2,11 @@ package com.xiongx9527.askdata.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.chat.service.ChatModelClient;
-import com.xiongx9527.askdata.ai.vector.VectorStore;
+import com.xiongx9527.fw.plus.ai.base.store.vector.ScoredDocument;
+import com.xiongx9527.fw.plus.ai.base.store.vector.VectorSearchRequest;
+import com.xiongx9527.fw.plus.ai.base.store.vector.VectorSearchResult;
+import com.xiongx9527.fw.plus.ai.base.store.vector.VectorStorePort;
+import com.xiongx9527.askdata.ai.CollectionNaming;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter.ModelRef;
 import org.slf4j.Logger;
@@ -21,7 +25,7 @@ import java.util.Optional;
  * {@code valid=1}）。本地 ONNX 模型已移除（D7）——未配置可用在线向量模型时
  * {@link #embed(String)} 返回 {@code null}，问答入口按统一错误阻断，不再静默降级为词法召回。</p>
  *
- * <p>向量只持久化在在线 Qdrant（{@link VectorStore} 唯一实现）：DB 的 embedding 列不再存向量，
+ * <p>向量只持久化在在线 Qdrant（{@link VectorStorePort} 唯一实现）：DB 的 embedding 列不再存向量，
  * 也不再回落应用内余弦。在线库不可达时向量写入/召回显式失败并由调用方降级为词法，不静默写本地。</p>
  */
 @Service
@@ -39,7 +43,10 @@ public class EmbeddingService {
      * 向量存储后端（在线 Qdrant）。由 Spring 注入；直接构造的单元测试必须显式
      * {@link #setVectorStore} 传入替身，未设置时向量读写会失败而不是静默落本地。
      */
-    private VectorStore vectorStore;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private CollectionNaming collectionNaming;
+
+    private VectorStorePort vectorStore;
 
     /**
      * 已确认维度的集合（collection → dimension）。
@@ -70,8 +77,14 @@ public class EmbeddingService {
 
     /** Spring 装配：注入在线向量存储后端。 */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
-    public void setVectorStore(VectorStore vectorStore) {
+    public void setVectorStore(VectorStorePort vectorStore) {
         this.vectorStore = vectorStore;
+    }
+
+    /** 集合名（prefix + "-" + objectType）；prefix 取自配置 askdata.vector-store.collection-prefix，缺省 askdata。 */
+    private String collectionFor(String objectType) {
+        String p = collectionNaming != null ? collectionNaming.prefix() : CollectionNaming.DEFAULT_PREFIX;
+        return p + "-" + (objectType == null ? "" : objectType);
     }
 
     /**
@@ -87,7 +100,7 @@ public class EmbeddingService {
 
     /** 当前向量存储后端的集合名前缀（诊断用）。 */
     public String vectorStoreCollectionPrefix() {
-        return vectorStore == null ? "askdata" : vectorStore.collectionPrefix();
+        return collectionNaming != null ? collectionNaming.prefix() : CollectionNaming.DEFAULT_PREFIX;
     }
 
     /** 向量存储是否已配置（未配置时任何向量读写都不可用）。 */
@@ -118,7 +131,7 @@ public class EmbeddingService {
             return result;
         }
         for (String objectType : WRITABLE_TABLES) {
-            String collection = vectorStore.collectionFor(objectType);
+            String collection = collectionFor(objectType);
             Integer dimension = vectorStore.collectionDimension(collection);
             if (dimension != null && dimension > 0) {
                 result.put(collection, dimension);
@@ -245,7 +258,7 @@ public class EmbeddingService {
         }
         try {
             vectorStore.ensureCollection(collection, dimension);
-        } catch (VectorStore.DimensionMismatchException e) {
+        } catch (VectorStorePort.DimensionMismatchException e) {
             // 只有「维度不对」才是需要重建的持久状态；后端不可达等临时故障不得短路后续写入
             brokenDimensions.put(collection, dimension);
             throw e;
@@ -270,7 +283,7 @@ public class EmbeddingService {
         }
         for (String objectType : WRITABLE_TABLES) {
             try {
-                vectorStore.dropCollection(vectorStore.collectionFor(objectType));
+                vectorStore.dropCollection(collectionFor(objectType));
             } catch (Exception e) {
                 log.warn("清理集合 {} 失败（继续重建）: {}", objectType, e.getMessage());
             }
@@ -308,8 +321,8 @@ public class EmbeddingService {
             return false;
         }
         try {
-            ensureCollection(vectorStore.collectionFor(table), vector.length);
-            vectorStore.upsert(vectorStore.collectionFor(table), id, vector, payload);
+            ensureCollection(collectionFor(table), vector.length);
+            vectorStore.upsert(collectionFor(table), String.valueOf(id), vector, payload);
         } catch (Exception e) {
             logWriteFailure(table, id, e);
             return false;
@@ -335,7 +348,7 @@ public class EmbeddingService {
             return;
         }
         try {
-            vectorStore.deleteByPayload(vectorStore.collectionFor(table), key, value);
+            vectorStore.deleteByMetadata(collectionFor(table), key, value);
         } catch (Exception e) {
             log.warn("按 payload 删除向量失败 {}/{}={}（孤儿点由重建清理）: {}", table, key, value, e.getMessage());
         }
@@ -343,7 +356,7 @@ public class EmbeddingService {
 
     /** 写入失败日志：同一集合的「维度未就绪」只告警一次，避免回填上千行时刷屏。 */
     private void logWriteFailure(String table, long id, Exception e) {
-        String collection = vectorStore.collectionFor(table);
+        String collection = collectionFor(table);
         if (brokenDimensions.containsKey(collection) && !brokenLogged.add(collection)) {
             log.debug("写入向量库失败 {}/{}（同一集合已告警，等待重建）: {}", table, id, e.getMessage());
             return;
@@ -368,7 +381,7 @@ public class EmbeddingService {
             return;
         }
         try {
-            vectorStore.delete(vectorStore.collectionFor(table), id);
+            vectorStore.delete(collectionFor(table), String.valueOf(id));
         } catch (Exception e) {
             log.warn("删除向量失败 {}/{}（孤儿点由重建清理）: {}", table, id, e.getMessage());
         }
@@ -392,7 +405,8 @@ public class EmbeddingService {
             return;
         }
         try {
-            vectorStore.deleteBatch(vectorStore.collectionFor(table), ids);
+            vectorStore.deleteBatch(collectionFor(table),
+                    ids.stream().map(String::valueOf).collect(java.util.stream.Collectors.toSet()));
         } catch (Exception e) {
             log.warn("批量删除向量失败 {}（{} 个 id，孤儿点由重建清理）: {}", table, ids.size(), e.getMessage());
         }
@@ -425,9 +439,22 @@ public class EmbeddingService {
         }
         try {
             int topK = Math.min(candidateIds.size(), 1000);
-            for (VectorStore.IdScore hit : vectorStore.query(
-                    vectorStore.collectionFor(table), queryVector, topK, candidateIds)) {
-                scores.put(hit.id(), hit.score());
+            VectorSearchResult result = vectorStore.search(VectorSearchRequest.builder()
+                    .collection(collectionFor(table))
+                    .vector(queryVector)
+                    .topK(topK)
+                    .candidateIds(candidateIds.stream()
+                            .map(String::valueOf)
+                            .collect(java.util.stream.Collectors.toSet()))
+                    .build());
+            if (result != null) {
+                for (ScoredDocument hit : result.getHits()) {
+                    try {
+                        scores.put(Long.parseLong(hit.getDocument().getId()), hit.getScore());
+                    } catch (NumberFormatException ignore) {
+                        // 非数值 id 不在候选范围内，跳过
+                    }
+                }
             }
         } catch (Exception e) {
             log.warn("向量相似度查询失败 {}（降级）: {}", table, e.getMessage());
@@ -449,7 +476,7 @@ public class EmbeddingService {
     // ------------------------------------------------------------------
 
     /**
-     * 按相似度召回向量记录（委托当前 {@link VectorStore} 后端）。
+     * 按相似度召回向量记录（委托当前 {@link VectorStorePort} 后端）。
      *
      * <p>走在线库 ANN 查询（对齐 SQLBot 的 {@code embedding <=> :embedding} 语义）；向量库不可用时
      * 返回空表，调用方降级，<b>不抛异常</b>。</p>
@@ -490,18 +517,32 @@ public class EmbeddingService {
         }
         List<java.util.Map<String, Object>> hits = new ArrayList<>();
         try {
-            for (VectorStore.IdScore hit : vectorStore.query(
-                    vectorStore.collectionFor(table), queryVector, topCount, candidateIds)) {
-                if (hit.score() <= threshold) {
-                    continue;
+            VectorSearchResult result = vectorStore.search(VectorSearchRequest.builder()
+                    .collection(collectionFor(table))
+                    .vector(queryVector)
+                    .topK(topCount)
+                    .candidateIds(candidateIds.stream()
+                            .map(String::valueOf)
+                            .collect(java.util.stream.Collectors.toSet()))
+                    .build());
+            if (result != null) {
+                for (ScoredDocument hit : result.getHits()) {
+                    try {
+                        long id = Long.parseLong(hit.getDocument().getId());
+                        if (hit.getScore() <= threshold) {
+                            continue;
+                        }
+                        java.util.Map<String, Object> row = byId.get(id);
+                        if (row == null) {
+                            continue;
+                        }
+                        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>(row);
+                        out.put("similarity", hit.getScore());
+                        hits.add(out);
+                    } catch (NumberFormatException ignore) {
+                        // 非数值 id 不在候选范围内，跳过
+                    }
                 }
-                java.util.Map<String, Object> row = byId.get(hit.id());
-                if (row == null) {
-                    continue;
-                }
-                java.util.Map<String, Object> out = new java.util.LinkedHashMap<>(row);
-                out.put("similarity", hit.score());
-                hits.add(out);
             }
         } catch (Exception e) {
             log.warn("向量召回失败 {}（降级为空）: {}", table, e.getMessage());

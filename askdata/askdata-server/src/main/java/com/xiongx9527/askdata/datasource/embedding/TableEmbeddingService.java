@@ -1,12 +1,17 @@
 package com.xiongx9527.askdata.datasource.embedding;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xiongx9527.askdata.ai.CollectionNaming;
 import com.xiongx9527.askdata.ai.EmbeddingService;
 import com.xiongx9527.askdata.chat.service.ChatModelClient;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.datasource.repository.FieldRepository;
 import com.xiongx9527.askdata.datasource.repository.TableRepository;
+import com.xiongx9527.fw.plus.ai.base.store.vector.ScoredDocument;
+import com.xiongx9527.fw.plus.ai.base.store.vector.VectorSearchRequest;
+import com.xiongx9527.fw.plus.ai.base.store.vector.VectorSearchResult;
+import com.xiongx9527.fw.plus.ai.base.store.vector.VectorStorePort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -107,10 +112,15 @@ public class TableEmbeddingService {
     private final ObjectMapper objectMapper;
 
     /**
-     * 向量存储后端（在线 Qdrant）。由 Spring 注入；直接构造的单元测试必须显式
-     * {@link #setVectorStore} 传入替身，未设置时向量读写会失败而不是静默落本地。
+     * 向量存储后端（在线 Qdrant，框架 {@link VectorStorePort}）。由 Spring 注入；直接构造的
+     * 单元测试必须显式 {@link #setVectorStore} 传入替身，未设置时向量读写会失败而不是静默落本地。
      */
-    private com.xiongx9527.askdata.ai.vector.VectorStore vectorStore;
+    private VectorStorePort vectorStore;
+
+    /**
+     * 集合命名（prefix + "-" + objectType）；离线单测未注入时回退默认前缀。
+     */
+    private CollectionNaming collectionNaming;
 
     /**
      * 统一向量服务（A20）：复用问数同一条在线向量模型链路。
@@ -132,16 +142,28 @@ public class TableEmbeddingService {
         this.objectMapper = objectMapper;
     }
 
-    /** Spring 装配：注入在线向量存储后端。 */
+    /** Spring 装配：注入在线向量存储后端（框架 {@link VectorStorePort}）。 */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
-    public void setVectorStore(com.xiongx9527.askdata.ai.vector.VectorStore vectorStore) {
+    public void setVectorStore(VectorStorePort vectorStore) {
         this.vectorStore = vectorStore;
+    }
+
+    /** Spring 装配：集合命名（prefix + "-" + objectType）。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setCollectionNaming(CollectionNaming collectionNaming) {
+        this.collectionNaming = collectionNaming;
     }
 
     /** Spring 装配：统一向量服务（与问数共用在线模型，A20）。 */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setEmbeddingService(EmbeddingService embeddingService) {
         this.embeddingService = embeddingService;
+    }
+
+    /** 集合名（prefix + "-" + objectType）；未注入命名配置时回退默认前缀 askdata。 */
+    private String collectionFor(String objectType) {
+        String p = collectionNaming != null ? collectionNaming.prefix() : CollectionNaming.DEFAULT_PREFIX;
+        return p + "-" + (objectType == null ? "" : objectType);
     }
 
     // ------------------------------------------------------------------
@@ -310,11 +332,11 @@ public class TableEmbeddingService {
                             embeddingService.writeEmbedding("core_table", tableId, vector, payload);
                         } else {
                             if (!collectionEnsured) {
-                                vectorStore.ensureCollection(vectorStore.collectionFor("core_table"),
+                                vectorStore.ensureCollection(collectionFor("core_table"),
                                         vector.length);
                                 collectionEnsured = true;
                             }
-                            vectorStore.upsert(vectorStore.collectionFor("core_table"), tableId, vector, payload);
+                            vectorStore.upsert(collectionFor("core_table"), String.valueOf(tableId), vector, payload);
                         }
                     } catch (Exception e) {
                         log.warn("表级向量写入在线库失败 ds={} tbl={}: {}", dsId, tableId, e.getMessage());
@@ -680,11 +702,27 @@ public class TableEmbeddingService {
      */
     private Map<Long, Double> vectorStoreScores(double[] questionVector, List<Long> candidateIds) {
         Map<Long, Double> result = new HashMap<>();
+        if (vectorStore == null) {
+            return result;
+        }
         try {
             int topK = Math.min(candidateIds.size(), 1000);
-            for (com.xiongx9527.askdata.ai.vector.VectorStore.IdScore hit : vectorStore.query(
-                    vectorStore.collectionFor("core_table"), questionVector, topK, candidateIds)) {
-                result.put(hit.id(), hit.score());
+            VectorSearchResult vsr = vectorStore.search(VectorSearchRequest.builder()
+                    .collection(collectionFor("core_table"))
+                    .vector(questionVector)
+                    .topK(topK)
+                    .candidateIds(candidateIds.stream()
+                            .map(String::valueOf)
+                            .collect(java.util.stream.Collectors.toSet()))
+                    .build());
+            if (vsr != null) {
+                for (ScoredDocument hit : vsr.getHits()) {
+                    try {
+                        result.put(Long.parseLong(hit.getDocument().getId()), hit.getScore());
+                    } catch (NumberFormatException ignore) {
+                        // 非数值 id 不在表级召回候选范围内，跳过
+                    }
+                }
             }
         } catch (Exception e) {
             log.warn("表级向量查询失败（降级为提及召回）: {}", e.getMessage());

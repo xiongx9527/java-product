@@ -257,30 +257,9 @@ class SystemDetailsTest {
                 "超限应返回大小错误: " + size.getMessage());
     }
 
-    // ⑥ 模型连通性使用 protocol / Azure 配置
-    @Test
-    void modelConnectivityUsesProtocolAndAzureConfig() {
-        Map<String, Object> azureParams = new LinkedHashMap<>();
-        azureParams.put("deployment_name", "gpt4o-deploy");
-        azureParams.put("api_version", "2024-06-01");
-        assertEquals("https://res.openai.azure.com/openai/deployments/gpt4o-deploy/chat/completions"
-                        + "?api-version=2024-06-01",
-                AiModelService.connectivityUrl("https://res.openai.azure.com", "gpt-4o", azureParams, 1),
-                "Azure 域名应走 deployment 形态并使用 config_list 的 api_version");
-
-        assertEquals("http://localhost:8000/v1/chat/completions",
-                AiModelService.connectivityUrl("http://localhost:8000", "qwen2", Maps.of(), 2),
-                "protocol=2（vLLM）端点固定在 /v1 下");
-        assertEquals("http://localhost:8000/v1/chat/completions",
-                AiModelService.connectivityUrl("http://localhost:8000/v1", "qwen2", Maps.of(), 2),
-                "vLLM 已带 /v1 时不重复拼接");
-        assertEquals("http://localhost:8000/api/chat/completions",
-                AiModelService.connectivityUrl("http://localhost:8000/api", "gpt-4o-mini", Maps.of(), 1),
-                "protocol=1（OpenAI）按 api_domain 原样规范化，自定义前缀保留");
-        assertEquals("http://localhost:8000/api/v1/chat/completions",
-                AiModelService.connectivityUrl("http://localhost:8000/api", "qwen2", Maps.of(), 2),
-                "protocol=2 在自定义前缀下仍落到 /v1");
-    }
+    // ⑥ 模型连通性（协议 / Azure 配置 → 框架端口路由）
+    // 注：URL 规范化已下沉到框架 LlmPort/EmbeddingPort，askdata 不再自行拼接
+    // /chat/completions 或 Azure deployment 形态，故此处不再保留产物侧连通性 URL 用例。
 
     // ⑦ isAdmin 按角色判定
     @Test

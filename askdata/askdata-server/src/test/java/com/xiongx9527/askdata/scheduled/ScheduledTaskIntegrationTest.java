@@ -131,7 +131,7 @@ class ScheduledTaskIntegrationTest {
 
         startStubServer();
         new AiModelRepository(appJdbc, idGenerator).insert(idGenerator.nextId(), "",
-                "http://127.0.0.1:" + stubServer.getAddress().getPort(), 1, 0, "stub-gemma3", 0,
+                "http://127.0.0.1:" + stubServer.getAddress().getPort(), "OPENAI_CHAT_COMPLETIONS", 0, "stub-gemma3", 0,
                 "gemma3", true, "[]", 1, System.currentTimeMillis());
 
         SchemaContextBuilder schemaContextBuilder = new SchemaContextBuilder(datasourceRepository, tableRepository,

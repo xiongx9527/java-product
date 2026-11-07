@@ -141,11 +141,11 @@ class McpAssistantFlowTest {
         String stubBase = "http://127.0.0.1:" + llmServer.getAddress().getPort();
         defaultModelId = idGenerator.nextId();
         aiModelRepository.insert(defaultModelId, "", stubBase,
-                1, 0, "stub-gemma3", 0, "gemma3", true, "[]", 1, System.currentTimeMillis());
+                "OPENAI_CHAT_COMPLETIONS", 0, "stub-gemma3", 0, "gemma3", true, "[]", 1, System.currentTimeMillis());
         // 问答入口要求存在可用的在线向量模型且索引已对齐（决策 14/15），否则整条链路被阻断
         long embeddingModelId = idGenerator.nextId();
-        aiModelRepository.insert(embeddingModelId, "", stubBase, 1, 0, "stub-bge", 1, "bge-m3",
-                false, "[]", 1, System.currentTimeMillis(), true, 1, 8);
+        aiModelRepository.insert(embeddingModelId, "", stubBase, "OPENAI_CHAT_COMPLETIONS", 0, "stub-bge", 1, "bge-m3",
+                false, "[]", 1, System.currentTimeMillis(), true, 8);
         jdbc.update("UPDATE ai_embedding_index_state SET model_id = ?, dimension = 8, status = 'idle' WHERE id = 1",
                 embeddingModelId);
     }

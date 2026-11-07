@@ -331,7 +331,7 @@ public class ChatKnowledgeService {
         messages.add(new ChatModelClient.ModelMessage("user", user.toString()));
         try {
             String raw = modelClient.generate(model.apiDomain, model.apiKey, model.baseModel, messages,
-                    model.params, model.upstreamFormat);
+                    model.params, model.protocol);
             return parseEntities(raw);
         } catch (Exception e) {
             log.info("LLM 关键词抽取失败（退化为词法命中）: {}", e.getMessage());

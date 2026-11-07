@@ -14,6 +14,7 @@ import com.xiongx9527.askdata.chat.repository.ChatRepository;
 import com.xiongx9527.askdata.chat.repository.RecommendedQuestionRepository;
 import com.xiongx9527.askdata.chat.service.ChatKnowledgeService.KnowledgeContext;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
+import com.xiongx9527.askdata.config.FallbackProperties;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.datasource.embedding.TableEmbeddingService;
@@ -137,8 +138,10 @@ class ChatKnowledgeChainTest {
         Mockito.when(currentUserService.oidOf(Mockito.any())).thenReturn(1L);
         Mockito.when(currentUserService.uid()).thenReturn(1L);
 
-        ChatModelClient modelClient = new ChatModelClient(objectMapper);
         ChatModelRouter modelRouter = new ChatModelRouter(new AiModelRepository(appJdbc, idGenerator), objectMapper);
+        FrameworkModelBridge frameworkBridge = new FrameworkModelBridge();
+        AskDataLlmPort askDataLlmPort = new AskDataLlmPort(modelRouter, frameworkBridge, new FallbackProperties());
+        ChatModelClient modelClient = new ChatModelClient(objectMapper, frameworkBridge, askDataLlmPort);
         datasourceService = new DatasourceService(datasourceRepository, tableRepository, fieldRepository,
                 new ExcelService(appJdbc, engine, excelDir.toString(), messageResolver), engine, currentUserService,
                 objectMapper, messageResolver,
@@ -170,7 +173,7 @@ class ChatKnowledgeChainTest {
         stubRequests.clear();
         startStubServer();
         new AiModelRepository(appJdbc, idGenerator).insert(idGenerator.nextId(), "",
-                "http://127.0.0.1:" + stubPort, 1, 0, "stub-gemma3", 0, "gemma3", true, "[]", 1,
+                "http://127.0.0.1:" + stubPort, "OPENAI_CHAT_COMPLETIONS", 0, "stub-gemma3", 0, "gemma3", true, "[]", 1,
                 System.currentTimeMillis());
 
         chatRepository = new ChatRepository(appJdbc, idGenerator, objectMapper);

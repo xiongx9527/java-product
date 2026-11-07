@@ -166,6 +166,38 @@ askdata:
       url: ${ASKDATA_QDRANT_URL:}
       # 可选 API Key（Qdrant 开启鉴权时必填）。
       api-key: ${ASKDATA_QDRANT_API_KEY:}
+  # 多模型故障转移（failover）：对话 / 重排候选链路在单候选失败时的重试 / 切换 / 终止行为。
+  # 框架只提供「策略扩展点」与「可配置分类器机制」，不替业务决定哪些错误触发什么动作；
+  # 具体规则由下面 error-policies 注入（产品侧决策）。缺省即开箱可用的兜底策略。
+  ai:
+    fallback:
+      # 是否启用故障转移（关闭则退化为「仅主模型直连、不切换」）。
+      enabled: ${ASKDATA_AI_FALLBACK_ENABLED:true}
+      # 错误 → 动作 映射（大小写不敏感）。每条形如 "关键词:动作"，动作取 RETRY / FAILOVER / ABORT；
+      # 缺省动作后缀视为 FAILOVER。未命中任何关键词按 FAILOVER 兜底（切下一候选）。
+      #   RETRY    —— 同一候选上重试（瞬态：限流 429 / 网关 5xx / 超时 / 连接复位 / 不可达）
+      #   FAILOVER —— 切到下一候选（鉴权 / 余额类：401 / 403 / insufficient / balance）
+      #   ABORT    —— 立即终止（调用方自身错误：400 / bad_request，重试或切换都无效）
+      error-policies:
+        - "429:RETRY"
+        - "503:RETRY"
+        - "504:RETRY"
+        - "timeout:RETRY"
+        - "rate_limit:RETRY"
+        - "connection:RETRY"
+        - "reset:RETRY"
+        - "econnrefused:RETRY"
+        - "unavailable:RETRY"
+        - "insufficient:FAILOVER"
+        - "balance:FAILOVER"
+        - "401:FAILOVER"
+        - "403:FAILOVER"
+        - "400:ABORT"
+        - "bad_request:ABORT"
+      # 单候选内最大重试次数（瞬态错误的同一候选重试；0 不重试）。
+      max-retries: ${ASKDATA_AI_FALLBACK_MAX_RETRIES:1}
+      # 重试退避间隔（毫秒）。
+      backoff-ms: ${ASKDATA_AI_FALLBACK_BACKOFF_MS:200}
   # 应用密钥（落库加密用）。不内置缺省值：必须通过环境变量 ASKDATA_SECRET_KEY 或外部配置显式设定，
   # 否则启动期随机生成（当次进程内可用，重启后历史密文不可解，并在启动日志告警）。
   secret:

@@ -7,11 +7,14 @@ import com.xiongx9527.askdata.system.auth.CryptoUtil;
 import com.xiongx9527.askdata.system.repository.AiModelRepository;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 模型路由（复用 system-foundation 的 {@link AiModelRepository} 与 {@link CryptoUtil}）：
@@ -31,6 +34,9 @@ public class ChatModelRouter {
     private static final int CHAT_MODEL_TYPE = 0;
 
     private static final int EMBEDDING_MODEL_TYPE = 1;
+
+    /** 重排（打分）模型类型；ai_model.model_type = 2（与对话 0 / 向量 1 并列）。 */
+    private static final int RERANK_MODEL_TYPE = 2;
 
     /**
      * 向量模型解析缓存 TTL。
@@ -82,8 +88,8 @@ public class ChatModelRouter {
 
         public final String apiKey;
 
-        /** §2.3: 协议/供应商（ai_model.protocol / supplier）——原先只落库不消费，现随模型解析出来供路由使用。 */
-        public final int protocol;
+        /** §2.3: 协议（ai_model.protocol，框架 LlmProtocol 枚举名，如 OPENAI_CHAT_COMPLETIONS / GEMINI）——随模型解析出来供路由使用。 */
+        public final String protocol;
 
         public final int supplier;
 
@@ -95,21 +101,18 @@ public class ChatModelRouter {
         /** 便捷：temperature（来自 params；缺省 null）。 */
         public final Double temperature;
 
-        /** 上游报文格式（ai_model.upstream_format：0 自动识别 / 1 Chat Completions / 2 Anthropic / 3 Responses / 4 Azure）。 */
-        public final int upstreamFormat;
-
         /** 向量维度（ai_model.dimension；仅向量模型有值，未探测为 null）。 */
         public final Integer dimension;
 
-        /** 兼容旧调用方（测试夹具）：上游格式按自动识别处理，无维度。 */
+        /** 兼容旧调用方（测试夹具）：无维度。 */
         public ModelRef(long id, String name, String baseModel, String apiDomain, String apiKey,
-                        int protocol, int supplier, Map<String, Object> params, Double temperature) {
-            this(id, name, baseModel, apiDomain, apiKey, protocol, supplier, params, temperature, 0, null);
+                        String protocol, int supplier, Map<String, Object> params, Double temperature) {
+            this(id, name, baseModel, apiDomain, apiKey, protocol, supplier, params, temperature, null);
         }
 
         public ModelRef(long id, String name, String baseModel, String apiDomain, String apiKey,
-                        int protocol, int supplier, Map<String, Object> params, Double temperature,
-                        int upstreamFormat, Integer dimension) {
+                        String protocol, int supplier, Map<String, Object> params, Double temperature,
+                        Integer dimension) {
             this.id = id;
             this.name = name;
             this.baseModel = baseModel;
@@ -119,7 +122,6 @@ public class ChatModelRouter {
             this.supplier = supplier;
             this.params = params == null ? Collections.<String, Object>emptyMap() : params;
             this.temperature = temperature;
-            this.upstreamFormat = upstreamFormat;
             this.dimension = dimension;
         }
 
@@ -166,6 +168,65 @@ public class ChatModelRouter {
     public int workspaceModelCount(long oid) {
         return aiModelRepository.countAvailableInWorkspace(oid, CHAT_MODEL_TYPE);
     }
+
+	/**
+	 * 对话模型故障转移候选链（按优先级排序）：
+	 * <b>默认对话模型在前作为主模型，工作空间可见的其它启用对话模型在后作为辅助</b>。
+	 *
+	 * <p>供 {@code AskDataLlmPort} 动态解析为跨端点的 {@link com.xiongx9527.fw.plus.ai.support.resilience.FallbackLlmPort}
+	 * 候选——主模型不可用（限流 / 余额不足 / 无权限等）时透明切到辅助模型。
+	 * 候选在每次调用时动态解析（经返回的列表 + 调用方懒解析），库里模型增删改无需重启即生效。</p>
+	 *
+	 * @param oid 工作空间 id
+	 */
+	public List<ModelRef> chatModelCandidates(long oid) {
+		List<ModelRef> out = new ArrayList<>();
+		Set<Long> seen = new HashSet<>();
+		Optional<ModelRef> def = defaultChatModel(oid);
+		def.ifPresent(d -> {
+			seen.add(d.id);
+			out.add(d);
+		});
+		// 工作空间绑定的其它启用对话模型（不含默认项，避免重复），按名称稳定排序
+		for (Map<String, Object> row : aiModelRepository.listByWorkspace(oid, CHAT_MODEL_TYPE, false)) {
+			if (!Rows.bool(row, "enable", false)) {
+				continue;
+			}
+			ModelRef r = toRef(row);
+			if (seen.add(r.id)) {
+				out.add(r);
+			}
+		}
+		return out;
+	}
+
+	/**
+	 * 重排（打分）模型故障转移候选链：默认重排模型在前，工作空间可见的其它启用重排模型在后。
+	 *
+	 * <p>语义与 {@link #chatModelCandidates(long)} 一致，模型类型为 {@code model_type = 2}。
+	 * 当前产品侧尚无真实 rerank 打分调用链，此处先把候选解析能力备好，随 RAG 接入即用。</p>
+	 *
+	 * @param oid 工作空间 id
+	 */
+	public List<ModelRef> rerankModelCandidates(long oid) {
+		List<ModelRef> out = new ArrayList<>();
+		Set<Long> seen = new HashSet<>();
+		Optional<ModelRef> def = aiModelRepository.findDefault(RERANK_MODEL_TYPE).map(this::toRef);
+		def.ifPresent(d -> {
+			seen.add(d.id);
+			out.add(d);
+		});
+		for (Map<String, Object> row : aiModelRepository.listByWorkspace(oid, RERANK_MODEL_TYPE, false)) {
+			if (!Rows.bool(row, "enable", false)) {
+				continue;
+			}
+			ModelRef r = toRef(row);
+			if (seen.add(r.id)) {
+				out.add(r);
+			}
+		}
+		return out;
+	}
 
     /**
      * 指定 id 的对话模型（对齐 SQLBot {@code custom_model}：可按次选择模型）。
@@ -233,11 +294,10 @@ public class ChatModelRouter {
                 Rows.str(row, "base_model"),
                 CryptoUtil.resolvePlain(Rows.str(row, "api_domain")),
                 CryptoUtil.resolvePlain(Rows.str(row, "api_key")),
-                Rows.intg(row, "protocol", 1),
+                Rows.str(row, "protocol"),
                 Rows.intg(row, "supplier", 0),
                 params,
                 (Double) params.get("temperature"),
-                Rows.intg(row, "upstream_format", 0),
                 Rows.get(row, "dimension") == null ? null : Rows.intg(row, "dimension", 0));
     }
 

@@ -43,13 +43,13 @@ public class AiModelRepository {
 
     private static final String COLUMNS =
             "id, api_key, api_domain, protocol, supplier, name, model_type, base_model, default_model, "
-                    + "config, status, create_time, enable, upstream_format, dimension";
+                    + "config, status, create_time, enable, dimension";
 
     /** /system/aimodel 列表（含 ws 映射计数，默认模型优先）。 */
     public List<Map<String, Object>> list(String keyword) {
         StringBuilder sql = new StringBuilder(
                 "SELECT m.id, m.name, m.model_type, m.base_model, m.supplier, m.protocol, m.default_model, "
-                        + "m.enable, m.upstream_format, m.dimension, "
+                        + "m.enable, m.dimension, "
                         + "COALESCE(c.cnt, 0) AS ws_mapping_count FROM ai_model m "
                         + "LEFT JOIN (SELECT ai_model_id, COUNT(*) AS cnt FROM ai_model_workspace_mapping "
                         + "GROUP BY ai_model_id) c ON m.id = c.ai_model_id");
@@ -84,36 +84,36 @@ public class AiModelRepository {
         return count == null ? 0L : count;
     }
 
-    public void insert(long id, String apiKey, String apiDomain, int protocol, int supplier, String name,
+    public void insert(long id, String apiKey, String apiDomain, String protocol, int supplier, String name,
                        int modelType, String baseModel, boolean defaultModel, String config, int status,
-                       long createTime, boolean enable, int upstreamFormat, Integer dimension) {
+                       long createTime, boolean enable, Integer dimension) {
         jdbc.update("INSERT INTO ai_model (id, api_key, api_domain, protocol, supplier, name, model_type, "
-                        + "base_model, default_model, config, status, create_time, enable, upstream_format, "
-                        + "dimension) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "base_model, default_model, config, status, create_time, enable, dimension) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 id, apiKey, apiDomain, protocol, supplier, name, modelType, baseModel, defaultModel, config,
-                status, createTime, enable, upstreamFormat, dimension);
+                status, createTime, enable, dimension);
         writeVersion.incrementAndGet();
     }
 
     /**
-     * 兼容旧调用方的插入：新列取默认值（enable=1、upstream_format=1、dimension 空）。
+     * 兼容旧调用方的插入：新列取默认值（enable=1、protocol 取默认 OpenAI、dimension 空）。
      * 主要用于测试夹具与历史代码路径；正式写入请使用带状态参数的版本。
      */
-    public void insert(long id, String apiKey, String apiDomain, int protocol, int supplier, String name,
+    public void insert(long id, String apiKey, String apiDomain, String protocol, int supplier, String name,
                        int modelType, String baseModel, boolean defaultModel, String config, int status,
                        long createTime) {
         insert(id, apiKey, apiDomain, protocol, supplier, name, modelType, baseModel, defaultModel, config,
-                status, createTime, true, 1, null);
+                status, createTime, true, null);
     }
 
-    public void update(long id, String apiKey, String apiDomain, int protocol, int supplier, String name,
+    public void update(long id, String apiKey, String apiDomain, String protocol, int supplier, String name,
                        int modelType, String baseModel, boolean defaultModel, String config,
-                       boolean enable, int upstreamFormat, Integer dimension) {
+                       boolean enable, Integer dimension) {
         jdbc.update("UPDATE ai_model SET api_key = ?, api_domain = ?, protocol = ?, supplier = ?, name = ?, "
                         + "model_type = ?, base_model = ?, default_model = ?, config = ?, enable = ?, "
-                        + "upstream_format = ?, dimension = ? WHERE id = ?",
+                        + "dimension = ? WHERE id = ?",
                 apiKey, apiDomain, protocol, supplier, name, modelType, baseModel, defaultModel, config,
-                enable, upstreamFormat, dimension, id);
+                enable, dimension, id);
         writeVersion.incrementAndGet();
     }
 

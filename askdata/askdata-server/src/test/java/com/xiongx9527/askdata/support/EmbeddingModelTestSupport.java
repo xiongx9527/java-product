@@ -92,8 +92,8 @@ public final class EmbeddingModelTestSupport {
     public static long registerModel(JdbcTemplate jdbc) {
         long id = new IdGenerator().nextId();
         new AiModelRepository(jdbc, new IdGenerator()).insert(
-                id, "", url(), 1, 0, "it-bge-m3", 1, model(), true, "[]", 1,
-                System.currentTimeMillis(), true, 1, null);
+                id, "", url(), "OPENAI_CHAT_COMPLETIONS", 0, "it-bge-m3", 1, model(), true, "[]", 1,
+                System.currentTimeMillis(), true, null);
         return id;
     }
 

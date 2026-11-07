@@ -137,7 +137,7 @@ public class ScheduledTaskExecutor {
             int genLeft = MAX_SQL_GEN_RETRY;
             while (true) {
                 String text = modelClient.generate(aiModel.apiDomain, aiModel.apiKey, aiModel.baseModel, messages,
-                        aiModel.params, aiModel.upstreamFormat);
+                        aiModel.params, aiModel.protocol);
                 sql = ChatQuestionService.extractSqlFromOutput(text, objectMapper);
                 if (sql != null) {
                     break;

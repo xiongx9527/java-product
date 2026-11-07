@@ -25,6 +25,8 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -55,8 +57,8 @@ class EmbeddingIndexServiceTest {
         jdbc = MysqlTestSupport.createSchema();
         modelRepository = new AiModelRepository(jdbc, ids);
         modelId = ids.nextId();
-        modelRepository.insert(modelId, "", "https://api.example.com", 1, 0, "bge-m3", 1, "bge-m3",
-                false, "[]", 1, System.currentTimeMillis(), true, 1, 1024);
+        modelRepository.insert(modelId, "", "https://api.example.com", "OPENAI_CHAT_COMPLETIONS", 0, "bge-m3", 1, "bge-m3",
+                false, "[]", 1, System.currentTimeMillis(), true, 1024);
         ChatModelRouter router = new ChatModelRouter(modelRepository, objectMapper);
         runner = mock(EmbeddingBackfillRunner.class);
         service = new EmbeddingIndexService(jdbc, router, runner,
@@ -122,7 +124,7 @@ class EmbeddingIndexServiceTest {
         service.rebuild(null);
         waitUntilNotRunning();
 
-        verify(runner).rebuildWorkspace(103L);
+        verify(runner).rebuildWorkspace(eq(103L), any(), any());
         Map<String, Object> status = service.status();
         assertEquals("failed", status.get("status"));
         assertTrue(String.valueOf(status.get("message")).contains("102"), String.valueOf(status.get("message")));
@@ -144,7 +146,7 @@ class EmbeddingIndexServiceTest {
         assertEquals("running", second.get("reason"));
         blocker.countDown();
         waitUntilNotRunning();
-        verify(runner, org.mockito.Mockito.atLeastOnce()).rebuildWorkspace(201L);
+        verify(runner, org.mockito.Mockito.atLeastOnce()).rebuildWorkspace(eq(201L), any(), any());
     }
 
     @Test
@@ -221,15 +223,25 @@ class EmbeddingIndexServiceTest {
         // 模拟中断：current_scope=102（未完成），done=1，total=3
         jdbc.update("UPDATE ai_embedding_index_state SET model_id = ?, dimension = 1024, status = 'interrupted', "
                 + "total = 3, done = 1, failed = 0, current_scope = '102' WHERE id = 1", modelId);
+        // done 现由回填器的 onProgress 逐条累加（runRebuild 用回调上报进度）。让 mock 忠实模拟
+        // 回填器：每个续做空间上报 1 条向量，则 resume 跑 102/103 两个空间 → done = 1(历史) + 2 = 3。
+        org.mockito.Mockito.doAnswer(invocation -> {
+            java.util.function.IntConsumer onProgress = invocation.getArgument(2);
+            if (onProgress != null) {
+                onProgress.accept(1);
+            }
+            return 0;
+        }).when(runner).rebuildWorkspace(org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
 
         Map<String, Object> started = service.rebuild("resume");
         assertEquals(Boolean.TRUE, started.get("started"));
         assertEquals("resume", started.get("mode"));
         waitUntilNotRunning();
 
-        verify(runner, never()).rebuildWorkspace(101L);
-        verify(runner).rebuildWorkspace(102L);
-        verify(runner).rebuildWorkspace(103L);
+        verify(runner, never()).rebuildWorkspace(eq(101L), any(), any());
+        verify(runner).rebuildWorkspace(eq(102L), any(), any());
+        verify(runner).rebuildWorkspace(eq(103L), any(), any());
         Map<String, Object> status = service.status();
         assertEquals("idle", status.get("status"));
         assertEquals(3, status.get("done"));
@@ -251,9 +263,9 @@ class EmbeddingIndexServiceTest {
         assertEquals("retry-failed", started.get("mode"));
         waitUntilNotRunning();
 
-        verify(runner, never()).rebuildWorkspace(101L);
-        verify(runner, never()).rebuildWorkspace(103L);
-        verify(runner).rebuildWorkspace(102L);
+        verify(runner, never()).rebuildWorkspace(eq(101L), any(), any());
+        verify(runner, never()).rebuildWorkspace(eq(103L), any(), any());
+        verify(runner).rebuildWorkspace(eq(102L), any(), any());
         Map<String, Object> status = service.status();
         assertEquals("idle", status.get("status"));
         assertEquals(0, status.get("failed"));

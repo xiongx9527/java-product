@@ -165,8 +165,8 @@ class AiModelListAndConnectivityTest {
 
     private long insertModel(int modelType, String baseModel, boolean enable) {
         long id = ids.nextId();
-        repository.insert(id, "sk-secret-value", base(), 1, 1, "模型" + id, modelType, baseModel,
-                false, "[]", 1, System.currentTimeMillis(), enable, 1, null);
+        repository.insert(id, "sk-secret-value", base(), "OPENAI_CHAT_COMPLETIONS", 1, "模型" + id, modelType, baseModel,
+                false, "[]", 1, System.currentTimeMillis(), enable, null);
         return id;
     }
 

@@ -6,7 +6,7 @@ import icon_delete from '@/assets/svg/icon_delete.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import ParamsForm from './ParamsForm.vue'
 import { modelTypeOptions } from '@/entity/CommonEntity.ts'
-import { get_supplier } from '@/entity/supplier'
+import { get_supplier, SUPPLIER_PROTOCOL_HINT } from '@/entity/supplier'
 import { useI18n } from 'vue-i18n'
 import { modelApi } from '@/api/system'
 
@@ -39,7 +39,8 @@ const modelForm = reactive({
   api_domain: '',
   config_list: [],
   protocol: 1,
-  upstream_format: null, // 未选择（后端按 URL 自动识别）；向量/重排类型不使用时选择器禁用
+  upstream_format: null as number | null, // 未选择（后端按 URL 自动识别）；向量/重排类型不使用时选择器禁用
+  protocolKey: null as string | null, // 协议枚举（对齐框架 LlmProtocol/EmbeddingProtocol/RerankProtocol）；提交时映射回 upstream_format
   full_url: false,
   enable: 0, // 1 生效 / 0 停用
   dimension: null as number | null, // 向量维度
@@ -116,6 +117,115 @@ const currentSupplier = computed(() => {
 
 // 12.5 向量/重排类型不使用上游格式（其上游格式选择器已禁用），故类型选择不再受上游格式约束
 const typeOptions = computed(() => modelTypeOptions.map((o) => ({ ...o })))
+
+// 协议枚举（对齐 fw-plus-ai-native 的 LlmProtocol/EmbeddingProtocol/RerankProtocol）：按模型类型分组。
+// upstream_format 数值语义来自后端 UpstreamFormatResolver：0=自动 / 1=Chat / 2=Anthropic / 3=Responses / 4=Azure。
+// 向量模型只支持 Chat/Azure（UpstreamFormatResolver.supportsEmbedding），故其分组固定为 OpenAI Compatible；
+// 重排模型为 TEI/Cohere 端点风格。Gemini 后端暂未实现，当前按 Chat 兼容通道过渡。
+const PROTOCOL_OPTIONS: Record<number, Array<{ label: string; value: string }>> = {
+  0: [
+    { label: 'OpenAI Chat Completions', value: 'OPENAI_CHAT_COMPLETIONS' },
+    { label: 'Azure OpenAI Chat Completions', value: 'AZURE_OPENAI_CHAT_COMPLETIONS' },
+    { label: 'OpenAI Responses', value: 'OPENAI_RESPONSES' },
+    { label: 'Anthropic Messages', value: 'ANTHROPIC_MESSAGES' },
+    { label: 'Gemini', value: 'GEMINI' },
+  ],
+  1: [{ label: 'OpenAI Compatible', value: 'OPENAI_COMPATIBLE' }],
+  2: [
+    { label: 'TEI', value: 'TEI' },
+    { label: 'Cohere', value: 'COHERE' },
+  ],
+}
+// 协议下拉：始终全开（厂商只给默认值，不收窄——同厂商可换接入端点/协议，自定义更自由）。
+// 向量/重排协议由模型类型决定，分组内即全部可选项。
+const protocolOptions = computed(() => PROTOCOL_OPTIONS[modelForm.model_type] || [])
+function protocolKeyToUpstreamFormat(key: string | null): number | null {
+  if (!key) return null
+  switch (key) {
+    case 'ANTHROPIC_MESSAGES': return 2
+    case 'OPENAI_RESPONSES': return 3
+    case 'AZURE_OPENAI_CHAT_COMPLETIONS': return 4
+    default: return 1 // OPENAI_CHAT_COMPLETIONS / OPENAI_COMPATIBLE / GEMINI(过渡) / TEI / COHERE
+  }
+}
+function protocolKeyFromUpstreamFormat(uf: any): string | null {
+  if (uf == null) return null
+  switch (Number(uf)) {
+    case 2: return 'ANTHROPIC_MESSAGES'
+    case 3: return 'OPENAI_RESPONSES'
+    case 4: return 'AZURE_OPENAI_CHAT_COMPLETIONS'
+    default: return 'OPENAI_CHAT_COMPLETIONS'
+  }
+}
+// 编辑回填：协议值不属于当前模型类型分组时，回退到该分组首项，避免下拉显示空值
+function normalizeProtocolKey(key: string | null, modelType: number): string | null {
+  if (!key) return null
+  const opts = PROTOCOL_OPTIONS[modelType] || []
+  return opts.some((o) => o.value === key) ? key : opts[0]?.value ?? null
+}
+
+// 按 api_domain 推断协议（兜底）：仅当厂商无明确协议时使用，规则与后端 UpstreamFormatResolver.detect() 保持单一事实源一致。
+function detectProtocolKey(apiDomain: string, modelType: number): string {
+  if (modelType === 1) return 'OPENAI_COMPATIBLE'
+  if (modelType === 2) return 'TEI'
+  const lower = (apiDomain || '').trim().toLowerCase()
+  if (lower.includes('openai.azure.com') || lower.includes('openai.azure.cn')) {
+    return 'AZURE_OPENAI_CHAT_COMPLETIONS'
+  }
+  if (lower.includes('api.anthropic.com') || lower.includes('/anthropic')) {
+    return 'ANTHROPIC_MESSAGES'
+  }
+  return 'OPENAI_CHAT_COMPLETIONS'
+}
+
+// 解析推荐协议：
+// - 向量/重排模型：协议由模型类型决定，取该类型首项（OPENAI_COMPATIBLE / TEI）；
+// - 对话模型：若 base_url 仍是厂商「原生地址」→ 用厂商推荐协议（可见联动，如 Gemini→GEMINI）；
+//   一旦 base_url 被改（如把 DeepSeek 指向 Anthropic 兼容代理）→ 协议跟随端点，按 URL 识别；
+//   自定义/无配置厂商 → 直接按 URL 识别。
+function resolveProtocolKey(): string | null {
+  if (modelForm.model_type !== 0) {
+    return (PROTOCOL_OPTIONS[modelForm.model_type] || [])[0]?.value ?? null
+  }
+  const supplier = get_supplier(modelForm.supplier)
+  const nativeDomain = supplier?.model_config?.[modelForm.model_type || 0]?.api_domain
+  const curDomain = (modelForm.api_domain || '').trim().toLowerCase()
+  const native = nativeDomain ? nativeDomain.trim().toLowerCase() : ''
+  if (native && curDomain && curDomain === native) {
+    const hint = SUPPLIER_PROTOCOL_HINT[modelForm.supplier]
+    if (hint) return hint
+  }
+  return detectProtocolKey(modelForm.api_domain, modelForm.model_type)
+}
+
+// 用户是否手动改过协议：显式选择优先（对齐 LlmPortResolver「二者皆有时以协议为准」），
+// 此后的厂商/端点变化不再覆盖用户选择。
+const protocolTouched = ref(false)
+function applyProtocolHint() {
+  if (protocolTouched.value) return
+  const key = resolveProtocolKey()
+  modelForm.protocolKey = key
+  modelForm.upstream_format = protocolKeyToUpstreamFormat(key)
+}
+function onProtocolChange(key: string | null) {
+  protocolTouched.value = key != null
+  modelForm.upstream_format = protocolKeyToUpstreamFormat(key)
+}
+function onApiDomainChange() {
+  applyProtocolHint()
+}
+function onModelTypeChange() {
+  if (protocolTouched.value) {
+    // 用户显式选过协议：仅在新分组不含该值时清空，否则保留
+    const opts = PROTOCOL_OPTIONS[modelForm.model_type] || []
+    if (modelForm.protocolKey && !opts.some((o) => o.value === modelForm.protocolKey)) {
+      modelForm.protocolKey = null
+      modelForm.upstream_format = null
+    }
+    return
+  }
+  applyProtocolHint()
+}
 
 // 12.7 远程拉取的模型清单（基础模型必须是真实拉取到的，禁止回退供应商静态预设）
 const pulling = ref(false)
@@ -302,7 +412,10 @@ const supplierChang = (supplier: any) => {
   const config = supplier.model_config?.[modelForm.model_type || 0] || {}
   modelForm.api_domain = config.api_domain || ''
   modelForm.base_model = ''
-  modelForm.protocol = supplier.type === 'vllm' ? 2 : 1
+  // 选厂商 = 协议随厂商联动：厂商有明确定义则采用其推荐协议（如 Gemini→GEMINI），
+  // 否则按 api_domain 自动识别（自定义/无明确协议厂商）。协议下拉始终全开，可覆盖。
+  protocolTouched.value = false
+  applyProtocolHint()
   advancedSetting.value = []
   // 切换供应商后清空远程拉取结果
   remoteModels.value = []
@@ -319,6 +432,7 @@ const initForm = (item?: any) => {
   pullSource.value = ''
   pullState.value = 'idle'
   pullError.value = ''
+  protocolTouched.value = false
   Object.assign(modelForm, {
     id: '',
     supplier: 0,
@@ -330,14 +444,21 @@ const initForm = (item?: any) => {
     config_list: [],
     protocol: 1,
     upstream_format: null,
+    protocolKey: null,
     full_url: false,
     enable: 0,
     dimension: null,
   })
   if (item) {
+    // 编辑已有模型：视为用户显式配置，端点变化不再覆盖协议
+    protocolTouched.value = true
     Object.assign(modelForm, {
       ...item,
       upstream_format: item.upstream_format ? item.upstream_format : null,
+      protocolKey: normalizeProtocolKey(
+        protocolKeyFromUpstreamFormat(item.upstream_format),
+        Number(item.model_type ?? 0),
+      ),
       full_url: item.full_url ?? false,
       enable: item.enable ?? 0,
       dimension: item.dimension ?? null,
@@ -475,6 +596,7 @@ defineExpose({
               :placeholder="
                 $t('datasource.please_enter') + $t('common.empty') + $t('model.api_domain_name')
               "
+              @change="onApiDomainChange"
             />
           </el-form-item>
           <!-- full url -->
@@ -501,6 +623,7 @@ defineExpose({
               v-model="modelForm.model_type"
               style="width: 100%"
               :disabled="editModel"
+              @change="onModelTypeChange"
             >
               <el-option
                 v-for="item in typeOptions"
@@ -508,6 +631,24 @@ defineExpose({
                 :label="item.i18nKey ? $t(item.i18nKey) : item.label"
                 :value="item.value"
                 :disabled="item.disabled"
+              />
+            </el-select>
+          </el-form-item>
+          <!-- 协议：统一维度（对齐框架 LlmProtocol/EmbeddingProtocol/RerankProtocol），与供应商解耦；
+               按模型类型分组展示；提交时映射回 upstream_format 数值。 -->
+          <el-form-item v-if="protocolOptions.length" label="协议">
+            <el-select
+              v-model="modelForm.protocolKey"
+              style="width: 100%"
+              clearable
+              :placeholder="t('modelCfg.format_placeholder')"
+              @change="onProtocolChange"
+            >
+              <el-option
+                v-for="opt in protocolOptions"
+                :key="opt.value"
+                :label="opt.label"
+                :value="opt.value"
               />
             </el-select>
           </el-form-item>
@@ -557,19 +698,6 @@ defineExpose({
         </div>
         <div v-if="modelSelected" class="advanced-body">
           <el-form label-position="top">
-          <!-- 上游格式：仅 LLM 展示；向量/重排类型不参与上游格式选择，故隐藏 -->
-          <el-form-item v-if="modelForm.model_type === 0" :label="t('modelCfg.format')">
-            <el-select
-              v-model="modelForm.upstream_format"
-              style="width: 100%"
-              clearable
-              :placeholder="t('modelCfg.format_placeholder')"
-            >
-              <el-option label="Chat Completions" :value="1" />
-              <el-option label="Anthropic Messages" :value="2" />
-              <el-option label="Responses" :value="3" />
-            </el-select>
-          </el-form-item>
           </el-form>
           <!-- 模型参数 -->
           <div class="model-params">

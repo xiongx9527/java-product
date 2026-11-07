@@ -16,6 +16,12 @@ import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.datasource.repository.FieldRepository;
 import com.xiongx9527.askdata.datasource.repository.TableRepository;
 import com.xiongx9527.askdata.system.repository.AiModelRepository;
+import com.xiongx9527.fw.plus.ai.base.store.StoreType;
+import com.xiongx9527.fw.plus.ai.base.store.vector.Document;
+import com.xiongx9527.fw.plus.ai.base.store.vector.ScoredDocument;
+import com.xiongx9527.fw.plus.ai.base.store.vector.VectorSearchRequest;
+import com.xiongx9527.fw.plus.ai.base.store.vector.VectorSearchResult;
+import com.xiongx9527.fw.plus.ai.base.store.vector.VectorStorePort;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -75,8 +81,6 @@ class TableEmbeddingServiceTest {
     private TableEmbeddingService service;
 
     private HttpServer stubServer;
-
-    private final java.util.List<String> qdrantUpserts = new java.util.ArrayList<>();
 
     @BeforeEach
     void setUp() throws Exception {
@@ -240,7 +244,7 @@ class TableEmbeddingServiceTest {
      */
     @Test
     void remoteFailureDoesNotFallBackToLocalEmbedding() {
-        new AiModelRepository(appJdbc, ids).insert(ids.nextId(), "", "http://127.0.0.1:1", 1, 0,
+        new AiModelRepository(appJdbc, ids).insert(ids.nextId(), "", "http://127.0.0.1:1", "OPENAI_CHAT_COMPLETIONS", 0,
                 "stub-bge-m3", 1, "bge-m3", false, "[]", 1, System.currentTimeMillis());
         assertNull(service.embed("订单金额"), "远程失败后不应回退本地 embedding");
         table(621, "orders", "订单表", null);
@@ -252,7 +256,7 @@ class TableEmbeddingServiceTest {
     @Test
     void unreachableEmbeddingEndpointDegrades() {
         // 配置了 embedding 模型但端点不可达：embed 返回 null，召回退化为提及
-        new AiModelRepository(appJdbc, ids).insert(ids.nextId(), "", "http://127.0.0.1:1", 1, 0,
+        new AiModelRepository(appJdbc, ids).insert(ids.nextId(), "", "http://127.0.0.1:1", "OPENAI_CHAT_COMPLETIONS", 0,
                 "stub-bge-m3", 1, "bge-m3", false, "[]", 1, System.currentTimeMillis());
         assertNull(service.embed("任意文本"));
         table(611, "orders", "订单表", null);
@@ -285,10 +289,11 @@ class TableEmbeddingServiceTest {
     @Test
     void vectorPathRanksSemanticMatchAndBackfillWritesEmbedding() throws Exception {
         startEmbeddingStub();
-        service.setVectorStore(new com.xiongx9527.askdata.ai.vector.QdrantVectorStore(
-                "http://127.0.0.1:" + stubServer.getAddress().getPort(), "", "askdata", objectMapper));
+        FakeVectorStore fake = new FakeVectorStore();
+        service.setVectorStore(fake);
+        service.setCollectionNaming(new com.xiongx9527.askdata.ai.CollectionNaming("askdata"));
         new AiModelRepository(appJdbc, ids).insert(ids.nextId(), "",
-                "http://127.0.0.1:" + stubServer.getAddress().getPort(), 1, 0,
+                "http://127.0.0.1:" + stubServer.getAddress().getPort(), "OPENAI_CHAT_COMPLETIONS", 0,
                 "stub-bge-m3", 1, "bge-m3", false, "[]", 1, System.currentTimeMillis());
         table(801, "t_stock", "库存表", null);
         field(811, 801, "diff_qty", "decimal", "盘点差异数量", 0);
@@ -300,19 +305,18 @@ class TableEmbeddingServiceTest {
         // backfill 异步写入在线向量库（轮询等待守护线程完成，向量召回的前提）
         service.backfill(DS);
         for (int i = 0; i < 100; i++) {
-            if (qdrantUpserts.size() >= 3) {
+            if (fake.store.size() >= 3) {
                 break;
             }
             Thread.sleep(50);
         }
-        assertEquals(3, qdrantUpserts.size(), "backfill 应把三张表的向量写入在线库");
-        JsonNode point = upsertedPoint(801);
-        JsonNode node = point.get("vector");
-        assertTrue(node.isArray(), point.toString());
-        assertEquals(KEYWORDS.length, node.size());
-        assertEquals(1D, node.get(3).asDouble(), "库存");
-        assertEquals(1D, node.get(4).asDouble(), "盘点");
-        assertEquals(1D, node.get(5).asDouble(), "差异");
+        assertEquals(3, fake.store.size(), "backfill 应把三张表的向量写入在线库");
+        double[] vector = fake.store.get("801");
+        assertNotNull(vector, "库存表 801 应已写入向量");
+        assertEquals(KEYWORDS.length, vector.length);
+        assertEquals(1D, vector[3], "库存");
+        assertEquals(1D, vector[4], "盘点");
+        assertEquals(1D, vector[5], "差异");
 
         // 问题不含任何表名/表注释子串，仅与 t_stock 字段语义相关 → 纯向量召回排第一
         List<Long> ranked = service.rankTables(DS, "盘点差异数量是多少");
@@ -353,52 +357,8 @@ class TableEmbeddingServiceTest {
     private void startEmbeddingStub() throws Exception {
         stubServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         stubServer.createContext("/v1/embeddings", this::handleEmbeddings);
-        stubServer.createContext("/collections", this::handleQdrant);
         stubServer.setExecutor(null);
         stubServer.start();
-    }
-
-    /** 记录写入请求并返回固定检索命中的 Qdrant 协议桩（不实现存储，只验证协议与调用）。 */
-    private void handleQdrant(HttpExchange exchange) {
-        try {
-            String path = exchange.getRequestURI().getPath();
-            String method = exchange.getRequestMethod();
-            byte[] request = readAll(exchange.getRequestBody());
-            String body = new String(request, StandardCharsets.UTF_8);
-            int code = 200;
-            String response = "{\"result\":true}";
-            if ("GET".equals(method) && path.startsWith("/collections/")) {
-                code = 404;
-                response = "{\"status\":{\"error\":\"Not found\"}}";
-            } else if (path.endsWith("/points/search")) {
-                response = "{\"result\":[{\"id\":801,\"score\":0.95}]}";
-            } else if (path.endsWith("/points")) {
-                qdrantUpserts.add(body);
-            }
-            byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(code, bytes.length);
-            try (OutputStream output = exchange.getResponseBody()) {
-                output.write(bytes);
-            }
-        } catch (Exception e) {
-            // 桩异常由调用方降级处理
-        } finally {
-            exchange.close();
-        }
-    }
-
-    /** 从已记录的 upsert 请求体中取出指定 id 的 point。 */
-    private JsonNode upsertedPoint(long id) throws Exception {
-        for (String body : qdrantUpserts) {
-            JsonNode points = objectMapper.readTree(body).get("points");
-            for (JsonNode point : points) {
-                if (point.get("id").asLong() == id) {
-                    return point;
-                }
-            }
-        }
-        throw new IllegalStateException("未写入 id=" + id);
     }
 
     private void handleEmbeddings(HttpExchange exchange) {
@@ -451,5 +411,62 @@ class TableEmbeddingServiceTest {
             output.write(buffer, 0, read);
         }
         return output.toByteArray();
+    }
+
+    /**
+     * 内存假实现：记录 upsert 的向量，检索固定返回 801 命中（模拟「纯向量召回」）。
+     * 用于验证 backfill 写回与 TableEmbeddingService 的向量通路接线，不依赖产品侧已移除的
+     * Qdrant 具体实现 / HTTP 协议。
+     */
+    static class FakeVectorStore implements VectorStorePort {
+
+        final java.util.Map<String, double[]> store = new java.util.LinkedHashMap<>();
+
+        @Override
+        public String name() {
+            return "fake";
+        }
+
+        @Override
+        public StoreType type() {
+            return StoreType.VECTOR;
+        }
+
+        @Override
+        public boolean health() {
+            return true;
+        }
+
+        @Override
+        public String defaultCollection() {
+            return "askdata";
+        }
+
+        @Override
+        public void ensureCollection(String collection, int dimension) {
+            // 内存实现无需建集合
+        }
+
+        @Override
+        public void dropCollection(String collection) {
+            // 内存实现无需删集合
+        }
+
+        @Override
+        public void upsert(String collection, String id, double[] vector, java.util.Map<String, Object> metadata) {
+            store.put(id, vector);
+        }
+
+        @Override
+        public void delete(String collection, String id) {
+            store.remove(id);
+        }
+
+        @Override
+        public VectorSearchResult search(VectorSearchRequest request) {
+            // 固定返回 id=801 命中，模拟问题语义仅与 t_stock 字段相关的纯向量召回
+            ScoredDocument hit = new ScoredDocument(Document.of("801", ""), 0.95D);
+            return VectorSearchResult.of(java.util.Collections.singletonList(hit));
+        }
     }
 }

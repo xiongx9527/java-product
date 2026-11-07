@@ -8,6 +8,8 @@ export interface ModelTypeOption extends SelectOption {
   value: number
   // 该类型支持的「上游格式」；embedding 为空数组表示不参与上游格式选择
   supportedFormats?: string[]
+  // 类型下拉是否禁用（预留，供按协议/场景置灰某类模型使用）
+  disabled?: boolean
 }
 
 export const modelTypeOptions: ModelTypeOption[] = [

@@ -141,11 +141,11 @@ class PostgresMetadbMigrationTest {
         llmServer.start();
         String stubBase = "http://127.0.0.1:" + llmServer.getAddress().getPort();
         aiModelRepository.insert(idGenerator.nextId(), "", stubBase,
-                1, 0, "parity-stub", 0, "gemma3", true, "[]", 1, System.currentTimeMillis());
+                "OPENAI_CHAT_COMPLETIONS", 0, "parity-stub", 0, "gemma3", true, "[]", 1, System.currentTimeMillis());
         // 问答入口要求存在可用在线向量模型且索引已对齐（决策 14/15）
         long embeddingModelId = idGenerator.nextId();
-        aiModelRepository.insert(embeddingModelId, "", stubBase, 1, 0, "parity-bge", 1, "bge-m3",
-                false, "[]", 1, System.currentTimeMillis(), true, 1, 8);
+        aiModelRepository.insert(embeddingModelId, "", stubBase, "OPENAI_CHAT_COMPLETIONS", 0, "parity-bge", 1, "bge-m3",
+                false, "[]", 1, System.currentTimeMillis(), true, 8);
         jdbc.update("UPDATE ai_embedding_index_state SET model_id = ?, dimension = 8, status = 'idle' WHERE id = 1",
                 embeddingModelId);
         prepareTargetDatabase();
@@ -173,7 +173,7 @@ class PostgresMetadbMigrationTest {
         assertEquals(12, count("sys_arg"));
         assertEquals(3, count("system_variable"));
         assertEquals(19, count("core_field"));
-        assertEquals(Arrays.asList("1", "2", "3", "4", "5", "6"), jdbc.queryForList(
+        assertEquals(Arrays.asList("1", "2", "3", "4", "5", "6", "7", "8", "9"), jdbc.queryForList(
                 "SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL "
                         + "ORDER BY installed_rank", String.class));
 

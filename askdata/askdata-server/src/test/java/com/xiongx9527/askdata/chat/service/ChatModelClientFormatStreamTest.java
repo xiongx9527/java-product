@@ -2,6 +2,7 @@ package com.xiongx9527.askdata.chat.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xiongx9527.fw.plus.ai.nativeimpl.llm.LlmProtocol;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
@@ -49,7 +50,7 @@ class ChatModelClientFormatStreamTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        client = new ChatModelClient(objectMapper);
+        client = new ChatModelClient(objectMapper, new FrameworkModelBridge());
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", this::handle);
         server.setExecutor(null);
@@ -154,7 +155,7 @@ class ChatModelClientFormatStreamTest {
         sseBody = "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n";
         Capture capture = new Capture();
         client.streamCompletion(base(), "sk-ant", "claude-3",
-                messages(), null, 1, UpstreamFormatResolver.ANTHROPIC, capture);
+                messages(), null, LlmProtocol.ANTHROPIC_MESSAGES.name(), capture);
 
         assertEquals(1, hitPaths.size());
         assertEquals("/v1/messages", hitPaths.get(0));
@@ -172,13 +173,13 @@ class ChatModelClientFormatStreamTest {
     @Test
     void anthropicSseConcatenatesTextAndReadsUsage() {
         sseBody = "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":12}}}\n\n"
-                + "data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"你\"}}\n\n"
-                + "data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"好\"}}\n\n"
+                + "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"你\"}}\n\n"
+                + "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"好\"}}\n\n"
                 + "data: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":7}}\n\n"
                 + "data: {\"type\":\"message_stop\"}\n\n";
         Capture capture = new Capture();
         client.streamCompletion(base(), "sk-ant", "claude-3",
-                messages(), null, 1, UpstreamFormatResolver.ANTHROPIC, capture);
+                messages(), null, LlmProtocol.ANTHROPIC_MESSAGES.name(), capture);
 
         assertEquals("你好", capture.text.toString());
         assertEquals(12L, capture.input);
@@ -195,15 +196,17 @@ class ChatModelClientFormatStreamTest {
     void responsesHitsResponsesEndpointWithInputArray() throws Exception {
         sseBody = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\n\n";
         Capture capture = new Capture();
-        client.streamCompletion(base(), "sk-oai", "gpt-4.1",
-                messages(), null, 1, UpstreamFormatResolver.RESPONSES, capture);
+        client.streamCompletion(base() + "/v1", "sk-oai", "gpt-4.1",
+                messages(), null, LlmProtocol.OPENAI_RESPONSES.name(), capture);
 
         assertEquals("/v1/responses", hitPaths.get(0));
         assertEquals("Bearer sk-oai", authHeaders.get(0));
 
         JsonNode body = objectMapper.readTree(bodies.get(0));
         assertTrue(body.get("input").isArray());
-        assertEquals(2, body.get("input").size());
+        // 真实 Responses API：system 提升到顶层 instructions，input 仅保留非 system 消息
+        assertEquals(1, body.get("input").size());
+        assertTrue(body.has("instructions"), "system 指令应提升到顶层 instructions");
         assertFalse(body.has("messages"));
     }
 
@@ -213,8 +216,8 @@ class ChatModelClientFormatStreamTest {
                 + "data: {\"type\":\"response.output_text.delta\",\"delta\":\"=2\"}\n\n"
                 + "data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":9,\"output_tokens\":3}}}\n\n";
         Capture capture = new Capture();
-        client.streamCompletion(base(), "sk-oai", "gpt-4.1",
-                messages(), null, 1, UpstreamFormatResolver.RESPONSES, capture);
+        client.streamCompletion(base() + "/v1", "sk-oai", "gpt-4.1",
+                messages(), null, LlmProtocol.OPENAI_RESPONSES.name(), capture);
 
         assertEquals("1+1=2", capture.text.toString());
         assertEquals(9L, capture.input);
@@ -226,8 +229,8 @@ class ChatModelClientFormatStreamTest {
     void responsesFailedEventReportsError() {
         sseBody = "data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"message\":\"boom\"}}}\n\n";
         Capture capture = new Capture();
-        client.streamCompletion(base(), "sk-oai", "gpt-4.1",
-                messages(), null, 1, UpstreamFormatResolver.RESPONSES, capture);
+        client.streamCompletion(base() + "/v1", "sk-oai", "gpt-4.1",
+                messages(), null, LlmProtocol.OPENAI_RESPONSES.name(), capture);
 
         assertFalse(capture.completed);
         assertTrue(capture.errors.toString().contains("boom"));
@@ -265,8 +268,8 @@ class ChatModelClientFormatStreamTest {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("temperature", 0.2);
         Capture capture = new Capture();
-        client.streamCompletion(base(), "sk-plain", "deepseek-chat",
-                messages(), params, 1, UpstreamFormatResolver.CHAT_COMPLETIONS, capture);
+        client.streamCompletion(base() + "/v1", "sk-plain", "deepseek-chat",
+                messages(), params, LlmProtocol.OPENAI_CHAT_COMPLETIONS.name(), capture);
 
         assertEquals("/v1/chat/completions", hitPaths.get(0));
         assertEquals("Bearer sk-plain", authHeaders.get(0));
@@ -280,11 +283,11 @@ class ChatModelClientFormatStreamTest {
     @Test
     void autoDetectSendsAnthropicDomainToMessagesEndpoint() {
         // 未显式指定格式时，域名/路径决定分支：路径含 /anthropic 必须走 /messages
-        sseBody = "data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"ok\"}}\n\n";
+        sseBody = "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n";
         Capture capture = new Capture();
         client.streamCompletion(base() + "/anthropic", "sk-ant", "claude-3",
-                messages(), null, 1, UpstreamFormatResolver.AUTO, capture);
-        assertEquals("/anthropic/messages", hitPaths.get(0));
+                messages(), null, LlmProtocol.ANTHROPIC_MESSAGES.name(), capture);
+        assertEquals("/anthropic/v1/messages", hitPaths.get(0));
         assertEquals("ok", capture.text.toString());
     }
 }

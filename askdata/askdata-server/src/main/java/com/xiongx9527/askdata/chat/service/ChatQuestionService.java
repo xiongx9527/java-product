@@ -11,6 +11,8 @@ import com.xiongx9527.askdata.chat.service.ChatModelClient.TokenHandler;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter.ModelRef;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.BadRequestException;
+import com.xiongx9527.fw.plus.ai.askdata.capability.SqlGenResult;
+import com.xiongx9527.fw.plus.ai.askdata.chart.ChartGenResult;
 import com.xiongx9527.askdata.datasource.engine.SqlSafety;
 import com.xiongx9527.askdata.datasource.engine.SqlSemanticValidator;
 import com.xiongx9527.askdata.datasource.repository.DatasourceRepository;
@@ -160,6 +162,13 @@ public class ChatQuestionService {
      */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.xiongx9527.askdata.ai.EmbeddingIndexService embeddingIndexService;
+
+    /**
+     * 框架能力适配层（执行 / SQL 生成 / 图表生成的委派入口）。字段注入（required=false）：
+     * 普通运行期由 Spring 装配，测试夹具无需感知。为 null 时 {@link #execSqlAdapter} 回退到产品执行器。
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private AskDataFrameworkAdapter frameworkAdapter;
 
     public ChatQuestionService(ChatRepository chatRepository,
                                RecommendedQuestionRepository recommendedQuestionRepository,
@@ -394,28 +403,46 @@ public class ChatQuestionService {
                                 dynamic.getTableRules())
                         : schemaContextBuilder.buildSqlMessages(question, dsId, knowledge.getTerminologyText(),
                                 customPromptText, knowledge.getSqlExamples(), historyMessages, matchText);
-                String sqlText = generateText(writer, aiModel, sqlMessages, "sql-result", totalTokens, sqlUsage);
-                // A12：解析结构化 SQL JSON 协议（success,sql,brief,chart-type,tables），不再用正则抠 SQL
-                SqlJsonResult sqlJson = parseSqlJson(sqlText);
-                // 发现-5 延伸修复（A5 偶发 run FAILED）：gpt-oss 模型偶发不输出可解析 SQL，
-                // 原单轮回喂不足；改为至多 MAX_SQL_REPAIR_RETRIES 次重试回喂，显著降低偶发失败率。
-                int sqlRepairLeft = MAX_SQL_REPAIR_RETRIES;
-                while (sqlJson == null || !sqlJson.success || sqlJson.sql == null || sqlJson.sql.isEmpty()) {
-                    if (sqlRepairLeft <= 0) {
+                String sqlText = generateText(writer, oid, aiModel, sqlMessages, "sql-result", totalTokens, sqlUsage);
+                // 框架优先：委派 fw-plus-ai-askdata 的 SQL 精炼（抽取 + 本地校验 + 修复轮），
+                // 复用框架通用 SQL 引擎；无可用模型 / 框架不可用时回退产品原生 ①号解析 + 修复轮。
+                SqlJsonResult sqlJson = null;
+                if (frameworkAdapter != null) {
+                    com.xiongx9527.fw.plus.ai.askdata.capability.SqlGenResult fr =
+                            frameworkAdapter.refineSql(oid, question, sqlText, sqlMessages);
+                    if (fr != null) {
+                        sqlJson = toSqlJsonResult(fr);
+                    }
+                }
+                if (sqlJson == null) {
+                    // A12：解析结构化 SQL JSON 协议（success,sql,brief,chart-type,tables），不再用正则抠 SQL
+                    sqlJson = parseSqlJson(sqlText);
+                    // 发现-5 延伸修复（A5 偶发 run FAILED）：gpt-oss 模型偶发不输出可解析 SQL，
+                    // 原单轮回喂不足；改为至多 MAX_SQL_REPAIR_RETRIES 次重试回喂，显著降低偶发失败率。
+                    int sqlRepairLeft = MAX_SQL_REPAIR_RETRIES;
+                    while (sqlJson == null || !sqlJson.success || sqlJson.sql == null || sqlJson.sql.isEmpty()) {
+                        if (sqlRepairLeft <= 0) {
+                            String reason = sqlJson == null ? "模型未返回可解析的 JSON"
+                                    : (sqlJson.message == null ? "SQL 生成失败" : sqlJson.message);
+                            // 非法 JSON / success=false：返回明确错误，不执行 SQL、不截断标题
+                            emitError(writer, reason);
+                            return;
+                        }
                         String reason = sqlJson == null ? "模型未返回可解析的 JSON"
                                 : (sqlJson.message == null ? "SQL 生成失败" : sqlJson.message);
-                        // 非法 JSON / success=false：返回明确错误，不执行 SQL、不截断标题
-                        emitError(writer, reason);
-                        return;
+                        log.warn("SQL 生成结果不可用（{}），第 {} 次回喂修复，模型原始输出：{}", reason,
+                                (MAX_SQL_REPAIR_RETRIES - sqlRepairLeft + 1), abbreviate(sqlText, 2000));
+                        String repaired = regenerateSql(oid, aiModel, question, dsId, dynamic, sqlText, reason, writer);
+                        sqlJson = parseSqlJson(repaired);
+                        sqlText = repaired;
+                        sqlRepairLeft--;
                     }
+                }
+                if (sqlJson == null || !sqlJson.success || sqlJson.sql == null || sqlJson.sql.isEmpty()) {
                     String reason = sqlJson == null ? "模型未返回可解析的 JSON"
                             : (sqlJson.message == null ? "SQL 生成失败" : sqlJson.message);
-                    log.warn("SQL 生成结果不可用（{}），第 {} 次回喂修复，模型原始输出：{}", reason,
-                            (MAX_SQL_REPAIR_RETRIES - sqlRepairLeft + 1), abbreviate(sqlText, 2000));
-                    String repaired = regenerateSql(aiModel, question, dsId, dynamic, sqlText, reason, writer);
-                    sqlJson = parseSqlJson(repaired);
-                    sqlText = repaired;
-                    sqlRepairLeft--;
+                    emitError(writer, reason);
+                    return;
                 }
                 String sql = sqlJson.sql;
                 String chartType = sqlJson.chartType;
@@ -439,7 +466,7 @@ public class ChatQuestionService {
                     if (directErr == null) {
                         sql = DynamicDatasource.replaceSubSqlPlaceholders(sql, dynamic.getTableSqlTemplates());
                     } else {
-                        String fixedText = regenerateSql(aiModel, question, dsId, dynamic, sql, directErr, writer);
+                        String fixedText = regenerateSql(oid, aiModel, question, dsId, dynamic, sql, directErr, writer);
                         String fixedSql = parseSqlJson(fixedText).sql;
                         if (fixedSql != null
                                 && DynamicDatasource.directTableReferenceError(fixedSql, dynamic.getTableSqlTemplates(),
@@ -467,7 +494,7 @@ public class ChatQuestionService {
                 // 发现-5 延伸修复（A5 偶发 run FAILED）：校验/空 SQL 失败时回喂修复，至多重试 MAX_SQL_REPAIR_RETRIES 次。
                 int validationRetryLeft = MAX_SQL_REPAIR_RETRIES;
                 while (validation != null && validationRetryLeft > 0) {
-                    String fixed = regenerateSql(aiModel, question, dsId, dynamic, sql == null ? "" : sql, validation, writer);
+                    String fixed = regenerateSql(oid, aiModel, question, dsId, dynamic, sql == null ? "" : sql, validation, writer);
                     String fixedSql = parseSqlJson(fixed).sql;
                     if (fixedSql != null && dynamic != null && !dynamic.getTableSqlTemplates().isEmpty()
                             && DynamicDatasource.directTableReferenceError(fixedSql, dynamic.getTableSqlTemplates(),
@@ -542,14 +569,12 @@ public class ChatQuestionService {
                 long execStart = System.currentTimeMillis();
                 Map<String, Object> result;
                 try {
-                    result = dynamic != null
-                            ? datasourceService.execSqlTransient(dynamic.getType(), dynamic.getConf(), sql)
-                            : datasourceService.execSql(dsId, Rows.of("sql", sql));
+            result = execSqlAdapter(sql, dsId, dynamic);
                 } catch (Exception execEx) {
                     // 发现-5 缓解：模型幻觉不存在的列（如 status 而非 order_status）时执行报“未知列”，
                     // 用真实 schema 列名反馈模型一次性改写后重试，避免把执行错误直接抛给用户。
                     if (dsId != null && isColumnError(execEx.getMessage())) {
-                        String fixedText = regenerateSql(aiModel, question, dsId, dynamic, sql,
+                        String fixedText = regenerateSql(oid, aiModel, question, dsId, dynamic, sql,
                                 execEx.getMessage(), writer);
                         String fixedSql = parseSqlJson(fixedText).sql;
                         if (fixedSql != null && validateSql(fixedSql, dsType, dsId, dynamic, question, matchText) == null) {
@@ -567,7 +592,7 @@ public class ChatQuestionService {
                             }
                             sql = finalSql;
                             chatRepository.saveSql(recordId, sql, fixedText);
-                            result = datasourceService.execSql(dsId, Rows.of("sql", sql));
+                            result = execSqlAdapter(sql, dsId, dynamic);
                         } else {
                             throw execEx;
                         }
@@ -609,7 +634,7 @@ public class ChatQuestionService {
                             ? schemaContextBuilder.mSchemaOfConf(dynamic.getType(), dynamic.getConf(),
                             dynamic.getTableSqlTemplates())
                             : schemaContextBuilder.mSchemaOf(dsId);
-                    ChartOutcome chartOutcome = generateChart(writer, aiModel, question, result, totalTokens,
+                    ChartOutcome chartOutcome = generateChart(writer, oid, aiModel, question, result, totalTokens,
                             sql, chartMSchema, chartType);
                     String chartJson = chartOutcome.chart;
                     logOperation(recordId, oid, uid, OPERATE_GENERATE_CHART, chartStart, totalTokens.get(),
@@ -820,7 +845,7 @@ public class ChatQuestionService {
                 // 类型字面量对齐 SQLBot customprompttypeenum（GENERATE_SQL / ANALYSIS / PREDICT_DATA）。
                 String customPromptText = String.join("\n",
                         chatKnowledgeService.customPromptsForType(oid, dsId, analysis ? "ANALYSIS" : "PREDICT_DATA"));
-                String full = generateText(writer, aiModel,
+                String full = generateText(writer, oid, aiModel,
                         analysis ? schemaContextBuilder.buildAnalysisMessages(question, Rows.str(base, "chart"),
                                 dataJson, customPromptText)
                                 : schemaContextBuilder.buildPredictMessages(question, Rows.str(base, "chart"),
@@ -910,7 +935,7 @@ public class ChatQuestionService {
         }
         List<String> questions;
         try {
-            questions = recommendQuestions(model.get(), Rows.str(record, "question"),
+            questions = recommendQuestions(oid, model.get(), Rows.str(record, "question"),
                     articlesNumber, hasChartHint ? chartHint : null, history);
         } catch (Exception e) {
             // A12：推荐问题异常改为显式错误帧（带 code/msg），前端展示失败提示并可重试
@@ -1288,7 +1313,22 @@ public class ChatQuestionService {
     }
 
     /** 错误回喂修复一轮（不流式重发，仅用于纠错），失败返回 null。 */
-    private String regenerateSql(ModelRef aiModel, String question, Long dsId, DynamicDatasource dynamic,
+    /**
+     * 统一执行入口：优先走框架 {@link AskDataFrameworkAdapter}（SqlExecutionCapability + 产品执行器适配，
+     * 叠加只读守卫 / 结果自检），适配器未装配时回退到产品 {@code DatasourceService} 直连，保证兼容。
+     */
+    private Map<String, Object> execSqlAdapter(String sql, Long dsId, DynamicDatasource dynamic) {
+        if (frameworkAdapter != null) {
+            return dynamic != null
+                    ? frameworkAdapter.executeSqlTransient(sql, dynamic.getType(), dynamic.getConf())
+                    : frameworkAdapter.executeSql(sql, dsId);
+        }
+        return dynamic != null
+                ? datasourceService.execSqlTransient(dynamic.getType(), dynamic.getConf(), sql)
+                : datasourceService.execSql(dsId, Rows.of("sql", sql));
+    }
+
+    private String regenerateSql(long oid, ModelRef aiModel, String question, Long dsId, DynamicDatasource dynamic,
                                  String brokenSql, String error, FrameWriter writer) {
         try {
             List<ModelMessage> fixMessages = dynamic != null
@@ -1297,8 +1337,7 @@ public class ChatQuestionService {
                             dynamic.getTableSqlTemplates())
                     : schemaContextBuilder.buildSqlFixMessages(question, dsId,
                             brokenSql == null ? "" : brokenSql, error);
-            String text = modelClient.generate(aiModel.apiDomain, aiModel.apiKey, aiModel.baseModel,
-                    fixMessages, aiModel.params, aiModel.upstreamFormat);
+            String text = modelClient.generate(oid, aiModel.id, fixMessages, aiModel.params);
             if (text == null) {
                 return null;
             }
@@ -1667,6 +1706,24 @@ public class ChatQuestionService {
         return result;
     }
 
+    /**
+     * 框架 {@link SqlGenResult} → 产品 {@link SqlJsonResult} 的映射。
+     * 以框架本地校验结果（{@code valid}）作为是否可用的判定（{@code success}），
+     * 不因为模型自报 success=false 而丢弃已通过校验的 SQL；{@code message} 携带框架失败原因（仅失败时取用）。
+     */
+    private static SqlJsonResult toSqlJsonResult(SqlGenResult fr) {
+        SqlJsonResult sj = new SqlJsonResult();
+        sj.success = fr.isValid();
+        sj.sql = fr.getSql();
+        sj.brief = fr.getBrief();
+        sj.chartType = fr.getChartType() == null ? null : fr.getChartType().name();
+        if (fr.getTables() != null) {
+            sj.tables = fr.getTables();
+        }
+        sj.message = fr.getExplanation();
+        return sj;
+    }
+
     /** 从自由文本中提取一个 JSON 对象（容忍 Markdown 代码块与前后说明文字）。 */
     private static String extractJsonObject(String text) {
         String t = stripReasoningTags(text).trim();
@@ -1711,13 +1768,27 @@ public class ChatQuestionService {
         }
     }
 
-    private ChartOutcome generateChart(FrameWriter writer, ModelRef aiModel, String question,
+    private ChartOutcome generateChart(FrameWriter writer, long oid, ModelRef aiModel, String question,
                                        Map<String, Object> result, AtomicLong totalTokens,
                                        String sql, String mSchema, String chartType) throws IOException {
+        // 框架优先：委派 fw-plus-ai-askdata 的图表能力（G2 模式，模型直接产出 G2 配置）。
+        if (frameworkAdapter != null) {
+            try {
+                ChartGenResult fr = frameworkAdapter.generateChart(oid, question, result, sql, mSchema, chartType);
+                if (fr != null && fr.getConfig() != null) {
+                    String chartJson = chatRepository.writeJson(fr.getConfig());
+                    String answerJson = chatRepository.writeJson(Rows.of("content",
+                            fr.getRawOutput() == null ? "" : fr.getRawOutput(), "reasoning_content", ""));
+                    return new ChartOutcome(chartJson, answerJson);
+                }
+            } catch (Exception e) {
+                log.info("framework 图表生成失败，回退产品启发式: {}", e.getMessage());
+            }
+        }
         String dataJson = chatRepository.writeJson(
                 Rows.of("fields", result.get("fields"), "data", sampleRows(result.get("data"))));
         StringBuilder reasoning = new StringBuilder();
-        String text = generateText(writer, aiModel,
+        String text = generateText(writer, oid, aiModel,
                 schemaContextBuilder.buildChartMessages(question, dataJson, sql, mSchema, chartType),
                 "chart-result", totalTokens, null, reasoning);
         Map<String, Object> chart = null;
@@ -1739,25 +1810,25 @@ public class ChatQuestionService {
     }
 
     /** 推荐问题（非流式；解析为字符串列表，失败返回空列表）。基础版不注入图表/历史上下文。 */
-    private List<String> recommendQuestions(ModelRef aiModel, String question, int articlesNumber) {
-        return recommendQuestions(aiModel, question, articlesNumber, null, null);
+    private List<String> recommendQuestions(long oid, ModelRef aiModel, String question, int articlesNumber) {
+        return recommendQuestions(oid, aiModel, question, articlesNumber, null, null);
     }
 
     /**
      * 推荐问题（增强版，SQLBot 推荐问题模板增强）：注入图表类型提示与历史提问，
      * 使生成的追问更贴合当前可视化与对话上下文。
      */
-    private List<String> recommendQuestions(ModelRef aiModel, String question, int articlesNumber,
+    private List<String> recommendQuestions(long oid, ModelRef aiModel, String question, int articlesNumber,
                                             String chartHint, List<String> history) {
-        return recommendQuestions(aiModel, question, articlesNumber, chartHint, history, null);
+        return recommendQuestions(oid, aiModel, question, articlesNumber, chartHint, history, null);
     }
 
     /** A12：推荐问题生成同样记录 token 用量（usage 非 null 时写入）。 */
-    private List<String> recommendQuestions(ModelRef aiModel, String question, int articlesNumber,
+    private List<String> recommendQuestions(long oid, ModelRef aiModel, String question, int articlesNumber,
                                             String chartHint, List<String> history, TokenUsage usage) {
-        String text = modelClient.generate(aiModel.apiDomain, aiModel.apiKey, aiModel.baseModel,
+        String text = modelClient.generate(oid, aiModel.id,
                 schemaContextBuilder.buildRecommendMessages(question, articlesNumber, chartHint, history),
-                aiModel.params, aiModel.upstreamFormat, toClientUsage(usage));
+                aiModel.params, toClientUsage(usage));
         return parseStringList(text, objectMapper);
     }
 
@@ -1767,9 +1838,9 @@ public class ChatQuestionService {
     }
 
     /** 流式文本生成：逐段发帧，同时累积全文；失败返回 null。 */
-    private String generateText(FrameWriter writer, ModelRef aiModel, List<ModelMessage> messages, String frameType,
+    private String generateText(FrameWriter writer, long oid, ModelRef aiModel, List<ModelMessage> messages, String frameType,
                                 AtomicLong totalTokens) throws IOException {
-        return generateText(writer, aiModel, messages, frameType, totalTokens, null);
+        return generateText(writer, oid, aiModel, messages, frameType, totalTokens, null);
     }
 
     /**
@@ -1777,9 +1848,9 @@ public class ChatQuestionService {
      *
      * @param stepUsage 非 null 时记录本步的 input/output/total（同时累加到 totalTokens）
      */
-    private String generateText(FrameWriter writer, ModelRef aiModel, List<ModelMessage> messages, String frameType,
+    private String generateText(FrameWriter writer, long oid, ModelRef aiModel, List<ModelMessage> messages, String frameType,
                                 AtomicLong totalTokens, TokenUsage stepUsage) throws IOException {
-        return generateText(writer, aiModel, messages, frameType, totalTokens, stepUsage, null);
+        return generateText(writer, oid, aiModel, messages, frameType, totalTokens, stepUsage, null);
     }
 
     /**
@@ -1787,7 +1858,7 @@ public class ChatQuestionService {
      *
      * @param reasoningOut 非 null 时把模型思考流（reasoning_content）累积进去（A26 chart_answer 用）
      */
-    private String generateText(FrameWriter writer, ModelRef aiModel, List<ModelMessage> messages, String frameType,
+    private String generateText(FrameWriter writer, long oid, ModelRef aiModel, List<ModelMessage> messages, String frameType,
                                 AtomicLong totalTokens, TokenUsage stepUsage,
                                 StringBuilder reasoningOut) throws IOException {
         final StringBuilder content = new StringBuilder();
@@ -1798,8 +1869,7 @@ public class ChatQuestionService {
         // 避免逐帧求和导致 token 数虚高；跨步骤（SQL/图表/分析等）的 totals 仍各自累加。
         final AtomicReference<long[]> lastUsage = new AtomicReference<>(null);
         // §2.3: protocol（1=openai 兼容 / 2=vllm）随模型解析下发，端点形态（含 Azure）在 client 内分发
-        modelClient.streamCompletion(aiModel.apiDomain, aiModel.apiKey, aiModel.baseModel, messages,
-                aiModel.params, aiModel.protocol, aiModel.upstreamFormat, new TokenHandler() {
+        modelClient.streamCompletion(oid, aiModel.id, messages, aiModel.params, new TokenHandler() {
                     @Override
                     public void onToken(String token, String reasoningToken) {
                         if (token != null) {

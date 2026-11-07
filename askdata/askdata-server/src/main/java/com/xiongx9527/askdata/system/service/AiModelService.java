@@ -112,10 +112,9 @@ public class AiModelService {
                     "model_type", Rows.intg(row, "model_type", 0),
                     "base_model", Rows.str(row, "base_model"),
                     "supplier", Rows.intg(row, "supplier", 0),
-                    "protocol", Rows.intg(row, "protocol", 1),
+                    "protocol", Rows.str(row, "protocol"),
                     "default_model", Rows.bool(row, "default_model", false),
                     "enable", Rows.bool(row, "enable", true),
-                    "upstream_format", Rows.intg(row, "upstream_format", 1),
                     "dimension", Rows.get(row, "dimension"),
                     "ws_mapping_count", Rows.intg(row, "ws_mapping_count", 0)));
         }
@@ -139,11 +138,15 @@ public class AiModelService {
         // 新建不自动成为默认：默认模型必须可用且已启用，而新模型尚未通过连通校验
         boolean defaultModel = Rows.bool(body, "default_model", false);
         boolean enable = Rows.bool(body, "enable", false);
+        String protocol = Rows.str(body, "protocol");
+        if (protocol == null || protocol.trim().isEmpty()) {
+            protocol = com.xiongx9527.askdata.chat.service.ProtocolMapper.DEFAULT;
+        }
         aiModelRepository.insert(
                 id,
                 CryptoUtil.normalizeForStore(Rows.str(body, "api_key")),
                 CryptoUtil.normalizeForStore(apiDomain),
-                Rows.intg(body, "protocol", 1),
+                protocol,
                 Rows.intg(body, "supplier", 0),
                 name,
                 Rows.intg(body, "model_type", 0),
@@ -153,7 +156,6 @@ public class AiModelService {
                 1,
                 System.currentTimeMillis(),
                 enable,
-                Rows.intg(body, "upstream_format", 0),
                 dimensionOf(body));
         return editor(id);
     }
@@ -195,14 +197,15 @@ public class AiModelService {
         if (requestedEnable && modelType == EMBEDDING_MODEL_TYPE && dimension == null) {
             throw new BadRequestException(messageResolver.get("aimodel.enable_requires_dimension"));
         }
-        int protocol = Rows.get(body, "protocol") == null ? Rows.intg(existing, "protocol", 1)
-                : Rows.intg(body, "protocol", 1);
+        String protocol = Rows.get(body, "protocol") == null ? Rows.str(existing, "protocol")
+                : Rows.str(body, "protocol");
+        if (protocol == null || protocol.trim().isEmpty()) {
+            protocol = com.xiongx9527.askdata.chat.service.ProtocolMapper.DEFAULT;
+        }
         int supplier = Rows.get(body, "supplier") == null ? Rows.intg(existing, "supplier", 0)
                 : Rows.intg(body, "supplier", 0);
         String baseModel = Rows.get(body, "base_model") == null ? Rows.str(existing, "base_model")
                 : Rows.str(body, "base_model");
-        int upstreamFormat = Rows.get(body, "upstream_format") == null
-                ? Rows.intg(existing, "upstream_format", 0) : Rows.intg(body, "upstream_format", 0);
         // D2 维度冲突硬拦截：默认向量模型维度与在线索引不一致时，必须先执行一键重新向量
         if ((isDefault || defaultModel) && modelType == EMBEDDING_MODEL_TYPE && dimension != null
                 && embeddingService != null
@@ -212,7 +215,7 @@ public class AiModelService {
         // D3 放宽强探测：仅当连线字段变化时重新联网探测（纯改名/无关参数不重探）
         if ((isDefault || defaultModel) && connectionChanged(existing, body)) {
             String probeError = probeModel(modelType, apiDomain, apiKey, baseModel, config, protocol,
-                    upstreamFormat, dimension);
+                    dimension);
             if (probeError != null) {
                 throw new BadRequestException(messageResolver.get("aimodel.update.probe_failed", probeError));
             }
@@ -233,7 +236,6 @@ public class AiModelService {
                 defaultModel,
                 config,
                 requestedEnable,
-                upstreamFormat,
                 dimension);
     }
 
@@ -298,10 +300,14 @@ public class AiModelService {
                 && !embeddingService.collectionsWithDimensionOtherThan(dimension).isEmpty()) {
             throw new BadRequestException(messageResolver.get("aimodel.embedding.dimension_conflict_rebuild"));
         }
+        String protocol = Rows.str(model, "protocol");
+        if (protocol == null || protocol.trim().isEmpty()) {
+            protocol = com.xiongx9527.askdata.chat.service.ProtocolMapper.DEFAULT;
+        }
         String probeError = probeModel(modelType,
                 Rows.str(model, "api_domain"), Rows.str(model, "api_key"),
                 Rows.str(model, "base_model"), Rows.str(model, "config"),
-                Rows.intg(model, "protocol", 1), Rows.intg(model, "upstream_format", 0), dimension);
+                protocol, dimension);
         if (probeError != null) {
             throw new BadRequestException(messageResolver.get("aimodel.default.probe_failed", probeError));
         }
@@ -437,8 +443,8 @@ public class AiModelService {
         String apiDomain = CryptoUtil.resolvePlain(Rows.str(body, "api_domain"));
         String apiKey = CryptoUtil.resolvePlain(Rows.str(body, "api_key"));
         boolean fullUrl = Rows.bool(body, "full_url", false);
-        int format = com.xiongx9527.askdata.chat.service.UpstreamFormatResolver.resolve(
-                apiDomain, Rows.intg(body, "upstream_format", 0));
+        int format = com.xiongx9527.askdata.chat.service.ProtocolMapper.toUpstreamFormat(
+                Rows.str(body, "protocol"));
         int supplier = Rows.intg(body, "supplier", 0);
         Map<String, Object> result = new LinkedHashMap<>();
         if (apiDomain == null || apiDomain.trim().isEmpty()) {
@@ -687,12 +693,13 @@ public class AiModelService {
                 return;
             }
             // A23/A24：config_list 的推理参数（temperature / top_p / max_tokens / 厂商自定义）与
-            // protocol 参与连通检查；Azure 专有域名走 deployment URL + api-key 头（与 ChatModelClient 同一套规则）
+            // protocol 参与连通检查；对话校验统一经框架 LlmPort（协议名驱动端口路由，含 Azure / Anthropic / Responses / Gemini）
             Map<String, Object> params = modelParams(body);
-            int protocol = Rows.intg(body, "protocol", 1);
+            String protocol = Rows.str(body, "protocol");
+            if (protocol == null || protocol.trim().isEmpty()) {
+                protocol = com.xiongx9527.askdata.chat.service.ProtocolMapper.DEFAULT;
+            }
             int modelType = Rows.intg(body, "model_type", CHAT_MODEL_TYPE);
-            int format = com.xiongx9527.askdata.chat.service.UpstreamFormatResolver.resolve(
-                    apiDomain, Rows.intg(body, "upstream_format", 0));
             Long modelId = Rows.get(body, "id") == null ? null : Rows.lng(body, "id", 0L);
             // 网络异常同样属于「校验未通过」：必须回写 enable=0，否则界面会显示一个连不上的可用模型
             boolean passed = false;
@@ -701,13 +708,8 @@ public class AiModelService {
                     passed = checkEmbedding(apiDomain, apiKey, baseModel, modelId, dimensionOf(body), writer);
                 } else if (modelType == RERANK_MODEL_TYPE) {
                     passed = checkRerank(apiDomain, apiKey, baseModel, writer);
-                } else if (format == com.xiongx9527.askdata.chat.service.UpstreamFormatResolver.ANTHROPIC
-                        || format == com.xiongx9527.askdata.chat.service.UpstreamFormatResolver.RESPONSES) {
-                    passed = checkChatWithFormat(apiDomain, apiKey, baseModel, params, format, writer);
                 } else {
-                    boolean azure = com.xiongx9527.askdata.chat.service.ChatModelClient.isAzureEndpoint(apiDomain);
-                    String url = connectivityUrl(apiDomain, baseModel, params, protocol);
-                    passed = checkModel(url, apiKey, baseModel, params, azure, writer);
+                    passed = checkChat(apiDomain, apiKey, baseModel, params, protocol, writer);
                 }
             } catch (Exception e) {
                 emitError(writer, e.getMessage() == null ? e.toString() : e.getMessage());
@@ -722,46 +724,6 @@ public class AiModelService {
         } finally {
             writer.flush();
         }
-    }
-
-    /**
-     * A24：连通检查的目标端点（对齐 SQLBot {@code check_llm} 的 {@code protocol} 分支）。
-     *
-     * <ul>
-     *   <li>Azure 专有域名：{@code {base}/openai/deployments/{deployment}/chat/completions?api-version={v}}，
-     *       deployment/api-version 取 config_list 的 {@code deployment_name} / {@code api_version}；</li>
-     *   <li>{@code protocol == 1}（OpenAI）：按 api_domain 原样规范化（可带 {@code /v1} 或自定义前缀）；</li>
-     *   <li>{@code protocol != 1}（vLLM）：api_domain 视为服务根地址，端点固定在 {@code /v1} 下
-     *       （vLLM 的 OpenAI 兼容层始终暴露 {@code /v1/chat/completions}）。</li>
-     * </ul>
-     */
-    public static String connectivityUrl(String apiDomain, String baseModel, Map<String, Object> params,
-                                         int protocol) {
-        if (com.xiongx9527.askdata.chat.service.ChatModelClient.isAzureEndpoint(apiDomain)) {
-            return com.xiongx9527.askdata.chat.service.ChatModelClient.chatCompletionsUrl(
-                    apiDomain, baseModel, params);
-        }
-        if (protocol == 1) {
-            return com.xiongx9527.askdata.chat.service.ChatModelClient.chatCompletionsUrl(
-                    apiDomain, baseModel, params);
-        }
-        String base = apiDomain.trim();
-        while (base.endsWith("/")) {
-            base = base.substring(0, base.length() - 1);
-        }
-        if (base.endsWith("/chat/completions")) {
-            return base;
-        }
-        String path;
-        try {
-            path = new URL(base).getPath();
-        } catch (Exception e) {
-            return base + "/v1/chat/completions";
-        }
-        if (path != null && path.endsWith("/v1")) {
-            return base + "/chat/completions";
-        }
-        return base + "/v1/chat/completions";
     }
 
     /**
@@ -780,54 +742,6 @@ public class AiModelService {
             params.put(key, val);
         }
         return params;
-    }
-
-    private boolean checkModel(String url, String apiKey, String baseModel, Map<String, Object> params,
-                              boolean azure, PrintWriter writer) throws IOException {
-        HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
-        try {
-            connection.setRequestMethod("POST");
-            connection.setDoOutput(true);
-            connection.setConnectTimeout(5000);
-            connection.setReadTimeout(60000);
-            connection.setRequestProperty("Content-Type", "application/json");
-            connection.setRequestProperty("Accept", "text/event-stream");
-            if (apiKey != null && !apiKey.isEmpty()) {
-                if (azure) {
-                    // Azure 不用 Bearer，改用 api-key 头（对齐 SQLBot AzureOpenAI 分支）
-                    connection.setRequestProperty("api-key", apiKey);
-                } else {
-                    connection.setRequestProperty("Authorization", "Bearer " + apiKey);
-                }
-            }
-            List<com.xiongx9527.askdata.chat.service.ChatModelClient.ModelMessage> messages =
-                    new ArrayList<>();
-            messages.add(new com.xiongx9527.askdata.chat.service.ChatModelClient.ModelMessage(
-                    "user", "1+1=?"));
-            // A23：复用主链路的请求体组装，保证连通检查与真实问数走同一套参数口径
-            Map<String, Object> payload = com.xiongx9527.askdata.chat.service.ChatModelClient.buildPayload(
-                    baseModel, messages, params, azure);
-            connection.getOutputStream().write(objectMapper.writeValueAsBytes(payload));
-            connection.getOutputStream().flush();
-
-            int code = connection.getResponseCode();
-            if (code >= 400) {
-                String detail = readAll(connection.getErrorStream());
-                emitError(writer, messageResolver.get("aimodel.http_error", Maps.of("msg",
-                        "HTTP " + code + "：" + cleanErrorBody(detail))));
-                return false;
-            }
-            String contentType = connection.getContentType();
-            if (contentType != null && contentType.toLowerCase().contains("text/event-stream")) {
-                readSseStream(connection.getInputStream(), writer);
-            } else {
-                String text = readAll(connection.getInputStream());
-                emitContentFromJson(text, writer);
-            }
-            return true;
-        } finally {
-            connection.disconnect();
-        }
     }
 
     /**
@@ -921,7 +835,7 @@ public class AiModelService {
      * @return {@code null} 表示探测通过；否则为失败原因
      */
     private String probeModel(int modelType, String apiDomain, String apiKey, String baseModel,
-                              String configJson, int protocol, int upstreamFormat, Integer dimension) {
+                              String configJson, String protocol, Integer dimension) {
         String domain = CryptoUtil.resolvePlain(apiDomain);
         String key = CryptoUtil.resolvePlain(apiKey);
         if (domain == null || domain.isEmpty() || baseModel == null || baseModel.isEmpty()) {
@@ -949,17 +863,7 @@ public class AiModelService {
             }
             java.io.StringWriter sink = new java.io.StringWriter();
             PrintWriter writer = new PrintWriter(sink);
-            int format = com.xiongx9527.askdata.chat.service.UpstreamFormatResolver.resolve(
-                    domain, upstreamFormat);
-            boolean ok;
-            if (format == com.xiongx9527.askdata.chat.service.UpstreamFormatResolver.ANTHROPIC
-                    || format == com.xiongx9527.askdata.chat.service.UpstreamFormatResolver.RESPONSES) {
-                ok = checkChatWithFormat(domain, key, baseModel, params, format, writer);
-            } else {
-                boolean azure = com.xiongx9527.askdata.chat.service.ChatModelClient.isAzureEndpoint(domain);
-                String url = connectivityUrl(domain, baseModel, params, protocol);
-                ok = checkModel(url, key, baseModel, params, azure, writer);
-            }
+            boolean ok = checkChat(domain, key, baseModel, params, protocol, writer);
             writer.flush();
             if (ok) {
                 return null;
@@ -973,7 +877,7 @@ public class AiModelService {
     }
 
     /**
-     * D3 仅当连线字段（api_domain/api_key/base_model/protocol/supplier/upstream_format）相对既有值变化时返回 true。
+     * D3 仅当连线字段（api_domain/api_key/base_model/protocol/supplier）相对既有值变化时返回 true。
      * 纯改名/改无关参数（如 display_name）不算变化，无需重新联网探测。
      */
     private boolean connectionChanged(Map<String, Object> existing, Map<String, Object> body) {
@@ -990,15 +894,11 @@ public class AiModelService {
             return true;
         }
         if (body.containsKey("protocol")
-                && Rows.intg(existing, "protocol", 1) != Rows.intg(body, "protocol", 1)) {
+                && !eq(Rows.str(existing, "protocol"), Rows.str(body, "protocol"))) {
             return true;
         }
         if (body.containsKey("supplier")
                 && Rows.intg(existing, "supplier", 0) != Rows.intg(body, "supplier", 0)) {
-            return true;
-        }
-        if (body.containsKey("upstream_format")
-                && Rows.intg(existing, "upstream_format", 0) != Rows.intg(body, "upstream_format", 0)) {
             return true;
         }
         return false;
@@ -1039,13 +939,13 @@ public class AiModelService {
         return true;
     }
 
-    /** Anthropic Messages / Responses 连通校验：与运行期共用同一格式分支，保证「校验通过即可用」。 */
-    private boolean checkChatWithFormat(String apiDomain, String apiKey, String baseModel,
-                                        Map<String, Object> params, int format, PrintWriter writer) {
+    /** 对话模型连通校验：与运行期共用同一协议分支（按 protocol 名经框架 LlmPort），保证「校验通过即可用」。 */
+    private boolean checkChat(String apiDomain, String apiKey, String baseModel,
+                             Map<String, Object> params, String protocol, PrintWriter writer) {
         final boolean[] failed = {false};
         List<com.xiongx9527.askdata.chat.service.ChatModelClient.ModelMessage> messages = new ArrayList<>();
         messages.add(new com.xiongx9527.askdata.chat.service.ChatModelClient.ModelMessage("user", "1+1=?"));
-        chatModelClient.streamCompletion(apiDomain, apiKey, baseModel, messages, params, 1, format,
+        chatModelClient.streamCompletion(apiDomain, apiKey, baseModel, messages, params, protocol,
                 new com.xiongx9527.askdata.chat.service.ChatModelClient.TokenHandler() {
                     @Override
                     public void onToken(String content, String reasoningContent) {
@@ -1257,14 +1157,20 @@ public class AiModelService {
         editor.put("model_type", Rows.intg(row, "model_type", 0));
         editor.put("base_model", Rows.str(row, "base_model"));
         editor.put("supplier", Rows.intg(row, "supplier", 0));
-        editor.put("protocol", Rows.intg(row, "protocol", 1));
+        // protocol 已是枚举名（VARCHAR）：作为唯一事实源下发（空回落默认）。
+        String protocol = Rows.str(row, "protocol");
+        if (protocol == null || protocol.trim().isEmpty()) {
+            protocol = com.xiongx9527.askdata.chat.service.ProtocolMapper.DEFAULT;
+        }
+        editor.put("protocol", protocol);
         editor.put("default_model", Rows.bool(row, "default_model", false));
         // 对齐 SQLBot get_model_by_id：解密后返回明文，前端编辑保存时再 sqlbotEncrypt
         editor.put("api_domain", CryptoUtil.resolvePlain(Rows.str(row, "api_domain")));
         editor.put("api_key", CryptoUtil.resolvePlain(Rows.str(row, "api_key")));
         editor.put("config_list", parseConfigList(Rows.str(row, "config")));
         editor.put("enable", Rows.bool(row, "enable", true));
-        editor.put("upstream_format", Rows.intg(row, "upstream_format", 1));
+        // upstream_format 由 protocol 派生，兼容仍按数字分支的前端代码（列已废弃，不得再从库读取）。
+        editor.put("upstream_format", com.xiongx9527.askdata.chat.service.ProtocolMapper.toUpstreamFormat(protocol));
         editor.put("dimension", Rows.get(row, "dimension"));
         return editor;
     }

@@ -2,8 +2,10 @@ package com.xiongx9527.askdata.chat.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xiongx9527.fw.plus.ai.base.model.LlmPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import javax.servlet.http.HttpServletResponse;
@@ -47,8 +49,25 @@ public class ChatModelClient {
 
     private final ObjectMapper objectMapper;
 
-    public ChatModelClient(ObjectMapper objectMapper) {
+    private final FrameworkModelBridge bridge;
+
+    private final AskDataLlmPort askDataLlmPort;
+
+    @Autowired
+    public ChatModelClient(ObjectMapper objectMapper, FrameworkModelBridge bridge, AskDataLlmPort askDataLlmPort) {
         this.objectMapper = objectMapper;
+        this.bridge = bridge;
+        this.askDataLlmPort = askDataLlmPort;
+    }
+
+    /** 兼容构造（测试与非 Spring 上下文）：桥接层与故障转移端口按需实例化（无故障转移）。 */
+    public ChatModelClient(ObjectMapper objectMapper) {
+        this(objectMapper, new FrameworkModelBridge(), null);
+    }
+
+    /** 兼容构造（测试）：显式桥接层，故障转移端口为空（无故障转移）。 */
+    public ChatModelClient(ObjectMapper objectMapper, FrameworkModelBridge bridge) {
+        this(objectMapper, bridge, null);
     }
 
     // ------------------------------------------------------------------
@@ -107,189 +126,125 @@ public class ChatModelClient {
     public void streamCompletion(String apiDomain, String apiKey, String baseModel,
                                  List<ModelMessage> messages, Map<String, Object> extraParams,
                                  TokenHandler handler) {
-        streamCompletion(apiDomain, apiKey, baseModel, messages, extraParams, 1, handler);
+        streamCompletion(apiDomain, apiKey, baseModel, messages, extraParams,
+                ProtocolMapper.DEFAULT, handler);
     }
 
     /**
-     * §2.3: 带协议分发的流式补全。{@code protocol} 取 {@code ai_model.protocol}：
-     * 1=openai 兼容、2=vllm（两者同构，URL 规范化一致）；请求形态由端点域名决定——
-     * Azure 专有域名（{@code *.openai.azure.com} / {@code *.openai.azure.cn}）走
-     * deployment URL + {@code api-key} 头（对齐 SQLBot LLMFactory 的 azure 分支）。
+     * 带协议分发的流式补全：{@code protocol} 即 {@code ai_model.protocol}（框架
+     * {@link com.xiongx9527.fw.plus.ai.nativeimpl.llm.LlmProtocol} 枚举名，如 OPENAI_CHAT_COMPLETIONS /
+     * GEMINI / ANTHROPIC_MESSAGES / OPENAI_RESPONSES / AZURE_OPENAI_CHAT_COMPLETIONS）。
+     * 底层统一走框架 {@code LlmPortResolver}，product 不再自管 HTTP/SSE 分支。
      */
     public void streamCompletion(String apiDomain, String apiKey, String baseModel,
                                  List<ModelMessage> messages, Map<String, Object> extraParams,
-                                 int protocol, TokenHandler handler) {
-        if (apiDomain == null || apiDomain.trim().isEmpty() || baseModel == null || baseModel.trim().isEmpty()) {
-            handler.onError("模型未配置：缺少 api_domain 或 base_model（请先到系统-AI 模型配置并设置默认模型）");
-            return;
-        }
-        streamCompletionImpl(apiDomain, apiKey, baseModel, messages, extraParams, protocol,
-                UpstreamFormatResolver.AUTO, handler);
-    }
+                                 String protocol, TokenHandler handler) {
+		bridge.stream(apiDomain, apiKey, baseModel, protocol, messages, extraParams, handler);
+	}
 
-    /** 兼容旧调用方（不传额外参数）。 */
+	/**
+	 * 流式补全（端口已解析）：直接复用调用方传入的 {@link com.xiongx9527.fw.plus.ai.base.model.LlmPort}
+	 * （通常是 {@code AskDataLlmPort} 产出的跨端点故障转移端口），不再按端点字段重新解析。
+	 *
+	 * @param model 主模型名（仅占位，故障转移端口会按候选重写）
+	 */
+	public void streamCompletion(LlmPort port, String model, List<ModelMessage> messages,
+								Map<String, Object> extraParams, TokenHandler handler) {
+		bridge.stream(port, model, messages, extraParams, handler);
+	}
+
+	/** 兼容旧调用方（不传额外参数）。 */
     public void streamCompletion(String apiDomain, String apiKey, String baseModel,
                                  List<ModelMessage> messages, TokenHandler handler) {
-        streamCompletion(apiDomain, apiKey, baseModel, messages, null, 1, handler);
+        streamCompletion(apiDomain, apiKey, baseModel, messages, null, ProtocolMapper.DEFAULT, handler);
     }
 
     /**
-     * 带上游报文格式的流式补全。
+     * 流式补全（按工作空间候选链故障转移）：根据 {@code oid} 解析该空间可见的对话模型候选，
+     * 主模型失败时由框架 {@code FallbackLlmPort} 顺次切换（吐字前透明切换，吐字后如实上报）。
      *
-     * @param upstreamFormat {@code ai_model.upstream_format}（0 自动识别 / 1 Chat Completions /
-     *                       2 Anthropic Messages / 3 Responses / 4 Azure OpenAI）
+     * <p>等价于 {@link #streamCompletion(String, String, String, List, Map, String, TokenHandler)} 的
+     * 多模型版本；调用方可不带明文连接信息，由 {@code AskDataLlmPort} 从模型配置动态解析。</p>
      */
-    public void streamCompletion(String apiDomain, String apiKey, String baseModel,
-                                 List<ModelMessage> messages, Map<String, Object> extraParams,
-                                 int protocol, int upstreamFormat, TokenHandler handler) {
-        if (apiDomain == null || apiDomain.trim().isEmpty() || baseModel == null || baseModel.trim().isEmpty()) {
-            handler.onError("模型未配置：缺少 api_domain 或 base_model（请先到系统-AI 模型配置并设置默认模型）");
-            return;
-        }
-        streamCompletionImpl(apiDomain, apiKey, baseModel, messages, extraParams, protocol, upstreamFormat, handler);
+    public void streamCompletion(long oid, List<ModelMessage> messages, Map<String, Object> extraParams,
+                                TokenHandler handler) {
+        streamCompletion(oid, null, messages, extraParams, handler);
     }
 
-    /** 带格式的非流式补全（不带 usage）。 */
+    /** 流式补全（按工作空间候选链故障转移，支持按次指定 {@code customModelId}）。 */
+    public void streamCompletion(long oid, Long customModelId, List<ModelMessage> messages, Map<String, Object> extraParams,
+                                TokenHandler handler) {
+        if (askDataLlmPort != null) {
+            askDataLlmPort.stream(oid, customModelId, messages, extraParams, handler);
+        } else {
+            handler.onError("llm fallback unavailable (non-spring context)");
+        }
+    }
+
+    /**
+     * 非流式补全（不带 usage）：协议名驱动框架端口路由。
+     *
+     * @see #generate(String, String, String, List, Map, String, Usage)
+     */
     public String generate(String apiDomain, String apiKey, String baseModel, List<ModelMessage> messages,
-                           Map<String, Object> extraParams, int upstreamFormat) {
-        return generate(apiDomain, apiKey, baseModel, messages, extraParams, upstreamFormat, null);
+                           Map<String, Object> extraParams, String protocol) {
+        return generate(apiDomain, apiKey, baseModel, messages, extraParams, protocol, null);
     }
 
-    /** 带格式的非流式补全（Anthropic / Responses 走各自报文分支）。 */
+    /**
+     * 带协议的非流式补全：复用同一流式管线经框架端口聚合正文（与旧 {@code generate} 行为一致）。
+     *
+     * @param protocol {@code ai_model.protocol}（框架 {@code LlmProtocol} 枚举名）
+     * @param usage    非 null 时写入本次调用的 input/output/total（端点未上报时为 0）
+     * @return 失败或空响应返回 {@code null}
+     */
     public String generate(String apiDomain, String apiKey, String baseModel, List<ModelMessage> messages,
-                           Map<String, Object> extraParams, int upstreamFormat, final Usage usage) {
-        final StringBuilder sb = new StringBuilder();
-        final boolean[] failed = {false};
-        streamCompletion(apiDomain, apiKey, baseModel, messages, extraParams, 1, upstreamFormat, new TokenHandler() {
-            @Override
-            public void onToken(String content, String reasoningContent) {
-                if (content != null) {
-                    sb.append(content);
-                }
-            }
-
-            @Override
-            public void onComplete() {
-                // no-op
-            }
-
-            @Override
-            public void onError(String message) {
-                failed[0] = true;
-            }
-
-            @Override
-            public void onUsageDetail(long inputTokens, long outputTokens, long total) {
-                if (usage != null) {
-                    usage.input += inputTokens;
-                    usage.output += outputTokens;
-                    usage.total += total;
-                }
-            }
-        });
-        return failed[0] || sb.length() == 0 ? null : sb.toString();
+                           Map<String, Object> extraParams, String protocol, final Usage usage) {
+        return bridge.complete(apiDomain, apiKey, baseModel, protocol, messages, extraParams, usage);
     }
 
-    private void streamCompletionImpl(String apiDomain, String apiKey, String baseModel,
-                                      List<ModelMessage> messages, Map<String, Object> extraParams,
-                                      int protocol, int upstreamFormat, TokenHandler handler) {
-        int format = UpstreamFormatResolver.resolve(apiDomain, upstreamFormat);
-        if (format == UpstreamFormatResolver.ANTHROPIC) {
-            anthropicStream(apiDomain, apiKey, baseModel, messages, extraParams, handler);
-            return;
-        }
-        if (format == UpstreamFormatResolver.RESPONSES) {
-            responsesStream(apiDomain, apiKey, baseModel, messages, extraParams, handler);
-            return;
-        }
-        streamCompletionOpenAi(apiDomain, apiKey, baseModel, messages, extraParams, handler);
+    /**
+     * 带协议的非流式补全（按工作空间候选链故障转移）。
+     *
+     * @see #streamCompletion(long, List, Map, TokenHandler)
+     */
+    public String generate(long oid, List<ModelMessage> messages, Map<String, Object> extraParams) {
+        return generate(oid, null, messages, extraParams, null);
     }
 
-    private void streamCompletionOpenAi(String apiDomain, String apiKey, String baseModel,
-                                        List<ModelMessage> messages, Map<String, Object> extraParams,
-                                        TokenHandler handler) {
-        HttpURLConnection connection = null;
-        try {
-            boolean azure = isAzureEndpoint(apiDomain);
-            connection = (HttpURLConnection) new URL(chatCompletionsUrl(apiDomain, baseModel, extraParams)).openConnection();
-            connection.setRequestMethod("POST");
-            connection.setDoOutput(true);
-            connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
-            connection.setReadTimeout(READ_TIMEOUT_MS);
-            connection.setRequestProperty("Content-Type", "application/json");
-            connection.setRequestProperty("Accept", "text/event-stream");
-            if (apiKey != null && !apiKey.isEmpty()) {
-                if (azure) {
-                    // Azure 不用 Bearer，改用 api-key 头（对齐 SQLBot AzureOpenAI 分支）
-                    connection.setRequestProperty("api-key", apiKey);
-                } else {
-                    connection.setRequestProperty("Authorization", "Bearer " + apiKey);
-                }
-            }
-            Map<String, Object> payload = buildPayload(baseModel, messages, extraParams, azure);
-            connection.getOutputStream().write(objectMapper.writeValueAsBytes(payload));
-            connection.getOutputStream().flush();
-
-            int code = connection.getResponseCode();
-            if (code >= 400) {
-                String detail = readAll(connection.getErrorStream());
-                handler.onError("模型调用失败 HTTP " + code + (detail.isEmpty() ? "" : ": " + detail));
-                return;
-            }
-            readSse(connection.getInputStream(), handler);
-            handler.onComplete();
-        } catch (Exception e) {
-            log.warn("模型调用异常（已降级）: {}", e.getMessage());
-            handler.onError("模型调用失败: " + (e.getMessage() == null ? e.toString() : e.getMessage()));
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
-        }
+    /** 非流式补全（按工作空间候选链故障转移，支持按次指定 {@code customModelId}，不带 usage）。 */
+    public String generate(long oid, Long customModelId, List<ModelMessage> messages, Map<String, Object> extraParams) {
+        return generate(oid, customModelId, messages, extraParams, null);
     }
+
+    /**
+     * 带协议与 usage 的非流式补全（按工作空间候选链故障转移，支持按次指定 {@code customModelId}）。
+     *
+     * @param customModelId 可选：本次调用指定的对话模型 id（null 表示使用工作空间默认候选链）
+     * @param usage        非 null 时写入本次调用的 input/output/total
+     * @return 失败或空响应返回 {@code null}
+     */
+    public String generate(long oid, Long customModelId, List<ModelMessage> messages, Map<String, Object> extraParams,
+                           final Usage usage) {
+        if (askDataLlmPort != null) {
+            return askDataLlmPort.complete(oid, customModelId, messages, extraParams, usage);
+        }
+        return null;
+    }
+
+	/**
+	 * 非流式补全（端口已解析）：复用同一流式管线经框架端口聚合正文。
+	 *
+	 * @param model 主模型名（仅占位，故障转移端口会按候选重写）
+	 */
+	public String generate(LlmPort port, String model, List<ModelMessage> messages,
+                           Map<String, Object> extraParams, final Usage usage) {
+		return bridge.complete(port, model, messages, extraParams, usage);
+	}
 
     // ------------------------------------------------------------------
-    // Anthropic Messages
+    // 历史报文构造工具（保留：被单测直接覆盖；运行期已统一走框架 LlmPort）
     // ------------------------------------------------------------------
-
-    private void anthropicStream(String apiDomain, String apiKey, String baseModel,
-                                 List<ModelMessage> messages, Map<String, Object> extraParams,
-                                 TokenHandler handler) {
-        HttpURLConnection connection = null;
-        try {
-            String url = UpstreamFormatResolver.chatUrl(apiDomain, baseModel, UpstreamFormatResolver.ANTHROPIC, false);
-            connection = (HttpURLConnection) new URL(url).openConnection();
-            connection.setRequestMethod("POST");
-            connection.setDoOutput(true);
-            connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
-            connection.setReadTimeout(READ_TIMEOUT_MS);
-            connection.setRequestProperty("Content-Type", "application/json");
-            connection.setRequestProperty("Accept", "text/event-stream");
-            connection.setRequestProperty("anthropic-version", "2023-06-01");
-            if (apiKey != null && !apiKey.isEmpty()) {
-                connection.setRequestProperty("x-api-key", apiKey);
-            }
-            connection.getOutputStream().write(objectMapper.writeValueAsBytes(
-                    buildAnthropicPayload(baseModel, messages, extraParams)));
-            connection.getOutputStream().flush();
-            int code = connection.getResponseCode();
-            if (code >= 400) {
-                String detail = readAll(connection.getErrorStream());
-                handler.onError("模型调用失败 HTTP " + code + (detail.isEmpty() ? "" : ": " + detail));
-                return;
-            }
-            if (!readAnthropicSse(connection.getInputStream(), handler)) {
-                handler.onComplete();
-            }
-        } catch (Exception e) {
-            log.warn("Anthropic 调用异常（已降级）: {}", e.getMessage());
-            handler.onError("模型调用失败: " + (e.getMessage() == null ? e.toString() : e.getMessage()));
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
-        }
-    }
 
     /** Anthropic Messages 请求体：system 提升为顶层字段，messages 只保留 user/assistant，max_tokens 必填。 */
     static Map<String, Object> buildAnthropicPayload(String baseModel, List<ModelMessage> messages,
@@ -339,101 +294,9 @@ public class ChatModelClient {
         return payload;
     }
 
-    /**
-     * Anthropic SSE：content_block_delta 取增量文本；usage 取 message_start/message_delta。
-     *
-     * @return 是否出现错误事件（出现时调用方不再回调 onComplete）
-     */
-    private boolean readAnthropicSse(InputStream inputStream, TokenHandler handler) throws IOException {
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                String trimmed = line.trim();
-                if (trimmed.isEmpty() || !trimmed.startsWith("data:")) {
-                    continue;
-                }
-                String data = trimmed.substring("data:".length()).trim();
-                if (data.isEmpty() || "[DONE]".equals(data)) {
-                    continue;
-                }
-                try {
-                    JsonNode node = objectMapper.readTree(data);
-                    String type = node.has("type") ? node.get("type").asText() : "";
-                    if ("message_start".equals(type)) {
-                        JsonNode message = node.get("message");
-                        JsonNode usage = message == null ? null : message.get("usage");
-                        if (usage != null) {
-                            long input = usage.has("input_tokens") ? usage.get("input_tokens").asLong() : 0L;
-                            handler.onUsageDetail(input, 0L, input);
-                        }
-                    } else if ("content_block_delta".equals(type)) {
-                        JsonNode delta = node.get("delta");
-                        if (delta != null && delta.has("text")) {
-                            String text = delta.get("text").asText();
-                            if (text != null && !text.isEmpty()) {
-                                handler.onToken(text, null);
-                            }
-                        }
-                    } else if ("message_delta".equals(type)) {
-                        JsonNode usage = node.get("usage");
-                        if (usage != null && usage.has("output_tokens")) {
-                            handler.onUsageDetail(0L, usage.get("output_tokens").asLong(), 0L);
-                        }
-                    } else if ("error".equals(type)) {
-                        JsonNode error = node.get("error");
-                        handler.onError(error == null ? "模型返回错误" : error.toString());
-                        return true;
-                    }
-                } catch (Exception e) {
-                    log.debug("忽略非法 Anthropic SSE 数据行: {}", data);
-                }
-            }
-        }
-        return false;
-    }
-
     // ------------------------------------------------------------------
     // OpenAI Responses
     // ------------------------------------------------------------------
-
-    private void responsesStream(String apiDomain, String apiKey, String baseModel,
-                                 List<ModelMessage> messages, Map<String, Object> extraParams,
-                                 TokenHandler handler) {
-        HttpURLConnection connection = null;
-        try {
-            String url = UpstreamFormatResolver.chatUrl(apiDomain, baseModel, UpstreamFormatResolver.RESPONSES, false);
-            connection = (HttpURLConnection) new URL(url).openConnection();
-            connection.setRequestMethod("POST");
-            connection.setDoOutput(true);
-            connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
-            connection.setReadTimeout(READ_TIMEOUT_MS);
-            connection.setRequestProperty("Content-Type", "application/json");
-            connection.setRequestProperty("Accept", "text/event-stream");
-            if (apiKey != null && !apiKey.isEmpty()) {
-                connection.setRequestProperty("Authorization", "Bearer " + apiKey);
-            }
-            connection.getOutputStream().write(objectMapper.writeValueAsBytes(
-                    buildResponsesPayload(baseModel, messages, extraParams)));
-            connection.getOutputStream().flush();
-            int code = connection.getResponseCode();
-            if (code >= 400) {
-                String detail = readAll(connection.getErrorStream());
-                handler.onError("模型调用失败 HTTP " + code + (detail.isEmpty() ? "" : ": " + detail));
-                return;
-            }
-            if (!readResponsesSse(connection.getInputStream(), handler)) {
-                handler.onComplete();
-            }
-        } catch (Exception e) {
-            log.warn("Responses 调用异常（已降级）: {}", e.getMessage());
-            handler.onError("模型调用失败: " + (e.getMessage() == null ? e.toString() : e.getMessage()));
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
-        }
-    }
 
     /** Responses 请求体：使用 {@code input[]} 结构，system 作为 developer/user 指令保留在 input 中。 */
     static Map<String, Object> buildResponsesPayload(String baseModel, List<ModelMessage> messages,
@@ -467,52 +330,6 @@ public class ChatModelClient {
             }
         }
         return payload;
-    }
-
-    /**
-     * Responses SSE：{@code response.output_text.delta} 取增量文本，{@code response.completed} 取 usage。
-     *
-     * @return 是否出现错误事件（出现时调用方不再回调 onComplete）
-     */
-    private boolean readResponsesSse(InputStream inputStream, TokenHandler handler) throws IOException {
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                String trimmed = line.trim();
-                if (trimmed.isEmpty() || !trimmed.startsWith("data:")) {
-                    continue;
-                }
-                String data = trimmed.substring("data:".length()).trim();
-                if (data.isEmpty() || "[DONE]".equals(data)) {
-                    continue;
-                }
-                try {
-                    JsonNode node = objectMapper.readTree(data);
-                    String type = node.has("type") ? node.get("type").asText() : "";
-                    if ("response.output_text.delta".equals(type) && node.has("delta")) {
-                        String text = node.get("delta").asText();
-                        if (text != null && !text.isEmpty()) {
-                            handler.onToken(text, null);
-                        }
-                    } else if ("response.completed".equals(type)) {
-                        JsonNode response = node.get("response");
-                        JsonNode usage = response == null ? null : response.get("usage");
-                        if (usage != null) {
-                            long input = usage.has("input_tokens") ? usage.get("input_tokens").asLong() : 0L;
-                            long output = usage.has("output_tokens") ? usage.get("output_tokens").asLong() : 0L;
-                            handler.onUsageDetail(input, output, input + output);
-                        }
-                    } else if ("response.failed".equals(type) || "error".equals(type)) {
-                        handler.onError("模型返回错误: " + data);
-                        return true;
-                    }
-                } catch (Exception e) {
-                    log.debug("忽略非法 Responses SSE 数据行: {}", data);
-                }
-            }
-        }
-        return false;
     }
 
     /**
@@ -612,7 +429,7 @@ public class ChatModelClient {
      * @param extraParams §2.3: 透传的模型推理参数（见 {@link #streamCompletion}）；可为 null。 */
     public String generate(String apiDomain, String apiKey, String baseModel, List<ModelMessage> messages,
                            Map<String, Object> extraParams) {
-        return generate(apiDomain, apiKey, baseModel, messages, extraParams, null);
+        return generate(apiDomain, apiKey, baseModel, messages, extraParams, ProtocolMapper.DEFAULT);
     }
 
     /**
@@ -622,36 +439,7 @@ public class ChatModelClient {
      */
     public String generate(String apiDomain, String apiKey, String baseModel, List<ModelMessage> messages,
                            Map<String, Object> extraParams, final Usage usage) {
-        final StringBuilder sb = new StringBuilder();
-        final boolean[] failed = {false};
-        streamCompletion(apiDomain, apiKey, baseModel, messages, extraParams, new TokenHandler() {
-            @Override
-            public void onToken(String content, String reasoningContent) {
-                if (content != null) {
-                    sb.append(content);
-                }
-            }
-
-            @Override
-            public void onComplete() {
-                // no-op
-            }
-
-            @Override
-            public void onError(String message) {
-                failed[0] = true;
-            }
-
-            @Override
-            public void onUsageDetail(long inputTokens, long outputTokens, long total) {
-                if (usage != null) {
-                    usage.input += inputTokens;
-                    usage.output += outputTokens;
-                    usage.total += total;
-                }
-            }
-        });
-        return failed[0] || sb.length() == 0 ? null : sb.toString();
+        return generate(apiDomain, apiKey, baseModel, messages, extraParams, ProtocolMapper.DEFAULT, usage);
     }
 
     /** A12：LLM 调用的 token 用量（可变 holder）。 */
@@ -663,7 +451,7 @@ public class ChatModelClient {
 
     /** 兼容旧调用方（不传额外参数）。 */
     public String generate(String apiDomain, String apiKey, String baseModel, List<ModelMessage> messages) {
-        return generate(apiDomain, apiKey, baseModel, messages, null);
+        return generate(apiDomain, apiKey, baseModel, messages, null, ProtocolMapper.DEFAULT);
     }
 
     // ------------------------------------------------------------------
@@ -671,63 +459,12 @@ public class ChatModelClient {
     // ------------------------------------------------------------------
 
     /**
-     * 批量取文本向量（OpenAI 兼容 {@code /v1/embeddings}，Ollama 同构）。
+     * 批量取文本向量（经框架 {@code EmbeddingPort}，OpenAI 兼容 {@code /v1/embeddings} 直接命中）。
      *
      * <p>失败返回 {@code null}（调用方据此降级为词法召回），不抛异常。</p>
      */
     public List<double[]> embed(String apiDomain, String apiKey, String baseModel, List<String> inputs) {
-        if (apiDomain == null || apiDomain.trim().isEmpty() || baseModel == null || baseModel.trim().isEmpty()
-                || inputs == null || inputs.isEmpty()) {
-            return null;
-        }
-        HttpURLConnection connection = null;
-        try {
-            connection = (HttpURLConnection) new URL(embeddingsUrl(apiDomain)).openConnection();
-            connection.setRequestMethod("POST");
-            connection.setDoOutput(true);
-            connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
-            connection.setReadTimeout(READ_TIMEOUT_MS);
-            connection.setRequestProperty("Content-Type", "application/json");
-            if (apiKey != null && !apiKey.isEmpty()) {
-                connection.setRequestProperty("Authorization", "Bearer " + apiKey);
-            }
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("model", baseModel);
-            payload.put("input", inputs);
-            connection.getOutputStream().write(objectMapper.writeValueAsBytes(payload));
-            connection.getOutputStream().flush();
-            int code = connection.getResponseCode();
-            if (code >= 400) {
-                log.info("embedding 调用失败 HTTP {}（降级为词法召回）", code);
-                return null;
-            }
-            String body = readAllFully(connection.getInputStream());
-            JsonNode node = objectMapper.readTree(body);
-            JsonNode data = node.get("data");
-            if (data == null || !data.isArray()) {
-                return null;
-            }
-            List<double[]> vectors = new ArrayList<>();
-            for (int i = 0; i < data.size(); i++) {
-                JsonNode embedding = data.get(i).get("embedding");
-                if (embedding == null || !embedding.isArray()) {
-                    return null;
-                }
-                double[] vector = new double[embedding.size()];
-                for (int j = 0; j < vector.length; j++) {
-                    vector[j] = embedding.get(j).asDouble();
-                }
-                vectors.add(vector);
-            }
-            return vectors.size() == inputs.size() ? vectors : null;
-        } catch (Exception e) {
-            log.info("embedding 调用异常（降级为词法召回）: {}", e.getMessage());
-            return null;
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
-        }
+        return bridge.embed(apiDomain, apiKey, baseModel, inputs, null);
     }
 
     /**
@@ -893,54 +630,6 @@ public class ChatModelClient {
     // ------------------------------------------------------------------
     // 内部
     // ------------------------------------------------------------------
-
-    private void readSse(InputStream inputStream, TokenHandler handler) throws IOException {
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                String trimmed = line.trim();
-                if (trimmed.isEmpty() || !trimmed.startsWith("data:")) {
-                    continue;
-                }
-                String data = trimmed.substring("data:".length()).trim();
-                if ("[DONE]".equals(data)) {
-                    break;
-                }
-                try {
-                    JsonNode node = objectMapper.readTree(data);
-                    JsonNode usage = node.get("usage");
-                    if (usage != null) {
-                        long input = usage.has("prompt_tokens") ? usage.get("prompt_tokens").asLong() : 0L;
-                        long output = usage.has("completion_tokens") ? usage.get("completion_tokens").asLong() : 0L;
-                        long total = usage.has("total_tokens")
-                                ? usage.get("total_tokens").asLong() : input + output;
-                        handler.onUsageDetail(input, output, total);
-                    }
-                    JsonNode choices = node.get("choices");
-                    if (choices != null && choices.isArray() && choices.size() > 0) {
-                        JsonNode choice = choices.get(0);
-                        JsonNode delta = choice.get("delta");
-                        if (delta == null) {
-                            delta = choice.get("message");
-                        }
-                        if (delta != null) {
-                            JsonNode content = delta.get("content");
-                            JsonNode reasoning = delta.get("reasoning_content");
-                            String c = content != null && !content.isNull() ? content.asText() : null;
-                            String r = reasoning != null && !reasoning.isNull() ? reasoning.asText() : null;
-                            if ((c != null && !c.isEmpty()) || (r != null && !r.isEmpty())) {
-                                handler.onToken(c, r);
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    // 忽略非法 SSE 数据行（保持流稳定）
-                    log.debug("忽略非法 SSE 数据行: {}", data);
-                }
-            }
-        }
-    }
 
     /**
      * 读取响应体并截断到 800 字符——仅用于错误详情日志（避免把大段错误体刷进日志）。

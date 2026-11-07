@@ -42,7 +42,6 @@ const activeNameI18nKey = ref('')
 const activeType = ref('')
 const modelFormRef = ref()
 const cardRefs = ref<any[]>([])
-const showCardError = ref(false) // if you don`t want card mask error, just change this to false
 reactive({
   form: {
     id: '',
@@ -77,47 +76,6 @@ const defaultModelListWithSearch = computed(() => {
   })
 })
 
-const modelCheckHandler = async (item: any) => {
-  const response = await modelApi.check(item)
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let checkTimeout = false
-  setTimeout(() => {
-    checkTimeout = true
-  }, 9000)
-  let checkMsg = ''
-  while (true) {
-    if (checkTimeout) {
-      break
-    }
-    const { done, value } = await reader.read()
-    if (done) break
-    const lines = decoder.decode(value).trim().split('\n')
-    for (const line of lines) {
-      const data = JSON.parse(line)
-      if (data.error) {
-        checkMsg += data.error
-      } else if (data.content) {
-        console.debug(data.content)
-      }
-    }
-  }
-  if (!checkMsg) {
-    return
-  }
-  console.error(checkMsg)
-  if (!showCardError.value) {
-    ElMessage.error(checkMsg)
-    return
-  }
-  nextTick(() => {
-    const index = modelListWithSearch.value.findIndex((el: any) => el.id === item.id)
-    if (index > -1) {
-      const currentRef = cardRefs.value[index]
-      currentRef?.showErrorMask(checkMsg)
-    }
-  })
-}
 const duplicateName = async (item: any) => {
   const res = await modelApi.queryAll()
   // 编辑时 item.id 来自表单（字符串）、ele.id 来自接口（数字），统一转字符串比较，
@@ -532,25 +490,6 @@ const cancelRebuild = () => {
     .finally(() => {
       embeddingStopping.value = false
     })
-}
-
-const formatRebuildTime = (ms) => {
-  if (!ms) return ''
-  try {
-    return new Date(Number(ms)).toLocaleString()
-  } catch (e) {
-    return String(ms)
-  }
-}
-
-const formatRebuildDuration = (ms) => {
-  const v = Number(ms || 0)
-  if (v <= 0) return ''
-  const totalSec = Math.floor(v / 1000)
-  if (totalSec < 60) return totalSec + 's'
-  const m = Math.floor(totalSec / 60)
-  const s = totalSec % 60
-  return s > 0 ? m + 'm' + s + 's' : m + 'm'
 }
 
 const embeddingProgress = computed(() => {

@@ -128,24 +128,30 @@
              native=各厂商 LlmPort/Embedding/Rerank 实现与向量库。
              jdbc-engine / lock 为执行与锁能力底座。 -->
         <dependency>
-            <groupId>com.xiongx9527.fw.plus.ai</groupId>
+            <groupId>com.xiongx9527.fw.plus</groupId>
             <artifactId>fw-plus-ai-askdata</artifactId>
             <version>${revision}</version>
         </dependency>
         <dependency>
-            <groupId>com.xiongx9527.fw.plus.ai</groupId>
+            <groupId>com.xiongx9527.fw.plus</groupId>
             <artifactId>fw-plus-ai-base</artifactId>
             <version>${revision}</version>
         </dependency>
         <dependency>
-            <groupId>com.xiongx9527.fw.plus.ai</groupId>
+            <groupId>com.xiongx9527.fw.plus</groupId>
             <artifactId>fw-plus-ai-support</artifactId>
             <version>${revision}</version>
         </dependency>
         <dependency>
-            <groupId>com.xiongx9527.fw.plus.ai</groupId>
+            <groupId>com.xiongx9527.fw.plus</groupId>
             <artifactId>fw-plus-ai-native</artifactId>
             <version>${revision}</version>
+        </dependency>
+        <!-- 向量库自动装配（含未配置占位端口 + Actuator 健康检查），暴露框架 VectorStorePort Bean。
+             版本由 fw-plus-ai-boot-dependencies BOM 管理（0.1.1-SNAPSHOT）。 -->
+        <dependency>
+            <groupId>com.xiongx9527.fw.plus.ai</groupId>
+            <artifactId>fw-plus-ai-boot-autoconfigure</artifactId>
         </dependency>
         <dependency>
             <groupId>com.xiongx9527.fw.plus</groupId>

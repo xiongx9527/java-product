@@ -248,7 +248,7 @@ class PermissionEnforcerTest {
         doThrow(new IllegalStateException("deterministic rewrite failed"))
                 .when(enforcer).rewriteSqlWithRowFilters(any(net.sf.jsqlparser.statement.Statement.class), anyMap());
         when(modelRouter.defaultChatModel()).thenReturn(Optional.of(modelRef()));
-        when(chatModelClient.generate(anyString(), anyString(), anyString(), any(), any(), anyInt()))
+        when(chatModelClient.generate(anyString(), anyString(), anyString(), any(), any(), anyString()))
                 .thenReturn("SELECT id FROM (SELECT * FROM orders WHERE region = 'east') t");
 
         PermissionEnforcer.EnforcedQuery enforced = enforcer.enforce(1L, 7L, 10L, "SELECT id FROM orders");
@@ -270,7 +270,7 @@ class PermissionEnforcerTest {
                 .when(enforcer).rewriteSqlWithRowFilters(any(net.sf.jsqlparser.statement.Statement.class), anyMap());
         when(modelRouter.defaultChatModel()).thenReturn(Optional.of(modelRef()));
         // LLM 未注入行权限谓词：复验失败必须拒绝（fail-closed），不得放行未加固 SQL
-        when(chatModelClient.generate(anyString(), anyString(), anyString(), any(), any(), anyInt()))
+        when(chatModelClient.generate(anyString(), anyString(), anyString(), any(), any(), anyString()))
                 .thenReturn("SELECT id FROM orders");
 
         assertThrows(PermissionEnforcer.PermissionEnforceException.class,
@@ -296,7 +296,7 @@ class PermissionEnforcerTest {
 
     private static ChatModelRouter.ModelRef modelRef() {
         return new ChatModelRouter.ModelRef(1L, "stub", "stub-model", "https://api.example.com",
-                "stub-key", 0, 0, Collections.<String, Object>emptyMap(), null);
+                "stub-key", "OPENAI_CHAT_COMPLETIONS", 0, Collections.<String, Object>emptyMap(), null);
     }
 
     private static int countOccurrences(String haystack, String needle) {
