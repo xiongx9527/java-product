@@ -7,6 +7,8 @@ data/
 
 # 前端构建产物不纳入版本控制（改由 mvn package 自动 npm build 生成并打进 jar 静态资源）
 dist/
+# askdata-server 的 resources/static 是 web/dist 经 maven-resources-plugin 拷入的构建残留，同样不入库
+askdata/askdata-server/src/main/resources/static/
 
 # IDE / OS
 .idea/
