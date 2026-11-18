@@ -46,6 +46,12 @@ public class ParameterController {
         return Result.ok(parameterService.group("chat"));
     }
 
+    /** Embedding 策略参数（10 项，对齐上游 parameter 页的 embedding 分组）。 */
+    @GetMapping({"/system/parameter/embedding"})
+    public Result<List<Map<String, Object>>> embedding() {
+        return Result.ok(parameterService.embedding());
+    }
+
     @AuditLog(module = AuditModule.PARAMS_SETTING, operation = AuditOperationType.CREATE_OR_UPDATE)
     @PostMapping({"/system/parameter"})
     public Result<Void> save(@RequestParam(value = "data", required = false) String data,

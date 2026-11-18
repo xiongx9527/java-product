@@ -2,6 +2,7 @@ package com.xiongx9527.askdata.system.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xiongx9527.askdata.config.EmbeddingConfig;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.BadRequestException;
@@ -50,6 +51,37 @@ public class ParameterService {
     /** GET /system/parameter/{login|chat}：分组读取（登录即可，页面/聊天初始化用）。 */
     public List<Map<String, Object>> group(String flag) {
         return toItems(sysArgRepository.listByPrefix(flag));
+    }
+
+    /**
+     * GET /system/parameter/embedding：10 项 Embedding 策略参数（对齐上游 parameter 页）。
+     * 未落库的参数返回缺省值，保证页面始终能展示完整表单；保存仍走通用 POST（pkey = embedding.*）。
+     */
+    public List<Map<String, Object>> embedding() {
+        Map<String, Map<String, Object>> stored = new LinkedHashMap<String, Map<String, Object>>();
+        for (Map<String, Object> row : sysArgRepository.listByPrefix("embedding")) {
+            String pkey = Rows.str(row, "pkey");
+            if (pkey == null || !pkey.startsWith("embedding.")) {
+                continue;
+            }
+            String field = pkey.substring("embedding.".length());
+            Map<String, Object> prev = stored.get(field);
+            if (prev == null || Rows.lng(row, "id", 0L) > Rows.lng(prev, "id", 0L)) {
+                stored.put(field, row);
+            }
+        }
+        List<Map<String, Object>> result = new ArrayList<Map<String, Object>>();
+        for (String field : EmbeddingConfig.FIELDS) {
+            Map<String, Object> row = stored.get(field);
+            Map<String, Object> item = new LinkedHashMap<String, Object>();
+            item.put("id", row == null ? 0L : Rows.lng(row, "id", 0L));
+            item.put("pkey", "embedding." + field);
+            item.put("pval", row == null ? EmbeddingConfig.defaultValue(field) : Rows.str(row, "pval"));
+            item.put("ptype", EmbeddingConfig.ptype(field));
+            item.put("sort_no", row == null ? (result.size() + 1) : Rows.intg(row, "sort_no", 1));
+            result.add(item);
+        }
+        return result;
     }
 
     /** POST /system/parameter：multipart 的 data 字段为 JSON 数组 [{pkey, pval}]。 */

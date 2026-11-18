@@ -6,6 +6,8 @@ import com.xiongx9527.askdata.ai.EmbeddingService;
 import com.xiongx9527.askdata.chat.service.ChatModelClient;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter;
 import com.xiongx9527.askdata.common.util.Rows;
+import com.xiongx9527.askdata.config.EmbeddingConfig;
+import com.xiongx9527.askdata.config.EmbeddingConfigLoader;
 import com.xiongx9527.askdata.datasource.repository.FieldRepository;
 import com.xiongx9527.askdata.datasource.repository.TableRepository;
 import com.xiongx9527.fw.plus.ai.base.store.vector.ScoredDocument;
@@ -48,11 +50,6 @@ import java.util.regex.Pattern;
 public class TableEmbeddingService {
 
     private static final Logger log = LoggerFactory.getLogger(TableEmbeddingService.class);
-
-    /** 混合分权重：向量 0.4 / 显式提及 0.6（提及优先，保证点名表排第一）。 */
-    private static final double VECTOR_WEIGHT = 0.4D;
-
-    private static final double MENTION_WEIGHT = 0.6D;
 
     /** 提及分级权重（对齐 SQLBot calc_keyword_score 多层权重）：表名完整命中 > 表注释子串命中。 */
     private static final double NAME_MENTION_SCORE = 1.0D;
@@ -146,6 +143,18 @@ public class TableEmbeddingService {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setVectorStore(VectorStorePort vectorStore) {
         this.vectorStore = vectorStore;
+    }
+
+    /** Embedding 策略加载器；离线单测未注入时退化为缺省策略，保持既有行为。 */
+    private EmbeddingConfigLoader configLoader;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setConfigLoader(EmbeddingConfigLoader configLoader) {
+        this.configLoader = configLoader;
+    }
+
+    private EmbeddingConfig loadConfig() {
+        return configLoader == null ? EmbeddingConfig.defaults() : configLoader.load();
     }
 
     /** Spring 装配：集合命名（prefix + "-" + objectType）。 */
@@ -261,6 +270,18 @@ public class TableEmbeddingService {
         if (tables.isEmpty()) {
             return Collections.emptyList();
         }
+        EmbeddingConfig cfg = loadConfig();
+        if (!cfg.isEnabled() || !cfg.isTableEnabled()) {
+            // 表向量筛选关闭（或全局 embedding 关闭）：保持勾选表原顺序，不做预筛选
+            List<Long> original = new ArrayList<Long>();
+            for (Map<String, Object> table : tables) {
+                if (original.size() >= limit) {
+                    break;
+                }
+                original.add(Rows.lng(table, "id", 0L));
+            }
+            return original;
+        }
         String q = (matchText == null || matchText.trim().isEmpty())
                 ? (question == null ? "" : question) : matchText;
         double[] questionVector = embed(q);
@@ -276,11 +297,12 @@ public class TableEmbeddingService {
         }
         Map<Long, Double> vectorScores = questionVector != null
                 ? vectorStoreScores(questionVector, candidateIds) : new HashMap<>();
-        double[] mention = mentionScores(tables, q);
+        boolean keywordOn = cfg.isKeywordEnabled();
+        double[] mention = keywordOn ? mentionScores(tables, q) : new double[tables.size()];
         // A15：SQLBot calc_keyword_score 加权关键词分（表名 1.0 / 表注释 0.9 / 表名子串 0.7 /
         // 字段注释 0.5 / 字段名 0.3，按覆盖率加权）。与边界感知提及分取较大者作为词法分量：
         // 前者给出细粒度权重，后者保留 ASCII 标识符边界与最长重叠消歧。
-        double[] keyword = keywordScores(tables, q);
+        double[] keyword = keywordOn ? keywordScores(tables, q) : new double[tables.size()];
         Set<String> quoted = quotedTokens(q);
         List<Long> ids = new ArrayList<>();
         List<Double> scores = new ArrayList<>();
@@ -289,7 +311,7 @@ public class TableEmbeddingService {
             ids.add(tableId);
             Double scored = vectorScores.get(tableId);
             double vector = scored != null ? scored : -1D;
-            double score = hybrid(Math.max(mention[i], keyword[i]), vector);
+            double score = hybrid(Math.max(mention[i], keyword[i]), vector, cfg.getTableAlpha());
             // A1 显式提及：引号包裹的表名/注释优先进入候选（对齐 SQLBot _select_tables）
             if (!quoted.isEmpty() && explicitMention(tables.get(i), quoted)) {
                 score += EXPLICIT_MENTION_BONUS;
@@ -691,8 +713,10 @@ public class TableEmbeddingService {
     // ------------------------------------------------------------------
 
     /** 混合分：向量不可用（{@code vector < 0}）时权重转移给提及，否则 0.4×向量 + 0.6×提及。 */
-    private static double hybrid(double mention, double vector) {
-        return vector < 0D ? mention : VECTOR_WEIGHT * vector + MENTION_WEIGHT * mention;
+    private static double hybrid(double mention, double vector, double alpha) {
+        // alpha=向量权重（table_alpha，缺省 0.4 对齐上游 TABLE_EMBEDDING_ALPHA），(1-alpha)=词法权重；
+        // 向量不可用（vector<0）时权重全部转移给词法分量
+        return vector < 0D ? mention : alpha * vector + (1D - alpha) * mention;
     }
 
     /**

@@ -64,10 +64,12 @@ class A27ConfigCompletenessTest {
     void configKeysAreActuallyReadByCode() throws IOException {
         assertSourceContains("chat/service/SchemaContextBuilder.java",
                 "askdata.prompt.sample-data-enabled");
-        assertSourceContains("terminology/TerminologyRecallService.java",
+        // A27 阈值现由 EmbeddingConfigLoader 统一读取为启动期缺省（兼容既有部署配置），
+        // 运行时由 sys_arg 的 embedding.terminology_similarity / data_training_similarity 覆盖
+        assertSourceContains("config/EmbeddingConfigLoader.java",
                 "askdata.vector.recall-threshold");
-        assertSourceContains("training/TrainingRecallService.java",
-                "askdata.vector.recall-threshold");
+        assertSourceContains("config/EmbeddingConfig.java", "terminology_similarity");
+        assertSourceContains("config/EmbeddingConfig.java", "data_training_similarity");
         assertSourceContains("datasource/engine/SqlSafetySettings.java",
                 "askdata.sql.allow-metadata-queries");
         assertSourceContains("chart/server/ChartImageService.java",

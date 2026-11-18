@@ -2,9 +2,10 @@ package com.xiongx9527.askdata.training;
 
 import com.xiongx9527.askdata.ai.EmbeddingService;
 import com.xiongx9527.askdata.common.util.Rows;
+import com.xiongx9527.askdata.config.EmbeddingConfig;
+import com.xiongx9527.askdata.config.EmbeddingConfigLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -31,16 +32,20 @@ public class TrainingRecallService {
     /** SQL 示例向量相似度阈值（对齐 SQLBot EMBEDDING_DATA_TRAINING_SIMILARITY=0.4）。 */
     public static final double SIMILARITY_THRESHOLD = 0.4D;
 
-    /**
-     * A27：SQL 示例向量召回阈值（{@code askdata.vector.recall-threshold}，缺省 0.4）。
-     *
-     * <p>缺省值与 {@link #SIMILARITY_THRESHOLD} 一致，未配置时行为不变。</p>
-     */
-    @Value("${askdata.vector.recall-threshold:0.4}")
-    private double similarityThreshold = SIMILARITY_THRESHOLD;
-
-    /** SQL 示例向量召回条数（对齐 SQLBot EMBEDDING_DATA_TRAINING_TOP_COUNT=5）。 */
+    /** SQL 示例向量召回条数缺省值（对齐 SQLBot EMBEDDING_DATA_TRAINING_TOP_COUNT=5）。 */
     public static final int TOP_COUNT = 5;
+
+    /** Embedding 策略加载器；离线单测未注入时用缺省策略。 */
+    private EmbeddingConfigLoader configLoader;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setConfigLoader(EmbeddingConfigLoader configLoader) {
+        this.configLoader = configLoader;
+    }
+
+    private EmbeddingConfig loadConfig() {
+        return configLoader == null ? EmbeddingConfig.defaults() : configLoader.load();
+    }
 
     private final EmbeddingService embeddingService;
 
@@ -132,8 +137,12 @@ public class TrainingRecallService {
             if (candidates.isEmpty()) {
                 return new ArrayList<>();
             }
+            EmbeddingConfig cfg = loadConfig();
+            if (!cfg.isEnabled()) {
+                return new ArrayList<>();
+            }
             return embeddingService.recallByVector("data_training", candidates, question,
-                    similarityThreshold, TOP_COUNT);
+                    cfg.getDataTrainingSimilarity(), cfg.getDataTrainingTopCount());
         } catch (Exception e) {
             log.info("SQL 示例向量召回失败（降级为词法）: {}", e.getMessage());
             return new ArrayList<>();
@@ -245,8 +254,12 @@ public class TrainingRecallService {
             if (candidates.isEmpty()) {
                 return new ArrayList<>();
             }
+            EmbeddingConfig cfg = loadConfig();
+            if (!cfg.isEnabled()) {
+                return new ArrayList<>();
+            }
             return embeddingService.recallByVector("data_training", candidates, sentence,
-                    similarityThreshold, TOP_COUNT);
+                    cfg.getDataTrainingSimilarity(), cfg.getDataTrainingTopCount());
         } catch (Exception e) {
             log.info("SQL 示例向量召回失败（不影响关键词召回）: {}", e.getMessage());
             return new ArrayList<>();

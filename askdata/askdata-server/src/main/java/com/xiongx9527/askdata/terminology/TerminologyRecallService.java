@@ -2,9 +2,10 @@ package com.xiongx9527.askdata.terminology;
 
 import com.xiongx9527.askdata.ai.EmbeddingService;
 import com.xiongx9527.askdata.common.util.Rows;
+import com.xiongx9527.askdata.config.EmbeddingConfig;
+import com.xiongx9527.askdata.config.EmbeddingConfigLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -30,16 +31,20 @@ public class TerminologyRecallService {
     /** 术语向量相似度阈值缺省值（对齐 SQLBot EMBEDDING_TERMINOLOGY_SIMILARITY=0.4）。 */
     public static final double SIMILARITY_THRESHOLD = 0.4D;
 
-    /**
-     * A27：术语向量召回阈值（{@code askdata.vector.recall-threshold}，缺省 0.4）。
-     *
-     * <p>缺省值与 {@link #SIMILARITY_THRESHOLD} 一致，未配置时行为不变；调高更严格、调低更宽松。</p>
-     */
-    @Value("${askdata.vector.recall-threshold:0.4}")
-    private double similarityThreshold = SIMILARITY_THRESHOLD;
-
-    /** 术语向量召回条数（对齐 SQLBot EMBEDDING_TERMINOLOGY_TOP_COUNT=5）。 */
+    /** 术语向量召回条数缺省值（对齐 SQLBot EMBEDDING_TERMINOLOGY_TOP_COUNT=5）。 */
     public static final int TOP_COUNT = 5;
+
+    /** Embedding 策略加载器；离线单测未注入时用缺省策略。 */
+    private EmbeddingConfigLoader configLoader;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setConfigLoader(EmbeddingConfigLoader configLoader) {
+        this.configLoader = configLoader;
+    }
+
+    private EmbeddingConfig loadConfig() {
+        return configLoader == null ? EmbeddingConfig.defaults() : configLoader.load();
+    }
 
     private final EmbeddingService embeddingService;
 
@@ -204,8 +209,12 @@ public class TerminologyRecallService {
             if (candidates.isEmpty()) {
                 return result;
             }
+            EmbeddingConfig cfg = loadConfig();
+            if (!cfg.isEnabled()) {
+                return result;
+            }
             for (Map<String, Object> hit : embeddingService.recallByVector("terminology", candidates, sentence,
-                    similarityThreshold, TOP_COUNT)) {
+                    cfg.getTerminologySimilarity(), cfg.getTerminologyTopCount())) {
                 result.add(Rows.lng(hit, "id", 0L));
             }
         } catch (Exception e) {

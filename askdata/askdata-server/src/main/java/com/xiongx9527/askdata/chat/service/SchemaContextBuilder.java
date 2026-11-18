@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.chat.service.ChatModelClient.ModelMessage;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter.ModelRef;
 import com.xiongx9527.askdata.common.util.Rows;
+import com.xiongx9527.askdata.config.EmbeddingConfig;
+import com.xiongx9527.askdata.config.EmbeddingConfigLoader;
 import com.xiongx9527.askdata.datasource.embedding.DatasourceEmbeddingService;
 import com.xiongx9527.askdata.datasource.embedding.TableEmbeddingService;
 import com.xiongx9527.askdata.datasource.repository.DatasourceRepository;
@@ -102,6 +104,18 @@ public class SchemaContextBuilder {
 
     /** §2.1: chat.* 运行参数来源（sqlbot_name 等）；单测环境可为 null。 */
     private final SysArgRepository sysArgRepository;
+
+    /** Embedding 策略快照加载器；单测未注入时退化为缺省策略。 */
+    private EmbeddingConfigLoader configLoader;
+
+    @Autowired(required = false)
+    public void setConfigLoader(EmbeddingConfigLoader configLoader) {
+        this.configLoader = configLoader;
+    }
+
+    private EmbeddingConfig loadConfig() {
+        return configLoader == null ? EmbeddingConfig.defaults() : configLoader.load();
+    }
 
     /**
      * A9：SQLBot 提示词模板装载器（classpath prompt/template.yaml + sql_examples/&lt;方言&gt;.yaml）。
@@ -208,6 +222,7 @@ public class SchemaContextBuilder {
         if (candidates.size() == 1) {
             return Rows.lng(candidates.get(0), "id", 0L);
         }
+        EmbeddingConfig cfg = loadConfig();
         List<String> docs = new ArrayList<>();
         List<Long> dsIds = new ArrayList<>();
         for (Map<String, Object> candidate : candidates) {
@@ -215,20 +230,56 @@ public class SchemaContextBuilder {
             dsIds.add(dsId);
             docs.add(Rows.str(candidate, "name") + " " + tableDoc(dsId));
         }
+        // 已落库向量排名（一次获取，预筛与最终选库共用）
+        List<Long> preRanked = datasourceEmbeddingService == null
+                ? null : datasourceEmbeddingService.rankByVector(question, dsIds);
+        boolean vectorComplete = preRanked != null && preRanked.size() == dsIds.size()
+                && new java.util.HashSet<>(preRanked).equals(new java.util.HashSet<>(dsIds));
+
+        // ds_embedding_count：选库前把全量候选用向量预筛收窄到 N（对齐上游 DS_EMBEDDING_COUNT）。
+        // 向量不可用时用词法粗排预筛；0 表示不预筛（保持全量）。
+        int dsCount = cfg.getDatasourceCount();
+        if (cfg.isEnabled() && dsCount > 0 && candidates.size() > dsCount) {
+            List<Long> keepIds = new ArrayList<>();
+            if (vectorComplete) {
+                keepIds.addAll(preRanked.subList(0, dsCount));
+            } else {
+                final List<String> fdocs = docs;
+                List<Integer> order = new ArrayList<>();
+                for (int i = 0; i < fdocs.size(); i++) {
+                    order.add(i);
+                }
+                order.sort((a, b) -> Double.compare(lexicalScore(question, fdocs.get(b)),
+                        lexicalScore(question, fdocs.get(a))));
+                for (int idx : order.subList(0, dsCount)) {
+                    keepIds.add(dsIds.get(idx));
+                }
+            }
+            List<Map<String, Object>> narrowedCandidates = new ArrayList<>();
+            List<String> narrowedDocs = new ArrayList<>();
+            for (Long id : keepIds) {
+                for (int i = 0; i < dsIds.size(); i++) {
+                    if (id.equals(dsIds.get(i))) {
+                        narrowedCandidates.add(candidates.get(i));
+                        narrowedDocs.add(docs.get(i));
+                        break;
+                    }
+                }
+            }
+            candidates = narrowedCandidates;
+            docs = narrowedDocs;
+            dsIds = keepIds;
+            if (vectorComplete) {
+                preRanked = keepIds;
+            }
+            log.info("数据源向量预筛：全量收窄到 {} 个候选（ds_embedding_count={}）", dsIds.size(), dsCount);
+        }
+
         // 优先用<b>已落库的数据源向量</b>（{@code core_datasource.embedding}，
         // 对齐 SQLBot apps/datasource/embedding/ds_embedding.py）；
         // 无向量时回落「实时 embedding」，再回落词法（bigram Jaccard）——三者对调用方透明。
-        List<Long> vectorRanked = datasourceEmbeddingService == null
-                ? null : datasourceEmbeddingService.rankByVector(question, dsIds);
-        if (vectorRanked == null) {
-            vectorRanked = java.util.Collections.emptyList();
-        }
+        List<Long> vectorRanked = vectorComplete ? preRanked : null;
         double[] questionVector = null;
-        if (vectorRanked.size() != dsIds.size() || !new java.util.HashSet<>(vectorRanked).equals(
-                new java.util.HashSet<>(dsIds))) {
-            // 向量未覆盖全部候选 → 仍走实时/词法打分
-            vectorRanked = null;
-        }
         List<Double> scores = new ArrayList<>();
         if (vectorRanked == null) {
             List<double[]> vectors = embedAll(question, docs);
@@ -624,7 +675,7 @@ public class SchemaContextBuilder {
         StringBuilder sb = new StringBuilder();
         List<Long> included = new ArrayList<>();
         for (Long tableId : topTableIds(dsId, question, matchText, new ArrayList<>(byId.keySet()))) {
-            if (included.size() >= MAX_TABLES) {
+            if (included.size() >= loadConfig().getTableCount()) {
                 break;
             }
             Map<String, Object> table = byId.get(tableId);
@@ -785,7 +836,7 @@ public class SchemaContextBuilder {
         StringBuilder sb = new StringBuilder();
         int count = 0;
         for (TableSchema table : ordered) {
-            if (count >= MAX_TABLES) {
+            if (count >= loadConfig().getTableCount()) {
                 break;
             }
             sb.append(tableBlockForConf(type, conf, table));
@@ -811,7 +862,7 @@ public class SchemaContextBuilder {
             StringBuilder sb = new StringBuilder();
             int count = 0;
             for (String table : orderNamesByQuestion(tables, question)) {
-                if (count >= MAX_TABLES) {
+                if (count >= loadConfig().getTableCount()) {
                     break;
                 }
                 sb.append(connectionTableBlock(conn, table));
@@ -1052,7 +1103,7 @@ public class SchemaContextBuilder {
             return orderedIds;
         }
         try {
-            List<Long> ranked = tableEmbeddingService.rankTables(dsId, question, matchText, MAX_TABLES);
+            List<Long> ranked = tableEmbeddingService.rankTables(dsId, question, matchText, loadConfig().getTableCount());
             return ranked.isEmpty() ? orderedIds : ranked;
         } catch (Exception e) {
             // 召回异常（含向量读取失败）不影响 schema 提示词主链路，退化为既有次序
@@ -1123,7 +1174,7 @@ public class SchemaContextBuilder {
         List<String> names = new ArrayList<>();
         List<Long> included = new ArrayList<>();
         for (Long tableId : topTableIds(dsId, question, matchText, new ArrayList<>(byId.keySet()))) {
-            if (included.size() >= MAX_TABLES) {
+            if (included.size() >= loadConfig().getTableCount()) {
                 break;
             }
             Map<String, Object> table = byId.get(tableId);
@@ -1222,7 +1273,7 @@ public class SchemaContextBuilder {
         }
         order.sort((left, right) -> Double.compare(scores.get(right), scores.get(left)));
         List<String> result = new ArrayList<>();
-        for (int i = 0; i < order.size() && i < TRAINING_LIMIT; i++) {
+        for (int i = 0; i < order.size() && i < loadConfig().getDataTrainingTopCount(); i++) {
             int index = order.get(i);
             if (scores.get(index) <= 0D) {
                 continue;
