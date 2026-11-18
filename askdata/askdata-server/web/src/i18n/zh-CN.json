@@ -1036,7 +1036,7 @@
     "rebuild_locked": "向量索引重建中，暂不可修改默认向量模型",
     "rebuild_no_failed": "没有可重试的失败项",
     "rebuild_start_failed": "重建启动失败，请稍后重试",
-  "rebuild_current_ws": "当前工作空间"
+    "rebuild_current_ws": "当前工作空间"
   },
   "modelType": {
     "embedding": "向量模型",
@@ -1068,5 +1068,20 @@
     "create": "创建",
     "to_doc": "查看 API",
     "trigger_limit": "最多支持创建 {0} 个 API Key"
+  },
+  "workspace_model": {
+    "title": "工作空间模型设置",
+    "system": "使用系统默认模型",
+    "custom": "使用工作空间专属模型",
+    "default": "默认模型",
+    "select": "请选择模型",
+    "invalid": "该模型已不在可用列表",
+    "empty_hint": "留空将禁止该工作空间调用任何模型（含助手与 MCP）",
+    "system_hint": "使用系统默认模型，该工作空间不单独限制",
+    "impact_title": "模型变更影响",
+    "impact_hint": "以下工作空间/助手正在使用该模型，请先指定替代模型",
+    "resolve": "选择替代模型",
+    "pause": "暂停模型调用（留空默认模型）",
+    "assistant_impact": "受影响助手：{names}"
   }
 }

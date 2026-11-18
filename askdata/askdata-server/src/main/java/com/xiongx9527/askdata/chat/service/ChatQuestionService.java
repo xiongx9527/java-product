@@ -272,15 +272,10 @@ public class ChatQuestionService {
         AtomicLong totalTokens = new AtomicLong(0L);
             AtomicLong currentRecordId = new AtomicLong(0L);
             try {
-                // A3/D9：custom_model 在流式与非流式均生效；不可用时明确报错，不回退默认模型
+                // 工作空间模型策略（对齐 SQLBot resolve_model_id）：策略禁用硬阻断 + 按次模型授权
+                // A3/D9：custom_model 在流式与非流式均生效；不可用时沿用既有回退行为
                 Long customModelId = Rows.lngOrNull(body, "custom_model");
-                Optional<ModelRef> model = customModelId == null
-                        ? modelRouter.defaultChatModel(oid) : modelRouter.chatModelById(customModelId, oid);
-                if (!model.isPresent() && customModelId != null) {
-                    // 对齐 SQLBot：指定模型不可用（已删除 / 停用 / 未授权当前空间）时静默回退默认模型
-                    log.info("指定模型 {} 不可用，回退默认对话模型（oid={}）", customModelId, oid);
-                    model = modelRouter.defaultChatModel(oid);
-                }
+                Optional<ModelRef> model = modelRouter.resolveChatModel(oid, customModelId, null);
                 if (!model.isPresent() || !model.get().usable()) {
                     emitError(writer, messageResolver.get("scheduled.no.default.model"));
                     return;

@@ -65,6 +65,22 @@ public class WorkspaceController {
     }
 
     // ------------------------------------------------------------------
+    // 工作空间级模型策略（对齐 SQLBot GET/PUT /system/workspace/{id}/model）
+    // ------------------------------------------------------------------
+
+    @GetMapping({"/system/workspace/{id}/model"})
+    public Result<Map<String, Object>> modelSettings(@PathVariable long id) {
+        return Result.ok(workspaceService.modelSettings(id));
+    }
+
+    @AuditLog(module = AuditModule.WORKSPACE, operation = AuditOperationType.UPDATE)
+    @PutMapping({"/system/workspace/{id}/model"})
+    public Result<Void> saveModelSettings(@PathVariable long id, @RequestBody Map<String, Object> editor) {
+        workspaceService.saveModelSettings(id, editor);
+        return Result.ok();
+    }
+
+    // ------------------------------------------------------------------
     // 成员（uws）
     // ------------------------------------------------------------------
 

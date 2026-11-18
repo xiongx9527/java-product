@@ -10,8 +10,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.BadRequestException;
+import com.xiongx9527.askdata.embedded.AssistantRepository;
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
 import com.xiongx9527.askdata.system.repository.AiModelRepository;
+import com.xiongx9527.askdata.system.repository.WorkspaceRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,9 +27,11 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * AI 模型模块（对齐 SQLBot apps/system/api/aimodel.py）。
@@ -55,6 +59,21 @@ public class AiModelService {
 
     @Autowired
     private MessageResolver messageResolver;
+
+    /** 工作空间/助手仓储：模型变更影响评估用；直接构造的单测可缺省。 */
+    private WorkspaceRepository workspaceRepository;
+
+    private AssistantRepository assistantRepository;
+
+    @Autowired(required = false)
+    public void setWorkspaceRepository(WorkspaceRepository workspaceRepository) {
+        this.workspaceRepository = workspaceRepository;
+    }
+
+    @Autowired(required = false)
+    public void setAssistantRepository(AssistantRepository assistantRepository) {
+        this.assistantRepository = assistantRepository;
+    }
 
     private final AiModelRepository aiModelRepository;
 
@@ -388,6 +407,62 @@ public class AiModelService {
         requireModel(id);
         aiModelRepository.deleteMappings(id, dedup(wsIds));
         return toStringIds(aiModelRepository.mappingIds(id));
+    }
+
+    /**
+     * POST /system/aimodel/{id}/workspace_impact：展示删除/改模型前受影响的空间与助手
+     * （对齐 SQLBot {@code get_model_impacts}）；{@code wsIds} 为 null 时评估全部空间。
+     */
+    public List<Map<String, Object>> workspaceImpact(long modelId, List<String> wsIds) {
+        currentUserService.requireAdmin();
+        requireModel(modelId);
+        String idText = String.valueOf(modelId);
+        Set<Long> filter = null;
+        if (wsIds != null && !wsIds.isEmpty()) {
+            filter = new HashSet<>();
+            for (String value : wsIds) {
+                if (value == null) {
+                    continue;
+                }
+                try {
+                    filter.add(Long.parseLong(value.trim()));
+                } catch (NumberFormatException ignore) {
+                    // 非法 ws_id 忽略，与上游 int(value) 失败即拒绝不同：预览接口保守跳过
+                }
+            }
+        }
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (workspaceRepository == null) {
+            return result;
+        }
+        for (Map<String, Object> ws : workspaceRepository.list()) {
+            long oid = Rows.lng(ws, "id", 0L);
+            if (filter != null && !filter.contains(oid)) {
+                continue;
+            }
+            boolean usesDefault = Rows.bool(ws, "enable_custom_model", false)
+                    && idText.equals(Rows.str(ws, "custom_model"));
+            List<String> assistants = assistantRepository == null
+                    ? new ArrayList<String>() : assistantRepository.namesUsingModel(oid, idText);
+            if (!usesDefault && assistants.isEmpty()) {
+                continue;
+            }
+            List<String> models = new ArrayList<>();
+            for (Map<String, Object> row : aiModelRepository.listByWorkspace(oid, CHAT_MODEL_TYPE, false)) {
+                String mid = Rows.str(row, "id");
+                if (mid != null && !idText.equals(mid)) {
+                    models.add(mid);
+                }
+            }
+            Map<String, Object> impact = new LinkedHashMap<>();
+            impact.put("workspace_id", String.valueOf(oid));
+            impact.put("workspace_name", Rows.str(ws, "name"));
+            impact.put("uses_default", usesDefault);
+            impact.put("assistants", assistants);
+            impact.put("models", models);
+            result.add(impact);
+        }
+        return result;
     }
 
     /**

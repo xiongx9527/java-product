@@ -159,6 +159,13 @@ public class AiModelController {
         aiModelService.streamStatus(info, response);
     }
 
+    /** 模型变更影响评估（对齐 SQLBot POST /system/aimodel/{id}/workspace_impact）。 */
+    @PostMapping({"/system/aimodel/{id}/workspace_impact"})
+    public Result<List<Map<String, Object>>> workspaceImpact(@PathVariable long id,
+                                                             @RequestBody(required = false) List<String> wsIds) {
+        return Result.ok(aiModelService.workspaceImpact(id, wsIds));
+    }
+
     @GetMapping({"/system/aimodel/{id}/ws_mapping"})
     public Result<List<String>> wsMapping(@PathVariable long id) {
         return Result.ok(aiModelService.wsMapping(id));

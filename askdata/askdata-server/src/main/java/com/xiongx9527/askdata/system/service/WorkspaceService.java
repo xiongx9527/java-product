@@ -8,6 +8,7 @@ import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.common.web.PageResult;
+import com.xiongx9527.askdata.system.repository.AiModelRepository;
 import com.xiongx9527.askdata.system.repository.UserRepository;
 import com.xiongx9527.askdata.system.repository.UserWsRepository;
 import com.xiongx9527.askdata.system.repository.WorkspaceRepository;
@@ -49,6 +50,14 @@ public class WorkspaceService {
     @Autowired(required = false)
     public void setCleanupService(WorkspaceCleanupService cleanupService) {
         this.cleanupService = cleanupService;
+    }
+
+    /** 模型映射仓储（模型策略授权校验）；离线单测可缺省，此时可用模型列表为空。 */
+    private AiModelRepository aiModelRepository;
+
+    @Autowired(required = false)
+    public void setAiModelRepository(AiModelRepository aiModelRepository) {
+        this.aiModelRepository = aiModelRepository;
     }
 
     public WorkspaceService(WorkspaceRepository workspaceRepository, UserWsRepository userWsRepository,
@@ -170,6 +179,78 @@ public class WorkspaceService {
         workspaceRepository.delete(id);
         if (cleanupService != null) {
             com.xiongx9527.askdata.common.tx.AfterCommit.run(() -> cleanupService.deleteVectors(id, vectorIds));
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 工作空间级模型策略（对齐 SQLBot crud/workspace_model.py）
+    // ------------------------------------------------------------------
+
+    /** GET /system/workspace/{id}/model：策略 + 该空间可用模型列表。 */
+    public Map<String, Object> modelSettings(long id) {
+        currentUserService.requireAdmin();
+        Map<String, Object> row = workspaceRepository.findModelPolicy(id)
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("workspace.not.found", id)));
+        boolean enable = Rows.bool(row, "enable_custom_model", false);
+        String custom = Rows.str(row, "custom_model");
+        List<String> models = availableModelIds(id);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("enable_custom_model", enable);
+        result.put("custom_model", custom);
+        result.put("models", models);
+        result.put("model_valid", custom != null && models.contains(custom));
+        return result;
+    }
+
+    /** PUT /system/workspace/{id}/model：保存策略；指定模型必须映射到该空间。 */
+    @Transactional
+    public void saveModelSettings(long id, Map<String, Object> editor) {
+        currentUserService.requireAdmin();
+        workspaceRepository.findModelPolicy(id)
+                .orElseThrow(() -> new BadRequestException(messageResolver.get("workspace.not.found", id)));
+        boolean enable = Rows.bool(editor, "enable_custom_model", false);
+        String custom = normalizeModelId(Rows.get(editor, "custom_model"));
+        if (enable && custom != null && aiModelRepository != null
+                && !aiModelRepository.isAvailableInWorkspace(Long.parseLong(custom), id)) {
+            throw new BadRequestException(messageResolver.get("i18n_llm.model_unavailable"));
+        }
+        workspaceRepository.updateModelSettings(id, enable, enable ? custom : null);
+    }
+
+    private List<String> availableModelIds(long oid) {
+        List<String> ids = new ArrayList<>();
+        if (aiModelRepository == null) {
+            return ids;
+        }
+        for (Map<String, Object> row : aiModelRepository.listByWorkspace(oid, 0, false)) {
+            String id = Rows.str(row, "id");
+            if (id != null && !ids.contains(id)) {
+                ids.add(id);
+            }
+        }
+        return ids;
+    }
+
+    /** 对齐上游 normalize_model_id：bool/非正整数拒绝，空串归 null。 */
+    private String normalizeModelId(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof Boolean) {
+            throw new BadRequestException(messageResolver.get("i18n_llm.model_unavailable"));
+        }
+        String s = String.valueOf(raw).trim();
+        if (s.isEmpty()) {
+            return null;
+        }
+        try {
+            long value = Long.parseLong(s);
+            if (value <= 0) {
+                throw new NumberFormatException();
+            }
+            return String.valueOf(value);
+        } catch (NumberFormatException e) {
+            throw new BadRequestException(messageResolver.get("i18n_llm.model_unavailable"));
         }
     }
 

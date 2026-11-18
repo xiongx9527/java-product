@@ -18,6 +18,34 @@ export const uwsOption = (params: any) => request.get('system/workspace/uws/opti
 
 export const workspaceModelMapping = (aiModelId: any) =>
   request.get(`/system/aimodel/${aiModelId}/ws_mapping`)
+
+// 工作空间级模型策略（对齐 SQLBot GET/PUT /system/workspace/{id}/model）
+export interface WorkspaceModelOption {
+  id: string
+  name: string
+}
+export interface WorkspaceModelSettingsData {
+  enable_custom_model: boolean
+  custom_model: string | null
+}
+export interface ModelImpact {
+  workspace_id: string
+  workspace_name: string
+  uses_default: boolean
+  assistants: string[]
+  models: WorkspaceModelOption[]
+}
+export interface ModelImpactResolution {
+  workspace_id: number | string
+  custom_model: string | null
+}
+
+export const workspaceModelSettings = (id: any) =>
+  request.get(`/system/workspace/${id}/model`)
+export const workspaceModelSettingsUpdate = (id: any, data: WorkspaceModelSettingsData) =>
+  request.put(`/system/workspace/${id}/model`, data)
+export const modelWorkspaceImpact = (id: any, wsIds?: string[]) =>
+  request.post(`/system/aimodel/${id}/workspace_impact`, wsIds || [])
 export const workspaceModelMappingUpdate = (aiModelId: any, data: any) =>
   request.put(`/system/aimodel/${aiModelId}/ws_mapping`, data)
 export const workspaceModelMappingAdd = (aiModelId: any, data: any) =>

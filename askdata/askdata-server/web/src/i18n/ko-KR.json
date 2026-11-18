@@ -1068,5 +1068,20 @@
     "create": "생성",
     "to_doc": "API 보기",
     "trigger_limit": "최대 {0}개의 API 키 생성 지원"
+  },
+  "workspace_model": {
+    "title": "Workspace Model Settings",
+    "system": "Use system default model",
+    "custom": "Use workspace-specific model",
+    "default": "Default model",
+    "select": "Select a model",
+    "invalid": "Model no longer available",
+    "empty_hint": "Leaving empty disables all model calls in this workspace (including assistants and MCP)",
+    "system_hint": "Use the system default model; no workspace-specific restriction",
+    "impact_title": "Model Change Impact",
+    "impact_hint": "The following workspaces/assistants use this model; choose a replacement",
+    "resolve": "Choose replacement",
+    "pause": "Pause model calls (clear default)",
+    "assistant_impact": "Affected assistants: {names}"
   }
 }

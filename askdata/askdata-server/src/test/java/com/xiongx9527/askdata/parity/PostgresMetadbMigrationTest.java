@@ -173,7 +173,7 @@ class PostgresMetadbMigrationTest {
         assertEquals(12, count("sys_arg"));
         assertEquals(3, count("system_variable"));
         assertEquals(19, count("core_field"));
-        assertEquals(Arrays.asList("1", "2", "3", "4", "5", "6", "7", "8", "9"), jdbc.queryForList(
+        assertEquals(Arrays.asList("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"), jdbc.queryForList(
                 "SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL "
                         + "ORDER BY installed_rank", String.class));
 

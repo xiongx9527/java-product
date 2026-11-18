@@ -2,9 +2,13 @@ package com.xiongx9527.askdata.chat.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import com.xiongx9527.askdata.common.util.Rows;
+import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
 import com.xiongx9527.askdata.system.repository.AiModelRepository;
+import com.xiongx9527.askdata.system.repository.WorkspaceRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -57,6 +61,25 @@ public class ChatModelRouter {
     public ChatModelRouter(AiModelRepository aiModelRepository, ObjectMapper objectMapper) {
         this.aiModelRepository = aiModelRepository;
         this.objectMapper = objectMapper;
+    }
+
+    /** 工作空间模型策略读取；离线单测未注入时退化为「无策略」，保持既有解析行为。 */
+    private WorkspaceRepository workspaceRepository;
+
+    private MessageResolver messageResolver;
+
+    @Autowired(required = false)
+    public void setWorkspaceRepository(WorkspaceRepository workspaceRepository) {
+        this.workspaceRepository = workspaceRepository;
+    }
+
+    @Autowired(required = false)
+    public void setMessageResolver(MessageResolver messageResolver) {
+        this.messageResolver = messageResolver;
+    }
+
+    private String message(String key) {
+        return messageResolver == null ? key : messageResolver.get(key);
     }
 
     /** 缓存项：解析结果 + 解析时刻 + 解析时的仓储写版本。 */
@@ -251,6 +274,56 @@ public class ChatModelRouter {
             return Optional.empty();
         }
         return Optional.of(toRef(model));
+    }
+
+    /**
+     * 工作空间模型策略解析（对齐 SQLBot {@code resolve_model_id}）优先级：
+     * <ol>
+     *   <li>策略开启但工作空间默认模型为空 → 禁止该空间一切模型调用（含 assistant / MCP 自带模型）；</li>
+     *   <li>按次 {@code custom_model}（须在映射授权内）；</li>
+     *   <li>助手自带模型；</li>
+     *   <li>工作空间默认模型；</li>
+     *   <li>全局默认模型。</li>
+     * </ol>
+     *
+     * <p>第 2/3 步不可用时沿用既有回退行为（不抛错），仅第 1 步策略禁用为硬阻断。</p>
+     */
+    public Optional<ModelRef> resolveChatModel(long oid, Long requestCustomModelId, Long assistantModelId) {
+        boolean enabled = false;
+        String workspaceModel = null;
+        if (workspaceRepository != null) {
+            Optional<Map<String, Object>> policy = workspaceRepository.findModelPolicy(oid);
+            if (policy.isPresent()) {
+                enabled = Rows.bool(policy.get(), "enable_custom_model", false);
+                workspaceModel = Rows.str(policy.get(), "custom_model");
+            }
+            if (enabled && (workspaceModel == null || workspaceModel.trim().isEmpty())) {
+                throw new BadRequestException(message("i18n_llm.workspace_disabled"));
+            }
+        }
+        if (requestCustomModelId != null) {
+            Optional<ModelRef> ref = chatModelById(requestCustomModelId, oid);
+            if (ref.isPresent()) {
+                return ref;
+            }
+        }
+        if (assistantModelId != null) {
+            Optional<ModelRef> ref = chatModelById(assistantModelId, oid);
+            if (ref.isPresent()) {
+                return ref;
+            }
+        }
+        if (enabled && workspaceModel != null && !workspaceModel.trim().isEmpty()) {
+            try {
+                Optional<ModelRef> ref = chatModelById(Long.parseLong(workspaceModel.trim()), oid);
+                if (ref.isPresent()) {
+                    return ref;
+                }
+            } catch (NumberFormatException ignore) {
+                // 历史非法值退到全局默认，不阻断问数
+            }
+        }
+        return defaultChatModel(oid);
     }
 
     /**

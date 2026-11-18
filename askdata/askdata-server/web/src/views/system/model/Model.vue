@@ -17,6 +17,7 @@ import { useI18n } from 'vue-i18n'
 import { get_supplier_safe } from '@/entity/supplier'
 import { highlightKeyword } from '@/utils/xss'
 import AuthorizedWorkspaceDialogForModel from '@/views/system/workspace/AuthorizedWorkspaceDialogForModel.vue'
+import ModelImpactDialog from '@/views/system/workspace/ModelImpactDialog.vue'
 import AuthorizedWorkspaceDraw from '@/views/system/workspace/AuthorizedWorkspaceDraw.vue'
 
 interface Model {
@@ -222,7 +223,7 @@ const handleDefault = (row: any) => {
   })
 }
 
-const deleteHandler = (item: any) => {
+const deleteHandler = async (item: any) => {
   if (item.default_model) {
     ElMessageBox.confirm(t('model.del_default_tip', { msg: item.name }), {
       confirmButtonType: 'primary',
@@ -236,6 +237,11 @@ const deleteHandler = (item: any) => {
         console.info(val)
       },
     })
+    return
+  }
+  // 模型变更影响评估（对齐 SQLBot）：工作空间默认模型/助手引用需先确认替代方案
+  const resolutions = await modelImpactDialog.value?.confirm(String(item.id))
+  if (resolutions === null) {
     return
   }
   ElMessageBox.confirm(t('model.del_warn_tip', { msg: item.name }), {
@@ -260,6 +266,7 @@ const deleteHandler = (item: any) => {
 
 const AuthorizedWorkspaceDialogForModelRef = ref()
 const AuthorizedWorkspaceDrawRef = ref()
+const modelImpactDialog = ref()
 
 const handleAuthorizedSpace = (item: any) => {
   AuthorizedWorkspaceDialogForModelRef.value.open(item.id)
@@ -799,6 +806,7 @@ const submit = (item: any) => {
   </div>
   <AuthorizedWorkspaceDialogForModel ref="AuthorizedWorkspaceDialogForModelRef" @refresh="search" />
   <AuthorizedWorkspaceDraw ref="AuthorizedWorkspaceDrawRef" @refresh="search" />
+  <ModelImpactDialog ref="modelImpactDialog" />
 </template>
 
 <style lang="less" scoped>

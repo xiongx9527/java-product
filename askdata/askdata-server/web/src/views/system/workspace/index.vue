@@ -16,6 +16,7 @@ import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import icon_form_outlined from '@/assets/svg/icon_moments-categories_outlined.svg'
 import assigned from '@/assets/svg/icon_assigned_outlined.svg'
 import AuthorizedWorkspaceDialog from './AuthorizedWorkspaceDialog.vue'
+import ModelSettingsDialog from './ModelSettingsDialog.vue'
 import rename from '@/assets/svg/icon_rename_outlined.svg'
 import icon_member from '@/assets/svg/icon_member.svg'
 import SuccessFilled from '@/assets/svg/gou_icon.svg'
@@ -37,6 +38,7 @@ const keywordsMember = ref('')
 const oldKeywordsMember = ref('')
 const workspaceFormRef = ref()
 const authorizedWorkspaceDialog = ref()
+const modelSettingsDialog = ref()
 const tableListWithSearch = computed(() => {
   if (!keyword.value) return tableList.value
   return tableList.value.filter((ele) =>
@@ -367,6 +369,12 @@ const handleCurrentChange = (val: number) => {
                 </el-icon>
               </template>
               <div class="content">
+                <div class="item" @click.stop="modelSettingsDialog.open(ele)">
+                  <el-icon size="16">
+                    <icon_form_outlined></icon_form_outlined>
+                  </el-icon>
+                  {{ $t('workspace_model.title') }}
+                </div>
                 <div class="item" @click.stop="addWorkspace(ele)">
                   <el-icon size="16">
                     <rename></rename>
@@ -601,6 +609,7 @@ const handleCurrentChange = (val: number) => {
       }}</el-button>
     </div>
   </el-dialog>
+  <ModelSettingsDialog ref="modelSettingsDialog" />
 </template>
 
 <style lang="less" scoped>

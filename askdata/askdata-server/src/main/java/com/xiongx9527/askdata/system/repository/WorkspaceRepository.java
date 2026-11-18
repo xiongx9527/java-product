@@ -20,7 +20,7 @@ public class WorkspaceRepository {
         this.jdbc = jdbc;
     }
 
-    private static final String COLUMNS = "id, name, create_time";
+    private static final String COLUMNS = "id, name, create_time, enable_custom_model, custom_model";
 
     public List<Map<String, Object>> list() {
         // 对齐 SQLBot：按名称升序
@@ -76,6 +76,18 @@ public class WorkspaceRepository {
 
     public void update(long id, String name) {
         jdbc.update("UPDATE sys_workspace SET name = ? WHERE id = ?", name, id);
+    }
+
+    /** 工作空间级模型策略（对齐 SQLBot WorkspaceModelSettings）。 */
+    public void updateModelSettings(long id, boolean enableCustomModel, String customModel) {
+        jdbc.update("UPDATE sys_workspace SET enable_custom_model = ?, custom_model = ? WHERE id = ?",
+                enableCustomModel ? 1 : 0, customModel, id);
+    }
+
+    /** 按 id 取模型策略行（供 ChatModelRouter 解析模型时读取）。 */
+    public Optional<Map<String, Object>> findModelPolicy(long id) {
+        return jdbc.queryForList("SELECT id, enable_custom_model, custom_model FROM sys_workspace WHERE id = ?", id)
+                .stream().findFirst();
     }
 
     public void delete(long id) {

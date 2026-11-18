@@ -38,6 +38,23 @@ public class AssistantRepository {
                 + "ORDER BY name, create_time", oid);
     }
 
+    /** 指定工作空间内绑定了某模型的助手名称（模型删除前影响评估用）。 */
+    public List<String> namesUsingModel(long oid, String modelId) {
+        List<String> names = new ArrayList<>();
+        if (modelId == null || modelId.trim().isEmpty()) {
+            return names;
+        }
+        for (Map<String, Object> row : jdbc.queryForList(
+                "SELECT name FROM sys_assistant WHERE oid = ? AND enable_custom_model = TRUE "
+                        + "AND custom_model = ? ORDER BY name", oid, modelId.trim())) {
+            String name = row.get("name") == null ? null : String.valueOf(row.get("name"));
+            if (name != null) {
+                names.add(name);
+            }
+        }
+        return names;
+    }
+
     /**
      * 全部助手的域名（运行时动态 CORS 用；对齐 SQLBot {@code init_dynamic_cors}）。
      *
