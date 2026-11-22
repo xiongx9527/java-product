@@ -1,0 +1,67 @@
+===== A3 验收：数据源向量化状态可见性 =====
+日期: 2026-11-22 CST
+环境: askdata-server @ http://127.0.0.1:8000, MySQL 8.4 @ 3307, Qdrant @ 6333 (api-key 启用)
+账号: admin / SQLBot@123456 (Argon2id 原生口令)
+
+===== [1] 后端接口：GET /api/v1/datasource/list 返回真实向量状态 =====
+请求: GET /api/v1/datasource/list  (X-SQLBOT-TOKEN: Bearer <token>)
+响应(核心字段):
+  id=1 name=学生课程演示库 vectorized=true vector_count=1 vector_model_id=2
+判定: PASS —— 字段 vectorized / vector_count / vector_model_id 存在且值正确。
+
+===== [2] 对照实验：状态读取的是 Qdrant 真实向量，而非 DB 标记字段 =====
+步骤 a: DELETE Qdrant /collections/askdata-core_datasource/points/count
+        按 filter ds_id=1 删除向量点；保留 DB 的 core_datasource.embedding_model_id=2。
+        响应: {"result":{"operation_id":4,"status":"acknowledged"},"status":"ok"}
+步骤 b: 再次 GET /api/v1/datasource/list
+        响应: vectorized=false vector_count=0 vector_model_id=2
+判定: PASS —— DB 标记仍在(2)，但接口随 Qdrant 真实向量翻转，证明状态来自在线向量库查询而非标记字段。
+步骤 c: POST /api/v1/system/aimodel/embedding/rebuild {"mode":"full"} 恢复向量
+        轮询 status: status=idle running=false done=4/4
+        恢复后 GET list: vectorized=true vector_count=1
+判定: PASS —— 重建后状态自动恢复。
+
+===== [3] 错误提示准确性（同一会话修复项） =====
+背景: “向量索引待重建”原被误标为 exec-sql-err，前端显示成“执行 SQL 失败”。
+修复: 配置/校验/生成阶段错误不再携带 type，前端 ErrorInfo.vue 在 type==undefined 时展示原文。
+验证: 人为清空 ai_embedding_index_state.model_id 制造 pending=true 后，POST /chat/question 抓 SSE：
+  data:{"type":"error","content":"{\"message\":\"向量索引待重建：当前默认向量模型与索引维度不一致，请先执行「一键重新向量」\",\"traceback\":\"\"}"}
+  content.type = None (缺失)，message = 真实原因
+判定: PASS —— 错误提示显示准确原因，不再误标执行 SQL 失败。
+(root cause: 数据清理时删除了 V5 迁移插入的 ai_embedding_index_state(id=1,status=idle) 初始行，
+ 导致 rebuild 的 markRunning/markFinished 无行可更新、pending 恒 true；已补回该行。)
+
+===== [4] 前端构建产物完整性 =====
+npx vite build: BUILD_EXIT=0 (3m23s)
+产物检查 (target/classes/static/assets/index-B3gSOZm-.js):
+  vectorized_tip: 2 处, not_vectorized: 2 处, vector-badge: 1 处, vector-on: 1 处, vector-off: 1 处
+  中文文案“该数据源已生成向量”存在
+判定: PASS
+
+===== [5] 浏览器视觉验证（headless Chrome + CDP） =====
+方式: Playwright MCP 超时，改用 headless Chrome 150 + CDP (Node.js WebSocket)
+  - 注入登录态到 localStorage (双前缀 ds_ / sqlbot_v1_，web-storage-cache 格式)
+  - SPA 恢复登录态: document.body 含 Administrator
+  - JS 点击左侧“数据源”菜单
+  - DOM 断言: body 含“已向量化” → HAS_BADGE
+  - Page.captureScreenshot 截图
+截图: datasource-vectorization-badge-2026-11-21.png
+截图内容: 数据源管理页正常渲染；卡片“学生课程演示库”在 MySQL 类型旁显示绿色“已向量化”徽标；描述、表数 3/3 正常；无报错。
+判定: PASS
+
+===== [6] 单元测试 =====
+mvn -o -Drevision=0.1.1-SNAPSHOT -Dtest='DatasourceServiceSmokeTest,VectorRefreshTimingTest' test
+  Tests run: 8, Failures: 0, Errors: 0, Skipped: 0
+  BUILD SUCCESS
+(附带修复：两个非 Spring 测试此前未初始化 DatasourceKeyring，方案二改造后 encodeForStore 需要 keyring；
+ 已在 @BeforeEach 用临时密钥文件初始化并 configureKeyring。)
+判定: PASS
+
+===== 数据库结构影响 =====
+无新增字段、无 migration 变更。
+向量化状态来自在线 Qdrant 查询(POST /collections/{c}/points/count + filter ds_id)，
+降级路径读取已有字段 core_datasource.embedding_model_id (V5 迁移创建)。
+
+===== 总结 =====
+本验收覆盖：后端接口字段、Qdrant 真实查询对照实验、错误提示准确性、前端构建产物、
+浏览器视觉截图、相关单测 8 项，全部 PASS。功能可用。
