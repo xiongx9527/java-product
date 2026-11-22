@@ -445,14 +445,9 @@ public class ChatQuestionService {
                 // A14：记录选表步骤（模型在 SQL JSON 中给出的 FROM 表范围）
                 logOperation(recordId, oid, uid, OPERATE_CHOOSE_TABLE, sqlStart, 0L, false,
                         Rows.of("tables", sqlJson.tables), regenerateRecordId);
-                // A12：用 tables 限制 FROM 表范围（防止模型幻觉到未列出的表）
-                if (sqlJson.tables != null && !sqlJson.tables.isEmpty()) {
-                    String tableErr = validateTables(sql, sqlJson.tables);
-                    if (tableErr != null) {
-                        emitError(writer, tableErr);
-                        return;
-                    }
-                }
+                // 注意：不能用 LLM 自报的 sqlJson.tables 做白名单校验——小模型常把 tables 填错
+                // （如填 ["course"] 却在 SQL 里用 student），导致正确 SQL 被误判「未授权的表: student」。
+                // tables 仅用于日志记录；真正的表白名单由下游 validateSql 用「数据源勾选的真实表名」校验。
                 // §2.4: 动态数据源表级 SQL 占位符闭环（brief D2）：先查直接物理表引用，再确定性替换占位符；
                 // 替换/引用违规都走既有的错误回喂修复轮，不执行未替换 SQL
                 if (sql != null && dynamic != null && !dynamic.getTableSqlTemplates().isEmpty()) {
@@ -486,6 +481,17 @@ public class ChatQuestionService {
                 String validation = rowRuleError != null ? rowRuleError
                         : (sql == null ? "模型未输出可执行的 SQL"
                                 : validateSql(sql, dsType, dsId, dynamic, question, matchText));
+                // 确定性护栏：小模型常犯「列不存在 / 缺 GROUP BY」等可判定错误，
+                // 先用元数据做规则化修复（不调 LLM）；修不了再回喂。
+                if (validation != null && sql != null && dynamic == null && dsId != null) {
+                    String repaired = com.xiongx9527.askdata.datasource.engine.SqlGuardrail.repair(
+                            sql, validation, schemaContextBuilder.checkedTableColumns(dsId));
+                    if (repaired != null
+                            && validateSql(repaired, dsType, dsId, dynamic, question, matchText) == null) {
+                        sql = repaired;
+                        validation = null;
+                    }
+                }
                 // 发现-5 延伸修复（A5 偶发 run FAILED）：校验/空 SQL 失败时回喂修复，至多重试 MAX_SQL_REPAIR_RETRIES 次。
                 int validationRetryLeft = MAX_SQL_REPAIR_RETRIES;
                 while (validation != null && validationRetryLeft > 0) {
@@ -666,7 +672,7 @@ public class ChatQuestionService {
                 chatRepository.finishRecord(recordId, System.currentTimeMillis() - started, totalTokens.get());
                 emit(writer, Rows.of("type", "finish"));
             } catch (Exception e) {
-                log.warn("提问链路异常: {}", e.getMessage());
+                log.warn("提问链路异常: {}", e.getMessage(), e);
                 emitError(writer, e.getMessage() == null ? e.toString() : e.getMessage());
                 // A16：仅真实执行错误才落 saveError；客户端断连（IOException）不视为业务错误
                 if (currentRecordId.get() > 0L && !(e instanceof IOException)) {
@@ -1027,7 +1033,8 @@ public class ChatQuestionService {
             }
             String sql = Rows.str(r, "sql");
             StringBuilder b = new StringBuilder("Q: ").append(q);
-            if (!sql.isEmpty()) {
+            // 历史记录的 sql 可能为 null（如生成失败/被重新生成的旧记录），null 安全判断避免 NPE
+            if (sql != null && !sql.isEmpty()) {
                 b.append("\nA(SQL): ").append(sql);
             }
             blocks.add(b.toString());
@@ -1767,6 +1774,7 @@ public class ChatQuestionService {
                                        Map<String, Object> result, AtomicLong totalTokens,
                                        String sql, String mSchema, String chartType) throws IOException {
         // 框架优先：委派 fw-plus-ai-askdata 的图表能力（G2 模式，模型直接产出 G2 配置）。
+        // 单值聚合（如「有多少个学生」）也走模型决策，不强制 table。
         if (frameworkAdapter != null) {
             try {
                 ChartGenResult fr = frameworkAdapter.generateChart(oid, question, result, sql, mSchema, chartType);
@@ -2122,10 +2130,16 @@ public class ChatQuestionService {
      * <p>前端 {@code views/chat/ErrorInfo.vue} 要求 content 是 JSON 字符串，含
      * {@code message}、{@code traceback}、{@code type}；{@code type} 为
      * {@code exec-sql-err} / {@code db-connection-err} 时展示友好文案与「查看详情」抽屉，
-     * 其他类型回退通用错误。缺省 {@link #ERROR_TYPE_EXEC_SQL}。</p>
+     * 其他类型回退通用错误。</p>
+     *
+     * <p><b>重要：</b>两参数版本<b>不携带 type</b>，前端 {@code ErrorInfo.vue} 在
+     * {@code type == undefined} 时直接展示原始 message（真实原因）。配置/校验/生成阶段的
+     * 错误（向量索引待重建、无默认模型、无数据源、SQL 生成/校验失败、图表失败等）必须走此版本，
+     * 使用户看到准确原因；只有确属 SQL 执行失败才显式传 {@link #ERROR_TYPE_EXEC_SQL}，
+     * 避免把所有错误都误标成「执行 SQL 失败」。</p>
      */
     private static void emitError(FrameWriter writer, String message) throws IOException {
-        emitError(writer, message, ERROR_TYPE_EXEC_SQL, null);
+        emitError(writer, message, null, null);
     }
 
     /**
@@ -2160,7 +2174,11 @@ public class ChatQuestionService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("message", message == null ? "" : message);
         payload.put("traceback", traceback == null ? "" : traceback);
-        payload.put("type", type == null ? ERROR_TYPE_EXEC_SQL : type);
+        // type 为 null 时不写该键：前端 ErrorInfo.vue 在 type == undefined 时直接展示原始 message，
+        // 让配置/校验/生成阶段的错误显示真实原因，而非被误标成「执行 SQL 失败」。
+        if (type != null) {
+            payload.put("type", type);
+        }
         String content;
         try {
             content = OBJECT_MAPPER.writeValueAsString(payload);

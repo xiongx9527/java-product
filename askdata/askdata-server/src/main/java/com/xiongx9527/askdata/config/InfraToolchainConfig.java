@@ -73,6 +73,11 @@ public class InfraToolchainConfig {
     public com.xiongx9527.askdata.datasource.support.DatasourceCryptoInitializer datasourceCryptoInitializer(
             com.xiongx9527.askdata.system.auth.CryptoUtil util) {
         com.xiongx9527.askdata.datasource.support.DatasourceCrypto.configure(util);
+        // 独立数据源密钥环：首次部署原子创建密钥文件；存量加密配置的迁移由启动期迁移器完成
+        com.xiongx9527.askdata.datasource.support.DatasourceKeyring.initialize(
+                com.xiongx9527.askdata.datasource.support.DatasourceKeyring.defaultPath(), false);
+        com.xiongx9527.askdata.datasource.support.DatasourceCrypto.configureKeyring(
+                com.xiongx9527.askdata.datasource.support.DatasourceKeyring.get());
         return new com.xiongx9527.askdata.datasource.support.DatasourceCryptoInitializer();
     }
 }

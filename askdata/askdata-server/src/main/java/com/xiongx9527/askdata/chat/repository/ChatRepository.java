@@ -379,7 +379,9 @@ public class ChatRepository {
         // A26：chart_answer 落库为 {"content","reasoning_content"}（对齐 SQLBot
         // curd/chat.py:517-522：JSON 时取 reasoning_content），历史纯文本/图片 URL 原样返回
         record.put("chart_answer", unwrapThinking(Rows.str(row, "chart_answer")));
-        record.put("chart", Rows.str(row, "chart"));
+        // 存量兼容：早期单值聚合记录落库时 columns 为空数组，前端 S2 表格无列会显示空白。
+        // 读取时用 data.fields 补齐 columns，使旧会话也能显示数据（新记录由生成侧已修复）。
+        record.put("chart", ensureChartColumns(Rows.str(row, "chart"), Rows.str(row, "data")));
         record.put("analysis", Rows.str(row, "analysis"));
         record.put("analysis_thinking", Rows.str(row, "analysis_thinking"));
         record.put("predict", Rows.str(row, "predict"));
@@ -510,6 +512,42 @@ public class ChatRepository {
             return content == null ? "" : String.valueOf(content);
         } catch (Exception e) {
             return stored;
+        }
+    }
+
+    /**
+     * 存量兼容：早期单值聚合记录生成的 chart 配置 columns 为空数组，前端 S2 表格无列会显示空白。
+     * 读取时用 data.fields 补齐 columns（格式 {"name","value"}，对齐 ChatChartBuilder.columnList）。
+     * 已是有效 columns 或无法解析时原样返回，不影响新记录与其它图表类型。
+     */
+    @SuppressWarnings("unchecked")
+    private String ensureChartColumns(String chartJson, String dataJson) {
+        if (chartJson == null || chartJson.isEmpty() || dataJson == null || dataJson.isEmpty()) {
+            return chartJson;
+        }
+        try {
+            Map<String, Object> chart = objectMapper.readValue(chartJson, new TypeReference<Map<String, Object>>() {});
+            Object cols = chart.get("columns");
+            if (cols instanceof List && !((List<?>) cols).isEmpty()) {
+                return chartJson; // 已有有效列，无需补
+            }
+            Map<String, Object> data = objectMapper.readValue(dataJson, new TypeReference<Map<String, Object>>() {});
+            Object fields = data.get("fields");
+            if (!(fields instanceof List) || ((List<?>) fields).isEmpty()) {
+                return chartJson;
+            }
+            List<Map<String, Object>> columns = new ArrayList<>();
+            for (Object f : (List<?>) fields) {
+                if (f == null) {
+                    continue;
+                }
+                String name = String.valueOf(f);
+                columns.add(Rows.of("name", name, "value", name));
+            }
+            chart.put("columns", columns);
+            return objectMapper.writeValueAsString(chart);
+        } catch (Exception e) {
+            return chartJson;
         }
     }
 

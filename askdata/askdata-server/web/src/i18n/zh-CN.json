@@ -476,7 +476,11 @@
     "field_notes_1": "字段备注",
     "no_table": "暂无数据表",
     "go_add": "去添加",
-    "get_schema": "获取Schema"
+    "get_schema": "获取Schema",
+    "vectorized": "已向量化",
+    "not_vectorized": "未向量化",
+    "vectorized_tip": "该数据源已生成向量，可用于智能问数的表匹配召回",
+    "not_vectorized_tip": "该数据源尚未生成向量，表匹配将降级为关键词方式；可在模型配置中执行「一键重新向量」"
   },
   "model": {
     "int": "整数",

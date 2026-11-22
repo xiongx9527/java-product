@@ -80,6 +80,10 @@ public class DatasourceService {
     /** 数据源级向量服务（新增/勾选表/字段同步后回填 {@code core_datasource.embedding}）。 */
     private final DatasourceEmbeddingService datasourceEmbeddingService;
 
+    /** 向量化状态查询（字段注入，直接 new 的测试为 null 时降级到标记字段判断）。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.xiongx9527.askdata.ai.EmbeddingService embeddingService;
+
     /**
      * 行/列权限查询服务（A2 预览权限）。setter 注入：测试用旧构造器直连 mock 时可为 null，
      * 此时预览退化为无权限裁剪（仅管理员路径可达）。
@@ -953,6 +957,19 @@ public class DatasourceService {
         vo.put("table_relation", parseRelation(Rows.str(row, "table_relation")));
         vo.put("embedding", Rows.str(row, "embedding"));
         vo.put("recommended_config", Rows.intg(row, "recommended_config", 1));
+        // 向量化可见性：优先按 ds_id 直接查在线向量库的真实 point 数（准确，反映「向量删了但
+        // 标记没清」的情况）；向量库未配置/不可达（返回 -1）时降级到业务库 embedding_model_id 标记。
+        long dsId = Rows.lng(row, "id", 0L);
+        Long vectorModelId = Rows.lngOrNull(row, "embedding_model_id");
+        long vectorCount = embeddingService == null ? -1 : embeddingService.countVectors("core_datasource", "ds_id", dsId);
+        if (vectorCount >= 0) {
+            vo.put("vectorized", vectorCount > 0);
+            vo.put("vector_count", vectorCount);
+        } else {
+            vo.put("vectorized", vectorModelId != null);
+            vo.put("vector_count", null);
+        }
+        vo.put("vector_model_id", vectorModelId);
         return vo;
     }
 

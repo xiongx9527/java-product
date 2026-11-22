@@ -20,7 +20,7 @@ public class DatasourceRepository {
 
     private static final String COLUMNS =
             "id, name, description, type, type_name, configuration, create_time, create_by, status, num, oid, "
-                    + "table_relation, embedding, recommended_config";
+                    + "table_relation, embedding, recommended_config, embedding_model_id";
 
     private final JdbcTemplate jdbc;
 

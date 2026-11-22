@@ -18,6 +18,7 @@ const props = withDefaults(
     num: string
     description?: string
     id?: string
+    vectorized?: boolean
   }>(),
   {
     name: '-',
@@ -25,6 +26,7 @@ const props = withDefaults(
     description: '-',
     id: '-',
     typeName: '-',
+    vectorized: undefined,
   }
 )
 
@@ -96,7 +98,14 @@ const onClickOutside = () => {
       <img :src="icon" width="32px" height="32px" />
       <div class="info">
         <div :title="name" class="name ellipsis">{{ name }}</div>
-        <div class="type">{{ typeName }}</div>
+        <div class="type">
+          {{ typeName }}
+          <el-tooltip v-if="vectorized !== undefined" :content="vectorized ? $t('datasource.vectorized_tip') : $t('datasource.not_vectorized_tip')" placement="top">
+            <span class="vector-badge" :class="vectorized ? 'vector-on' : 'vector-off'">
+              {{ vectorized ? $t('datasource.vectorized') : $t('datasource.not_vectorized') }}
+            </span>
+          </el-tooltip>
+        </div>
       </div>
     </div>
     <div :title="description" class="type-value">
@@ -196,6 +205,23 @@ const onClickOutside = () => {
         font-size: 12px;
         line-height: 20px;
         color: #646a73;
+      }
+      .vector-badge {
+        display: inline-block;
+        margin-left: 6px;
+        padding: 0 6px;
+        border-radius: 8px;
+        font-size: 11px;
+        line-height: 16px;
+        vertical-align: middle;
+      }
+      .vector-on {
+        color: #1f9d55;
+        background: #e8f7ee;
+      }
+      .vector-off {
+        color: #8f959e;
+        background: #f0f1f2;
       }
     }
   }

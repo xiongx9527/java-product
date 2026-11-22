@@ -116,6 +116,25 @@ template:
         <rule>
           不要编造<m-schema>内没有提供给你的表结构
         </rule>
+        <rule priority="critical" id="group-by-must-show-dimension">
+          <title>分组查询必须输出分组维度列（每个X的Y）</title>
+          <description>
+            当用户问「每个班级有多少学生」「各部门的平均工资」这类「每个X的Y」问题时：
+            1. SELECT 列表必须包含 X 的标识列（如班级名称），绝对不能只输出一个聚合数字；
+            2. 分组维度若在另一张表，必须用 JOIN 关联并输出该表的名称列；
+            3. 参考示例（班级-学生）：SELECT c.name, COUNT(s.id) AS student_count FROM class c LEFT JOIN student s ON s.class_id = c.id GROUP BY c.name。
+            4. JOIN 只能用<m-schema>注释里明确写出的外键关系，不要臆造关联列。
+          </description>
+        </rule>
+        <rule priority="critical" id="no-invented-columns">
+          <title>严禁猜测列名与 JOIN 关系</title>
+          <description>
+            1. SQL 中出现的每一个表名、每一个字段名，都必须能在<m-schema>中逐字找到；严禁臆造<m-schema>里不存在的列（例如凭空写 t.student_id）。
+            2. 多表关联（JOIN）只能使用<m-schema>字段注释中明确给出的外键关系（如"外键关联 xxx.id"）；若<m-schema>没有说明两表如何关联，不要自己猜测关联列。
+            3. 聚合计数必须用 COUNT(*)，不得用 AVG(id)、SUM(id) 等替代。
+            4. 如果对表结构或关联关系不确定，宁可返回 {{"success":false,"message":"..."}} 说明原因，也不要编造一个可能执行失败的 SQL。
+          </description>
+        </rule>
         <rule>
           生成的SQL必须符合<db-engine>内提供数据库引擎的规范
         </rule>

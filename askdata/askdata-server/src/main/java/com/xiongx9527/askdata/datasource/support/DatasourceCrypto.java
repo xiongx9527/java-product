@@ -6,12 +6,13 @@ import com.xiongx9527.askdata.system.auth.CryptoUtil;
  * 数据源 configuration 加解密（spec §3：前端 CryptoJS AES-ECB key {@code SQLBot1234567890}
  * 传输 → 服务端解密后以应用 SECRET_KEY AES 落库）。
  *
- * <p>三种形态：</p>
+ * <p>四种形态：</p>
  * <ul>
  *   <li>前端形态：AES-ECB({@link CryptoUtil#SQLBOT_AES_KEY})，前端 {@code encrypted()} 产生、
  *       {@code decrypted()} 消费；list/get 响应的 configuration 必须为该形态；</li>
- *   <li>落库形态：AES-ECB(应用 SECRET_KEY，来自配置 {@code askdata.secret.key})，
- *       DB 中不出现传输层可解明文；</li>
+ *   <li>落库形态（当前）：AES-256-GCM envelope（{@link DatasourceKeyring}，每部署独立密钥），
+ *       {@code gcm1:keyId:...} 前缀；DB 中不出现传输层可解明文；</li>
+ *   <li>历史落库形态：AES-ECB(应用 SECRET_KEY) —— 只读兼容，启动期迁移到 GCM；</li>
  *   <li>明文 JSON：引擎实际消费的 DatasourceConf JSON。</li>
  * </ul>
  *
@@ -22,8 +23,11 @@ import com.xiongx9527.askdata.system.auth.CryptoUtil;
  */
 public final class DatasourceCrypto {
 
-    /** 配置化的加解密器（未注入时使用缺省密钥）。 */
+    /** 配置化的加解密器（legacy 解密用；未注入时使用缺省密钥）。 */
     private static volatile CryptoUtil cryptoUtil = new CryptoUtil();
+
+    /** 独立密钥环（落库 GCM 加解密；未初始化时调用会抛错提示）。 */
+    private static volatile DatasourceKeyring keyring;
 
     private DatasourceCrypto() {
     }
@@ -39,16 +43,36 @@ public final class DatasourceCrypto {
         }
     }
 
-    /** 当前生效的加解密器。 */
+    /** 注入独立密钥环（应用启动时调用）。 */
+    public static void configureKeyring(DatasourceKeyring ring) {
+        if (ring != null) {
+            keyring = ring;
+        }
+    }
+
+    public static DatasourceKeyring keyring() {
+        return keyring;
+    }
+
+    /** 当前生效的加解密器（legacy）。 */
     public static CryptoUtil crypto() {
         return cryptoUtil;
     }
 
-    /** 入站 configuration（前端密文/历史落库密文/明文 JSON）→ 明文 JSON；null 返回 "{}"。 */
+    /** 入站 configuration（gcm1 envelope/前端密文/历史落库密文/明文 JSON）→ 明文 JSON；null 返回 "{}"。 */
     public static String decodeConfiguration(String value) {
         if (value == null || value.isEmpty()) {
             return "{}";
         }
+        // 当前落库形态：AES-256-GCM envelope
+        if (DatasourceKeyring.isEnvelope(value)) {
+            DatasourceKeyring ring = keyring;
+            if (ring == null) {
+                throw new IllegalStateException("数据源密钥环未初始化，无法解密 gcm1 配置");
+            }
+            return ring.decrypt(value);
+        }
+        // 历史形态：应用 SECRET_KEY ECB / 前端 ECB / 明文
         String plain = cryptoUtil.decryptWithAppSecret(value);
         if (plain != null && looksLikeJson(plain)) {
             return plain;
@@ -72,12 +96,16 @@ public final class DatasourceCrypto {
         return trimmed.startsWith("{") || trimmed.startsWith("[");
     }
 
-    /** 明文 JSON → 落库形态（应用 SECRET_KEY AES）。 */
+    /** 明文 JSON → 落库形态（AES-256-GCM envelope，每部署独立密钥）。 */
     public static String encodeForStore(String plainJson) {
         if (plainJson == null || plainJson.isEmpty()) {
             return plainJson;
         }
-        return cryptoUtil.encryptWithAppSecret(plainJson);
+        DatasourceKeyring ring = keyring;
+        if (ring == null) {
+            throw new IllegalStateException("数据源密钥环未初始化，无法加密落库配置");
+        }
+        return ring.encrypt(plainJson);
     }
 
     /** 落库形态（或明文 JSON）→ 前端形态，供 list/get 响应（前端 decrypted 消费）。 */

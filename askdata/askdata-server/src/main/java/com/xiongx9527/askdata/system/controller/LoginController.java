@@ -8,6 +8,7 @@ import com.xiongx9527.askdata.common.audit.AuditOperationType;
 import com.xiongx9527.askdata.common.web.AuthContext;
 import com.xiongx9527.askdata.common.web.LogoutRequest;
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
+import com.xiongx9527.askdata.system.auth.PasswordHasher;
 import com.xiongx9527.askdata.system.audit.AuditRecorder;
 import com.xiongx9527.askdata.system.repository.UserRepository;
 import com.xiongx9527.askdata.system.service.UserService;
@@ -72,7 +73,8 @@ public class LoginController {
                     ? Optional.empty()
                     : userRepository.findByAccount(account);
             if (!userRow.isPresent()
-                    || !CryptoUtil.md5Hex(plainPwd == null ? "" : plainPwd).equals(String.valueOf(userRow.get().get("password")))) {
+                    || !PasswordHasher.verifyPassword(plainPwd == null ? "" : plainPwd,
+                            String.valueOf(userRow.get().get("password")))) {
                 throw new BadRequestException(messages.get("login.account.pwd.error"));
             }
 
@@ -94,7 +96,7 @@ public class LoginController {
             // F-03：默认口令 + 强制改密开关开启 → 引导改密（对齐 SQLBot：种子管理员 id=1 豁免）
             if (uid != SEED_ADMIN_ID
                     && userService.initialPwdDisabled()
-                    && userService.isDefaultPassword(String.valueOf(user.get("password")))) {
+                    && userService.isDefaultPasswordStored(String.valueOf(user.get("password")))) {
                 auditRecorder.recordLogin(account, AuditOperationType.LOGIN, "success", null,
                         System.currentTimeMillis() - start);
                 TokenVO vo = new TokenVO("");
@@ -102,6 +104,8 @@ public class LoginController {
                 return Result.ok(vo);
             }
 
+            // 登录成功后按需升级旧口令（MD5/包装 MD5 → 原生 Argon2id），对齐 SQLBot upgrade_password
+            userService.upgradePasswordIfNeeded(user, plainPwd);
             StpUtil.login(uid);
             auditRecorder.recordLogin(account, AuditOperationType.LOGIN, "success", null,
                     System.currentTimeMillis() - start);
@@ -126,7 +130,8 @@ public class LoginController {
                     ? Optional.empty()
                     : userRepository.findByAccount(account);
             if (!userRow.isPresent()
-                    || !CryptoUtil.md5Hex(pwd == null ? "" : pwd).equals(String.valueOf(userRow.get().get("password")))) {
+                    || !PasswordHasher.verifyPassword(pwd == null ? "" : pwd,
+                            String.valueOf(userRow.get().get("password")))) {
                 throw new BadRequestException(messages.get("login.account.pwd.error"));
             }
             long origin = toLong(userRow.get().get("origin"));
@@ -141,7 +146,7 @@ public class LoginController {
                     && userService.isDefaultPassword(CryptoUtil.md5Hex(newPwd))) {
                 throw new BadRequestException(messages.get("i18n_login.new_pwd_is_initial"));
             }
-            userRepository.updatePassword(toLong(userRow.get().get("id")), CryptoUtil.md5Hex(newPwd));
+            userRepository.updatePassword(toLong(userRow.get().get("id")), PasswordHasher.hashPassword(newPwd));
             auditRecorder.recordLogin(account, AuditOperationType.UPDATE_PWD, "success", null,
                     System.currentTimeMillis() - start);
             // 显式类型见证：基类同名静态 ok(String) 对 null 更具体，缺省会解析到它

@@ -11,11 +11,16 @@ import com.xiongx9527.askdata.chat.service.ChatModelRouter;
 import com.xiongx9527.askdata.chat.service.ChatModelRouter.ModelRef;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import cn.hutool.http.HttpRequest;
+import cn.hutool.http.HttpResponse;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -38,6 +43,14 @@ public class EmbeddingService {
     private final ChatModelClient modelClient;
 
     private final ObjectMapper objectMapper;
+
+    /** Qdrant REST 基址（按 payload 统计向量条数用；与框架端口共用同一环境变量）。 */
+    @Value("${askdata.vector-store.qdrant.url:}")
+    private String qdrantUrl;
+
+    /** Qdrant API Key（可选）。 */
+    @Value("${askdata.vector-store.qdrant.api-key:}")
+    private String qdrantApiKey;
 
     /**
      * 向量存储后端（在线 Qdrant）。由 Spring 注入；直接构造的单元测试必须显式
@@ -138,6 +151,61 @@ public class EmbeddingService {
             }
         }
         return result;
+    }
+
+    /**
+     * 按 payload 条件统计某类对象的真实向量条数（直接查 Qdrant REST）。
+     *
+     * <p>用于向用户展示「数据源/表是否已向量化」的准确状态——读的是在线向量库里的真实
+     * point，而非业务库的标记字段，避免标记与实际向量不同步时给出错误结论。向量库未配置、
+     * 不可达或查询失败时返回 {@code -1}（调用方据此降级，不抛错阻断列表接口）。</p>
+     *
+     * @param objectType 对象类型（core_datasource / core_table / terminology / data_training）
+     * @param key        payload 过滤键（如 ds_id）
+     * @param value      payload 过滤值
+     * @return 命中条数；不可查询时返回 -1
+     */
+    public long countVectors(String objectType, String key, Object value) {
+        if (qdrantUrl == null || qdrantUrl.trim().isEmpty()) {
+            return -1;
+        }
+        String collection = collectionFor(objectType);
+        String url = qdrantUrl.replaceAll("/$", "") + "/collections/" + collection + "/points/count";
+        try {
+            Map<String, Object> condition = new HashMap<>();
+            condition.put("key", key);
+            Map<String, Object> match = new HashMap<>();
+            match.put("value", value);
+            condition.put("match", match);
+            Map<String, Object> filter = new HashMap<>();
+            filter.put("must", Collections.singletonList(condition));
+            Map<String, Object> body = new HashMap<>();
+            body.put("filter", filter);
+            body.put("exact", true);
+            String json = objectMapper.writeValueAsString(body);
+            HttpRequest req = HttpRequest.post(url).timeout(5000)
+                    .header("Content-Type", "application/json");
+            if (qdrantApiKey != null && !qdrantApiKey.trim().isEmpty()) {
+                req.header("api-key", qdrantApiKey);
+            }
+            try (HttpResponse resp = req.body(json).execute()) {
+                if (!resp.isOk()) {
+                    log.warn("统计向量条数失败 collection={} key={} value={} http={}", collection, key, value, resp.getStatus());
+                    return -1;
+                }
+                Map<?, ?> root = objectMapper.readValue(resp.body(), Map.class);
+                Object result = root.get("result");
+                if (result instanceof Map) {
+                    Object count = ((Map<?, ?>) result).get("count");
+                    if (count instanceof Number) {
+                        return ((Number) count).longValue();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("统计向量条数异常 collection={} key={} value={}: {}", collection, key, value, e.getMessage());
+        }
+        return -1;
     }
 
     /**

@@ -38,6 +38,16 @@ class VectorRefreshTimingTest {
 
     @BeforeEach
     void setUp() {
+        // 方案二：encodeForStore 走 keyring，非 Spring 测试需显式初始化临时密钥环
+        try {
+            java.nio.file.Path keyDir = java.nio.file.Files.createTempDirectory("askdata-test-keyring-");
+            java.nio.file.Path keyFile = keyDir.resolve("keys.json"); // 不存在 -> initialize 会新建密钥内容
+            com.xiongx9527.askdata.datasource.support.DatasourceKeyring.initialize(keyFile.toString(), false);
+            com.xiongx9527.askdata.datasource.support.DatasourceCrypto.configureKeyring(
+                    com.xiongx9527.askdata.datasource.support.DatasourceKeyring.get());
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(e);
+        }
         DatasourceRepository datasourceRepository = mock(DatasourceRepository.class);
         tableRepository = mock(TableRepository.class);
         fieldRepository = mock(FieldRepository.class);

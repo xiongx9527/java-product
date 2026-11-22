@@ -98,7 +98,8 @@ class PostgresMetadbMigrationTest {
         registry.add("askdata.embedding.backfill-enabled", () -> "false");
         // 本用例只验证 PG 迁移/登录/一次问数：关闭在线向量存储，避免本机 Qdrant 已有集合
         // 的维度与桩模型维度不一致，导致问答入口被判为「索引待重建」而阻断。
-        registry.add("askdata.vector-store.qdrant.url", () -> "");
+        // 向量端口由框架契约 fw-plus.ai.vector-store 装配，此处置空走未配置占位端口。
+        registry.add("fw-plus.ai.vector-store.default.base-url", () -> "");
     }
 
     @AfterAll

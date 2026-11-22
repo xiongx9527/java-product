@@ -158,8 +158,9 @@ class UserBatchImportTest {
 
         Optional<Map<String, Object>> user = userRepository.findByAccount("batchuser1");
         assertTrue(user.isPresent(), "imported user should exist");
-        // MD5 口令：SQLBot 列集不含 password，建号用 askdata.user.default-password
-        assertEquals(CryptoUtil.md5Hex("InitPassw0rd123"), String.valueOf(user.get().get("password")));
+        // Argon2id 口令：SQLBot 列集不含 password，建号用 askdata.user.default-password
+        assertTrue(com.xiongx9527.askdata.system.auth.PasswordHasher.verifyPassword(
+                "InitPassw0rd123", String.valueOf(user.get().get("password"))));
         // oid 归属当前管理员工作空间，登录要求 oid≠0
         assertEquals(1L, ((Number) user.get().get("oid")).longValue());
         assertEquals(1, ((Number) user.get().get("status")).intValue());

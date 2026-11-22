@@ -253,6 +253,15 @@ askdata:
 # 鉴权 sa-token-login：复用现有 Sa-Token 登录会话（token 头 X-SQLBOT-TOKEN，见上方 sa-token 配置）。
 fw-plus:
   ai:
+    # 框架向量存储端口（VectorStorePort）的权威配置。askdata 的 EmbeddingService / RetrievalPipeline
+    # 均经框架端口读写向量，必须按框架契约配 fw-plus.ai.vector-store，否则框架只暴露未配置占位端口，
+    # 向量写入静默失败（日志 "vector store is not configured"）。
+    # 注：下方 askdata.vector-store 段保留仅为历史配置兼容，运行期不再被框架消费。
+    vector-store:
+      default:
+        base-url: ${ASKDATA_QDRANT_URL:}
+        api-key: ${ASKDATA_QDRANT_API_KEY:}
+        vendor: qdrant
     mcp:
       enabled: true
       transport: http-sse

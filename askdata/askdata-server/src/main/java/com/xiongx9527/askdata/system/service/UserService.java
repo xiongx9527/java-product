@@ -11,6 +11,7 @@ import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.common.web.PageResult;
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
+import com.xiongx9527.askdata.system.auth.PasswordHasher;
 import com.xiongx9527.askdata.system.repository.SysArgRepository;
 import com.xiongx9527.askdata.system.repository.UserRepository;
 import com.xiongx9527.askdata.system.repository.UserWsRepository;
@@ -76,6 +77,40 @@ public class UserService {
     public boolean isDefaultPassword(String plainPwdMd5) {
         String baseline = defaultPasswordForCheck();
         return baseline != null && CryptoUtil.md5Hex(baseline).equals(plainPwdMd5);
+    }
+
+    /**
+     * F-03：默认口令判定（存储值形态）——用默认口令明文直接校验库中的 hash。
+     * 对齐 SQLBot {@code verify_password(default_pwd(), user.password)}：登录成功分支拿到的
+     * 是 DB 存储值，可能是遗留 MD5 或 Argon2id，统一交给 {@link PasswordHasher#verifyPassword} 判定。
+     */
+    public boolean isDefaultPasswordStored(String storedHash) {
+        String baseline = defaultPasswordForCheck();
+        return baseline != null && PasswordHasher.verifyPassword(baseline, storedHash);
+    }
+
+    /**
+     * 登录成功后把旧口令升级为原生 Argon2id（对齐 SQLBot {@code upgrade_password}）。
+     * 仅本地来源、已启用、有工作空间的用户升级；CAS 保护并发重置，调用方持有明文口令。
+     */
+    public void upgradePasswordIfNeeded(Map<String, Object> user, String plainPwd) {
+        if (user == null || plainPwd == null) {
+            return;
+        }
+        long status = Rows.lng(user, "status", 0L);
+        long origin = Rows.lng(user, "origin", -1L);
+        long oid = Rows.lng(user, "oid", 0L);
+        if (status != 1 || origin != 0 || oid == 0L) {
+            return;
+        }
+        String stored = Rows.str(user, "password");
+        if (!PasswordHasher.needsUpgrade(stored)) {
+            return;
+        }
+        long id = Rows.lng(user, "id", 0L);
+        if (id > 0L) {
+            userRepository.upgradePasswordCas(id, stored, PasswordHasher.hashPassword(plainPwd));
+        }
     }
 
     /**
@@ -196,13 +231,11 @@ public class UserService {
         long id = idGenerator.nextId();
         String systemVariables = serializeSystemVariables(body);
         // 对齐 SQLBot create：新用户 oid=0，绑定工作空间后取首个
-        // 修复：管理员创建用户时若显式传入 password，则以该口令的 MD5 存储；
+        // 管理员创建用户时若显式传入 password，则以该口令的 Argon2id 存储；
         // 否则回落默认口令（保持原行为，兼容导入/SSO 等不传口令的场景）。
-        // 原实现始终用默认口令，导致创建时设置的口令无法登录。
         String rawPwd = Rows.str(body, "password");
-        String passwordHash = (rawPwd == null || rawPwd.isEmpty())
-                ? CryptoUtil.md5Hex(resolveDefaultPassword())
-                : CryptoUtil.md5Hex(rawPwd);
+        String passwordHash = PasswordHasher.hashPassword(
+                (rawPwd == null || rawPwd.isEmpty()) ? resolveDefaultPassword() : rawPwd);
         userRepository.insert(id, account, name, passwordHash, email, 0L, status,
                 System.currentTimeMillis(), "zh-CN", origin, systemVariables);
         long oid = 0L;
@@ -233,7 +266,7 @@ public class UserService {
                 ? email : safeAccount + "@sso.local";
         String safeName = (name != null && !name.isEmpty()) ? name : safeAccount;
         long id = idGenerator.nextId();
-        userRepository.insert(id, safeAccount, safeName, CryptoUtil.md5Hex(resolveDefaultPassword()),
+        userRepository.insert(id, safeAccount, safeName, PasswordHasher.hashPassword(resolveDefaultPassword()),
                 safeEmail, 0L, 1, System.currentTimeMillis(), "zh-CN", 2, null);
         bindUser(id, 1L, 0);
         userRepository.updateOid(id, 1L);
@@ -313,20 +346,20 @@ public class UserService {
 
     public void resetPassword(long id) {
         currentUserService.requireAdmin();
-        userRepository.updatePassword(id, CryptoUtil.md5Hex(resolveDefaultPassword()));
+        userRepository.updatePassword(id, PasswordHasher.hashPassword(resolveDefaultPassword()));
     }
 
     public void changeOwnPassword(String pwd, String newPwd) {
         long uid = currentUserService.uid();
         Map<String, Object> user = userRepository.findById(uid)
                 .orElseThrow(() -> new BadRequestException(messageResolver.get("user.login.not.exists")));
-        if (!CryptoUtil.md5Hex(pwd == null ? "" : pwd).equals(Rows.str(user, "password"))) {
+        if (!PasswordHasher.verifyPassword(pwd == null ? "" : pwd, Rows.str(user, "password"))) {
             throw new BadRequestException(messageResolver.get("user.pwd.original.incorrect"));
         }
         if (newPwd == null || !PWD_REGEX.matcher(newPwd).matches()) {
             throw new BadRequestException(messageResolver.get("user.pwd.format.invalid"));
         }
-        userRepository.updatePassword(uid, CryptoUtil.md5Hex(newPwd));
+        userRepository.updatePassword(uid, PasswordHasher.hashPassword(newPwd));
     }
 
     public void changeStatus(long id, int status) {

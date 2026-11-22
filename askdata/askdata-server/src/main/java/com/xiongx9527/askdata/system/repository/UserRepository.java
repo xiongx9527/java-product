@@ -273,6 +273,19 @@ public class UserRepository {
         jdbc.update("UPDATE sys_user SET password = ? WHERE id = ?", md5Password, id);
     }
 
+    /**
+     * 口令升级（CAS）：仅当库中仍是 oldStored 时写入 newHash，避免覆盖并发重置。
+     * @return 实际更新行数（1=升级成功，0=已被并发改动，跳过即可）
+     */
+    @Caching(evict = {
+            @CacheEvict(cacheNames = CacheNames.USER_INFO, key = "#id"),
+            @CacheEvict(cacheNames = CacheNames.USER_INFO_BY_ACCOUNT, allEntries = true)
+    })
+    public int upgradePasswordCas(long id, String oldStored, String newHash) {
+        return jdbc.update("UPDATE sys_user SET password = ? WHERE id = ? AND password = ?",
+                newHash, id, oldStored);
+    }
+
     @Caching(evict = {
             @CacheEvict(cacheNames = CacheNames.USER_INFO, key = "#id"),
             @CacheEvict(cacheNames = CacheNames.USER_INFO_BY_ACCOUNT, allEntries = true)

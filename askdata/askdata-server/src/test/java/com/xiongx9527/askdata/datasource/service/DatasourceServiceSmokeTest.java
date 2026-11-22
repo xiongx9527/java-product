@@ -85,6 +85,11 @@ class DatasourceServiceSmokeTest {
     void setUp() throws Exception {
         // 非 Spring 测试：显式注入与 V2 种子一致的应用密钥（A5 起密钥配置化，默认 AskDataSecret001）
         DatasourceCrypto.configure(new CryptoUtil("AskDataSecret001"));
+        // 数据源落库加密走 keyring（方案二），非 Spring 测试需显式初始化一个临时密钥环
+        java.nio.file.Path keyDir = java.nio.file.Files.createTempDirectory("askdata-test-keyring-");
+        java.nio.file.Path keyFile = keyDir.resolve("keys.json"); // 不存在 -> initialize 会新建密钥内容
+        com.xiongx9527.askdata.datasource.support.DatasourceKeyring.initialize(keyFile.toString(), false);
+        DatasourceCrypto.configureKeyring(com.xiongx9527.askdata.datasource.support.DatasourceKeyring.get());
         // 每个测试方法独立内存库（DB_CLOSE_DELAY=-1 下同名库跨方法共享，故加唯一后缀）
         appJdbc = MysqlTestSupport.createSchema();
         // 目标 MySQL 数据源库

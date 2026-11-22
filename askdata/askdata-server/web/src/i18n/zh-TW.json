@@ -476,7 +476,11 @@
     "field_notes_1": "欄位備註",
     "no_table": "暫無資料表",
     "go_add": "去新增",
-    "get_schema": "取得Schema"
+    "get_schema": "取得Schema",
+    "vectorized": "已向量化",
+    "not_vectorized": "未向量化",
+    "vectorized_tip": "該資料來源已產生向量，可用於智慧問數的表比對喚回",
+    "not_vectorized_tip": "該資料來源尚未產生向量，表比對將降級為關鍵字方式；可於模型設定中執行「一鍵重新向量」"
   },
   "model": {
     "int": "整數",

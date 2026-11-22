@@ -476,7 +476,11 @@
     "field_notes_1": "Field notes",
     "no_table": "No Table",
     "go_add": "Add",
-    "get_schema": "Get Schema"
+    "get_schema": "Get Schema",
+    "vectorized": "Vectorized",
+    "not_vectorized": "Not vectorized",
+    "vectorized_tip": "Embeddings generated for this datasource; used for table-matching recall in data Q&A",
+    "not_vectorized_tip": "No embeddings for this datasource yet; table matching falls back to keyword mode. Run \"Rebuild Vectors\" in model settings"
   },
   "model": {
     "int": "Integer",

@@ -204,10 +204,10 @@ class RemainingFidelityTest {
             editor.put("pwd", oldPwd);
             editor.put("new_pwd", newPwd);
             loginController.changePwd(editor);
-            // 新口令落库生效
+            // 新口令落库生效（Argon2id hash，校验明文可解开）
             Optional<Map<String, Object>> row = userRepository.findById(newUid);
-            assertEquals(CryptoUtil.md5Hex("NewPassw0rd!1"),
-                    String.valueOf(row.orElseThrow(IllegalStateException::new).get("password")));
+            String stored = String.valueOf(row.orElseThrow(IllegalStateException::new).get("password"));
+            assertTrue(com.xiongx9527.askdata.system.auth.PasswordHasher.verifyPassword("NewPassw0rd!1", stored));
         } finally {
             jdbc.update("DELETE FROM sys_user WHERE id = ?", newUid);
             jdbc.update("DELETE FROM sys_user_ws WHERE uid = ?", newUid);

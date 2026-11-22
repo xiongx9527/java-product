@@ -74,6 +74,16 @@ class DatasourceEndpointAuthzTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        // 非 Spring 测试：数据源落库加密走 keyring，显式初始化临时密钥环（方案二）
+        try {
+            java.nio.file.Path keyDir = java.nio.file.Files.createTempDirectory("askdata-test-keyring-");
+            com.xiongx9527.askdata.datasource.support.DatasourceKeyring.initialize(keyDir.resolve("keys.json").toString(), false);
+            com.xiongx9527.askdata.datasource.support.DatasourceCrypto.configureKeyring(
+                    com.xiongx9527.askdata.datasource.support.DatasourceKeyring.get());
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(e);
+        }
+
         DatasourceCrypto.configure(new CryptoUtil("AskDataSecret001"));
         jdbc = MysqlTestSupport.createSchema();
         datasourceRepository = new DatasourceRepository(jdbc, new IdGenerator());

@@ -208,10 +208,9 @@ public class AiModelService {
                 && embeddingIndexService.isRebuildActive()) {
             throw new BadRequestException(messageResolver.get("aimodel.embedding.rebuild_locked"));
         }
-        if (isDefault && !requestedEnable) {
-            // 默认模型不可停用：停用会让该类型链路无模型可用
-            throw new BadRequestException(messageResolver.get("aimodel.disable_default_error"));
-        }
+        // 编辑保存不强制 enable：enable 是前端编辑弹窗的隐藏字段，会沿用列表中校验失败时被
+        // streamStatus 自动置 0 的旧值。若在此因「默认模型不可停用」拦截，用户改好配置、校验通过
+        // 后仍无法保存，陷入死循环。默认模型的「主动停用」由 setEnable（列表开关）单独拦截。
         // 决策 15：向量模型的维度是启用前提——维度未探测时无法校验存储对齐
         if (requestedEnable && modelType == EMBEDDING_MODEL_TYPE && dimension == null) {
             throw new BadRequestException(messageResolver.get("aimodel.enable_requires_dimension"));
@@ -791,8 +790,14 @@ public class AiModelService {
                 passed = false;
             }
             if (modelId != null) {
-                // 校验通过即自动启用（enable 同时承载「已校验可用」与「是否生效」），失败置为不可用
-                aiModelRepository.updateEnable(modelId, passed);
+                // 校验通过即自动启用（enable 同时承载「已校验可用」与「是否生效」）。
+                // 校验失败一般不启用；但默认模型是同类型的唯一兜底，若因一次校验失败就把它
+                // enable=0，会导致该类型链路无可用模型，且用户修好配置后编辑保存还会被
+                // 「默认模型不可停用」拦截（enable 隐藏字段沿用旧值），陷入死循环。
+                // 故：失败时若目标是默认模型，保留其启用状态，仅提示错误。
+                if (passed || !isDefaultModel(modelId)) {
+                    aiModelRepository.updateEnable(modelId, passed);
+                }
             }
         } catch (Exception e) {
             emitError(writer, e.getMessage() == null ? e.toString() : e.getMessage());
@@ -890,6 +895,12 @@ public class AiModelService {
         Integer storeDimension = conflicts.values().iterator().next();
         return messageResolver.get("aimodel.dimension.store_mismatch",
                 String.valueOf(storeDimension), String.valueOf(modelDimension));
+    }
+
+    /** 该 id 对应的模型是否为默认模型（任意类型）。 */
+    private boolean isDefaultModel(long modelId) {
+        java.util.Optional<Map<String, Object>> row = aiModelRepository.findById(modelId);
+        return row.isPresent() && Rows.bool(row.get(), "default_model", false);
     }
 
     /** 该 id 是否为当前默认向量模型（默认模型与存储维度不一致属于必须重建的破损状态）。 */

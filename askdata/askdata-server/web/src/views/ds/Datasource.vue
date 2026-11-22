@@ -31,6 +31,8 @@ export interface Datasource {
   description: string
   id?: string
   recommended_config?: string
+  vectorized?: boolean
+  vector_model_id?: number | null
 }
 
 const router = useRouter()
@@ -309,6 +311,7 @@ useEmitt({
             :type-name="ele.type_name"
             :num="ele.num"
             :description="ele.description"
+            :vectorized="ele.vectorized"
             @start-checking="startLoading"
             @end-checking="endLoading"
             @question="handleQuestion"

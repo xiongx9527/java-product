@@ -160,7 +160,14 @@ async function doCreateNewChat() {
 
 function onClickHistory(chat: Chat) {
   if (chat !== undefined && chat.id !== undefined) {
-    if (_currentChatId.value === chat.id) {
+    // 只有「id 相同且记录已真正加载」才早退。此前仅凭 id 相等就 return，
+    // 在 goEmpty(设 undefined) 与 goHistory(设 chat.id) 的 v-model 回传竞态下，
+    // 会出现 currentChatId 已是目标值（左侧高亮）但 currentChat.records 仍为空
+    // （右侧欢迎页）的卡死状态，且再点同一会话永远早退、无法恢复。
+    const cur = _currentChat.value
+    const loaded =
+      _currentChatId.value === chat.id && cur && cur.records && cur.records.length > 0
+    if (loaded) {
       return
     }
     goEmpty(goHistory, chat)
@@ -168,27 +175,27 @@ function onClickHistory(chat: Chat) {
 }
 
 function goHistory(chat: Chat) {
-  nextTick(() => {
-    if (chat !== undefined && chat.id !== undefined) {
-      _currentChat.value = new ChatInfo(chat)
-      _currentChatId.value = chat.id
-      _loading.value = true
-      chatApi
-        .get(chat.id)
-        .then((res) => {
-          const info = chatApi.toChatInfo(res)
-          if (info && info.id === _currentChatId.value) {
-            _currentChat.value = info
-
-            // scrollToBottom()
-            emits('onClickHistory', info)
-          }
-        })
-        .finally(() => {
-          _loading.value = false
-        })
-    }
-  })
+  if (chat === undefined || chat.id === undefined) {
+    return
+  }
+  // 闭包捕获目标 id：不再依赖 _currentChatId.value（v-model computed 的异步回传）
+  // 做返回校验，规避「回传竞争导致判断失败、currentChat 不赋值」的竞态。
+  const targetId = chat.id
+  _currentChat.value = new ChatInfo(chat)
+  _currentChatId.value = targetId
+  _loading.value = true
+  chatApi
+    .get_with_Data(targetId)
+    .then((res) => {
+      const info = chatApi.toChatInfo(res)
+      if (info && info.id === targetId) {
+        _currentChat.value = info
+        emits('onClickHistory', info)
+      }
+    })
+    .finally(() => {
+      _loading.value = false
+    })
 }
 
 function onChatDeleted(id: number) {

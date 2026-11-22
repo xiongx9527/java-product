@@ -451,7 +451,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onBeforeUnmount, ref } from 'vue'
+import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord } from '@/api/chat'
 import ChatRow from './ChatRow.vue'
 import ChartAnswer from './answer/ChartAnswer.vue'
@@ -547,6 +547,30 @@ const appearanceStore = useAppearanceStoreWithOut()
 const currentChatId = ref<number | undefined>()
 const currentChat = ref<ChatInfo>(new ChatInfo())
 const isTyping = ref<boolean>(false)
+
+// 会话切换兜底：只要 currentChatId 变化，且当前会话内容未加载（records 为空），
+// 就自动拉取带数据的会话详情。不依赖 ChatListContainer 的 goEmpty→stop→goHistory
+// 事件链，彻底规避「左侧高亮但右侧空白」的竞态。
+watch(currentChatId, (newId) => {
+  if (newId === undefined || newId === null) {
+    return
+  }
+  if (currentChat.value && currentChat.value.id === newId && currentChat.value.records?.length > 0) {
+    return
+  }
+  const targetId = newId
+  chatApi
+    .get_with_Data(targetId)
+    .then((res) => {
+      const info = chatApi.toChatInfo(res)
+      if (info && currentChatId.value === targetId) {
+        currentChat.value = info
+      }
+    })
+    .catch(() => {
+      // 加载失败保留现状
+    })
+})
 const loginBg = computed(() => {
   return appearanceStore.getLogin
 })
@@ -695,8 +719,24 @@ function getChatList(callback?: () => void) {
 
 function onClickHistory(chat: ChatInfo) {
   scrollToBottom()
+  // 兜底加载会话详情：ChatListContainer 的 goEmpty→stop→goHistory 链偶发竞态，
+  // 导致 currentChatId 已更新（左侧高亮）但 currentChat.records 为空（右侧欢迎页）。
+  // 这里用会话 id 重新拉一次 with_data 并赋值，确保消息列表真正渲染。
+  if (chat && chat.id !== undefined) {
+    const targetId = chat.id
+    chatApi
+      .get_with_Data(targetId)
+      .then((res) => {
+        const info = chatApi.toChatInfo(res)
+        if (info && currentChatId.value === targetId) {
+          currentChat.value = info
+        }
+      })
+      .catch(() => {
+        // 加载失败时保留调用方已设置的会话，不覆盖
+      })
+  }
   forEach(chat?.records, (record: ChatRecord) => {
-    // getChatData(record.id)
     if (record.predict_record_id) {
       // getChatPredictData(record.id)
     }

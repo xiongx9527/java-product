@@ -7,6 +7,7 @@ import com.xiongx9527.askdata.system.platform.PlatformRepository;
 import com.xiongx9527.askdata.system.platform.EnterprisePlatformService;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
+import com.xiongx9527.askdata.system.auth.PasswordHasher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -449,10 +450,12 @@ public class AuthenticationService {
             }
             if (user == null) {
                 // 未绑定且本地无同名账号：自动创建（origin 标识来源）
+                // 外部来源账号不走本地口令登录，写随机不可用口令（Argon2id）避免空口令可登录
                 long uid = idGenerator.nextId();
                 long oid = defaultWorkspaceId();
+                String unusablePwd = java.util.UUID.randomUUID() + "-" + java.util.UUID.randomUUID();
                 userRepository.insert(uid, account, str(platformUser, "name") == null ? account : str(platformUser, "name"),
-                        CryptoUtil.md5Hex(""), str(platformUser, "email"), oid, 1,
+                        PasswordHasher.hashPassword(unusablePwd), str(platformUser, "email"), oid, 1,
                         System.currentTimeMillis(), "zh-CN", origin, null);
                 user = userRepository.findById(uid).orElse(null);
             }

@@ -4,6 +4,7 @@ import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
+import com.xiongx9527.askdata.system.auth.PasswordHasher;
 import com.xiongx9527.askdata.system.repository.UserRepository;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import org.springframework.stereotype.Service;
@@ -108,7 +109,7 @@ public class PlatformSyncService {
                 long uid = idGenerator.nextId();
                 // A10：同步新建用户不再写 md5("")（空口令即可登录），改为随机不可用口令。
                 String randomPassword = java.util.UUID.randomUUID() + "-" + java.util.UUID.randomUUID();
-                userRepository.insert(uid, account, name, CryptoUtil.md5Hex(randomPassword), email, oid, 1,
+                userRepository.insert(uid, account, name, PasswordHasher.hashPassword(randomPassword), email, oid, 1,
                         System.currentTimeMillis(), "zh-CN", origin, null);
                 localUser = userRepository.findById(uid).orElse(null);
                 platformRepository.upsertBinding(idGenerator.nextId(), uid, origin, platformUid);

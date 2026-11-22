@@ -7,6 +7,7 @@ import com.xiongx9527.askdata.common.util.ExcelUtils;
 import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.web.BadRequestException;
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
+import com.xiongx9527.askdata.system.auth.PasswordHasher;
 import com.xiongx9527.askdata.system.platform.PlatformRepository;
 import com.xiongx9527.askdata.system.repository.UserRepository;
 import com.xiongx9527.askdata.common.storage.AskdataFileStorage;
@@ -330,12 +331,12 @@ public class UserImportService {
     // 内部实现
     // ------------------------------------------------------------------
 
-    /** 建号：复用 sys_user 插入与 MD5 口令（对齐 UserService.create 的字段语义），并写工作空间/平台绑定。 */
+    /** 建号：复用 sys_user 插入与 Argon2id 口令（对齐 UserService.create 的字段语义），并写工作空间/平台绑定。 */
     private void createUser(String account, String name, String password, String email, long oid, int weight,
                             int status, int origin, String platformUid) {
         long id = idGenerator.nextId();
         String plain = password == null || password.isEmpty() ? userService.defaultPasswordForCreate() : password;
-        userRepository.insert(id, account, name, CryptoUtil.md5Hex(plain), email, oid, status,
+        userRepository.insert(id, account, name, PasswordHasher.hashPassword(plain), email, oid, status,
                 System.currentTimeMillis(), "zh-CN", origin, "[]");
         if (oid != 0L && !userWsRepository.find(id, oid).isPresent()) {
             userWsRepository.insert(idGenerator.nextId(), id, oid, weight);

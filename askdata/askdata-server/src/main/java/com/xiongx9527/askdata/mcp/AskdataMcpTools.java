@@ -13,6 +13,7 @@ import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import com.xiongx9527.askdata.system.auth.CryptoUtil;
+import com.xiongx9527.askdata.system.auth.PasswordHasher;
 import com.xiongx9527.askdata.system.repository.UserRepository;
 import com.xiongx9527.askdata.system.service.AiModelService;
 import com.xiongx9527.askdata.system.service.WorkspaceService;
@@ -154,7 +155,8 @@ public class AskdataMcpTools {
         UserRepository repository = SpringUtils.getBean(UserRepository.class);
         Optional<Map<String, Object>> userRow = username == null ? Optional.empty() : repository.findByAccount(username);
         if (!userRow.isPresent()
-                || !CryptoUtil.md5Hex(password == null ? "" : password).equals(String.valueOf(userRow.get().get("password")))) {
+                || !PasswordHasher.verifyPassword(password == null ? "" : password,
+                        String.valueOf(userRow.get().get("password")))) {
             out.put("error", I18n.msg("login.account.pwd.error"));
             return mapper.writeValueAsString(out);
         }
