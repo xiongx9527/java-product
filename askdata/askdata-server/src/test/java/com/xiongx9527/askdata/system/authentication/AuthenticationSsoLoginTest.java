@@ -4,6 +4,7 @@ import com.xiongx9527.askdata.common.util.IdGenerator;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.system.platform.EnterprisePlatformService;
 import com.xiongx9527.askdata.system.platform.PlatformRepository;
+import com.xiongx9527.askdata.system.repository.SysArgRepository;
 import com.xiongx9527.askdata.system.repository.UserRepository;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import javax.servlet.http.HttpServletRequest;
@@ -25,6 +26,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -66,6 +68,12 @@ class AuthenticationSsoLoginTest {
         service = new AuthenticationService(repository, userRepository, platformRepository,
                 mock(CurrentUserService.class), ssoAuthenticator, casSsoClient, ldapSsoClient,
                 saml2SsoClient, mock(IdGenerator.class), enterprisePlatformService);
+        // 默认开启自动创建，保持既有建档用例通过；关闭场景由专门用例覆盖
+        SysArgRepository sysArgRepository = mock(SysArgRepository.class);
+        Map<String, Object> enabled = new LinkedHashMap<>();
+        enabled.put("pval", "true");
+        when(sysArgRepository.findByPkey("platform.auto_create")).thenReturn(Optional.of(enabled));
+        service.setSysArgRepository(sysArgRepository);
     }
 
     /** 认证源 config JSON（client_id / redirect_uri 与前端 Editor 表单一致）。 */
@@ -174,6 +182,46 @@ class AuthenticationSsoLoginTest {
         assertEquals("alice", user.get("account"));
         verify(platformRepository).upsertBinding(anyLong(), anyLong(), eq(SsoAuthenticator.TYPE_LDAP),
                 eq("alice"));
+    }
+
+    @Test
+    void ssoLoginProhibitsAutoCreateWhenSwitchOff() {
+        SysArgRepository off = mock(SysArgRepository.class);
+        Map<String, Object> arg = new LinkedHashMap<>();
+        arg.put("pval", "false");
+        when(off.findByPkey("platform.auto_create")).thenReturn(Optional.of(arg));
+        service.setSysArgRepository(off);
+        when(repository.findByType(SsoAuthenticator.TYPE_LDAP)).thenReturn(Optional.of(source(3, true)));
+        when(ldapSsoClient.loginWithPassword(any(), eq("alice"), eq("Passw0rd!")))
+                .thenReturn(Rows.of("platform_uid", "alice", "account", "alice", "name", "Alice"));
+        when(platformRepository.findBinding(anyInt(), anyString())).thenReturn(Optional.empty());
+        when(userRepository.findByAccount("alice")).thenReturn(Optional.empty());
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("username", "alice");
+        body.put("password", "Passw0rd!");
+
+        assertThrows(com.xiongx9527.askdata.common.web.BadRequestException.class,
+                () -> service.ssoLogin(SsoAuthenticator.TYPE_LDAP, body, request));
+        verify(userRepository, never()).insert(anyLong(), anyString(), anyString(), anyString(), anyString(),
+                anyLong(), anyInt(), anyLong(), anyString(), anyInt(), any());
+    }
+
+    @Test
+    void ssoLoginProhibitsAutoCreateWhenSwitchMissing() {
+        SysArgRepository missing = mock(SysArgRepository.class);
+        when(missing.findByPkey("platform.auto_create")).thenReturn(Optional.empty());
+        service.setSysArgRepository(missing);
+        when(repository.findByType(SsoAuthenticator.TYPE_LDAP)).thenReturn(Optional.of(source(3, true)));
+        when(ldapSsoClient.loginWithPassword(any(), eq("alice"), eq("Passw0rd!")))
+                .thenReturn(Rows.of("platform_uid", "alice", "account", "alice", "name", "Alice"));
+        when(platformRepository.findBinding(anyInt(), anyString())).thenReturn(Optional.empty());
+        when(userRepository.findByAccount("alice")).thenReturn(Optional.empty());
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("username", "alice");
+        body.put("password", "Passw0rd!");
+
+        assertThrows(com.xiongx9527.askdata.common.web.BadRequestException.class,
+                () -> service.ssoLogin(SsoAuthenticator.TYPE_LDAP, body, request));
     }
 
     @Test

@@ -57,6 +57,13 @@ public class AuthenticationService {
     /** A31：企业 IM（type 6..9）扫码登录的第三方用户解析。 */
     private final EnterprisePlatformService enterprisePlatformService;
 
+    /** 系统参数（platform.auto_create 开关）；setter 注入以兼容既有构造与单测。 */
+    private com.xiongx9527.askdata.system.repository.SysArgRepository sysArgRepository;
+
+    public void setSysArgRepository(com.xiongx9527.askdata.system.repository.SysArgRepository sysArgRepository) {
+        this.sysArgRepository = sysArgRepository;
+    }
+
     public AuthenticationService(AuthenticationRepository authenticationRepository,
                                  UserRepository userRepository,
                                  PlatformRepository platformRepository,
@@ -435,6 +442,11 @@ public class AuthenticationService {
             }
         } else {
             user = userRepository.findByAccount(account).orElse(null);
+            if (user == null && !autoCreateEnabled()) {
+                // platform.auto_create 关闭时禁止隐式建号，要求先同步用户（对齐前端开关与 i18n 文案）
+                throw new com.xiongx9527.askdata.common.web.BadRequestException(
+                        com.xiongx9527.askdata.common.i18n.I18n.msg("i18n_login.prohibit_auto_create"));
+            }
             if (user == null) {
                 // 未绑定且本地无同名账号：自动创建（origin 标识来源）
                 long uid = idGenerator.nextId();
@@ -459,6 +471,19 @@ public class AuthenticationService {
             throw new IllegalStateException("SSO login failed: no associated workspace");
         }
         return user;
+    }
+
+    /** platform.auto_create 开关：缺省 false（与前端参数页默认值一致）；未注入仓储时按关闭处理。 */
+    private boolean autoCreateEnabled() {
+        if (sysArgRepository == null) {
+            return false;
+        }
+        java.util.Optional<Map<String, Object>> row = sysArgRepository.findByPkey("platform.auto_create");
+        if (!row.isPresent()) {
+            return false;
+        }
+        String value = com.xiongx9527.askdata.common.util.Rows.str(row.get(), "pval");
+        return Boolean.parseBoolean(value == null ? "false" : value.trim());
     }
 
     /** 默认工作空间（取第一个；SSO 自动建用户时归属）。 */
