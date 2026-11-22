@@ -541,33 +541,33 @@ template:
         <chat-examples>
           <example>
             <input>
-              <sql>SELECT `u`.`email` AS `email`, `u`.`id` AS `id`, `u`.`account` AS `account`, `u`.`enable` AS `enable`, `u`.`create_time` AS `create_time`, `u`.`language` AS `language`, `u`.`default_oid` AS `default_oid`, `u`.`name` AS `name`, `u`.`phone` AS `phone`, FROM `per_user` `u` LIMIT 1000</sql>
-              <user-question>查询所有用户信息</user-question>
+              <sql>SELECT `t`.`col_a` AS `col_a`, `t`.`col_b` AS `col_b`, `t`.`col_c` AS `col_c` FROM `table_x` `t` LIMIT 1000</sql>
+              <user-question>以表格展示明细数据</user-question>
               <chart-type></chart-type>
             </input>
             <output>
-              {{"type":"table","title":"所有用户信息","columns":[{{"name":"邮箱","value":"email"}},{{"name":"ID","value":"id"}},{{"name":"账号","value":"account"}},{{"name":"启用状态","value":"enable"}},{{"name":"创建时间","value":"create_time"}},{{"name":"语言","value":"language"}},{{"name":"所属组织ID","value":"default_oid"}},{{"name":"姓名","value":"name"}},{{"name":"Phone","value":"phone"}}]}}
+              {{"type":"table","title":"数据明细","columns":[{{"name":"列A","value":"col_a"}},{{"name":"列B","value":"col_b"}},{{"name":"列C","value":"col_c"}}]}}
             </output>
           </example>
           <example>
             <input>
-              <sql>SELECT `o`.`name` AS `org_name`, COUNT(`u`.`id`) AS `user_count` FROM `per_user` `u` JOIN `per_org` `o` ON `u`.`default_oid` = `o`.`id` GROUP BY `o`.`name` ORDER BY `user_count` DESC LIMIT 1000</sql>
-              <user-question>饼图展示各个组织的人员数量</user-question>
+              <sql>SELECT `t`.`col_a` AS `col_a`, COUNT(`t`.`col_b`) AS `metric` FROM `table_x` `t` GROUP BY `t`.`col_a` ORDER BY `metric` DESC LIMIT 1000</sql>
+              <user-question>饼图展示各分组的数量</user-question>
               <chart-type> pie </chart-type>
             </input>
             <output>
-              {{"type":"pie","title":"组织人数统计","axis":{{"y":{{"name":"人数","value":"user_count"}},"series":{{"name":"组织名称","value":"org_name"}}}}}}
+              {{"type":"pie","title":"分组数量统计","axis":{{"y":{{"name":"数量","value":"metric"}},"series":{{"name":"分组","value":"col_a"}}}}}}
             </output>
           </example>
           <example>
             <input>
-              <sql>SELECT `s`.`date` AS `date`, `s`.`income` AS `income`, `s`.`expense` AS `expense` FROM `financial_data` `s` ORDER BY `date` ASC LIMIT 1000</sql>
-              <user-question>展示每月的收入与支出</user-question>
+              <sql>SELECT `t`.`col_date` AS `col_date`, SUM(`t`.`col_m1`) AS `metric_1`, SUM(`t`.`col_m2`) AS `metric_2` FROM `table_x` `t` GROUP BY `t`.`col_date` ORDER BY `t`.`col_date` ASC LIMIT 1000</sql>
+              <user-question>展示两个指标随时间的趋势</user-question>
               <chart-type> line </chart-type>
             </input>
             <output>
               // 无分类字段，但有多个指标字段的情况
-              {{"type":"line","title":"财务指标趋势","axis":{{"x":{{"name":"日期","value":"date"}},"y":[{{"name":"收入","value":"income"}}, {{"name":"支出","value":"expense"}}], "multi-quota":{{"name":"财务指标","value":["income","expense"]}}}}}}
+              {{"type":"line","title":"指标趋势","axis":{{"x":{{"name":"日期","value":"col_date"}},"y":[{{"name":"指标1","value":"metric_1"}}, {{"name":"指标2","value":"metric_2"}}], "multi-quota":{{"name":"指标","value":["metric_1","metric_2"]}}}}}}
             </output>
           </example>
         </chat-examples>
