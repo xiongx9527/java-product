@@ -1773,8 +1773,15 @@ public class ChatQuestionService {
     private ChartOutcome generateChart(FrameWriter writer, long oid, ModelRef aiModel, String question,
                                        Map<String, Object> result, AtomicLong totalTokens,
                                        String sql, String mSchema, String chartType) throws IOException {
+        // 确定性守卫：单行结果（单值/多值聚合）没有「维度 × 指标」结构，画任何图都会让模型
+        // 编造坐标轴列名（category/value），导致前端表格出现 undefined 列。
+        // 直接用真实 fields 构造 table 配置，跳过 LLM/框架图表生成。
+        Map<String, Object> singleRowChart = singleRowTableChart(result);
+        if (singleRowChart != null) {
+            return new ChartOutcome(chatRepository.writeJson(singleRowChart),
+                    chatRepository.writeJson(Rows.of("content", "", "reasoning_content", "")));
+        }
         // 框架优先：委派 fw-plus-ai-askdata 的图表能力（G2 模式，模型直接产出 G2 配置）。
-        // 单值聚合（如「有多少个学生」）也走模型决策，不强制 table。
         if (frameworkAdapter != null) {
             try {
                 ChartGenResult fr = frameworkAdapter.generateChart(oid, question, result, sql, mSchema, chartType);
@@ -1961,6 +1968,46 @@ public class ChatQuestionService {
 
     private boolean recommendedEnabled(Map<String, Object> ds) {
         return ds != null && Rows.intg(ds, "recommended_config", 1) != 0;
+    }
+
+    /**
+     * 单行结果强制表格配置：单值/多值聚合只返回一行，无「维度 × 指标」结构，不适合画图。
+     * 用真实 fields 构造 columns/axis 保证前端能正确出列；列别名本地化由 SQL 生成阶段负责。
+     *
+     * @return 单行时的 table 配置；多行或非 SELECT 结果返回 null（交回正常图表生成流程）
+     */
+    private Map<String, Object> singleRowTableChart(Map<String, Object> result) {
+        if (result == null || !Rows.bool(result, "success", true)) {
+            return null;
+        }
+        List<Map<String, Object>> rows = Rows.mapList(result.get("data"));
+        if (rows.size() != 1) {
+            return null;
+        }
+        Object rawFields = result.get("fields");
+        List<String> fields = new ArrayList<String>();
+        if (rawFields instanceof List) {
+            for (Object f : (List<?>) rawFields) {
+                if (f != null) {
+                    fields.add(String.valueOf(f));
+                }
+            }
+        }
+        if (fields.isEmpty()) {
+            return null;
+        }
+        // table 配置只给真实 columns，axis 置空——避免前端把 axis.x/y 也当成列渲染出 undefined。
+        // name/value 都用真实字段别名；别名的本地化由 SQL 生成阶段用中文别名决定（跨业务通用）。
+        List<Map<String, Object>> columns = new ArrayList<Map<String, Object>>();
+        for (String f : fields) {
+            columns.add(Rows.of("name", f, "value", f));
+        }
+        Map<String, Object> chart = new LinkedHashMap<String, Object>();
+        chart.put("type", "table");
+        chart.put("title", "");
+        chart.put("columns", columns);
+        chart.put("axis", new LinkedHashMap<String, Object>());
+        return chart;
     }
 
     private List<Object> sampleRows(Object data) {

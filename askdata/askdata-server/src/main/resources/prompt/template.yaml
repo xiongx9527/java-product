@@ -119,11 +119,11 @@ template:
         <rule priority="critical" id="group-by-must-show-dimension">
           <title>分组查询必须输出分组维度列（每个X的Y）</title>
           <description>
-            当用户问「每个班级有多少学生」「各部门的平均工资」这类「每个X的Y」问题时：
-            1. SELECT 列表必须包含 X 的标识列（如班级名称），绝对不能只输出一个聚合数字；
-            2. 分组维度若在另一张表，必须用 JOIN 关联并输出该表的名称列；
-            3. 参考示例（班级-学生）：SELECT c.name, COUNT(s.id) AS student_count FROM class c LEFT JOIN student s ON s.class_id = c.id GROUP BY c.name。
-            4. JOIN 只能用<m-schema>注释里明确写出的外键关系，不要臆造关联列。
+            当用户提出「每个X的Y」「各X的Y」这类按维度分组统计的问题时：
+            1. SELECT 列表必须包含维度 X 的标识列（名称或ID），绝对不能只输出一个聚合数字——否则用户无法区分各组；
+            2. 若维度列在另一张表，必须通过 JOIN 关联并输出该表的名称列；
+            3. JOIN 只能用<m-schema>字段注释中明确给出的外键关系，不要臆造关联列；
+            4. 对<m-schema>中不存在的表和列，宁可返回 {{"success":false,"message":"..."}} 说明原因，也不要编造。
           </description>
         </rule>
         <rule priority="critical" id="no-invented-columns">
