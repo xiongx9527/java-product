@@ -249,7 +249,10 @@ public class DatasourceService {
         }
         DatasourceType type = typeOf(Rows.str(body, "type"));
         String plainConf = DatasourceCrypto.decodeConfiguration(Rows.str(body, "configuration"));
-        parseConf(plainConf);
+        DatasourceConf createConf = parseConf(plainConf);
+        if (type.usesAppDatabase()) {
+            ExcelService.validateSheetNames(createConf);
+        }
         if (datasourceRepository.existsName(oid, name, null)) {
             throw new DatasourceException(messageResolver.get("ds.name.exists"));
         }
@@ -276,7 +279,10 @@ public class DatasourceService {
         String name = Rows.str(body, "name");
         DatasourceType type = typeOf(Rows.str(body, "type"));
         String plainConf = DatasourceCrypto.decodeConfiguration(Rows.str(body, "configuration"));
-        parseConf(plainConf);
+        DatasourceConf updateConf = parseConf(plainConf);
+        if (type.usesAppDatabase()) {
+            ExcelService.validateSheetNames(updateConf);
+        }
         if (datasourceRepository.existsName(oid, name == null ? Rows.str(existing, "name") : name, id)) {
             throw new DatasourceException(messageResolver.get("ds.name.exists"));
         }
@@ -300,6 +306,7 @@ public class DatasourceService {
         DatasourceType type = typeOf(Rows.str(row, "type"));
         if (type.usesAppDatabase()) {
             DatasourceConf conf = confOf(Rows.str(row, "configuration"));
+            ExcelService.validateSheetNames(conf);
             for (Map<String, Object> sheet : conf.getSheets()) {
                 Object tableName = sheet.get("tableName");
                 if (tableName != null && !String.valueOf(tableName).isEmpty()) {

@@ -35,6 +35,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
@@ -514,5 +515,22 @@ class ExcelServiceTest {
                 "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES "
                         + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'excel%'", Integer.class);
         assertEquals(0, count == null ? 0 : count);
+    }
+
+    @Test
+    void validatesStoredSheetNamesWhitelist() {
+        // 对齐 SQLBot validate_excel_sheet_names：合法表名通过，注入/篡改表名被拒。
+        DatasourceConf conf = new DatasourceConf();
+        conf.setSheets(Collections.<Map<String, Object>>singletonList(
+                Rows.of("tableName", "excel_\u8ba2\u5355_1a2b3c4d5e")));
+        assertDoesNotThrow(() -> ExcelService.validateSheetNames(conf));
+
+        conf.setSheets(Collections.<Map<String, Object>>singletonList(
+                Rows.of("tableName", "x\"; DROP TABLE user; --")));
+        assertThrows(DatasourceException.class, () -> ExcelService.validateSheetNames(conf));
+
+        conf.setSheets(Collections.<Map<String, Object>>singletonList(
+                Rows.of("tableName", "excel_\u8ba2\u5355_ZZZZZZZZZZ")));
+        assertThrows(DatasourceException.class, () -> ExcelService.validateSheetNames(conf));
     }
 }

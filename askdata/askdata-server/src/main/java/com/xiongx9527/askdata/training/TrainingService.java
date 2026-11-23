@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.training;
 
+import com.xiongx9527.askdata.common.web.PageArgs;
 import com.xiongx9527.askdata.common.util.Maps;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -101,10 +102,11 @@ public class TrainingService {
                                                   List<Long> dsList, List<Long> advList) {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
-        int size = Math.max(10, pageSize);
-        List<Map<String, Object>> rows = trainingRepository.page(oid, question, dsList, advList, currentPage, size);
+        int size = PageArgs.normalizeSize(pageSize);
+        int page = PageArgs.normalizePage(currentPage);
+        List<Map<String, Object>> rows = trainingRepository.page(oid, question, dsList, advList, page, size);
         long total = trainingRepository.count(oid, question, dsList, advList);
-        return new PagerResult<>(toResults(rows), total, currentPage, size);
+        return new PagerResult<>(toResults(rows), total, page, size);
     }
 
     /** GET /system/data-training/{id}（编辑器数据）。 */

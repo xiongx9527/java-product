@@ -1,4 +1,5 @@
 package com.xiongx9527.askdata.system.audit;
+import com.xiongx9527.askdata.common.web.PageArgs;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -50,11 +51,12 @@ public class AuditLogService {
                                                   List<String> oidList, String logStatus,
                                                   Long timeFrom, Long timeTo) {
         currentUserService.requireAdmin();
-        int size = Math.max(10, pageSize);
-        List<Map<String, Object>> rows = auditLogRepository.page(currentPage, size, name, optTypeList, uidList,
+        int size = PageArgs.normalizeSize(pageSize);
+        int page = PageArgs.normalizePage(currentPage);
+        List<Map<String, Object>> rows = auditLogRepository.page(page, size, name, optTypeList, uidList,
                 oidList, logStatus, timeFrom, timeTo);
         long total = auditLogRepository.count(name, optTypeList, uidList, oidList, logStatus, timeFrom, timeTo);
-        return new PagerResult<>(toResults(rows), total, currentPage, size);
+        return new PagerResult<>(toResults(rows), total, page, size);
     }
 
     /** GET /system/audit/get_options（操作类型树选项；value/label 与前端 tree-select 对齐）。 */

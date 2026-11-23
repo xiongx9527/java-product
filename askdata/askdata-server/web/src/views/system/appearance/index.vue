@@ -301,6 +301,7 @@ import { setCurrentColor } from '@/utils/utils'
 
 // import TinymceEditor from '@/components/rich-text/TinymceEditor.vue'
 import { cloneDeep } from 'lodash-es'
+import { DEFAULT_HELP_URL, resolveHelpUrl } from '@/utils/helpUrl'
 const appearanceStore = useAppearanceStoreWithOut()
 const { t } = useI18n()
 interface LoginForm {
@@ -374,7 +375,7 @@ const rules = reactive<FormRules>({
 })
 
 const defaultTopForm = {
-  help: 'https://dataease.cn/sqlbot/v1/',
+  help: DEFAULT_HELP_URL,
   showDoc: '0',
   showAbout: '0',
   pc_welcome: t('embedded.i_am_sqlbot'),

@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.system.service;
 
+import com.xiongx9527.askdata.common.web.PageArgs;
 import com.xiongx9527.askdata.common.util.Maps;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -54,10 +55,12 @@ public class VariableService {
     public PageResult<Map<String, Object>> listPage(int pageNum, int pageSize, Map<String, Object> body) {
         currentUserService.requireAdmin();
         String name = body == null ? null : Rows.str(body, "name");
-        int page = Math.max(pageNum, 1);
-        int size = Math.max(pageSize, 1);
-        List<Map<String, Object>> rows = variableRepository.listPage(name, (page - 1) * size, size);
+        int page = PageArgs.normalizePage(pageNum);
+        int size = PageArgs.normalizeSize(pageSize);
         long total = variableRepository.listPageCount(name);
+        int offset = PageArgs.offset(page, size, total);
+        List<Map<String, Object>> rows = offset < 0 ? java.util.Collections.<Map<String, Object>>emptyList()
+                : variableRepository.listPage(name, offset, size);
         return new PageResult<>(toItems(rows), total, page, size);
     }
 

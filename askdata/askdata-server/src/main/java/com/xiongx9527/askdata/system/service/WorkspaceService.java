@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.system.service;
 
+import com.xiongx9527.askdata.common.web.PageArgs;
 import com.xiongx9527.askdata.common.util.Maps;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -267,10 +268,12 @@ public class WorkspaceService {
         } else {
             workspaceId = currentUserService.oidOf(current);
         }
-        int page = Math.max(pageNum, 1);
-        int size = Math.max(pageSize, 1);
-        List<Map<String, Object>> rows = userWsRepository.pagerRows(workspaceId, keyword, (page - 1) * size, size);
+        int page = PageArgs.normalizePage(pageNum);
+        int size = PageArgs.normalizeSize(pageSize);
         long total = userWsRepository.pagerCount(workspaceId, keyword);
+        int offset = PageArgs.offset(page, size, total);
+        List<Map<String, Object>> rows = offset < 0 ? java.util.Collections.<Map<String, Object>>emptyList()
+                : userWsRepository.pagerRows(workspaceId, keyword, offset, size);
         List<Map<String, Object>> items = new ArrayList<>();
         for (Map<String, Object> row : rows) {
             items.add(Rows.of(
@@ -293,8 +296,10 @@ public class WorkspaceService {
         currentUserService.requireAdmin();
         int page = Math.max(pageNum, 1);
         int size = Math.max(pageSize, 1);
-        List<Map<String, Object>> rows = userWsRepository.optionPagerRows(oid, keyword, (page - 1) * size, size);
         long total = userWsRepository.optionPagerCount(oid, keyword);
+        int offset = PageArgs.offset(page, size, total);
+        List<Map<String, Object>> rows = offset < 0 ? java.util.Collections.<Map<String, Object>>emptyList()
+                : userWsRepository.optionPagerRows(oid, keyword, offset, size);
         List<Map<String, Object>> items = new ArrayList<>();
         for (Map<String, Object> row : rows) {
             items.add(toUserOption(row));

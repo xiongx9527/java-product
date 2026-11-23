@@ -1,4 +1,5 @@
 package com.xiongx9527.askdata.embedded;
+import com.xiongx9527.askdata.common.web.PageArgs;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -400,8 +401,9 @@ public class AssistantService {
     public PageResult<Map<String, Object>> pager(int pageNum, int pageSize, String keyword) {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
-        int size = Math.max(10, pageSize);
-        List<Map<String, Object>> rows = assistantRepository.page(oid, keyword, pageNum, size);
+        int size = PageArgs.normalizeSize(pageSize);
+        int page = PageArgs.normalizePage(pageNum);
+        List<Map<String, Object>> rows = assistantRepository.page(oid, keyword, page, size);
         long total = assistantRepository.count(oid, keyword);
         List<Map<String, Object>> items = new ArrayList<>();
         for (Map<String, Object> row : rows) {

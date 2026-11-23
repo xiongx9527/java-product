@@ -841,6 +841,27 @@ public class ExcelService {
         return dot < 0 ? "" : filename.substring(dot + 1).toLowerCase();
     }
 
+    /**
+     * 校验 Excel 数据源配置中的所有表名（对齐 SQLBot validate_excel_sheet_names）。
+     *
+     * <p>表名由导入时生成，格式为 {@code excel_<中文/字母数字>*_<10位hex>}。对配置（含存量/被篡改的配置）
+     * 做白名单校验，避免把任意 SQL 片段当作表名拼进 DROP TABLE。校验失败抛 {@link DatasourceException}。</p>
+     */
+    public static void validateSheetNames(com.xiongx9527.askdata.datasource.engine.DatasourceConf conf) {
+        if (conf == null) {
+            return;
+        }
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
+                "excel_[\\u4e00-\\u9fa5a-zA-Z0-9]*_[0-9a-f]{10}");
+        for (java.util.Map<String, Object> sheet : conf.getSheets()) {
+            Object raw = sheet == null ? null : sheet.get("tableName");
+            String name = raw == null ? null : String.valueOf(raw);
+            if (name == null || !pattern.matcher(name).matches()) {
+                throw new DatasourceException("Invalid Excel table name: " + name);
+            }
+        }
+    }
+
     private static String randomSuffix() {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

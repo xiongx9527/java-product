@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.terminology;
 
+import com.xiongx9527.askdata.common.web.PageArgs;
 import com.xiongx9527.askdata.common.util.Maps;
 
 import com.xiongx9527.askdata.common.audit.AuditModule;
@@ -89,11 +90,12 @@ public class TerminologyService {
                                                   List<Long> dsList, List<Long> advList) {
         currentUserService.requireWsAdmin();
         long oid = currentUserService.oidOf(currentUserService.currentUser());
-        int size = Math.max(10, pageSize);
+        int size = PageArgs.normalizeSize(pageSize);
+        int page = PageArgs.normalizePage(currentPage);
         List<Map<String, Object>> rows = terminologyRepository.pageParents(oid, word, dsList, advList,
-                currentPage, size);
+                page, size);
         long total = terminologyRepository.countParents(oid, word, dsList, advList);
-        return new PagerResult<>(toResults(rows), total, currentPage, size);
+        return new PagerResult<>(toResults(rows), total, page, size);
     }
 
     /** GET /system/terminology/{id}（编辑器数据）。 */

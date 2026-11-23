@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.prompt;
 
+import com.xiongx9527.askdata.common.web.PageArgs;
 import com.xiongx9527.askdata.common.util.Maps;
 
 import com.xiongx9527.askdata.common.audit.AuditModule;
@@ -69,10 +70,10 @@ public class CustomPromptService {
         String name = Rows.str(filter, "name");
         List<Long> dsList = Rows.longList(Rows.get(filter, "ds_list"));
         List<Long> advList = Rows.longList(Rows.get(filter, "adv_list"));
-        int size = Math.max(10, pageSize);
+        int size = PageArgs.normalizeSize(pageSize);
         // 前端在空列表/初始态可能传 currentPage=0，Repository 的 (pageNum-1)*pageSize 会得到负 offset，
         // MySQL 不接受 LIMIT ... OFFSET -10；此处夹紧到 >=1
-        int page = Math.max(1, currentPage);
+        int page = PageArgs.normalizePage(currentPage);
         List<Map<String, Object>> rows = customPromptRepository.page(oid, type, name, dsList, advList,
                 page, size);
         long total = customPromptRepository.count(oid, type, name, dsList, advList);

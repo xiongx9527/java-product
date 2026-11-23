@@ -115,6 +115,15 @@ const currentSupplier = computed(() => {
   return get_supplier(modelForm.supplier)
 })
 
+// 对齐 SQLBot canDiscoverModels：仅通用 OpenAI 兼容（LLM 类型）且供应商非 Azure/vLLM 时
+// 支持自动发现模型列表；这些供应商不保证提供 /models 端点，发现失败应是非阻塞的。
+const canDiscoverModels = computed(
+  () =>
+    !!currentSupplier.value &&
+    modelForm.model_type === 0 &&
+    !['azure', 'vllm', 'azure_openai'].includes(String(modelForm.supplier || '').toLowerCase())
+)
+
 // 12.5 向量/重排类型不使用上游格式（其上游格式选择器已禁用），故类型选择不再受上游格式约束
 const typeOptions = computed(() => modelTypeOptions.map((o) => ({ ...o })))
 
@@ -682,6 +691,7 @@ defineExpose({
               </el-select>
               <el-button
                 :loading="pulling"
+                :disabled="!canDiscoverModels"
                 @click="pullModels"
               >
                 {{ t('model.pull_models') }}

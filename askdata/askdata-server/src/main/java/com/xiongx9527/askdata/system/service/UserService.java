@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.system.service;
 
+import com.xiongx9527.askdata.common.web.PageArgs;
 import com.xiongx9527.askdata.common.util.Maps;
 import com.xiongx9527.askdata.common.i18n.MessageResolver;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -172,11 +173,12 @@ public class UserService {
                                                  List<Integer> origins, List<Integer> oidlist,
                                                  String orderBy, boolean desc) {
         currentUserService.requireAdmin();
-        int size = Math.max(pageSize, 1);
-        int page = Math.max(pageNum, 1);
-        List<Map<String, Object>> rows = userRepository.pagerRows(keyword, status, origins, oidlist, orderBy, desc,
-                (page - 1) * size, size);
+        int size = PageArgs.normalizeSize(pageSize);
+        int page = PageArgs.normalizePage(pageNum);
         long total = userRepository.pagerCount(keyword, status, origins, oidlist);
+        int offset = PageArgs.offset(page, size, total);
+        List<Map<String, Object>> rows = offset < 0 ? java.util.Collections.<Map<String, Object>>emptyList()
+                : userRepository.pagerRows(keyword, status, origins, oidlist, orderBy, desc, offset, size);
 
         List<Long> uids = new ArrayList<>();
         for (Map<String, Object> row : rows) {
