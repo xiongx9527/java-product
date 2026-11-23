@@ -51,4 +51,20 @@ class ChatModelClientEndpointTest {
         assertFalse(ChatModelClient.isAzureEndpoint("http://127.0.0.1:11434"));
         assertFalse(ChatModelClient.isAzureEndpoint("https://api.openai.com/v1"));
     }
+
+    @Test
+    void rerankUrlsIncludeRootPathFallbackForSuffixedBase() {
+        // 裸域名：/rerank 与 /v1/rerank 两个候选，无根路径兜底（base 本身即根）
+        java.util.List<String> bare = ChatModelClient.rerankUrls("http://host:19529");
+        assertEquals(2, bare.size());
+        assertEquals("http://host:19529/rerank", bare.get(0));
+        assertEquals("http://host:19529/v1/rerank", bare.get(1));
+
+        // 带 /llm 后缀：除 base 下的两个端点外，最后补一条根路径 /v1/rerank 兜底
+        java.util.List<String> suffixed = ChatModelClient.rerankUrls("http://host:19529/llm");
+        assertTrue(suffixed.contains("http://host:19529/llm/rerank"));
+        assertTrue(suffixed.contains("http://host:19529/llm/v1/rerank"));
+        assertTrue(suffixed.contains("http://host:19529/v1/rerank"));
+        assertEquals("http://host:19529/v1/rerank", suffixed.get(suffixed.size() - 1));
+    }
 }

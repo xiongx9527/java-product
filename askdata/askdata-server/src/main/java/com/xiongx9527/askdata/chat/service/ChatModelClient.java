@@ -520,7 +520,10 @@ public class ChatModelClient {
         return false;
     }
 
-    /** rerank 候选端点：{@code /rerank}（TEI）与 {@code /v1/rerank}（OpenAI 兼容）。 */
+    /** rerank 候选端点：{@code /rerank}（TEI）与 {@code /v1/rerank}（OpenAI 兼容）。
+     *  另补一条服务根路径的 {@code /v1/rerank}：本项目重排端点挂在根（不带 /llm 前缀），
+     *  当 apiDomain 配成带路径后缀的 LLM base（如 http://host:19529/llm）时，
+     *  base + "/v1/rerank" 会落到 /llm/v1/rerank 探测不到，故用根路径兜底。 */
     static List<String> rerankUrls(String apiDomain) {
         String base = trimBase(apiDomain);
         List<String> urls = new ArrayList<>();
@@ -532,7 +535,29 @@ public class ChatModelClient {
         if (!base.endsWith("/v1")) {
             urls.add(base + "/v1/rerank");
         }
+        String root = rootBase(base);
+        if (root != null && !root.equals(base)) {
+            String rootRerank = root + "/v1/rerank";
+            if (!urls.contains(rootRerank)) {
+                urls.add(rootRerank);
+            }
+        }
         return urls;
+    }
+
+    /** 取 scheme://host[:port]（去路径），用于根路径 rerank 兜底；解析失败返回 null。 */
+    private static String rootBase(String url) {
+        try {
+            java.net.URI u = java.net.URI.create(url);
+            String scheme = u.getScheme(), host = u.getHost();
+            if (scheme == null || host == null) {
+                return null;
+            }
+            int port = u.getPort();
+            return scheme + "://" + host + (port > 0 ? ":" + port : "");
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** 余弦相似度（两向量等长）。 */
