@@ -55,7 +55,7 @@ public class AskdataMcpTools {
      * 列出 askdata 数据源（返回 JSON 数组）。
      */
     @Tool(value = "datasource_list", description = "列出当前用户/工作空间可用的数据源（JSON 数组）；管理员可用 workspaceId 指定工作空间")
-    public String datasource_list(@ToolArg(value = "workspaceId", required = false) Long workspaceId) throws Exception {
+    public String datasource_list(@ToolArg(value = "workspaceId", required = false, description = "工作空间 ID；管理员可指定，不传则按当前用户所属工作空间查询") Long workspaceId) throws Exception {
         ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
         try {
             DatasourceService datasourceService = SpringUtils.getBean(DatasourceService.class);
@@ -122,8 +122,8 @@ public class AskdataMcpTools {
      * 开启一次问数会话（对齐 SQLBot mcp_start）：可指定数据源与初始问题，返回 chat_id 等会话信息。
      */
     @Tool(value = "chat_start", description = "开启一次问数会话（对齐 SQLBot mcp_start）：可带 datasourceId/question，返回 chat_id 等会话信息")
-    public String chat_start(@ToolArg(value = "datasourceId", required = false) Long datasourceId,
-                             @ToolArg(value = "question", required = false) String question) throws Exception {
+    public String chat_start(@ToolArg(value = "datasourceId", required = false, description = "数据源 ID，指定会话绑定的数据源") Long datasourceId,
+                             @ToolArg(value = "question", required = false, description = "开场问题，可选，用于初始化会话上下文") String question) throws Exception {
         ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
         try {
             ChatService service = SpringUtils.getBean(ChatService.class);
@@ -148,8 +148,8 @@ public class AskdataMcpTools {
      * 复用登录校验（MD5 比对 sys_user.password）并签发 Sa-Token；失败返回可读错误。
      */
     @Tool(value = "access_token", description = "用户名/口令换取访问 token（对齐 SQLBot mcp_access_token）")
-    public String access_token(@ToolArg("username") String username,
-                               @ToolArg("password") String password) throws Exception {
+    public String access_token(@ToolArg(value = "username", description = "用户名，用于换取访问 token") String username,
+                               @ToolArg(value = "password", description = "密码，用于换取访问 token") String password) throws Exception {
         ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
         Map<String, Object> out = new LinkedHashMap<String, Object>();
         UserRepository repository = SpringUtils.getBean(UserRepository.class);
@@ -208,11 +208,11 @@ public class AskdataMcpTools {
      * customModel（按次选模型）、returnImg（是否出图）。未装配模型时返回可读错误。
      */
     @Tool(value = "question_answer", description = "问数：自然语言转SQL并只读执行，返回 SQL 与结果行；可指定 datasourceId、chatId、customModel、returnImg（对齐 SQLBot mcp_question）")
-    public String question_answer(@ToolArg("question") String question,
-                                 @ToolArg(value = "datasourceId", required = false) Long datasourceId,
-                                 @ToolArg(value = "chatId", required = false) Long chatId,
-                                 @ToolArg(value = "customModel", required = false) Long customModel,
-                                 @ToolArg(value = "returnImg", required = false) Boolean returnImg) throws Exception {
+    public String question_answer(@ToolArg(value = "question", description = "自然语言问题（问数输入）") String question,
+                                 @ToolArg(value = "datasourceId", required = false, description = "数据源 ID，指定查询的数据源；不传则使用默认数据源") Long datasourceId,
+                                 @ToolArg(value = "chatId", required = false, description = "会话 ID，续接已有问数会话并落库；不传则新建会话") Long chatId,
+                                 @ToolArg(value = "customModel", required = false, description = "按次指定对话模型 ID，不传则使用工作空间默认模型") Long customModel,
+                                 @ToolArg(value = "returnImg", required = false, description = "是否返回图片结果（true 出图，默认 true）") Boolean returnImg) throws Exception {
         ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
         if (question == null || question.trim().isEmpty()) {
             Map<String, Object> err = new LinkedHashMap<String, Object>();
@@ -448,12 +448,12 @@ public class AskdataMcpTools {
     /** 兼容 SQLBot mcp_start：可带 username/password（现场登录）、token（身份绑定）、oid、
      *  datasource_id、question；响应含 access_token 与 chat_id。 */
     @Tool(value = "mcp_start", description = "兼容 SQLBot mcp_start：开启问数会话，响应含 access_token 与 chat_id")
-    public String mcp_start(@ToolArg(value = "username", required = false) String username,
-                            @ToolArg(value = "password", required = false) String password,
-                            @ToolArg(value = "token", required = false) String token,
-                            @ToolArg(value = "oid", required = false) Long oid,
-                            @ToolArg(value = "datasource_id", required = false) Object datasourceId,
-                            @ToolArg(value = "question", required = false) String question) throws Exception {
+    public String mcp_start(@ToolArg(value = "username", required = false, description = "用户名，用于换取访问 token") String username,
+                            @ToolArg(value = "password", required = false, description = "密码，用于换取访问 token") String password,
+                            @ToolArg(value = "token", required = false, description = "访问令牌（SQLBot 兼容参数；主通道由网关自动注入，一般无需传）") String token,
+                            @ToolArg(value = "oid", required = false, description = "组织/工作空间 ID，不传则取当前用户所属组织") Long oid,
+                            @ToolArg(value = "datasource_id", required = false, description = "数据源 ID（SQLBot 兼容命名，可为对象）") Object datasourceId,
+                            @ToolArg(value = "question", required = false, description = "自然语言问题（问数输入）") String question) throws Exception {
         ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
         AuthContext previous = null;
         try {
@@ -499,7 +499,7 @@ public class AskdataMcpTools {
 
     /** 兼容 SQLBot mcp_ws_list → workspace_list。 */
     @Tool(value = "mcp_ws_list", description = "兼容 SQLBot mcp_ws_list：列出当前用户可管理的工作空间")
-    public String mcp_ws_list(@ToolArg(value = "token", required = false) String token) throws Exception {
+    public String mcp_ws_list(@ToolArg(value = "token", required = false, description = "访问令牌（SQLBot 兼容参数；主通道由网关自动注入，一般无需传）") String token) throws Exception {
         ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
         try {
             bindTokenStrict(token);
@@ -513,8 +513,8 @@ public class AskdataMcpTools {
 
     /** 兼容 SQLBot mcp_datasource_list（路由 /mcp_ds_list 的 operation_id）→ datasource_list。 */
     @Tool(value = "mcp_datasource_list", description = "兼容 SQLBot mcp_datasource_list：列出当前用户可用的数据源")
-    public String mcp_datasource_list(@ToolArg(value = "token", required = false) String token,
-                                      @ToolArg(value = "oid", required = false) Long oid) throws Exception {
+    public String mcp_datasource_list(@ToolArg(value = "token", required = false, description = "访问令牌（SQLBot 兼容参数；主通道由网关自动注入，一般无需传）") String token,
+                                      @ToolArg(value = "oid", required = false, description = "组织/工作空间 ID，不传则取当前用户所属组织") Long oid) throws Exception {
         ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
         try {
             bindTokenStrict(token);
@@ -530,8 +530,8 @@ public class AskdataMcpTools {
 
     /** 兼容 SQLBot mcp_model_list → model_list：oid 指定工作空间（非成员拒绝），缺省用当前工作空间。 */
     @Tool(value = "mcp_model_list", description = "兼容 SQLBot mcp_model_list：列出当前工作空间可用的对话模型")
-    public String mcp_model_list(@ToolArg(value = "token", required = false) String token,
-                                 @ToolArg(value = "oid", required = false) Long oid) throws Exception {
+    public String mcp_model_list(@ToolArg(value = "token", required = false, description = "访问令牌（SQLBot 兼容参数；主通道由网关自动注入，一般无需传）") String token,
+                                 @ToolArg(value = "oid", required = false, description = "组织/工作空间 ID，不传则取当前用户所属组织") Long oid) throws Exception {
         ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
         try {
             bindTokenStrict(token);
@@ -555,14 +555,14 @@ public class AskdataMcpTools {
      * HTTP 兼容层 {@code SqlbotMcpCompatController} 在 {@code stream=true} 时改走 SSE 链路。</p>
      */
     @Tool(value = "mcp_question", description = "兼容 SQLBot mcp_question：自然语言转SQL并只读执行")
-    public String mcp_question(@ToolArg(value = "token", required = false) String token,
-                               @ToolArg(value = "chat_id", required = false) Object chatId,
-                               @ToolArg("question") String question,
-                               @ToolArg(value = "datasource_id", required = false) Object datasourceId,
-                               @ToolArg(value = "custom_model", required = false) Object customModel,
-                               @ToolArg(value = "lang", required = false) String lang,
-                               @ToolArg(value = "stream", required = false) Boolean stream,
-                               @ToolArg(value = "return_img", required = false) Boolean returnImg) throws Exception {
+    public String mcp_question(@ToolArg(value = "token", required = false, description = "访问令牌（SQLBot 兼容参数；主通道由网关自动注入，一般无需传）") String token,
+                               @ToolArg(value = "chat_id", required = false, description = "会话 ID（SQLBot 兼容命名，可为对象）") Object chatId,
+                               @ToolArg(value = "question", description = "自然语言问题（问数输入）") String question,
+                               @ToolArg(value = "datasource_id", required = false, description = "数据源 ID（SQLBot 兼容命名，可为对象）") Object datasourceId,
+                               @ToolArg(value = "custom_model", required = false, description = "对话模型（SQLBot 兼容命名，可为对象）") Object customModel,
+                               @ToolArg(value = "lang", required = false, description = "回答语言，如 zh / en") String lang,
+                               @ToolArg(value = "stream", required = false, description = "是否流式返回结果") Boolean stream,
+                               @ToolArg(value = "return_img", required = false, description = "是否返回图片结果（SQLBot 兼容命名）") Boolean returnImg) throws Exception {
         ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
         Locale previous = LocaleContextHolder.getLocale();
         try {
@@ -665,12 +665,12 @@ public class AskdataMcpTools {
      * 问题文本优先取 {@code question}，同时兼容早期调用方的 {@code message}。</p>
      */
     @Tool(value = "mcp_assistant", description = "兼容 SQLBot mcp_assistant：第三方数据接口问数（question/url/authorization/stream/datasourceId）")
-    public String mcp_assistant(@ToolArg(value = "question", required = false) String question,
-                                @ToolArg(value = "url", required = false) String url,
-                                @ToolArg(value = "authorization", required = false) String authorization,
-                                @ToolArg(value = "stream", required = false) Boolean stream,
-                                @ToolArg(value = "message", required = false) String message,
-                                @ToolArg(value = "datasourceId", required = false) Long datasourceId)
+    public String mcp_assistant(@ToolArg(value = "question", required = false, description = "自然语言问题（问数输入）") String question,
+                                @ToolArg(value = "url", required = false, description = "第三方数据接口地址（mcp_assistant 场景）") String url,
+                                @ToolArg(value = "authorization", required = false, description = "第三方接口的鉴权头（Bearer token）") String authorization,
+                                @ToolArg(value = "stream", required = false, description = "是否流式返回结果") Boolean stream,
+                                @ToolArg(value = "message", required = false, description = "附加消息或说明") String message,
+                                @ToolArg(value = "datasourceId", required = false, description = "数据源 ID，指定查询的数据源；不传则使用默认数据源") Long datasourceId)
             throws Exception {
         String ask = question != null && !question.trim().isEmpty() ? question : message;
         ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
