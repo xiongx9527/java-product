@@ -19,7 +19,9 @@ const datasourceFormRef = ref()
 const beforeClose = () => {
   datasourceConfigVisible.value = false
   activeStep.value = 0
-  datasourceApi.cancelRequests()
+  // 不再调用 cancelRequests()：它取消的是全局共享 CancelToken，
+  // 保存成功后 close()→beforeClose 会取消掉紧随其后的 emit('refresh') 列表请求，
+  // 导致未捕获的 CanceledError；抽屉已 destroy-on-close，无需手动取消在飞请求。
 }
 const clickDatasource = (ele: any) => {
   activeStep.value = 1

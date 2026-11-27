@@ -70,8 +70,10 @@ export default defineConfig(({ mode }) => {
             if (id.includes('highlight.js') || id.includes('@highlightjs')) return 'highlight'
             if (id.includes('markdown-it')) return 'markdown'
             if (id.includes('html2canvas')) return 'html2canvas'
-            if (id.includes('element-plus-secondary')) return 'element-plus-secondary'
-            if (id.includes('element-plus') || id.includes('@element-plus')) return 'element-plus'
+            // element-plus 与 element-plus-secondary 有相互引用：拆成两个 chunk 会产生
+            // 循环依赖导致运行时 `Cannot access 'Fe' before initialization`（TDZ 错误）。
+            // 必须放进同一个 chunk。`element-plus-secondary` 路径也含 element-plus，合并即可。
+            if (id.includes('element-plus')) return 'element-plus'
           },
         },
       },
