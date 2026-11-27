@@ -59,6 +59,8 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       target: 'chrome81',
+      // 每次构建自动清空输出目录，避免历史 index-*.js 残留导致引用旧版本
+      emptyOutDir: true,
       chunkSizeWarningLimit: 2000,
       rollupOptions: {
         output: {
