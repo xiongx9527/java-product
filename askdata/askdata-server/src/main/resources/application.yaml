@@ -1,5 +1,5 @@
 server:
-  port: 8000
+  port: ${ASKDATA_SERVER_PORT:8000}
   # 开启响应压缩：前端 JS/CSS 经花生壳等慢速隧道时，gzip 可把 ~6MB 主包压到 ~2MB，显著缩短首屏。
   compression:
     enabled: true
