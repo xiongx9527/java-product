@@ -55,9 +55,11 @@ public class AskdataMcpTools {
      * 列出 askdata 数据源（返回 JSON 数组）。
      */
     @Tool(value = "datasource_list", description = "列出当前用户/工作空间可用的数据源（JSON 数组）；管理员可用 workspaceId 指定工作空间")
-    public String datasource_list(@ToolArg(value = "workspaceId", required = false, description = "工作空间 ID；管理员可指定，不传则按当前用户所属工作空间查询") Long workspaceId) throws Exception {
+    public String datasource_list(@ToolArg(value = "workspaceId", required = false, description = "工作空间 ID；管理员可指定，不传则按当前用户所属工作空间查询") Long workspaceId,
+                                  @ToolArg(value = "token", required = false, description = "访问令牌（网关自动注入，一般无需传）") String token) throws Exception {
         ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
         try {
+            bindTokenStrict(token);
             DatasourceService datasourceService = SpringUtils.getBean(DatasourceService.class);
             // 对齐 SQLBot mcp_ds_list：按当前用户 oid 过滤；管理员可显式指定 workspaceId
             List<Map<String, Object>> list = datasourceService.list(workspaceId);
@@ -123,9 +125,11 @@ public class AskdataMcpTools {
      */
     @Tool(value = "chat_start", description = "开启一次问数会话（对齐 SQLBot mcp_start）：可带 datasourceId/question，返回 chat_id 等会话信息")
     public String chat_start(@ToolArg(value = "datasourceId", required = false, description = "数据源 ID，指定会话绑定的数据源") Long datasourceId,
-                             @ToolArg(value = "question", required = false, description = "开场问题，可选，用于初始化会话上下文") String question) throws Exception {
+                             @ToolArg(value = "question", required = false, description = "开场问题，可选，用于初始化会话上下文") String question,
+                             @ToolArg(value = "token", required = false, description = "访问令牌（网关自动注入，一般无需传）") String token) throws Exception {
         ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
         try {
+            bindTokenStrict(token);
             ChatService service = SpringUtils.getBean(ChatService.class);
             Map<String, Object> body = new LinkedHashMap<String, Object>();
             if (datasourceId != null) {
@@ -510,7 +514,7 @@ public class AskdataMcpTools {
                 requireWorkspace(currentUserService().currentUser(), oid);
                 previous = enterWorkspace(oid);
             }
-            String started = chat_start(longArgOrNull(datasourceId), question);
+            String started = chat_start(longArgOrNull(datasourceId), question, null);
             Map<String, Object> info = mapper.readValue(started, Map.class);
             if (info.containsKey("error")) {
                 return started;
@@ -548,7 +552,7 @@ public class AskdataMcpTools {
             bindTokenStrict(token);
             // 对齐 SQLBot mcp_ds_list：显式 oid 时校验成员关系（非成员 400，而非静默忽略）
             requireWorkspace(currentUserService().currentUser(), oid == null ? 0L : oid);
-            return datasource_list(oid);
+            return datasource_list(oid, null);
         } catch (ForbiddenException e) {
             throw e;
         } catch (Exception e) {
