@@ -5,7 +5,8 @@ import Components from 'unplugin-vue-components-secondary/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components-secondary/resolvers'
 import path from 'path'
 import svgLoader from 'vite-svg-loader'
-import legacy from '@vitejs/plugin-legacy'
+// 已移除 @vitejs/plugin-legacy：target=chrome81 已覆盖现代浏览器，legacy 会额外生成
+// 一份 6MB 的 *-legacy.js（体积翻倍），而公网穿透带宽低，首屏加载极慢。
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd())
@@ -39,11 +40,6 @@ export default defineConfig(({ mode }) => {
         svgo: false,
         defaultImport: 'component', // or 'raw'
       }),
-      legacy({
-        targets: ['Chrome >= 81'],
-        polyfills: true,
-        modernPolyfills: true,
-      }),
     ],
     resolve: {
       alias: {
@@ -64,8 +60,18 @@ export default defineConfig(({ mode }) => {
       chunkSizeWarningLimit: 2000,
       rollupOptions: {
         output: {
-          manualChunks: {
-            'element-plus-secondary': ['element-plus-secondary'],
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return
+            // 重型可视化/编辑器库拆成独立 chunk，避免全部塞进首屏 index
+            if (id.includes('@antv/g2') || id.includes('@antv/g2plot')) return 'chart-g2'
+            if (id.includes('@antv/s2')) return 'chart-s2'
+            if (id.includes('@antv/x6')) return 'chart-x6'
+            if (id.includes('tinymce') || id.includes('@tinymce')) return 'editor-tinymce'
+            if (id.includes('highlight.js') || id.includes('@highlightjs')) return 'highlight'
+            if (id.includes('markdown-it')) return 'markdown'
+            if (id.includes('html2canvas')) return 'html2canvas'
+            if (id.includes('element-plus-secondary')) return 'element-plus-secondary'
+            if (id.includes('element-plus') || id.includes('@element-plus')) return 'element-plus'
           },
         },
       },

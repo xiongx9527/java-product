@@ -4,34 +4,9 @@ import Layout from '@/components/layout/index.vue'
 import LayoutDsl from '@/components/layout/LayoutDsl.vue'
 import SinglePage from '@/components/layout/SinglePage.vue'
 import login from '@/views/login/index.vue'
-import chat from '@/views/chat/index.vue'
-import DashboardEditor from '@/views/dashboard/editor/index.vue'
-import DashboardPreview from '@//views/dashboard/preview/SQPreviewSingle.vue'
-import Dashboard from '@/views/dashboard/index.vue'
-import Model from '@/views/system/model/Model.vue'
 // import Embedded from '@/views/system/embedded/index.vue'
 // import SetAssistant from '@/views/system/embedded/iframe.vue'
-import SystemEmbedded from '@/views/system/embedded/Page.vue'
-import Variables from '@/views/system/variables/index.vue'
 
-import assistantTest from '@/views/system/embedded/Test.vue'
-import assistant from '@/views/embedded/index.vue'
-import EmbeddedPage from '@/views/embedded/page.vue'
-import EmbeddedCommon from '@/views/embedded/common.vue'
-import Member from '@/views/system/member/index.vue'
-import Professional from '@/views/system/professional/index.vue'
-import Training from '@/views/system/training/index.vue'
-import Prompt from '@/views/system/prompt/index.vue'
-import Audit from '@/views/system/audit/index.vue'
-import Appearance from '@/views/system/appearance/index.vue'
-import Parameter from '@/views/system/parameter/index.vue'
-import Authentication from '@/views/system/authentication/index.vue'
-import Platform from '@/views/system/platform/index.vue'
-import Permission from '@/views/system/permission/index.vue'
-import User from '@/views/system/user/User.vue'
-import Workspace from '@/views/system/workspace/index.vue'
-import Page401 from '@/views/error/index.vue'
-import ChatPreview from '@/views/chat/preview.vue'
 
 import { i18n } from '@/i18n'
 import { watchRouter } from './watch'
@@ -51,7 +26,7 @@ export const routes = [
       {
         path: 'index',
         name: 'chat',
-        component: chat,
+        component: () => import('@/views/chat/index.vue'),
         props: (route: any) => {
           return { startChatDsId: route.query.start_chat }
         },
@@ -93,7 +68,7 @@ export const routes = [
       {
         path: 'index',
         name: 'dashboard',
-        component: Dashboard,
+        component: () => import('@/views/dashboard/index.vue'),
         meta: {
           title: t('dashboard.dashboard'),
           iconActive: 'dashboard',
@@ -112,13 +87,13 @@ export const routes = [
       {
         path: '/set/member',
         name: 'member',
-        component: Member,
+        component: () => import('@/views/system/member/index.vue'),
         meta: { title: t('workspace.member_management') },
       },
       {
         path: '/set/permission',
         name: 'permission',
-        component: Permission,
+        component: () => import('@/views/system/permission/index.vue'),
         meta: { title: t('workspace.permission_configuration') },
       },
       /* {
@@ -130,19 +105,19 @@ export const routes = [
       {
         path: '/set/professional',
         name: 'professional',
-        component: Professional,
+        component: () => import('@/views/system/professional/index.vue'),
         meta: { title: t('professional.professional_terminology') },
       },
       {
         path: '/set/training',
         name: 'training',
-        component: Training,
+        component: () => import('@/views/system/training/index.vue'),
         meta: { title: t('training.data_training') },
       },
       {
         path: '/set/prompt',
         name: 'prompt',
-        component: Prompt,
+        component: () => import('@/views/system/prompt/index.vue'),
         meta: { title: t('prompt.customize_prompt_words') },
       },
     ],
@@ -150,13 +125,13 @@ export const routes = [
   {
     path: '/canvas',
     name: 'canvas',
-    component: DashboardEditor,
+    component: () => import('@/views/dashboard/editor/index.vue'),
     meta: { title: 'canvas', icon: 'dashboard' },
   },
   {
     path: '/dashboard-preview',
     name: 'preview',
-    component: DashboardPreview,
+    component: () => import('@/views/dashboard/preview/SQPreviewSingle.vue'),
     meta: { title: 'DashboardPreview', icon: 'dashboard' },
   },
   {
@@ -169,13 +144,13 @@ export const routes = [
       {
         path: 'user',
         name: 'user',
-        component: User,
+        component: () => import('@/views/system/user/User.vue'),
         meta: { title: t('user.user_management'), iconActive: 'user', iconDeActive: 'noUser' },
       },
       {
         path: 'workspace',
         name: 'workspace',
-        component: Workspace,
+        component: () => import('@/views/system/workspace/index.vue'),
         meta: {
           title: t('user.workspace'),
           iconActive: 'workspace',
@@ -185,7 +160,7 @@ export const routes = [
       {
         path: 'model',
         name: 'model',
-        component: Model,
+        component: () => import('@/views/system/model/Model.vue'),
         meta: {
           title: t('model.ai_model_configuration'),
           iconActive: 'model',
@@ -195,7 +170,7 @@ export const routes = [
       {
         path: 'embedded',
         name: 'embedded',
-        component: SystemEmbedded,
+        component: () => import('@/views/system/embedded/Page.vue'),
         meta: {
           title: t('embedded.embedded_management'),
           iconActive: 'embedded',
@@ -211,31 +186,31 @@ export const routes = [
           {
             path: 'appearance',
             name: 'appearance',
-            component: Appearance,
+            component: () => import('@/views/system/appearance/index.vue'),
             meta: { title: t('system.appearance_settings') },
           },
           {
             path: 'parameter',
             name: 'parameter',
-            component: Parameter,
+            component: () => import('@/views/system/parameter/index.vue'),
             meta: { title: t('parameter.parameter_configuration') },
           },
           {
             path: 'variables',
             name: 'variables',
-            component: Variables,
+            component: () => import('@/views/system/variables/index.vue'),
             meta: { title: t('variables.system_variables') },
           },
           {
             path: 'authentication',
             name: 'authentication',
-            component: Authentication,
+            component: () => import('@/views/system/authentication/index.vue'),
             meta: { title: t('system.authentication_settings'), enterpriseOnly: true },
           },
           {
             path: 'platform',
             name: 'platform',
-            component: Platform,
+            component: () => import('@/views/system/platform/index.vue'),
             meta: { title: t('platform.title'), enterpriseOnly: true },
           },
         ],
@@ -243,7 +218,7 @@ export const routes = [
       {
         path: 'audit',
         name: 'audit',
-        component: Audit,
+        component: () => import('@/views/system/audit/index.vue'),
         meta: { title: t('audit.system_log'), iconActive: 'log', iconDeActive: 'noLog' },
       },
     ],
@@ -252,27 +227,27 @@ export const routes = [
   {
     path: '/assistant',
     name: 'assistant',
-    component: assistant,
+    component: () => import('@/views/embedded/index.vue'),
   },
   {
     path: '/embeddedPage',
     name: 'embeddedPage',
-    component: EmbeddedPage,
+    component: () => import('@/views/embedded/page.vue'),
   },
   {
     path: '/embeddedCommon',
     name: 'embeddedCommon',
-    component: EmbeddedCommon,
+    component: () => import('@/views/embedded/common.vue'),
   },
   {
     path: '/assistantTest',
     name: 'assistantTest',
-    component: assistantTest,
+    component: () => import('@/views/system/embedded/Test.vue'),
   },
   {
     path: '/chatPreview',
     name: 'chatPreview',
-    component: ChatPreview,
+    component: () => import('@/views/chat/preview.vue'),
   },
   {
     path: '/admin-login',
@@ -284,7 +259,7 @@ export const routes = [
     name: '401',
     hidden: true,
     meta: {},
-    component: Page401,
+    component: () => import('@/views/error/index.vue'),
   },
 ]
 const router = createRouter({
