@@ -81,7 +81,7 @@ class SqlbotMcpCompatControllerTest {
 
     @Test
     void mcpStartMapsSnakeCaseBodyAndKeepsTwoKeys() throws Exception {
-        when(tools.mcp_start(isNull(), isNull(), eq("tk"), eq(3L), eq("9"), eq("q")))
+        when(tools.mcp_start(isNull(), isNull(), eq("tk"), eq(3L), eq(9L), eq("q")))
                 .thenReturn("{\"access_token\":\"tk\",\"chat_id\":7}");
         mvc.perform(post("/api/v1/mcp/mcp_start")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -110,7 +110,7 @@ class SqlbotMcpCompatControllerTest {
 
     @Test
     void mcpQuestionNonStreamPassesIntStrUnionArgs() throws Exception {
-        when(tools.mcp_question(eq("tk"), eq(5L), eq("q"), eq("7"), isNull(), isNull(), eq(false), eq(true)))
+        when(tools.mcp_question(eq("tk"), eq(5L), eq("q"), eq(7L), isNull(), isNull(), eq(false), eq(true)))
                 .thenReturn("{\"success\":true,\"record_id\":1,\"sql\":\"SELECT 1\"}");
         mvc.perform(post("/api/v1/mcp/mcp_question")
                         .contentType(MediaType.APPLICATION_JSON)
