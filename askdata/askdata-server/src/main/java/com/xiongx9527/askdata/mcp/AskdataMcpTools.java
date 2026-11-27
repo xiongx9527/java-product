@@ -207,6 +207,34 @@ public class AskdataMcpTools {
      * 对齐 SQLBot {@code mcp_question}：支持 datasourceId（选定数据源）、chatId（续接会话并落库）、
      * customModel（按次选模型）、returnImg（是否出图）。未装配模型时返回可读错误。
      */
+    /**
+     * 推荐追问：问数完成后基于该轮问答 + 图表 + 历史生成 n 条可继续提问的问题（对齐 PC 端
+     * POST /chat/recommend_questions/{rid}），供 App 在报表后列出 1/2/3/4 让用户选。
+     * recordId 来自 question_answer 返回值。
+     */
+    @Tool(value = "recommend_questions", description = "问数后生成推荐追问列表（默认4条）：传 recordId（问数返回的记录ID），返回 questions 字符串数组，供助手列出让用户继续提问")
+    public String recommend_questions(@ToolArg("recordId") Long recordId,
+                                      @ToolArg(value = "articlesNumber", required = false) Integer articlesNumber) throws Exception {
+        ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
+        Map<String, Object> out = new LinkedHashMap<String, Object>();
+        if (recordId == null || recordId <= 0) {
+            out.put("questions", new ArrayList<String>());
+            return mapper.writeValueAsString(out);
+        }
+        try {
+            ChatQuestionService qs = SpringUtils.getBean(ChatQuestionService.class);
+            List<String> questions = qs.recommendQuestionsForRecord(recordId,
+                    articlesNumber == null || articlesNumber <= 0 ? 4 : articlesNumber);
+            out.put("questions", questions);
+            out.put("recordId", recordId);
+        } catch (Exception e) {
+            log.warn("MCP recommend_questions 失败（兜底空数组）: {}", e.getMessage());
+            out.put("questions", new ArrayList<String>());
+            out.put("error", e.getMessage());
+        }
+        return mapper.writeValueAsString(out);
+    }
+
     @Tool(value = "question_answer", description = "问数：自然语言转SQL并只读执行，返回 SQL 与结果行；可指定 datasourceId、chatId、customModel、returnImg（对齐 SQLBot mcp_question）")
     public String question_answer(@ToolArg(value = "question", description = "自然语言问题（问数输入）") String question,
                                  @ToolArg(value = "datasourceId", required = false, description = "数据源 ID，指定查询的数据源；不传则使用默认数据源") Long datasourceId,

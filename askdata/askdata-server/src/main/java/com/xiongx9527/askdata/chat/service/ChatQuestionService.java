@@ -896,6 +896,52 @@ public class ChatQuestionService {
     // POST /chat/recommend_questions/{rid}
     // ==================================================================
 
+    /**
+     * 推荐问题生成（非流式，供 MCP 工具调用）。与流式版共用同一套归属校验、模型与生成逻辑：
+     * 取该轮 question + 图表提示 + 会话历史，让模型生成 n 条追问，落库后返回。
+     *
+     * @param recordId       问数记录 id（question_answer 返回的 recordId）
+     * @param articlesNumber 期望条数（<=0 时默认 4）
+     * @return 推荐问题列表；记录不存在/无模型/生成失败时返回空列表
+     */
+    public List<String> recommendQuestionsForRecord(long recordId, int articlesNumber) {
+        int n = articlesNumber <= 0 ? 4 : articlesNumber;
+        Map<String, Object> user = currentUserService.currentUser();
+        long oid = currentUserService.oidOf(user);
+        Map<String, Object> record = chatRepository.findRecord(recordId).orElse(null);
+        if (record == null) return new ArrayList<>();
+        Map<String, Object> chat = chatRepository.findChat(Rows.lng(record, "chat_id", 0L)).orElse(null);
+        if (chat == null) return new ArrayList<>();
+        requireOwner(chat, user, "ChatRecord");
+        Optional<ModelRef> model = modelRouter.defaultChatModel();
+        if (!model.isPresent() || !model.get().usable()) return new ArrayList<>();
+
+        long chatId = Rows.lng(record, "chat_id", 0L);
+        String chartHint = Rows.str(record, "chart");
+        boolean hasChartHint = chartHint != null && !chartHint.isEmpty();
+        List<String> history = new ArrayList<>();
+        for (Map<String, Object> prev : chatRepository.listRecordsByChat(chatId)) {
+            if (Rows.lng(prev, "id", 0L) == recordId) continue;
+            String q = Rows.str(prev, "question");
+            if (q != null && !q.isEmpty()) history.add(q);
+        }
+        List<String> questions;
+        long start = System.currentTimeMillis();
+        try {
+            questions = recommendQuestions(oid, model.get(), Rows.str(record, "question"), n,
+                    hasChartHint ? chartHint : null, history);
+        } catch (Exception e) {
+            log.warn("MCP 推荐问题生成失败（兜底空数组）: {}", e.getMessage());
+            return new ArrayList<>();
+        }
+        if (questions.isEmpty()) return new ArrayList<>();
+        logOperation(recordId, oid, Rows.lng(user, "id", 0L), OPERATE_RECOMMEND_QUESTIONS, start, 0L, false, null);
+        String json = chatRepository.writeJson(questions);
+        chatRepository.saveRecommendedQuestion(recordId, json);
+        recommendedQuestionRepository.replaceByChat(chatId, questions);
+        return questions;
+    }
+
     /** 推荐问题生成（流式）。 */
     public void streamRecommendQuestions(long recordId, int articlesNumber, HttpServletResponse response)
             throws IOException {
