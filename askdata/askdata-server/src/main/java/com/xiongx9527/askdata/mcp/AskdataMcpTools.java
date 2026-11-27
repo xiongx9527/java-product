@@ -480,7 +480,7 @@ public class AskdataMcpTools {
                             @ToolArg(value = "password", required = false, description = "密码，用于换取访问 token") String password,
                             @ToolArg(value = "token", required = false, description = "访问令牌（SQLBot 兼容参数；主通道由网关自动注入，一般无需传）") String token,
                             @ToolArg(value = "oid", required = false, description = "组织/工作空间 ID，不传则取当前用户所属组织") Long oid,
-                            @ToolArg(value = "datasource_id", required = false, description = "数据源 ID（SQLBot 兼容命名，可为对象）") Object datasourceId,
+                            @ToolArg(value = "datasource_id", required = false, description = "数据源 ID（SQLBot 兼容命名，数字 ID）") Long datasourceId,
                             @ToolArg(value = "question", required = false, description = "自然语言问题（问数输入）") String question) throws Exception {
         ObjectMapper mapper = SpringUtils.getBean(ObjectMapper.class);
         AuthContext previous = null;
@@ -584,10 +584,10 @@ public class AskdataMcpTools {
      */
     @Tool(value = "mcp_question", description = "兼容 SQLBot mcp_question：自然语言转SQL并只读执行")
     public String mcp_question(@ToolArg(value = "token", required = false, description = "访问令牌（SQLBot 兼容参数；主通道由网关自动注入，一般无需传）") String token,
-                               @ToolArg(value = "chat_id", required = false, description = "会话 ID（SQLBot 兼容命名，可为对象）") Object chatId,
+                               @ToolArg(value = "chat_id", required = false, description = "会话 ID（SQLBot 兼容命名，数字 ID）") Long chatId,
                                @ToolArg(value = "question", description = "自然语言问题（问数输入）") String question,
-                               @ToolArg(value = "datasource_id", required = false, description = "数据源 ID（SQLBot 兼容命名，可为对象）") Object datasourceId,
-                               @ToolArg(value = "custom_model", required = false, description = "对话模型（SQLBot 兼容命名，可为对象）") Object customModel,
+                               @ToolArg(value = "datasource_id", required = false, description = "数据源 ID（SQLBot 兼容命名，数字 ID）") Long datasourceId,
+                               @ToolArg(value = "custom_model", required = false, description = "对话模型（SQLBot 兼容命名，数字 ID）") Long customModel,
                                @ToolArg(value = "lang", required = false, description = "回答语言，如 zh / en") String lang,
                                @ToolArg(value = "stream", required = false, description = "是否流式返回结果") Boolean stream,
                                @ToolArg(value = "return_img", required = false, description = "是否返回图片结果（SQLBot 兼容命名）") Boolean returnImg) throws Exception {

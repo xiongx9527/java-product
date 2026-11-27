@@ -78,7 +78,7 @@ public class SqlbotMcpCompatController {
     @PostMapping("/mcp_start")
     public ResponseEntity<String> mcpStart(@RequestBody(required = false) JsonNode body) throws Exception {
         return respond(tools.get().mcp_start(text(body, "username"), text(body, "password"), text(body, "token"),
-                longOrNull(body, "oid"), intStrArg(body, "datasource_id"), text(body, "question")));
+                longOrNull(body, "oid"), longOrNull(body, "datasource_id"), text(body, "question")));
     }
 
     /** POST /mcp_ws_list：body/query token → 工作空间数组。 */
@@ -119,8 +119,8 @@ public class SqlbotMcpCompatController {
             return;
         }
         String json = tools.get().mcp_question(text(body, "token"),
-                intStrArg(body, "chat_id"), text(body, "question"),
-                intStrArg(body, "datasource_id"), intStrArg(body, "custom_model"),
+                longOrNull(body, "chat_id"), text(body, "question"),
+                longOrNull(body, "datasource_id"), longOrNull(body, "custom_model"),
                 text(body, "lang"), Boolean.FALSE, boolOrNull(body, "return_img"));
         write(response, respondQuestion(json));
     }
