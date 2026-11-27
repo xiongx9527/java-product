@@ -28,6 +28,8 @@
         <justauth.version>1.16.6</justauth.version>
         <justauth-spring-boot-starter.version>1.4.0</justauth-spring-boot-starter.version>
         <!-- 通用文件存储（对齐 SQLBot 文件存储）：本地默认，可配置切 OSS/MinIO 等 -->
+        <!-- 默认本地开发仍执行前端 npm 构建；Docker 构建传 -Dfrontend.skip=true 走宿主预构建 dist -->
+        <frontend.skip>false</frontend.skip>
         <x-file-storage.version>2.2.1</x-file-storage.version>
         <!-- 对象存储 SDK：x-file-storage 的平台实现按 classpath 激活（MinIO / 阿里云 OSS / 腾讯云 COS） -->
         <minio.version>8.5.17</minio.version>
@@ -525,6 +527,9 @@
                 <configuration>
                     <workingDirectory>web</workingDirectory>
                     <npmInheritsProxyConfigFromMaven>false</npmInheritsProxyConfigFromMaven>
+                    <!-- Docker 构建时宿主已 npx vite build 好 web/dist，传 -Dfrontend.skip=true
+                         跳过容器内 npm install/build（避免 vue-tsc 基线错误 + 联网），直接用预构建产物 -->
+                    <skip>${frontend.skip}</skip>
                 </configuration>
                 <executions>
                     <execution>

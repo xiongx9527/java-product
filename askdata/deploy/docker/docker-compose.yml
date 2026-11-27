@@ -103,6 +103,18 @@ services:
       ASKDATA_REDIS_HOST: redis
       ASKDATA_REDIS_PORT: "6379"
       ASKDATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-redis123}
+      # Spring Boot 标准 Redis 绑定：框架部分组件读 spring.data.redis.*，
+      # 显式设置确保容器内所有 RedisConnectionFactory 都指向 compose 的 redis 服务
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-redis123}
+      # 禁用框架动态 Redis 数据源（默认开启会另建一个连 localhost:6379 的 factory，
+      # 导致 MCP SSE 监听器连错地址）；Redis 统一由应用 RedisClientConfig 提供
+      FW_PLUS_REDIS_ENABLED: "false"
+      # 兼容旧前缀 spring.redis.*（框架部分组件仍读此前缀）
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: "6379"
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD:-redis123}
       ASKDATA_CACHE_TYPE: redis
       ASKDATA_SA_TOKEN_STORE: redis
       ASKDATA_CLUSTER_ENABLED: "true"

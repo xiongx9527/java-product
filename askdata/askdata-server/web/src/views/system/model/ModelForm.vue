@@ -67,6 +67,7 @@ const testConnection = async () => {
       api_key: modelForm.api_key,
       full_url: modelForm.full_url,
       upstream_format: modelForm.upstream_format,
+      protocol: modelForm.protocolKey || modelForm.protocol,
       supplier: modelForm.supplier,
       model_type: modelForm.model_type,
       base_model: modelForm.base_model,
@@ -464,10 +465,17 @@ const initForm = (item?: any) => {
     Object.assign(modelForm, {
       ...item,
       upstream_format: item.upstream_format ? item.upstream_format : null,
+      // protocol 是真相源（后端 editor 明确 upstream_format 由 protocol 派生、列已废弃）。
+      // COHERE/TEI 与 OPENAI 的 upstream_format 同为 1，不能从数字反推，否则重排协议回填丢失。
       protocolKey: normalizeProtocolKey(
-        protocolKeyFromUpstreamFormat(item.upstream_format),
+        item.protocol && typeof item.protocol === 'string'
+          ? item.protocol
+          : protocolKeyFromUpstreamFormat(item.upstream_format),
         Number(item.model_type ?? 0),
       ),
+      protocol: item.protocol && typeof item.protocol === 'string'
+        ? item.protocol
+        : modelForm.protocol,
       full_url: item.full_url ?? false,
       enable: item.enable ?? 0,
       dimension: item.dimension ?? null,
@@ -548,6 +556,9 @@ const submitModel = () => {
     if (res) {
       emits('submit', {
         ...modelForm,
+        // 后端以 protocol 字符串为真相源；protocolKey 是下拉枚举（COHERE/TEI 等），
+        // 必须把它写回 protocol 提交，否则残留数字 1 会让重排/向量协议保存不生效。
+        protocol: modelForm.protocolKey || modelForm.protocol,
         config_list: [
           ...advancedSetting.value.map((item) => {
             return { key: item.key, name: item.name, val: item.val }

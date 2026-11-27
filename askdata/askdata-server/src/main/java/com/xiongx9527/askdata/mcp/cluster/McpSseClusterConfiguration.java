@@ -8,6 +8,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -37,7 +38,8 @@ public class McpSseClusterConfiguration {
     }
 
     @Bean
-    public RedisMessageListenerContainer mcpSseRelayListenerContainer(RedisConnectionFactory connectionFactory,
+    public RedisMessageListenerContainer mcpSseRelayListenerContainer(
+                                                                     @Qualifier("redisConnectionFactory") RedisConnectionFactory connectionFactory,
                                                                      McpSseClusterBridge bridge) {
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(connectionFactory);

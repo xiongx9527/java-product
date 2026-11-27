@@ -18,13 +18,13 @@ FROM maven:3.9-eclipse-temurin-8 AS build
 WORKDIR /build
 COPY . .
 # 前置：宿主已 npx vite build 生成 web/dist（容器内不跑 npm run build——它含 vue-tsc 类型检查，
-# 且 .dockerignore 排除了 node_modules，容器内 npm install 需联网）。-Dskip.npm 跳过 frontend plugin，
-# copy-frontend-dist 会把 web/dist 拷进 static。
+# 且 .dockerignore 排除了 node_modules，容器内 npm install 需联网）。-Dfrontend.skip=true 跳过
+# frontend plugin（pom 中该属性默认 false，本地开发不受影响），copy-frontend-dist 把 web/dist 拷进 static。
 # m2repo 是命名构建上下文（宿主 ~/.m2/repository）；bind 挂载只读，需先拷成可写副本供 Maven 写元数据。
 RUN --mount=type=bind,from=m2repo,target=/m2seed \
     mkdir -p /root/.m2/repository \
  && cp -a /m2seed/. /root/.m2/repository/ \
- && mvn -B -pl askdata/askdata-server -am -Drevision=0.1.1-SNAPSHOT -DskipTests -Dskip.npm=true clean package \
+ && mvn -B -pl askdata/askdata-server -am -Drevision=0.1.1-SNAPSHOT -DskipTests -Dfrontend.skip=true clean package \
  && cp askdata/askdata-server/target/askdata-server.jar /build/app.jar
 
 # 阶段二：运行（仅 JRE 8）
