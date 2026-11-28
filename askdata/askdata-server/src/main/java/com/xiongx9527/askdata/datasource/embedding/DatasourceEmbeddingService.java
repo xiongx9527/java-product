@@ -35,6 +35,17 @@ public class DatasourceEmbeddingService {
     private final JdbcTemplate jdbc;
 
     /**
+     * 正在回填的数据源 id（异步并发去重）。
+     *
+     * <p>保存/勾选表会异步触发回填，同一数据源可能连续触发多次。向量写入是幂等的
+     * （Qdrant 按 id upsert、DB 更新同一模型 id），且触发时数据已提交，
+     * 因此运行中重复触发可直接丢弃：最后一次触发时的数据已是最新，
+     * 不会丢向量；只是省掉重复的 embedding 调用。</p>
+     */
+    private final java.util.Set<Long> backfilling =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
      * 删除数据源及其表的向量（业务行删除后调用，避免在线库留下孤儿 point）。
      *
      * <p>表向量走一次批量删除：数据源下可能有上千张表，逐条删会把请求数与失败窗口
@@ -75,6 +86,11 @@ public class DatasourceEmbeddingService {
         if (!embeddingService.available()) {
             return;
         }
+        // 同一数据源的回填在跑就直接跳过：向量 upsert 幂等 + 数据已提交，不会丢最新向量
+        if (!backfilling.add(datasourceId)) {
+            log.info("数据源向量回填进行中，跳过重复触发 ds={}", datasourceId);
+            return;
+        }
         try {
             String doc = datasourceDoc(datasourceId);
             if (doc.isEmpty()) {
@@ -89,6 +105,8 @@ public class DatasourceEmbeddingService {
             }
         } catch (Exception e) {
             log.warn("数据源向量写入失败 ds={}（不影响主链路）: {}", datasourceId, e.getMessage());
+        } finally {
+            backfilling.remove(datasourceId);
         }
     }
 
