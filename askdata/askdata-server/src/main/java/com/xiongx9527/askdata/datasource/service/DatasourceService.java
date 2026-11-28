@@ -165,11 +165,20 @@ public class DatasourceService {
         if (datasourceEmbeddingService == null) {
             return;
         }
-        try {
-            datasourceEmbeddingService.saveEmbedding(dsId);
-        } catch (Exception e) {
-            log.warn("数据源级向量回填触发失败 ds={}（不影响主链路）: {}", dsId, e.getMessage());
-        }
+        // 数据源级向量回填要查全部表/字段拼文档并逐条调 embedding（109 字段约 10-21 秒），
+        // 同步执行会阻塞保存接口。改为事务提交后异步执行（与表级 backfill 的 daemon 线程一致）：
+        // AfterCommit 保证线程启动前数据已落库，避免读到未提交状态；异常只在线程内记日志，不影响主链路。
+        com.xiongx9527.askdata.common.tx.AfterCommit.run(() -> {
+            Thread worker = new Thread(() -> {
+                try {
+                    datasourceEmbeddingService.saveEmbedding(dsId);
+                } catch (Exception e) {
+                    log.warn("数据源级向量回填失败 ds={}（不影响保存主链路）: {}", dsId, e.getMessage());
+                }
+            }, "datasource-embedding-backfill-" + dsId);
+            worker.setDaemon(true);
+            worker.start();
+        });
     }
 
     // ------------------------------------------------------------------
