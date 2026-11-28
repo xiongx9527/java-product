@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.datasource.controller;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import com.xiongx9527.askdata.common.web.Result;
 import com.xiongx9527.askdata.datasource.service.TableRelationService;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,6 +26,7 @@ public class TableRelationController {
         this.tableRelationService = tableRelationService;
     }
 
+    @Debounce(args = {"0"})
     @PostMapping({"/table_relation/save/{ds_id}"})
     public Result<Void> save(@PathVariable("ds_id") long dsId, @RequestBody List<Map<String, Object>> relation) {
         tableRelationService.requireExists(dsId);

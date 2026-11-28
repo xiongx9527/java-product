@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.system.controller;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import com.xiongx9527.askdata.common.audit.AuditLog;
 import com.xiongx9527.askdata.common.audit.AuditModule;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
@@ -54,6 +55,7 @@ public class AiModelController {
 
     /** 一键重新向量：全空间强制重算；任务进行中时返回 started=false（管理员）。 */
     @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.UPDATE)
+    @Debounce
     @PostMapping({"/system/aimodel/embedding/rebuild"})
     public Result<Map<String, Object>> embeddingRebuild(@RequestBody(required = false) Map<String, Object> body) {
         currentUserService.requireAdmin();
@@ -63,6 +65,7 @@ public class AiModelController {
 
     /** 停止正在进行的向量重建：置停止信号，当前工作空间完成后标记 interrupted（管理员）。 */
     @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.UPDATE)
+    @Debounce
     @PostMapping({"/system/aimodel/embedding/rebuild/stop"})
     public Result<Map<String, Object>> embeddingRebuildStop() {
         currentUserService.requireAdmin();
@@ -71,6 +74,7 @@ public class AiModelController {
 
     /** 取消未完成的重建记录（释放「重建期间锁定默认向量模型」约束），管理员。 */
     @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.UPDATE)
+    @Debounce
     @PostMapping({"/system/aimodel/embedding/rebuild/cancel"})
     public Result<Map<String, Object>> embeddingRebuildCancel() {
         currentUserService.requireAdmin();
@@ -83,12 +87,14 @@ public class AiModelController {
     }
 
     @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.CREATE)
+    @Debounce
     @PostMapping({"/system/aimodel"})
     public Result<Map<String, Object>> create(@RequestBody Map<String, Object> creator) {
         return Result.ok(aiModelService.create(creator));
     }
 
     @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.UPDATE)
+    @Debounce(spel = {"#p0['id']"})
     @PutMapping({"/system/aimodel"})
     public Result<Void> update(@RequestBody Map<String, Object> editor) {
         aiModelService.update(editor);
@@ -109,6 +115,7 @@ public class AiModelController {
     }
 
     @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.UPDATE)
+    @Debounce(args = {"0"})
     @PutMapping({"/system/aimodel/default/{id}"})
     public Result<Void> setDefault(@PathVariable long id) {
         aiModelService.setDefault(id);
@@ -117,6 +124,7 @@ public class AiModelController {
 
     /** 列表内开关：仅切换「是否生效」（enable），约束与 update 一致（需已连通校验、向量需维度、默认不可停用）。 */
     @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.UPDATE)
+    @Debounce(args = {"0"})
     @PutMapping({"/system/aimodel/{id}/enable"})
     public Result<Void> setEnable(@PathVariable long id, @RequestParam boolean enable) {
         aiModelService.setEnable(id, enable);
@@ -128,6 +136,7 @@ public class AiModelController {
      * source 为 remote / preset / none；preset 表示前端回退供应商静态清单。
      */
     @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.UPDATE)
+    @Debounce
     @PostMapping({"/system/aimodel/models"})
     public Result<Map<String, Object>> models(@RequestBody Map<String, Object> body) {
         return Result.ok(aiModelService.listModels(body));
@@ -144,6 +153,7 @@ public class AiModelController {
     }
 
     @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.DELETE)
+    @Debounce(args = {"0"})
     @DeleteMapping({"/system/aimodel/{id}"})
     public Result<Void> delete(@PathVariable long id) {
         aiModelService.delete(id);
@@ -172,18 +182,21 @@ public class AiModelController {
     }
 
     @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.CREATE_OR_UPDATE)
+    @Debounce(args = {"0"})
     @PutMapping({"/system/aimodel/{id}/ws_mapping"})
     public Result<List<String>> replaceWsMapping(@PathVariable long id, @RequestBody List<String> wsIds) {
         return Result.ok(aiModelService.replaceWsMapping(id, wsIds));
     }
 
     @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.ADD)
+    @Debounce(args = {"0"})
     @PostMapping({"/system/aimodel/{id}/ws_mapping"})
     public Result<List<String>> addWsMapping(@PathVariable long id, @RequestBody List<String> wsIds) {
         return Result.ok(aiModelService.addWsMapping(id, wsIds));
     }
 
     @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.DELETE)
+    @Debounce(args = {"0"})
     @DeleteMapping({"/system/aimodel/{id}/ws_mapping"})
     public Result<List<String>> deleteWsMapping(@PathVariable long id, @RequestBody List<String> wsIds) {
         return Result.ok(aiModelService.deleteWsMapping(id, wsIds));

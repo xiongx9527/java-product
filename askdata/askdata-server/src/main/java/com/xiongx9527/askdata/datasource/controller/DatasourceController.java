@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.datasource.controller;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import com.xiongx9527.askdata.common.web.Result;
 import com.xiongx9527.askdata.datasource.service.DatasourceService;
 import org.springframework.core.io.ByteArrayResource;
@@ -66,23 +67,27 @@ public class DatasourceController {
         return Result.ok(datasourceService.checkById(dsId));
     }
 
+    @Debounce
     @PostMapping({"/datasource/add"})
     public Result<Map<String, Object>> add(@RequestBody Map<String, Object> ds) {
         return Result.ok(datasourceService.add(ds));
     }
 
+    @Debounce(args = {"0"})
     @PostMapping({"/datasource/chooseTables/{id}"})
     public Result<Void> chooseTables(@PathVariable long id, @RequestBody List<Map<String, Object>> tables) {
         datasourceService.chooseTables(id, tables);
         return Result.ok();
     }
 
+    @Debounce(spel = {"#p0['id']"})
     @PostMapping({"/datasource/update"})
     public Result<Void> update(@RequestBody Map<String, Object> ds) {
         datasourceService.update(ds);
         return Result.ok();
     }
 
+    @Debounce(args = {"0"})
     @PostMapping({"/datasource/delete/{id}/{name}"})
     public Result<Void> delete(@PathVariable long id, @PathVariable String name) {
         datasourceService.delete(id, name);
@@ -110,6 +115,7 @@ public class DatasourceController {
         return Result.ok(datasourceService.getFields(id, tableName));
     }
 
+    @Debounce(args = {"0", "1"})
     @PostMapping({"/datasource/syncFields/{ds_id}/{id}"})
     public Result<Void> syncFields(@PathVariable("ds_id") long dsId, @PathVariable long id) {
         datasourceService.syncFields(dsId, id);
@@ -127,12 +133,14 @@ public class DatasourceController {
         return Result.ok(datasourceService.fieldList(dsId, id, field == null ? Rows0.empty() : field));
     }
 
+    @Debounce(spel = {"#p0['id']"})
     @PostMapping({"/datasource/editTable"})
     public Result<Void> editTable(@RequestBody Map<String, Object> table) {
         datasourceService.editTable(table);
         return Result.ok();
     }
 
+    @Debounce(spel = {"#p0['id']"})
     @PostMapping({"/datasource/editField"})
     public Result<Void> editField(@RequestBody Map<String, Object> field) {
         datasourceService.editField(field);

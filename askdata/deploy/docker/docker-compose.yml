@@ -119,6 +119,9 @@ services:
       SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD:-redis123}
       ASKDATA_CACHE_TYPE: redis
       ASKDATA_SA_TOKEN_STORE: redis
+      # 接口防抖：数据源/表关系/模型层写操作加 @Debounce，防重复提交（Redis 跨实例）
+      ASKDATA_DEBOUNCE_ENABLED: "true"
+      ASKDATA_DEBOUNCE_WINDOW_MS: "1000"
       ASKDATA_CLUSTER_ENABLED: "true"
       FILE_STORAGE_PLATFORM: minio
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minio}
