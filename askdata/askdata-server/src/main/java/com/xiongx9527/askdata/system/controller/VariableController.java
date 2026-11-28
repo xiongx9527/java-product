@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.system.controller;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import com.xiongx9527.askdata.common.audit.AuditLog;
 import com.xiongx9527.askdata.common.audit.AuditModule;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
@@ -30,12 +31,14 @@ public class VariableController {
     }
 
     @AuditLog(module = AuditModule.SETTING, operation = AuditOperationType.CREATE_OR_UPDATE)
+    @Debounce(spel = {"#p0['id']"})
     @PostMapping({"/sys_variable/save"})
     public Result<Boolean> save(@RequestBody Map<String, Object> variable) {
         return Result.ok(variableService.save(variable));
     }
 
     @AuditLog(module = AuditModule.SETTING, operation = AuditOperationType.DELETE)
+    @Debounce
     @PostMapping({"/sys_variable/delete"})
     public Result<Void> delete(@RequestBody List<Long> ids) {
         variableService.delete(ids);

@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.permission;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import com.xiongx9527.askdata.common.web.Result;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,6 +32,7 @@ public class DsGrantController {
     }
 
     /** POST /ds_grant/save：{ds_id, user_ids: []} 覆盖式保存；空列表清空授权。 */
+    @Debounce(spel = {"#p0['ds_id']"})
     @PostMapping({"/ds_grant/save"})
     public Result<Void> save(@RequestBody Map<String, Object> body) {
         dsGrantService.save(body);
@@ -38,6 +40,7 @@ public class DsGrantController {
     }
 
     /** POST /ds_grant/delete/{id}：删除单条授权。 */
+    @Debounce(args = {"0"})
     @PostMapping({"/ds_grant/delete/{id}"})
     public Result<Void> delete(@PathVariable("id") long id) {
         dsGrantService.delete(id);

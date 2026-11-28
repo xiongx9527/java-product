@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.system.authentication;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import cn.dev33.satoken.stp.StpUtil;
 import com.xiongx9527.askdata.common.audit.AuditLog;
 import com.xiongx9527.askdata.common.audit.AuditModule;
@@ -80,6 +81,7 @@ public class AuthenticationController {
     }
 
     @AuditLog(module = AuditModule.SETTING, operation = AuditOperationType.UPDATE_STATUS)
+    @Debounce(spel = {"#p0['id']"})
     @PatchMapping({"/system/authentication/enable"})
     public Result<Void> enable(@RequestBody Map<String, Object> body) {
         long id = longOf(body.get("id"), 0L);

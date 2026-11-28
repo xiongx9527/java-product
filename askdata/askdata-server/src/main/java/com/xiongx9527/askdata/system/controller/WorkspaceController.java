@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.system.controller;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import com.xiongx9527.askdata.common.audit.AuditLog;
 import com.xiongx9527.askdata.common.audit.AuditModule;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
@@ -46,6 +47,7 @@ public class WorkspaceController {
     }
 
     @AuditLog(module = AuditModule.WORKSPACE, operation = AuditOperationType.UPDATE)
+    @Debounce(spel = {"#p0['id']"})
     @PutMapping({"/system/workspace"})
     public Result<Void> update(@RequestBody Map<String, Object> editor) {
         workspaceService.update(editor);
@@ -58,6 +60,7 @@ public class WorkspaceController {
     }
 
     @AuditLog(module = AuditModule.WORKSPACE, operation = AuditOperationType.DELETE)
+    @Debounce(args = {"0"})
     @DeleteMapping({"/system/workspace/{id}"})
     public Result<Void> delete(@PathVariable long id) {
         workspaceService.delete(id);
@@ -74,6 +77,7 @@ public class WorkspaceController {
     }
 
     @AuditLog(module = AuditModule.WORKSPACE, operation = AuditOperationType.UPDATE)
+    @Debounce(args = {"0"})
     @PutMapping({"/system/workspace/{id}/model"})
     public Result<Void> saveModelSettings(@PathVariable long id, @RequestBody Map<String, Object> editor) {
         workspaceService.saveModelSettings(id, editor);

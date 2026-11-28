@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.terminology;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import com.xiongx9527.askdata.common.web.PagerResult;
 import com.xiongx9527.askdata.common.web.Result;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -35,6 +36,7 @@ public class SettingsTerminologyController {
         return Result.ok(terminologyService.pager(pageNumber, pageSize, null, null, null));
     }
 
+    @Debounce(spel = {"#p0['id']"})
     @PostMapping({"/settings/terminology"})
     public Result<Long> add(@RequestBody Map<String, Object> data) {
         return Result.ok(terminologyService.createOrUpdate(data));
@@ -45,6 +47,7 @@ public class SettingsTerminologyController {
         return Result.ok(terminologyService.createOrUpdate(data));
     }
 
+    @Debounce(args = {"0"})
     @DeleteMapping({"/settings/terminology/{id}"})
     public Result<Void> delete(@PathVariable long id) {
         terminologyService.delete(java.util.Collections.singletonList(id));

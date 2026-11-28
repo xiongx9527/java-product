@@ -136,7 +136,6 @@ public class AiModelController {
      * source 为 remote / preset / none；preset 表示前端回退供应商静态清单。
      */
     @AuditLog(module = AuditModule.AI_MODEL, operation = AuditOperationType.UPDATE)
-    @Debounce
     @PostMapping({"/system/aimodel/models"})
     public Result<Map<String, Object>> models(@RequestBody Map<String, Object> body) {
         return Result.ok(aiModelService.listModels(body));

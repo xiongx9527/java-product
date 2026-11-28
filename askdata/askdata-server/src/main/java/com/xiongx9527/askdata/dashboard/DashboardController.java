@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.dashboard;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import com.xiongx9527.askdata.common.web.Result;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,21 +36,25 @@ public class DashboardController {
         return Result.ok(dashboardService.loadResource(body));
     }
 
+    @Debounce(spel = {"#p0['id']"})
     @PostMapping({"/dashboard/create_resource"})
     public Result<Map<String, Object>> createResource(@RequestBody Map<String, Object> body) {
         return Result.ok(dashboardService.createResource(body));
     }
 
+    @Debounce(spel = {"#p0['id']"})
     @PostMapping({"/dashboard/update_resource"})
     public Result<Map<String, Object>> updateResource(@RequestBody Map<String, Object> body) {
         return Result.ok(dashboardService.updateResource(body));
     }
 
+    @Debounce(spel = {"#p0['id']"})
     @PostMapping({"/dashboard/create_canvas"})
     public Result<Map<String, Object>> createCanvas(@RequestBody Map<String, Object> body) {
         return Result.ok(dashboardService.createCanvas(body));
     }
 
+    @Debounce(spel = {"#p0['id']"})
     @PostMapping({"/dashboard/update_canvas"})
     public Result<Map<String, Object>> updateCanvas(@RequestBody Map<String, Object> body) {
         return Result.ok(dashboardService.updateCanvas(body));
@@ -60,12 +65,14 @@ public class DashboardController {
         return Result.ok(dashboardService.checkName(body));
     }
 
+    @Debounce(args = {"0"})
     @DeleteMapping({"/dashboard/delete_resource/{resource_id}/{name}"})
     public Result<Boolean> deleteResource(@PathVariable("resource_id") String resourceId,
                                           @PathVariable String name) {
         return Result.ok(dashboardService.deleteResource(resourceId));
     }
 
+    @Debounce(args = {"0"})
     @DeleteMapping({"/dashboard/move_resource/{id}"})
     public Result<Void> moveResource(@PathVariable String id, @RequestBody(required = false) Map<String, Object> body) {
         dashboardService.moveResource(id, body == null ? new java.util.HashMap<>() : body);

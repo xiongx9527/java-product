@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.system.controller;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import cn.dev33.satoken.stp.StpUtil;
 import com.xiongx9527.askdata.common.audit.AuditLog;
 import com.xiongx9527.askdata.common.audit.AuditModule;
@@ -93,6 +94,7 @@ public class UserController {
     }
 
     @AuditLog(module = AuditModule.USER, operation = AuditOperationType.UPDATE)
+    @Debounce(args = {"0"})
     @PutMapping({"/user/ws/{oid}"})
     public Result<Void> switchWorkspace(@PathVariable long oid) {
         userService.switchWorkspace(oid);
@@ -100,6 +102,7 @@ public class UserController {
     }
 
     @AuditLog(module = AuditModule.USER, operation = AuditOperationType.UPDATE)
+    @Debounce
     @PutMapping({"/user/language"})
     public Result<Void> changeLanguage(@RequestBody Map<String, Object> editor) {
         userService.changeLanguage(Rows.str(editor, "language"));
@@ -107,6 +110,7 @@ public class UserController {
     }
 
     @AuditLog(module = AuditModule.USER, operation = AuditOperationType.UPDATE_PWD)
+    @Debounce
     @PutMapping({"/user/pwd"})
     public Result<Void> changeOwnPassword(@RequestBody Map<String, Object> editor) {
         userService.changeOwnPassword(Rows.str(editor, "pwd"), Rows.str(editor, "new_pwd"));
@@ -146,6 +150,7 @@ public class UserController {
     }
 
     @AuditLog(module = AuditModule.USER, operation = AuditOperationType.UPDATE)
+    @Debounce(spel = {"#p0['id']"})
     @PutMapping({"/user"})
     public Result<Void> update(@RequestBody Map<String, Object> editor) {
         userService.update(editor);
@@ -153,6 +158,7 @@ public class UserController {
     }
 
     @AuditLog(module = AuditModule.USER, operation = AuditOperationType.DELETE)
+    @Debounce(args = {"0"})
     @DeleteMapping({"/user/{id}"})
     public Result<Void> delete(@PathVariable long id) {
         userService.delete(id);
@@ -167,6 +173,7 @@ public class UserController {
     }
 
     @AuditLog(module = AuditModule.USER, operation = AuditOperationType.RESET_PWD)
+    @Debounce(args = {"0"})
     @PatchMapping({"/user/pwd/{id}"})
     public Result<Void> resetPassword(@PathVariable long id) {
         userService.resetPassword(id);

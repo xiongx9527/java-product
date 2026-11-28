@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.system.settings;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiongx9527.askdata.common.util.Rows;
@@ -71,6 +72,7 @@ public class AppearanceController {
      * {@code [{pkey, pval, ptype, sort}]}；{@code files} 为图片part，part 文件名
      * {@code <原始名>,<pkey>}，落库后把返回的文件 id 写进该 pkey 的 pval。</p>
      */
+    @Debounce
     @PostMapping(value = "/system/appearance", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Result<Integer> save(@RequestPart("data") String data,
                                 @RequestPart(value = "files", required = false) List<MultipartFile> files)

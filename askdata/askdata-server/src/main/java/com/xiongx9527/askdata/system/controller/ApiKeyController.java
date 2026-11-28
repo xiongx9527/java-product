@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.system.controller;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import com.xiongx9527.askdata.common.audit.AuditLog;
 import com.xiongx9527.askdata.common.audit.AuditModule;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
@@ -38,6 +39,7 @@ public class ApiKeyController {
     }
 
     @AuditLog(module = AuditModule.API_KEY, operation = AuditOperationType.CREATE)
+    @Debounce
     @PostMapping({"/system/apikey"})
     public Result<Long> create() {
         return Result.ok(apiKeyService.create());
@@ -51,6 +53,7 @@ public class ApiKeyController {
     }
 
     @AuditLog(module = AuditModule.API_KEY, operation = AuditOperationType.DELETE)
+    @Debounce(args = {"0"})
     @DeleteMapping({"/system/apikey/{id}"})
     public Result<Void> delete(@PathVariable long id) {
         apiKeyService.delete(id);

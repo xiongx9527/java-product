@@ -40,6 +40,7 @@ public class ScheduledTaskController {
         return Result.ok(service.save(body));
     }
 
+    @Debounce(args = {"0"})
     @PostMapping({"/scheduled_task/delete/{id}"})
     public Result<Void> delete(@PathVariable long id) {
         service.delete(id);

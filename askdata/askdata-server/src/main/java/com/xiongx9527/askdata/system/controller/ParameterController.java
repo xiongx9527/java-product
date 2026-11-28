@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.system.controller;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import com.xiongx9527.askdata.common.audit.AuditLog;
 import com.xiongx9527.askdata.common.audit.AuditModule;
 import com.xiongx9527.askdata.common.audit.AuditOperationType;
@@ -53,6 +54,7 @@ public class ParameterController {
     }
 
     @AuditLog(module = AuditModule.PARAMS_SETTING, operation = AuditOperationType.CREATE_OR_UPDATE)
+    @Debounce
     @PostMapping({"/system/parameter"})
     public Result<Void> save(@RequestParam(value = "data", required = false) String data,
                              @RequestParam(value = "files", required = false) List<MultipartFile> files) {

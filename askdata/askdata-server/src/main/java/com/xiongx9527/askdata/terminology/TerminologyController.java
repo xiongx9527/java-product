@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.terminology;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import com.xiongx9527.askdata.common.web.PagerResult;
 import com.xiongx9527.askdata.common.web.Result;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -47,6 +48,7 @@ public class TerminologyController {
         return Result.ok(terminologyService.createOrUpdate(info));
     }
 
+    @Debounce
     @DeleteMapping({"/system/terminology"})
     public Result<Void> delete(@RequestBody List<Long> idList) {
         terminologyService.delete(idList);

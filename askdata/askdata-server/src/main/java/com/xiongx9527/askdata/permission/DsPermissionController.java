@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.permission;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import com.xiongx9527.askdata.common.web.Result;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,6 +30,7 @@ public class DsPermissionController {
         return Result.ok(dsPermissionService.list());
     }
 
+    @Debounce(spel = {"#p0['name']"})
     @PostMapping({"/ds_permission/save"})
     public Result<Long> save(@RequestBody Map<String, Object> data) {
         return Result.ok(dsPermissionService.save(data));

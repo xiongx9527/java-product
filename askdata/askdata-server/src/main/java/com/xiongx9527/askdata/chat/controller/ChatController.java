@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.chat.controller;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import com.xiongx9527.askdata.chat.service.ChatQuestionService;
 import com.xiongx9527.askdata.chat.service.ChatService;
 import com.xiongx9527.askdata.chat.support.ChatExcel;
@@ -88,6 +89,7 @@ public class ChatController {
     }
 
     /** POST /chat/rename（对齐 SQLBot rename → 返回新 brief 字符串）。 */
+    @Debounce(spel = {"#p0['id']"})
     @PostMapping({"/chat/rename"})
     public Result<String> rename(@RequestBody Map<String, Object> renamer) {
         chatService.rename(renamer);
@@ -96,6 +98,7 @@ public class ChatController {
     }
 
     /** DELETE /chat/{id}（对齐 SQLBot delete：body 为 {id, brief}）。 */
+    @Debounce(args = {"0"})
     @DeleteMapping({"/chat/{id}"})
     public Result<String> delete(@PathVariable long id, @RequestBody(required = false) Map<String, Object> body) {
         chatService.delete(id, body == null ? new java.util.HashMap<>() : body);

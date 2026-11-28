@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.system.platform;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import cn.dev33.satoken.stp.StpUtil;
 import com.xiongx9527.askdata.common.util.Rows;
 import com.xiongx9527.askdata.common.web.Result;
@@ -100,6 +101,7 @@ public class PlatformController {
      * {@code {tree:[{id, name, options:{is_user, email}, children?}]}}。未配置/已禁用时抛出
      * 带平台名的可读错误。</p>
      */
+    @Debounce(args = {"0"})
     @PostMapping({"/system/platform/org/{id}"})
     public Result<Map<String, Object>> org(@PathVariable int id,
                                           @RequestBody(required = false) Map<String, Object> body) {
@@ -115,6 +117,7 @@ public class PlatformController {
      * 把回调参数 POST 到这里；与 {@code /system/authentication/sso/{type}} 共用同一条
      * 「平台 code → 平台用户 → 本地用户 → 签发 token」链路。平台未配置或已禁用时返回可读错误。</p>
      */
+    @Debounce(args = {"0"})
     @PostMapping({"/system/platform/sso/{type}"})
     public Result<Map<String, Object>> sso(@PathVariable int type,
                                            @RequestBody(required = false) Map<String, Object> body,
@@ -147,6 +150,7 @@ public class PlatformController {
     }
 
     /** POST /system/platform/user/sync：批量同步企业平台用户到本地 sys_user（幂等）。 */
+    @Debounce
     @PostMapping({"/system/platform/user/sync"})
     public Result<Map<String, Object>> userSync(@RequestBody Map<String, Object> body) {
         return Result.ok(platformSyncService.sync(body));

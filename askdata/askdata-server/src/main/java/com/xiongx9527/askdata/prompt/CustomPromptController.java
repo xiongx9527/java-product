@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.prompt;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import com.xiongx9527.askdata.common.web.PagerResult;
 import com.xiongx9527.askdata.common.web.Result;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -46,6 +47,7 @@ public class CustomPromptController {
         return Result.ok(customPromptService.createOrUpdate(info));
     }
 
+    @Debounce
     @DeleteMapping({"/system/custom_prompt"})
     public Result<Void> delete(@RequestBody List<Long> idList) {
         customPromptService.delete(idList);

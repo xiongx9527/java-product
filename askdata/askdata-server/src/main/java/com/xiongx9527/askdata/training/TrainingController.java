@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.training;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import com.xiongx9527.askdata.common.web.PagerResult;
 import com.xiongx9527.askdata.common.web.Result;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -47,6 +48,7 @@ public class TrainingController {
         return Result.ok(trainingService.createOrUpdate(info));
     }
 
+    @Debounce
     @DeleteMapping({"/system/data-training"})
     public Result<Void> delete(@RequestBody List<Long> idList) {
         trainingService.delete(idList);

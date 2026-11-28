@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.system.license;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import com.xiongx9527.askdata.common.web.Result;
 import com.xiongx9527.askdata.system.service.CurrentUserService;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -42,6 +43,7 @@ public class LicenseController {
     }
 
     /** POST /system/license：上传许可证（ws admin）。 */
+    @Debounce
     @PostMapping({"/system/license"})
     public Result<Map<String, Object>> upload(@RequestBody(required = false) Map<String, Object> body) {
         Object key = body == null ? null : body.get("license_key");
@@ -54,6 +56,7 @@ public class LicenseController {
      * serialNo / remark / count / edition / isv。返回 {@code {license_key: "<签名后的完整 License JSON>"} }，
      * 可直接再 POST 到 /system/license 激活。sign-key 未配置时 fail-closed（返回 400 + 可读提示）。
      */
+    @Debounce
     @PostMapping({"/system/license/generate"})
     public Result<Map<String, Object>> generate(@RequestBody(required = false) Map<String, Object> body) {
         currentUserService.requireWsAdmin();

@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.datasource.controller;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import com.xiongx9527.askdata.common.web.Result;
 import com.xiongx9527.askdata.datasource.service.RecommendedProblemService;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -35,6 +36,7 @@ public class RecommendedProblemController {
         return Result.ok(recommendedProblemService.base(dsId));
     }
 
+    @Debounce(spel = {"#p0['datasource_id']"})
     @PostMapping({"/recommended_problem/save_recommended_problem"})
     public Result<Void> save(@RequestBody Map<String, Object> dataInfo) {
         recommendedProblemService.save(dataInfo);

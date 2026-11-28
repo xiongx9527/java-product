@@ -1,5 +1,6 @@
 package com.xiongx9527.askdata.embedded;
 
+import com.xiongx9527.fw.plus.common.debounce.Debounce;
 import com.xiongx9527.askdata.common.web.Result;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -47,12 +48,14 @@ public class EmbeddedController {
         return Result.ok(assistantService.createEmbedded(creator));
     }
 
+    @Debounce(spel = {"#p0['id']"})
     @PutMapping({"/system/embedded"})
     public Result<Void> update(@RequestBody Map<String, Object> editor) {
         assistantService.updateEmbedded(editor);
         return Result.ok();
     }
 
+    @Debounce
     @DeleteMapping({"/system/embedded"})
     public Result<Void> delete(@RequestBody List<Long> idList) {
         assistantService.deleteEmbedded(idList);
